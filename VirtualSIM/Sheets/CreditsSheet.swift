@@ -3,10 +3,12 @@ import SwiftUI
 struct CreditsSheet: View {
     @Environment(\.theme) private var theme
     @Environment(\.dismiss) private var dismiss
+    @Environment(IAPStore.self) private var iap
     var balance: Int
-    var onBuy: (CreditPack) -> Void
+    var onPurchased: () -> Void
 
     @State private var selected: String = "md"
+    @State private var purchasing = false
 
     private var pack: CreditPack {
         CreditPack.all.first { $0.id == selected } ?? CreditPack.all[1]
@@ -20,13 +22,18 @@ struct CreditsSheet: View {
                     balanceRow
                     packsList
                     footnote
+                    if let err = iap.lastError {
+                        Text(err)
+                            .font(RFont.text(12))
+                            .foregroundStyle(theme.fail)
+                            .multilineTextAlignment(.center)
+                            .padding(.top, 10)
+                    }
                     PrimaryButton(
-                        label: "Buy \(pack.credits) credits",
-                        sub: pack.price,
-                        action: {
-                            onBuy(pack)
-                            dismiss()
-                        }
+                        label: purchasing ? "Processing…" : "Buy \(pack.credits) credits",
+                        sub: iap.displayPrice(pack),
+                        disabled: purchasing,
+                        action: { Task { await buy() } }
                     )
                     .padding(.top, 16)
                 }
@@ -36,6 +43,7 @@ struct CreditsSheet: View {
             }
         }
         .background(theme.bg)
+        .task { await iap.loadProducts() }
     }
 
     private var balanceRow: some View {
@@ -69,7 +77,7 @@ struct CreditsSheet: View {
     private var packsList: some View {
         VStack(spacing: 8) {
             ForEach(CreditPack.all) { p in
-                PackRow(pack: p, active: selected == p.id) {
+                PackRow(pack: p, active: selected == p.id, displayPrice: iap.displayPrice(p)) {
                     withAnimation(.easeOut(duration: 0.15)) { selected = p.id }
                 }
             }
@@ -93,12 +101,23 @@ struct CreditsSheet: View {
         .background(theme.chipBg, in: .rect(cornerRadius: 12))
         .padding(.top, 14)
     }
+
+    private func buy() async {
+        purchasing = true
+        defer { purchasing = false }
+        let success = await iap.purchase(pack)
+        if success {
+            onPurchased()
+            dismiss()
+        }
+    }
 }
 
 private struct PackRow: View {
     @Environment(\.theme) private var theme
     let pack: CreditPack
     let active: Bool
+    let displayPrice: String
     let onTap: () -> Void
 
     var body: some View {
@@ -133,7 +152,7 @@ private struct PackRow: View {
                         .foregroundStyle(theme.text2)
                 }
                 Spacer(minLength: 0)
-                Text(pack.price)
+                Text(displayPrice)
                     .font(RFont.display(18, weight: .semibold))
                     .tracking(-0.4)
                     .foregroundStyle(theme.text)

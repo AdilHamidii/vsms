@@ -4,6 +4,7 @@ struct AuthGate: View {
     @State private var api = APIClient()
     @State private var session: Session
     @State private var push = PushManager()
+    @State private var iap = IAPStore()
 
     init() {
         let client = APIClient()
@@ -28,8 +29,10 @@ struct AuthGate: View {
         .environment(api)
         .environment(session)
         .environment(push)
+        .environment(iap)
         .task {
             push.attach(api: api, session: session)
+            iap.attach(api: api)
             AppDelegate.shared.push = push
             await session.bootstrap()
         }

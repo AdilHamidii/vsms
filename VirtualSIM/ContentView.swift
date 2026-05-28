@@ -118,7 +118,9 @@ struct ContentView: View {
                 else { state.lastCountry = picked }
             })
         case .credits:
-            CreditsSheet(balance: state.balance, onBuy: { s.buy($0) })
+            CreditsSheet(balance: state.balance, onPurchased: {
+                Task { await state.refreshWallet(using: WalletAPI(client: api)) }
+            })
         }
     }
 }
