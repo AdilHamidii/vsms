@@ -37,16 +37,18 @@ struct AccountScreen: View {
             HStack(spacing: 14) {
                 ZStack {
                     Circle().fill(theme.chipBg).frame(width: 52, height: 52)
-                    Text("J")
+                    Text(avatarLetter)
                         .font(RFont.display(20, weight: .semibold))
                         .foregroundStyle(theme.text)
                 }
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("jamie@mail.app")
+                    Text(headlineName)
                         .font(RFont.display(17, weight: .semibold))
                         .tracking(-0.3)
                         .foregroundStyle(theme.text)
-                    Text("Member since 2024")
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                    Text(memberSinceLine)
                         .font(RFont.text(13))
                         .foregroundStyle(theme.text2)
                 }
@@ -56,6 +58,25 @@ struct AccountScreen: View {
         }
         .padding(.horizontal, 16)
         .padding(.top, 18)
+    }
+
+    private var headlineName: String {
+        if let name = state.profile?.displayName, !name.isEmpty { return name }
+        return session.email ?? "Signed in"
+    }
+
+    private var avatarLetter: String {
+        let source = state.profile?.displayName?.isEmpty == false
+            ? state.profile!.displayName!
+            : (session.email ?? "U")
+        return source.first.map { String($0).uppercased() } ?? "U"
+    }
+
+    private var memberSinceLine: String {
+        guard let date = state.profile?.createdAt else { return "Welcome to Relay" }
+        let f = DateFormatter()
+        f.dateFormat = "MMMM yyyy"
+        return "Member since \(f.string(from: date))"
     }
 
     private var balanceCard: some View {

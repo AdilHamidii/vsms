@@ -87,7 +87,7 @@ struct HomeScreen: View {
                                     .font(RFont.text(13))
                                     .foregroundStyle(theme.text2)
                                 Text("·").foregroundStyle(theme.text3)
-                                MonoText(state.lastCountry.code, size: 12, color: theme.text2)
+                                MonoText(state.lastCountry.dialCode, size: 12, color: theme.text2)
                             }
                         }
                         Spacer(minLength: 0)

@@ -78,6 +78,16 @@ extension Color {
             opacity: opacity
         )
     }
+
+    init(hexString: String) {
+        var s = hexString.trimmingCharacters(in: .whitespacesAndNewlines)
+        if s.hasPrefix("#") { s.removeFirst() }
+        guard s.count == 6, let v = UInt32(s, radix: 16) else {
+            self = .gray
+            return
+        }
+        self.init(hex: v)
+    }
 }
 
 extension EnvironmentValues {

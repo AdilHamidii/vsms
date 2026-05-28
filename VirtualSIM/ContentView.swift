@@ -49,7 +49,11 @@ struct ContentView: View {
         .environment(\.theme, theme)
         .environment(state)
         .preferredColorScheme(state.isDark ? .dark : .light)
-        .task { await state.refreshWallet(using: WalletAPI(client: api)) }
+        .task {
+            await state.loadCatalog(using: CatalogAPI(client: api))
+            await state.refreshWallet(using: WalletAPI(client: api))
+            await state.refreshProfile(using: ProfileAPI(client: api))
+        }
         .sheet(item: $sheet) { which in
             sheetContent(which)
                 .environment(\.theme, theme)

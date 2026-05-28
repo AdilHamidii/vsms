@@ -83,7 +83,7 @@ struct CheckoutScreen: View {
                 }, trailing: {
                     ReceiptValue(primary: country.name, secondary: {
                         HStack(spacing: 4) {
-                            MonoText(country.code, size: 11, color: theme.text2)
+                            MonoText(country.dialCode, size: 11, color: theme.text2)
                             Text("·").foregroundStyle(theme.text3)
                             Text(stockText(country.stock))
                                 .font(RFont.text(12))

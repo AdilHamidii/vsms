@@ -10,6 +10,7 @@ final class Session {
 
     var status: Status = .bootstrapping
     var accessToken: String?
+    var email: String?
 
     private var refreshToken: String?
     private let api: APIClient
@@ -19,6 +20,7 @@ final class Session {
         static let refresh = "supabase.refresh_token"
         static let access  = "supabase.access_token"
         static let userId  = "supabase.user_id"
+        static let email   = "supabase.email"
     }
 
     init(api: APIClient) {
@@ -33,8 +35,8 @@ final class Session {
            let userId  = KeychainStore.get(KKey.userId) {
             self.accessToken = access
             self.refreshToken = refresh
+            self.email = KeychainStore.get(KKey.email)
             self.status = .signedIn(userId: userId)
-            // Try refresh once on boot so tokens are fresh.
             _ = await self.refresh()
         } else {
             self.status = .signedOut
@@ -44,10 +46,14 @@ final class Session {
     func adopt(_ session: SupabaseSession) {
         self.accessToken = session.accessToken
         self.refreshToken = session.refreshToken
+        self.email = session.user.email
         self.status = .signedIn(userId: session.user.id)
         KeychainStore.set(session.accessToken,  for: KKey.access)
         KeychainStore.set(session.refreshToken, for: KKey.refresh)
         KeychainStore.set(session.user.id,      for: KKey.userId)
+        if let email = session.user.email {
+            KeychainStore.set(email, for: KKey.email)
+        }
     }
 
     @discardableResult
@@ -69,9 +75,11 @@ final class Session {
         }
         accessToken = nil
         refreshToken = nil
+        email = nil
         status = .signedOut
         KeychainStore.remove(KKey.access)
         KeychainStore.remove(KKey.refresh)
         KeychainStore.remove(KKey.userId)
+        KeychainStore.remove(KKey.email)
     }
 }

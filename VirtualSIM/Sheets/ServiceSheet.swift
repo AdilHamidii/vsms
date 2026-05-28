@@ -3,6 +3,7 @@ import SwiftUI
 struct ServiceSheet: View {
     @Environment(\.theme) private var theme
     @Environment(\.dismiss) private var dismiss
+    @Environment(AppState.self) private var state
     @Binding var filter: SortFilter
     var onPick: (Service) -> Void
 
@@ -11,7 +12,7 @@ struct ServiceSheet: View {
 
     private var matches: [Service] {
         let q = query.trimmingCharacters(in: .whitespaces).lowercased()
-        var list = SeedData.services.filter { s in
+        var list = state.services.filter { s in
             q.isEmpty || s.name.lowercased().contains(q) || s.category.lowercased().contains(q)
         }
         switch filter {

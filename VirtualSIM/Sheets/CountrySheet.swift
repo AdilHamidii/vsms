@@ -3,11 +3,12 @@ import SwiftUI
 struct CountrySheet: View {
     @Environment(\.theme) private var theme
     @Environment(\.dismiss) private var dismiss
+    @Environment(AppState.self) private var state
     var filter: SortFilter
     var onPick: (Country) -> Void
 
     private var sorted: [Country] {
-        var list = SeedData.countries
+        var list = state.countries
         if filter == .fastest {
             list.sort { $0.avgSeconds < $1.avgSeconds }
         }
@@ -57,7 +58,7 @@ private struct CountryRow: View {
                             .tracking(-0.3)
                             .foregroundStyle(theme.text)
                         HStack(spacing: 8) {
-                            MonoText(country.code, size: 12, color: theme.text2)
+                            MonoText(country.dialCode, size: 12, color: theme.text2)
                             Text("·").foregroundStyle(theme.text3)
                             Text("usually ~\(country.avgSeconds)s")
                                 .font(RFont.text(12))

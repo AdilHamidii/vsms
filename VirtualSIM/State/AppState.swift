@@ -19,11 +19,15 @@ private enum PrefKey {
 @Observable
 final class AppState {
     var tab: AppTab = .home
-    var balance: Int = 7
+    var balance: Int = 0
+    var services: [Service] = SeedData.services
+    var countries: [Country] = SeedData.countries
+    var routes: [Route] = []
     var lastService: Service
     var lastCountry: Country
-    var orders: [Order]
+    var orders: [Order] = []
     var filter: SortFilter = .all
+    var profile: Profile?
 
     var flow: FlowStage?
     var checkoutService: Service?
@@ -44,11 +48,8 @@ final class AppState {
     }
 
     init() {
-        let svc = SeedData.services.first { $0.id == "mes" } ?? SeedData.services[0]
-        let cty = SeedData.countries[0]
-        self.lastService = svc
-        self.lastCountry = cty
-        self.orders = AppState.makeSeedOrders()
+        self.lastService = SeedData.services.first ?? AppState.fallbackService
+        self.lastCountry = SeedData.countries.first ?? AppState.fallbackCountry
 
         let defaults = UserDefaults.standard
         self.isDark = defaults.bool(forKey: PrefKey.isDark)
@@ -67,15 +68,37 @@ final class AppState {
         balance += pack.credits
     }
 
-    /// Replace the local placeholder balance with the server-side wallet.
-    /// Called after sign-in. Phase A: read-only; later phases will also push
-    /// spend/refund through edge functions.
     func refreshWallet(using api: WalletAPI) async {
         do {
-            let wallet = try await api.currentWallet()
-            balance = wallet.balance
+            balance = try await api.currentWallet().balance
         } catch {
-            // Keep the placeholder balance; Phase F will add proper error UI.
+            // Phase F adds proper error UI.
+        }
+    }
+
+    func refreshProfile(using api: ProfileAPI) async {
+        profile = try? await api.currentProfile()
+    }
+
+    func loadCatalog(using api: CatalogAPI) async {
+        do {
+            let catalog = try await api.fetch()
+            services = catalog.services
+            countries = catalog.countries
+            routes = catalog.routes
+
+            if let match = services.first(where: { $0.id == lastService.id }) {
+                lastService = match
+            } else if let first = services.first {
+                lastService = first
+            }
+            if let match = countries.first(where: { $0.id == lastCountry.id }) {
+                lastCountry = match
+            } else if let first = countries.first {
+                lastCountry = first
+            }
+        } catch {
+            // Keep seed fallbacks visible if catalog fetch fails.
         }
     }
 
@@ -139,28 +162,16 @@ final class AppState {
         startCheckout(service: order.service, country: order.country)
     }
 
-    private static func makeSeedOrders() -> [Order] {
-        let s = SeedData.services
-        let c = SeedData.countries
-        return [
-            Order(id: "o-1",
-                  service: s.first { $0.id == "mes" }!, country: c[0],
-                  number: "+1 (415) 555-0182", otp: "729384",
-                  status: .received, ago: "2m ago"),
-            Order(id: "o-2",
-                  service: s.first { $0.id == "soc" }!, country: c[1],
-                  number: "+44 7700 900423", otp: "481204",
-                  status: .received, ago: "38m ago"),
-            Order(id: "o-3",
-                  service: s.first { $0.id == "eat" }!, country: c[4],
-                  number: "+91 98765 43210", otp: nil,
-                  status: .expired, ago: "2h ago"),
-            Order(id: "o-4",
-                  service: s.first { $0.id == "wal" }!, country: c[2],
-                  number: "+49 1512 3456789", otp: nil,
-                  status: .refunded, ago: "Yesterday"),
-        ]
-    }
+    private static let fallbackService = Service(
+        id: "fallback", name: "Service", category: "Other", glyph: "S",
+        tintHex: "#1B2330", smspvaCode: "opt0",
+        cost: 1, successRate: 95, etaSeconds: 30, sortOrder: 100
+    )
+    private static let fallbackCountry = Country(
+        id: "fallback", name: "Country", flag: "🌐",
+        dialCode: "+0", smspvaCode: "XX",
+        stock: .high, avgSeconds: 30, sortOrder: 100
+    )
 }
 
 extension WaitingAnimation {
