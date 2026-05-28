@@ -3,6 +3,7 @@ import SwiftUI
 struct AuthGate: View {
     @State private var api = APIClient()
     @State private var session: Session
+    @State private var push = PushManager()
 
     init() {
         let client = APIClient()
@@ -19,11 +20,17 @@ struct AuthGate: View {
                 SignInScreen()
             case .signedIn:
                 ContentView()
+                    .task {
+                        await push.requestAuthorizationAndRegister()
+                    }
             }
         }
         .environment(api)
         .environment(session)
+        .environment(push)
         .task {
+            push.attach(api: api, session: session)
+            AppDelegate.shared.push = push
             await session.bootstrap()
         }
     }
@@ -33,7 +40,7 @@ private struct BootstrapScreen: View {
     @Environment(\.theme) private var theme
     var body: some View {
         ZStack {
-            (theme.bg).ignoresSafeArea()
+            theme.bg.ignoresSafeArea()
             ProgressView()
                 .controlSize(.large)
                 .tint(theme.text2)
