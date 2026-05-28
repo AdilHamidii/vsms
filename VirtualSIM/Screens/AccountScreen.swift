@@ -3,6 +3,7 @@ import SwiftUI
 struct AccountScreen: View {
     @Environment(\.theme) private var theme
     @Environment(AppState.self) private var state
+    @Environment(Session.self) private var session
 
     var openCredits: () -> Void
 
@@ -179,7 +180,8 @@ struct AccountScreen: View {
                 VStack(spacing: 0) {
                     SettingRow(label: "Help center")
                     SettingRow(label: "Terms & refund policy")
-                    SettingRow(label: "Sign out", isLast: true, isDanger: true)
+                    SettingRow(label: "Sign out", isLast: true, isDanger: true,
+                               onTap: { Task { await session.signOut() } })
                 }
             }
         }

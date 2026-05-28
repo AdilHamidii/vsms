@@ -1,0 +1,18 @@
+# macOS
+.DS_Store
+
+# Xcode user data
+xcuserdata/
+*.xcuserstate
+DerivedData/
+*.xcworkspace/xcuserdata/
+
+# Local secrets (Supabase URL/anon key, etc.)
+VirtualSIM/Networking/Secrets.swift
+
+# Supabase local dev
+supabase/.temp/
+supabase/.branches/
+.env
+.env.*
+!.env.example

@@ -67,6 +67,18 @@ final class AppState {
         balance += pack.credits
     }
 
+    /// Replace the local placeholder balance with the server-side wallet.
+    /// Called after sign-in. Phase A: read-only; later phases will also push
+    /// spend/refund through edge functions.
+    func refreshWallet(using api: WalletAPI) async {
+        do {
+            let wallet = try await api.currentWallet()
+            balance = wallet.balance
+        } catch {
+            // Keep the placeholder balance; Phase F will add proper error UI.
+        }
+    }
+
     func startCheckout(service: Service? = nil, country: Country? = nil) {
         checkoutService = service ?? lastService
         checkoutCountry = country ?? lastCountry

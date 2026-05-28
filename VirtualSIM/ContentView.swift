@@ -6,6 +6,7 @@ enum ActiveSheet: String, Identifiable {
 }
 
 struct ContentView: View {
+    @Environment(APIClient.self) private var api
     @State private var state = AppState()
     @State private var sheet: ActiveSheet?
 
@@ -48,6 +49,7 @@ struct ContentView: View {
         .environment(\.theme, theme)
         .environment(state)
         .preferredColorScheme(state.isDark ? .dark : .light)
+        .task { await state.refreshWallet(using: WalletAPI(client: api)) }
         .sheet(item: $sheet) { which in
             sheetContent(which)
                 .environment(\.theme, theme)
