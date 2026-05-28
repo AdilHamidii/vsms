@@ -34,6 +34,9 @@ final class AppState {
     var checkoutCountry: Country?
     var activeOrder: Order?
 
+    /// Latest error string for UI banners. Phase F wires real banner UI.
+    var lastError: String?
+
     var isDark: Bool {
         didSet { UserDefaults.standard.set(isDark, forKey: PrefKey.isDark) }
     }
@@ -64,16 +67,11 @@ final class AppState {
 
     var deliveredCount: Int { orders.filter { $0.status == .received }.count }
 
-    func buy(_ pack: CreditPack) {
-        balance += pack.credits
-    }
+    // ─────────── Catalog / profile / wallet bootstrap ───────────
 
     func refreshWallet(using api: WalletAPI) async {
-        do {
-            balance = try await api.currentWallet().balance
-        } catch {
-            // Phase F adds proper error UI.
-        }
+        do { balance = try await api.currentWallet().balance }
+        catch { /* keep current */ }
     }
 
     func refreshProfile(using api: ProfileAPI) async {
@@ -98,9 +96,29 @@ final class AppState {
                 lastCountry = first
             }
         } catch {
-            // Keep seed fallbacks visible if catalog fetch fails.
+            // keep seed fallback
         }
     }
+
+    func loadOrders(using api: OrdersAPI) async {
+        do {
+            let rows = try await api.list()
+            orders = rows.compactMap { resolve($0) }
+        } catch {
+            // keep current
+        }
+    }
+
+    /// Build a UI Order from a server row using the loaded catalog.
+    /// Falls back to placeholder Service/Country so the order is still
+    /// renderable if the catalog reference is stale.
+    func resolve(_ s: ServerOrder) -> Order {
+        let svc = services.first { $0.id == s.serviceId } ?? AppState.fallbackService
+        let cty = countries.first { $0.id == s.countryId } ?? AppState.fallbackCountry
+        return Order(server: s, service: svc, country: cty)
+    }
+
+    // ─────────── Checkout / waiting / OTP ───────────
 
     func startCheckout(service: Service? = nil, country: Country? = nil) {
         checkoutService = service ?? lastService
@@ -108,45 +126,65 @@ final class AppState {
         flow = .checkout
     }
 
-    func confirmGetNumber() {
+    /// Calls create-order. On success, deducts credits and transitions to
+    /// the Waiting flow. On failure, sets lastError and stays on Checkout.
+    func confirmGetNumber(using orders: OrdersAPI, wallet: WalletAPI) async {
         guard let svc = checkoutService, let cty = checkoutCountry else { return }
-        guard balance >= svc.cost else { return }
-        balance -= svc.cost
-        lastService = svc
-        lastCountry = cty
-        let order = Order(
-            id: "o-live-\(Int(Date().timeIntervalSince1970 * 1000))",
-            service: svc, country: cty,
-            number: NumberGenerator.phoneNumber(for: cty),
-            otp: nil, status: .waiting, ago: "now"
-        )
-        activeOrder = order
-        orders.insert(order, at: 0)
-        flow = .waiting
+        do {
+            let server = try await orders.create(serviceId: svc.id, countryId: cty.id)
+            let order = resolve(server)
+            lastService = svc
+            lastCountry = cty
+            activeOrder = order
+            self.orders.insert(order, at: 0)
+            flow = .waiting
+            await refreshWallet(using: wallet)
+        } catch let APIError.http(status, body) where status == 402 {
+            lastError = "Not enough credits."
+            _ = body
+            // Open the credit pack sheet next opportunity (Checkout handles it).
+        } catch {
+            lastError = error.localizedDescription
+        }
     }
 
-    func simulateArrival() {
-        guard var order = activeOrder else { return }
-        let otp = NumberGenerator.otp()
-        order.otp = otp
-        order.status = .received
-        order.ago = "just now"
-        activeOrder = order
-        if let idx = orders.firstIndex(where: { $0.id == order.id }) {
-            orders[idx] = order
+    /// One-shot check for the active order. Called repeatedly from the
+    /// Waiting screen's polling task and once from the "Skip wait" button.
+    func pollActiveOrder(using orders: OrdersAPI, wallet: WalletAPI) async {
+        guard let current = activeOrder else { return }
+        do {
+            let server = try await orders.check(orderId: current.id)
+            let updated = resolve(server)
+            activeOrder = updated
+            if let idx = self.orders.firstIndex(where: { $0.id == updated.id }) {
+                self.orders[idx] = updated
+            }
+            switch server.status {
+            case .received:
+                flow = .otp
+            case .expired:
+                await refreshWallet(using: wallet)
+                lastError = "Number expired before a code arrived. Credits refunded."
+                flow = nil
+                activeOrder = nil
+            default: break
+            }
+        } catch {
+            // Transient — keep polling.
         }
-        flow = .otp
     }
 
-    func cancelWaiting() {
-        guard let order = activeOrder else {
-            flow = nil
-            return
-        }
-        balance += order.service.cost
-        if let idx = orders.firstIndex(where: { $0.id == order.id }) {
-            orders[idx].status = .refunded
-            orders[idx].ago = "now"
+    func cancelWaiting(using orders: OrdersAPI, wallet: WalletAPI) async {
+        guard let order = activeOrder else { flow = nil; return }
+        do {
+            let server = try await orders.cancel(orderId: order.id)
+            let updated = resolve(server)
+            if let idx = self.orders.firstIndex(where: { $0.id == updated.id }) {
+                self.orders[idx] = updated
+            }
+            await refreshWallet(using: wallet)
+        } catch {
+            lastError = "Couldn't cancel. Try again."
         }
         flow = nil
         activeOrder = nil
@@ -161,6 +199,14 @@ final class AppState {
     func buyAgain(_ order: Order) {
         startCheckout(service: order.service, country: order.country)
     }
+
+    // ─────────── Credits (will be replaced by IAP in Phase E) ───────────
+
+    func buy(_ pack: CreditPack) {
+        balance += pack.credits
+    }
+
+    // ─────────── Fallbacks ───────────
 
     private static let fallbackService = Service(
         id: "fallback", name: "Service", category: "Other", glyph: "S",

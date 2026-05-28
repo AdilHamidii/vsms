@@ -28,8 +28,8 @@ struct StockPill: View {
     }
 }
 
-enum OrderStatus: String, Hashable {
-    case waiting, received, expired, refunded
+enum OrderStatus: String, Hashable, Codable {
+    case waiting, received, expired, refunded, canceled
 }
 
 struct StatusBadge: View {
@@ -41,14 +41,14 @@ struct StatusBadge: View {
         switch status {
         case .waiting:  theme.warn
         case .received: theme.live
-        case .expired, .refunded: theme.text2
+        case .expired, .refunded, .canceled: theme.text2
         }
     }
     private var soft: Color {
         switch status {
         case .waiting:  theme.warnSoft
         case .received: theme.liveSoft
-        case .expired, .refunded: theme.chipBg
+        case .expired, .refunded, .canceled: theme.chipBg
         }
     }
     private var label: String {
@@ -57,6 +57,7 @@ struct StatusBadge: View {
         case .received: "Received"
         case .expired: "Expired"
         case .refunded: "Refunded"
+        case .canceled: "Canceled"
         }
     }
 

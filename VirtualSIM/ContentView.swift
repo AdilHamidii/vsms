@@ -53,6 +53,7 @@ struct ContentView: View {
             await state.loadCatalog(using: CatalogAPI(client: api))
             await state.refreshWallet(using: WalletAPI(client: api))
             await state.refreshProfile(using: ProfileAPI(client: api))
+            await state.loadOrders(using: OrdersAPI(client: api))
         }
         .sheet(item: $sheet) { which in
             sheetContent(which)

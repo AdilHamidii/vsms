@@ -3,15 +3,14 @@ import SwiftUI
 struct WaitingScreen: View {
     @Environment(\.theme) private var theme
     @Environment(AppState.self) private var state
+    @Environment(APIClient.self) private var api
 
     let order: Order
     @State private var elapsed: Int = 0
     @State private var copied = false
-    @State private var arrivalTask: Task<Void, Never>?
 
-    private let reservation: Int = 20 * 60
-
-    private var remaining: Int { max(0, reservation - elapsed) }
+    private var reservation: Int { max(60, Int(order.expiresAt.timeIntervalSince(order.createdAt))) }
+    private var remaining: Int { max(0, Int(order.expiresAt.timeIntervalSinceNow)) }
 
     var body: some View {
         ZStack {
@@ -29,24 +28,21 @@ struct WaitingScreen: View {
             }
             .scrollIndicators(.hidden)
         }
-        .onAppear { scheduleArrival() }
-        .onDisappear { arrivalTask?.cancel() }
         .task {
+            // Tick the elapsed timer once per second.
             let start = Date()
             while !Task.isCancelled {
                 try? await Task.sleep(nanoseconds: 1_000_000_000)
                 elapsed = Int(Date().timeIntervalSince(start))
             }
         }
-    }
-
-    private func scheduleArrival() {
-        arrivalTask?.cancel()
-        let delay = UInt64.random(in: 5_500_000_000...7_000_000_000)
-        arrivalTask = Task {
-            try? await Task.sleep(nanoseconds: delay)
-            if !Task.isCancelled, state.flow == .waiting {
-                state.simulateArrival()
+        .task {
+            // Poll the server for the SMS every 4s while we're on this screen.
+            let ordersAPI = OrdersAPI(client: api)
+            let walletAPI = WalletAPI(client: api)
+            while !Task.isCancelled, state.flow == .waiting {
+                try? await Task.sleep(nanoseconds: 4_000_000_000)
+                await state.pollActiveOrder(using: ordersAPI, wallet: walletAPI)
             }
         }
     }
@@ -61,7 +57,12 @@ struct WaitingScreen: View {
                 .foregroundStyle(theme.text)
             Spacer()
             Button {
-                state.cancelWaiting()
+                Task {
+                    await state.cancelWaiting(
+                        using: OrdersAPI(client: api),
+                        wallet: WalletAPI(client: api)
+                    )
+                }
             } label: {
                 Image(systemName: RIcon.close)
                     .font(.system(size: 14, weight: .semibold))
@@ -124,12 +125,17 @@ struct WaitingScreen: View {
                     .buttonStyle(.plain)
 
                     Button {
-                        state.simulateArrival()
+                        Task {
+                            await state.pollActiveOrder(
+                                using: OrdersAPI(client: api),
+                                wallet: WalletAPI(client: api)
+                            )
+                        }
                     } label: {
                         HStack(spacing: 6) {
                             Image(systemName: RIcon.refresh)
                                 .font(.system(size: 13, weight: .semibold))
-                            Text("Skip wait")
+                            Text("Check now")
                                 .font(RFont.text(13, weight: .medium))
                         }
                         .foregroundStyle(theme.text)

@@ -3,6 +3,7 @@ import SwiftUI
 struct CheckoutScreen: View {
     @Environment(\.theme) private var theme
     @Environment(AppState.self) private var state
+    @Environment(APIClient.self) private var api
 
     var openServices: () -> Void
     var openCountries: () -> Void
@@ -155,7 +156,14 @@ struct CheckoutScreen: View {
                         label: "Get number",
                         sub: "\(service.cost) cr",
                         icon: RIcon.bolt,
-                        action: { state.confirmGetNumber() }
+                        action: {
+                            Task {
+                                await state.confirmGetNumber(
+                                    using: OrdersAPI(client: api),
+                                    wallet: WalletAPI(client: api)
+                                )
+                            }
+                        }
                     )
                 }
             }
