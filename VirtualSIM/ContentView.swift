@@ -7,6 +7,9 @@ enum ActiveSheet: String, Identifiable {
 
 struct ContentView: View {
     @Environment(APIClient.self) private var api
+    @Environment(PushManager.self) private var push
+    @Environment(\.scenePhase) private var scenePhase
+
     @State private var state = AppState()
     @State private var sheet: ActiveSheet?
 
@@ -46,6 +49,10 @@ struct ContentView: View {
                 .padding(.horizontal, 12)
                 .padding(.bottom, 28)
         }
+        .overlay(alignment: .top) {
+            ErrorBanner()
+                .animation(.easeOut(duration: 0.25), value: state.lastError)
+        }
         .environment(\.theme, theme)
         .environment(state)
         .preferredColorScheme(state.isDark ? .dark : .light)
@@ -54,6 +61,25 @@ struct ContentView: View {
             await state.refreshWallet(using: WalletAPI(client: api))
             await state.refreshProfile(using: ProfileAPI(client: api))
             await state.loadOrders(using: OrdersAPI(client: api))
+        }
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active {
+                Task {
+                    await state.refreshWallet(using: WalletAPI(client: api))
+                    await state.loadOrders(using: OrdersAPI(client: api))
+                }
+            }
+        }
+        .onChange(of: push.pendingOrderId) { _, newValue in
+            guard let orderId = newValue else { return }
+            push.pendingOrderId = nil
+            Task {
+                await state.loadOrders(using: OrdersAPI(client: api))
+                if let order = state.orders.first(where: { $0.id == orderId }) {
+                    state.activeOrder = order
+                    state.flow = .otp
+                }
+            }
         }
         .sheet(item: $sheet) { which in
             sheetContent(which)
