@@ -13,12 +13,21 @@ struct ServiceLogo: View {
                     .inset(by: 0.25)
                     .strokeBorder(Color.white.opacity(0.18), lineWidth: 0.5)
             )
-            .overlay(
-                Text(service.glyph)
-                    .font(.system(size: size * 0.45, weight: .bold, design: .default))
-                    .tracking(-0.5)
-                    .foregroundStyle(.white)
-            )
+            .overlay(content)
             .frame(width: size, height: size)
+    }
+
+    @ViewBuilder
+    private var content: some View {
+        if let icon = service.icon, !icon.isEmpty {
+            Image(systemName: icon)
+                .font(.system(size: size * 0.46, weight: .semibold))
+                .foregroundStyle(.white)
+        } else {
+            Text(service.glyph)
+                .font(.system(size: size * 0.45, weight: .bold, design: .default))
+                .tracking(-0.5)
+                .foregroundStyle(.white)
+        }
     }
 }

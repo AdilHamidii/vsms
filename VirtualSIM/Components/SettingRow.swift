@@ -28,7 +28,7 @@ struct SettingRow<Trailing: View>: View {
                         .foregroundStyle(isDanger ? theme.fail : theme.text)
                     Spacer(minLength: 0)
                     trailing
-                    if !isDanger {
+                    if !isDanger && onTap != nil {
                         Image(systemName: RIcon.chev)
                             .font(.system(size: 10, weight: .semibold))
                             .foregroundStyle(theme.text3)
@@ -36,6 +36,7 @@ struct SettingRow<Trailing: View>: View {
                 }
                 .padding(.horizontal, 16)
                 .padding(.vertical, 14)
+                .contentShape(.rect)
                 if !isLast {
                     Rectangle().fill(theme.sep).frame(height: 0.5)
                         .padding(.leading, icon != nil ? 56 : 16)
@@ -43,7 +44,8 @@ struct SettingRow<Trailing: View>: View {
             }
         }
         .buttonStyle(.plain)
-        .disabled(onTap == nil)
+        // Don't auto-disable visually inert rows — they should still look
+        // active in light/dark mode. We just no-op the tap.
     }
 }
 

@@ -74,10 +74,26 @@ struct SignInScreen: View {
                     .multilineTextAlignment(.center)
             }
 
-            Text("By signing in you agree to the Terms and Refund Policy.")
-                .font(RFont.text(11))
-                .multilineTextAlignment(.center)
-                .foregroundStyle(theme.text3)
+            VStack(spacing: 4) {
+                Text("By signing in you agree to our")
+                    .font(RFont.text(11))
+                    .foregroundStyle(theme.text3)
+                HStack(spacing: 4) {
+                    Link("Terms of Use", destination: LegalLinks.terms)
+                        .font(RFont.text(11, weight: .medium))
+                        .foregroundStyle(theme.text2)
+                    Text("and")
+                        .font(RFont.text(11))
+                        .foregroundStyle(theme.text3)
+                    Link("Privacy Policy", destination: LegalLinks.privacy)
+                        .font(RFont.text(11, weight: .medium))
+                        .foregroundStyle(theme.text2)
+                    Text(".")
+                        .font(RFont.text(11))
+                        .foregroundStyle(theme.text3)
+                }
+            }
+            .multilineTextAlignment(.center)
         }
     }
 

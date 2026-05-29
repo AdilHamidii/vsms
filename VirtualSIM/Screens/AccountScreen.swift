@@ -4,8 +4,12 @@ struct AccountScreen: View {
     @Environment(\.theme) private var theme
     @Environment(AppState.self) private var state
     @Environment(Session.self) private var session
+    @Environment(APIClient.self) private var api
 
     var openCredits: () -> Void
+
+    @State private var showDeleteConfirm = false
+    @State private var deleteInProgress = false
 
     var body: some View {
         @Bindable var state = state
@@ -16,11 +20,23 @@ struct AccountScreen: View {
                 balanceCard
                 preferences(state: state)
                 support
+                legal
+                dangerZone
             }
             .padding(.top, 8)
             .padding(.bottom, 140)
         }
         .scrollIndicators(.hidden)
+        .confirmationDialog("Delete your account?",
+                            isPresented: $showDeleteConfirm,
+                            titleVisibility: .visible) {
+            Button("Delete account", role: .destructive) {
+                Task { await deleteAccount() }
+            }
+            Button("Cancel", role: .cancel) { }
+        } message: {
+            Text("This permanently deletes your account, balance, and order history. Pending orders are auto-canceled. This can't be undone.")
+        }
     }
 
     private var title: some View {
@@ -73,7 +89,7 @@ struct AccountScreen: View {
     }
 
     private var memberSinceLine: String {
-        guard let date = state.profile?.createdAt else { return "Welcome to Relay" }
+        guard let date = state.profile?.createdAt else { return "Welcome to vSIM OTP" }
         let f = DateFormatter()
         f.dateFormat = "MMMM yyyy"
         return "Member since \(f.string(from: date))"
@@ -183,9 +199,32 @@ struct AccountScreen: View {
                                 .labelsHidden().tint(theme.ink)
                         }
                     )
-                    SettingRow(label: "Push notifications", icon: "bell", trailingText: "On")
-                    SettingRow(label: "Default country", icon: RIcon.globe, trailingText: "United States")
-                    SettingRow(label: "Auto-refund", icon: RIcon.shield, trailingText: "20 min", isLast: true)
+                    SettingRow(
+                        label: "Default country",
+                        icon: RIcon.globe,
+                        trailing: {
+                            Menu {
+                                ForEach(state.countries) { country in
+                                    Button {
+                                        state.lastCountry = country
+                                    } label: {
+                                        Text("\(country.flag)  \(country.name)")
+                                    }
+                                }
+                            } label: {
+                                HStack(spacing: 4) {
+                                    Text(state.lastCountry.flag).font(.system(size: 14))
+                                    Text(state.lastCountry.name)
+                                        .font(RFont.text(14))
+                                        .foregroundStyle(theme.text2)
+                                }
+                            }
+                        }
+                    )
+                    SettingRow(label: "Auto-refund",
+                               icon: RIcon.shield,
+                               trailingText: "20 min",
+                               isLast: true)
                 }
             }
         }
@@ -199,8 +238,10 @@ struct AccountScreen: View {
                 .padding(.horizontal, 4)
             Card {
                 VStack(spacing: 0) {
-                    SettingRow(label: "Help center")
-                    SettingRow(label: "Terms & refund policy")
+                    SettingRow(label: "Help center", icon: "questionmark.circle",
+                               onTap: { open(LegalLinks.help) })
+                    SettingRow(label: "Contact support", icon: "envelope",
+                               onTap: { openMail() })
                     SettingRow(label: "Sign out", isLast: true, isDanger: true,
                                onTap: { Task { await session.signOut() } })
                 }
@@ -208,5 +249,68 @@ struct AccountScreen: View {
         }
         .padding(.horizontal, 16)
         .padding(.top, 22)
+    }
+
+    private var legal: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            SectionHeader(label: "Legal")
+                .padding(.horizontal, 4)
+            Card {
+                VStack(spacing: 0) {
+                    SettingRow(label: "Terms of use", icon: "doc.text",
+                               onTap: { open(LegalLinks.terms) })
+                    SettingRow(label: "Privacy policy", icon: "hand.raised",
+                               onTap: { open(LegalLinks.privacy) })
+                    SettingRow(label: "Refund policy", icon: RIcon.shield, isLast: true,
+                               onTap: { open(LegalLinks.refund) })
+                }
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.top, 22)
+    }
+
+    private var dangerZone: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            SectionHeader(label: "Danger zone")
+                .padding(.horizontal, 4)
+            Card {
+                SettingRow(label: deleteInProgress ? "Deleting…" : "Delete account",
+                           icon: RIcon.trash,
+                           isLast: true,
+                           isDanger: true,
+                           onTap: { showDeleteConfirm = true })
+            }
+            Text("Permanently removes your account, balance, and order history.")
+                .font(RFont.text(12))
+                .foregroundStyle(theme.text3)
+                .padding(.horizontal, 18)
+                .padding(.top, 8)
+        }
+        .padding(.horizontal, 16)
+        .padding(.top, 22)
+    }
+
+    // MARK: - Actions
+
+    private func open(_ url: URL) {
+        UIApplication.shared.open(url)
+    }
+
+    private func openMail() {
+        if let url = URL(string: "mailto:\(LegalLinks.supportEmail)?subject=vSIM%20OTP%20support") {
+            UIApplication.shared.open(url)
+        }
+    }
+
+    private func deleteAccount() async {
+        deleteInProgress = true
+        defer { deleteInProgress = false }
+        do {
+            try await AccountAPI(client: api).deleteAccount()
+            await session.signOut(remote: false)
+        } catch {
+            state.lastError = "Couldn't delete account: \(error.localizedDescription)"
+        }
     }
 }

@@ -209,7 +209,8 @@ final class AppState {
     // ─────────── Fallbacks ───────────
 
     private static let fallbackService = Service(
-        id: "fallback", name: "Service", category: "Other", glyph: "S",
+        id: "fallback", name: "Service", category: "Other",
+        glyph: "S", icon: "questionmark",
         tintHex: "#1B2330", smspvaCode: "opt0",
         cost: 1, successRate: 95, etaSeconds: 30, sortOrder: 100
     )
