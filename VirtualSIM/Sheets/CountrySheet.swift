@@ -8,7 +8,7 @@ struct CountrySheet: View {
     var onPick: (Country) -> Void
 
     private var sorted: [Country] {
-        var list = state.countries
+        var list = state.availableCountries
         if filter == .fastest {
             list.sort { $0.avgSeconds < $1.avgSeconds }
         }
@@ -48,10 +48,7 @@ private struct CountryRow: View {
         Button(action: onTap) {
             VStack(spacing: 0) {
                 HStack(spacing: 12) {
-                    Text(country.flag)
-                        .font(.system(size: 20))
-                        .frame(width: 36, height: 36)
-                        .background(theme.chipBg, in: .circle)
+                    FlagCircle(country: country, size: 36)
                     VStack(alignment: .leading, spacing: 2) {
                         Text(country.name)
                             .font(RFont.display(16, weight: .semibold))

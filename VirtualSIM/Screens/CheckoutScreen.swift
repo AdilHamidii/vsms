@@ -11,7 +11,8 @@ struct CheckoutScreen: View {
 
     private var service: Service { state.checkoutService ?? state.lastService }
     private var country: Country { state.checkoutCountry ?? state.lastCountry }
-    private var insufficient: Bool { state.balance < service.cost }
+    private var routeCost: Int { state.cost(for: service, country: country) }
+    private var insufficient: Bool { state.balance < routeCost }
 
     var body: some View {
         ZStack(alignment: .bottom) {
@@ -80,7 +81,7 @@ struct CheckoutScreen: View {
                     ReceiptValue(primary: service.name, secondaryText: service.category, chev: true)
                 })
                 ReceiptRow(label: "Country", onTap: openCountries, leading: {
-                    FlagBox(flag: country.flag, size: 32, radius: 9)
+                    FlagImage(country: country, size: 32, radius: 9)
                 }, trailing: {
                     ReceiptValue(primary: country.name, secondary: {
                         HStack(spacing: 4) {
@@ -106,7 +107,7 @@ struct CheckoutScreen: View {
                     HStack(spacing: 8) {
                         VStack(alignment: .trailing, spacing: 1) {
                             HStack(alignment: .firstTextBaseline, spacing: 4) {
-                                Text("\(service.cost)")
+                                Text("\(routeCost)")
                                     .font(RFont.display(17, weight: .semibold))
                                     .tracking(-0.3)
                                     .foregroundStyle(theme.text)
@@ -114,7 +115,7 @@ struct CheckoutScreen: View {
                                     .font(RFont.text(13, weight: .medium))
                                     .foregroundStyle(theme.text2)
                             }
-                            Text("\(state.balance - service.cost) left after")
+                            Text("\(state.balance - routeCost) left after")
                                 .font(RFont.text(12))
                                 .foregroundStyle(theme.text2)
                         }
@@ -147,14 +148,14 @@ struct CheckoutScreen: View {
                 if insufficient {
                     PrimaryButton(
                         label: "Buy credits",
-                        sub: "Need \(service.cost - state.balance) more",
+                        sub: "Need \(routeCost - state.balance) more",
                         icon: RIcon.plus,
                         action: openCredits
                     )
                 } else {
                     PrimaryButton(
                         label: "Get number",
-                        sub: "\(service.cost) cr",
+                        sub: "\(routeCost) cr",
                         icon: RIcon.bolt,
                         action: {
                             Task {

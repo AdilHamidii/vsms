@@ -67,6 +67,24 @@ final class AppState {
 
     var deliveredCount: Int { orders.filter { $0.status == .received }.count }
 
+    /// Look up the route override for (service, country); fall back to the
+    /// service's base cost. Returns nil if the route is hidden/inactive.
+    func cost(for service: Service, country: Country) -> Int {
+        if let route = routes.first(where: { $0.serviceId == service.id && $0.countryId == country.id }) {
+            if route.status != "active" { return service.cost }
+            return route.retailCredits ?? service.cost
+        }
+        return service.cost
+    }
+
+    /// Countries that have at least one active route — used by the country picker
+    /// so we don't show destinations where every service is hidden.
+    var availableCountries: [Country] {
+        countries.filter { c in
+            routes.contains { $0.countryId == c.id && $0.status == "active" }
+        }
+    }
+
     // ─────────── Catalog / profile / wallet bootstrap ───────────
 
     func refreshWallet(using api: WalletAPI) async {

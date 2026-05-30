@@ -38,6 +38,9 @@ struct PickerCard<Icon: View>: View {
     }
 }
 
+/// Compatibility shim — call-sites that have a Country use FlagImage directly.
+/// This wrapper exists so an emoji string can still be passed in places that
+/// don't have a full Country reference (none right now, kept for safety).
 struct FlagBox: View {
     @Environment(\.theme) private var theme
     let flag: String

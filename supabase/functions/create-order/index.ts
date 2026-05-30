@@ -23,7 +23,6 @@ Deno.serve(async (req) => {
 
   const sb = admin();
 
-  // Load service + country (need codes + cost).
   const { data: service, error: svcErr } = await sb
     .from("services").select("id, smspva_code, cost").eq("id", body.service_id).single();
   if (svcErr || !service) return json({ error: "unknown_service" }, { status: 404 });
@@ -32,9 +31,21 @@ Deno.serve(async (req) => {
     .from("countries").select("id, smspva_code").eq("id", body.country_id).single();
   if (cErr || !country) return json({ error: "unknown_country" }, { status: 404 });
 
-  const cost = service.cost as number;
+  // Per-route price: routes.retail_credits overrides service.cost.
+  const { data: route, error: rErr } = await sb
+    .from("routes")
+    .select("retail_credits, status")
+    .eq("service_id", service.id)
+    .eq("country_id", country.id)
+    .maybeSingle();
+  if (rErr) return json({ error: "route_lookup_failed", detail: rErr.message }, { status: 500 });
+  if (!route || route.status !== "active") {
+    return json({ error: "route_unavailable" }, { status: 409 });
+  }
 
-  // Atomically deduct credits — returns false if balance < cost.
+  const cost = (route.retail_credits ?? service.cost) as number;
+
+  // Atomically deduct credits.
   const { data: spent, error: spendErr } = await sb.rpc("wallet_spend", {
     p_user: userId, p_amount: cost, p_reason: "spend",
   });
@@ -59,7 +70,6 @@ Deno.serve(async (req) => {
     }, { status: 503 });
   }
 
-  // Persist the order.
   const { data: order, error: insertErr } = await sb
     .from("orders")
     .insert({
@@ -74,7 +84,6 @@ Deno.serve(async (req) => {
     .select("*").single();
 
   if (insertErr || !order) {
-    // Refund and ask SMSPVA to release the number.
     await sb.rpc("wallet_credit", { p_user: userId, p_amount: cost, p_reason: "refund" });
     return json({ error: "order_persist_failed", detail: insertErr?.message }, { status: 500 });
   }

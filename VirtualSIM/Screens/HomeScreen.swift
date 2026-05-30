@@ -69,6 +69,10 @@ struct HomeScreen: View {
         }
     }
 
+    private var routeCost: Int {
+        state.cost(for: state.lastService, country: state.lastCountry)
+    }
+
     private var heroSection: some View {
         VStack(alignment: .leading, spacing: 0) {
             SectionHeader(label: "Last used")
@@ -82,7 +86,7 @@ struct HomeScreen: View {
                                 .tracking(-0.4)
                                 .foregroundStyle(theme.text)
                             HStack(spacing: 6) {
-                                Text(state.lastCountry.flag)
+                                FlagImage(country: state.lastCountry, size: 14, radius: 3)
                                 Text(state.lastCountry.name)
                                     .font(RFont.text(13))
                                     .foregroundStyle(theme.text2)
@@ -93,7 +97,7 @@ struct HomeScreen: View {
                         Spacer(minLength: 0)
                         VStack(alignment: .trailing, spacing: 4) {
                             HStack(alignment: .firstTextBaseline, spacing: 3) {
-                                Text("\(state.lastService.cost)")
+                                Text("\(routeCost)")
                                     .font(RFont.display(22, weight: .semibold))
                                     .tracking(-0.5)
                                     .foregroundStyle(theme.text)
@@ -120,9 +124,9 @@ struct HomeScreen: View {
                     }
                     PrimaryButton(
                         label: "Get number",
-                        sub: "\(state.lastService.cost) cr",
+                        sub: "\(routeCost) cr",
                         icon: RIcon.bolt,
-                        disabled: state.balance < state.lastService.cost,
+                        disabled: state.balance < routeCost,
                         action: onStart
                     )
                     .padding(.top, 16)
@@ -140,7 +144,7 @@ struct HomeScreen: View {
                     ServiceLogo(service: state.lastService, size: 32, radius: 9)
                 }, onTap: openServices)
                 PickerCard(label: "Country", value: state.lastCountry.name, icon: {
-                    FlagBox(flag: state.lastCountry.flag, size: 32, radius: 9)
+                    FlagImage(country: state.lastCountry, size: 32, radius: 9)
                 }, onTap: openCountries)
             }
         }
