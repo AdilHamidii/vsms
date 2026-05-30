@@ -8,6 +8,8 @@ enum ActiveSheet: String, Identifiable {
 struct ContentView: View {
     @Environment(APIClient.self) private var api
     @Environment(PushManager.self) private var push
+    @Environment(Session.self) private var session
+    @Environment(IAPStore.self) private var iap
     @Environment(\.scenePhase) private var scenePhase
 
     @State private var state = AppState()
@@ -49,13 +51,17 @@ struct ContentView: View {
                 .padding(.horizontal, 12)
                 .padding(.bottom, 28)
         }
-        .overlay(alignment: .top) {
-            ErrorBanner()
-                .animation(.easeOut(duration: 0.25), value: state.lastError)
-        }
+        // Environment first, THEN overlay/sheet/cover — so banner + cover
+        // content all see AppState in scope.
         .environment(\.theme, theme)
         .environment(state)
         .preferredColorScheme(state.isDark ? .dark : .light)
+        .overlay(alignment: .top) {
+            ErrorBanner()
+                .environment(\.theme, theme)
+                .environment(state)
+                .animation(.easeOut(duration: 0.25), value: state.lastError)
+        }
         .task {
             await state.loadCatalog(using: CatalogAPI(client: api))
             await state.refreshWallet(using: WalletAPI(client: api))
@@ -83,25 +89,24 @@ struct ContentView: View {
         }
         .sheet(item: $sheet) { which in
             sheetContent(which)
-                .environment(\.theme, theme)
-                .environment(state)
+                .modifier(EnvBundle(theme: theme, state: state, api: api, push: push, session: session, iap: iap))
                 .presentationDetents([.large])
                 .presentationDragIndicator(.visible)
                 .presentationBackground(theme.bg)
         }
         .fullScreenCover(item: $state.flow) { stage in
             flowContent(stage)
-                .environment(\.theme, theme)
-                .environment(state)
+                .modifier(EnvBundle(theme: theme, state: state, api: api, push: push, session: session, iap: iap))
                 .preferredColorScheme(state.isDark ? .dark : .light)
                 .overlay(alignment: .top) {
                     ErrorBanner()
+                        .environment(\.theme, theme)
+                        .environment(state)
                         .animation(.easeOut(duration: 0.25), value: state.lastError)
                 }
                 .sheet(item: $sheet) { which in
                     sheetContent(which)
-                        .environment(\.theme, theme)
-                        .environment(state)
+                        .modifier(EnvBundle(theme: theme, state: state, api: api, push: push, session: session, iap: iap))
                         .presentationDetents([.large])
                         .presentationDragIndicator(.visible)
                         .presentationBackground(theme.bg)
@@ -152,6 +157,28 @@ struct ContentView: View {
                 Task { await state.refreshWallet(using: WalletAPI(client: api)) }
             })
         }
+    }
+}
+
+/// Bundles every environment object the app's screens read.
+/// Applied to sheet + cover contents so they don't inherit-by-accident from
+/// the presenter (which doesn't always work for @Observable in SwiftUI).
+private struct EnvBundle: ViewModifier {
+    let theme: Theme
+    let state: AppState
+    let api: APIClient
+    let push: PushManager
+    let session: Session
+    let iap: IAPStore
+
+    func body(content: Content) -> some View {
+        content
+            .environment(\.theme, theme)
+            .environment(state)
+            .environment(api)
+            .environment(push)
+            .environment(session)
+            .environment(iap)
     }
 }
 
