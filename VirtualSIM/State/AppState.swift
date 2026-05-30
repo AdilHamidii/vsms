@@ -101,6 +101,12 @@ final class AppState {
             countries = catalog.countries
             routes = catalog.routes
 
+            #if DEBUG
+            let google = routes.first { $0.serviceId == "google" && $0.countryId == "us" }
+            print("📦 Catalog loaded: \(services.count) services, \(countries.count) countries, \(routes.count) routes")
+            print("   google/us route: \(String(describing: google))")
+            #endif
+
             if let match = services.first(where: { $0.id == lastService.id }) {
                 lastService = match
             } else if let first = services.first {
@@ -112,7 +118,9 @@ final class AppState {
                 lastCountry = first
             }
         } catch {
-            // keep seed fallback
+            #if DEBUG
+            print("❌ Catalog load failed: \(error)")
+            #endif
         }
     }
 
