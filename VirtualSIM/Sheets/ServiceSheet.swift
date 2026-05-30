@@ -66,27 +66,28 @@ struct ServiceSheet: View {
 
     private var list: some View {
         ScrollView {
-            LazyVStack(spacing: 0) {
-                if filtered.isEmpty {
-                    Text("No services found")
-                        .font(RFont.text(14))
-                        .foregroundStyle(theme.text2)
-                        .padding(.vertical, 24)
-                } else {
-                    Card {
-                        VStack(spacing: 0) {
-                            ForEach(Array(filtered.enumerated()), id: \.element.id) { idx, s in
-                                ServiceRow(service: s, isLast: idx == filtered.count - 1) {
-                                    onPick(s)
-                                    dismiss()
-                                }
-                            }
+            if filtered.isEmpty {
+                Text("No services found")
+                    .font(RFont.text(14))
+                    .foregroundStyle(theme.text2)
+                    .padding(.vertical, 24)
+            } else {
+                LazyVStack(spacing: 0) {
+                    ForEach(filtered) { service in
+                        ServiceRow(service: service) {
+                            onPick(service)
+                            dismiss()
+                        }
+                        if service.id != filtered.last?.id {
+                            Rectangle().fill(theme.sep).frame(height: 0.5)
+                                .padding(.leading, 66)
                         }
                     }
-                    .padding(.horizontal, 16)
                 }
+                .background(theme.elev, in: .rect(cornerRadius: 22))
+                .padding(.horizontal, 16)
+                .padding(.bottom, 24)
             }
-            .padding(.bottom, 24)
         }
     }
 }
@@ -94,50 +95,44 @@ struct ServiceSheet: View {
 private struct ServiceRow: View {
     @Environment(\.theme) private var theme
     let service: Service
-    let isLast: Bool
     let onTap: () -> Void
 
     var body: some View {
         Button(action: onTap) {
-            VStack(spacing: 0) {
-                HStack(spacing: 12) {
-                    ServiceLogo(service: service, size: 40)
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(service.name)
-                            .font(RFont.display(16, weight: .semibold))
-                            .tracking(-0.3)
-                            .foregroundStyle(theme.text)
-                        HStack(spacing: 8) {
-                            Text(service.category)
-                                .font(RFont.text(12))
-                                .foregroundStyle(theme.text2)
-                            Text("·").foregroundStyle(theme.text3)
-                            Text("~\(service.etaSeconds)s avg")
-                                .font(RFont.text(12))
-                                .foregroundStyle(theme.text2)
-                            Text("·").foregroundStyle(theme.text3)
-                            Text("\(service.successRate)% delivered")
-                                .font(RFont.text(12, weight: .medium))
-                                .foregroundStyle(theme.live)
-                        }
-                    }
-                    Spacer(minLength: 0)
-                    HStack(alignment: .firstTextBaseline, spacing: 3) {
-                        Text("\(service.cost)")
-                            .font(RFont.display(15, weight: .semibold))
-                            .foregroundStyle(theme.text)
-                        Text("cr")
-                            .font(RFont.text(12, weight: .medium))
+            HStack(spacing: 12) {
+                ServiceLogo(service: service, size: 40)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(service.name)
+                        .font(RFont.display(16, weight: .semibold))
+                        .tracking(-0.3)
+                        .foregroundStyle(theme.text)
+                    HStack(spacing: 8) {
+                        Text(service.category)
+                            .font(RFont.text(12))
                             .foregroundStyle(theme.text2)
+                        Text("·").foregroundStyle(theme.text3)
+                        Text("~\(service.etaSeconds)s avg")
+                            .font(RFont.text(12))
+                            .foregroundStyle(theme.text2)
+                        Text("·").foregroundStyle(theme.text3)
+                        Text("\(service.successRate)% delivered")
+                            .font(RFont.text(12, weight: .medium))
+                            .foregroundStyle(theme.live)
                     }
                 }
-                .padding(.horizontal, 14)
-                .padding(.vertical, 12)
-                if !isLast {
-                    Rectangle().fill(theme.sep).frame(height: 0.5)
-                        .padding(.leading, 66)
+                Spacer(minLength: 0)
+                HStack(alignment: .firstTextBaseline, spacing: 3) {
+                    Text("\(service.cost)")
+                        .font(RFont.display(15, weight: .semibold))
+                        .foregroundStyle(theme.text)
+                    Text("cr")
+                        .font(RFont.text(12, weight: .medium))
+                        .foregroundStyle(theme.text2)
                 }
             }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 12)
+            .contentShape(.rect)
         }
         .buttonStyle(.plain)
     }
