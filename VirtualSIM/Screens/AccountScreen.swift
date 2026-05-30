@@ -309,8 +309,10 @@ struct AccountScreen: View {
         do {
             try await AccountAPI(client: api).deleteAccount()
             await session.signOut(remote: false)
+        } catch let apiErr as APIError {
+            state.lastError = apiErr.userMessage
         } catch {
-            state.lastError = "Couldn't delete account: \(error.localizedDescription)"
+            state.lastError = "We couldn't delete your account. Please try again."
         }
     }
 }

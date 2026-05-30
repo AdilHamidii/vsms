@@ -155,12 +155,10 @@ final class AppState {
             self.orders.insert(order, at: 0)
             flow = .waiting
             await refreshWallet(using: wallet)
-        } catch let APIError.http(status, body) where status == 402 {
-            lastError = "Not enough credits."
-            _ = body
-            // Open the credit pack sheet next opportunity (Checkout handles it).
+        } catch let apiErr as APIError {
+            lastError = apiErr.userMessage
         } catch {
-            lastError = error.localizedDescription
+            lastError = "Something went wrong. Please try again."
         }
     }
 
@@ -199,8 +197,10 @@ final class AppState {
                 self.orders[idx] = updated
             }
             await refreshWallet(using: wallet)
+        } catch let apiErr as APIError {
+            lastError = apiErr.userMessage
         } catch {
-            lastError = "Couldn't cancel. Try again."
+            lastError = "Couldn't cancel that order. Please try again."
         }
         flow = nil
         activeOrder = nil

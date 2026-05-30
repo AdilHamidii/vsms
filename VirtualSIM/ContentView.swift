@@ -94,6 +94,10 @@ struct ContentView: View {
                 .environment(\.theme, theme)
                 .environment(state)
                 .preferredColorScheme(state.isDark ? .dark : .light)
+                .overlay(alignment: .top) {
+                    ErrorBanner()
+                        .animation(.easeOut(duration: 0.25), value: state.lastError)
+                }
                 .sheet(item: $sheet) { which in
                     sheetContent(which)
                         .environment(\.theme, theme)
