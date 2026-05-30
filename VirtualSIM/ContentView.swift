@@ -71,6 +71,9 @@ struct ContentView: View {
         .onChange(of: scenePhase) { _, phase in
             if phase == .active {
                 Task {
+                    // Re-fetch catalog too so server-side sync-prices runs
+                    // show up without an app reinstall / force-quit.
+                    await state.loadCatalog(using: CatalogAPI(client: api))
                     await state.refreshWallet(using: WalletAPI(client: api))
                     await state.loadOrders(using: OrdersAPI(client: api))
                 }
