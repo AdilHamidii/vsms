@@ -34,8 +34,13 @@ final class IAPStore {
             var map: [String: Product] = [:]
             for p in fetched { map[p.id] = p }
             self.products = map
+            if fetched.isEmpty {
+                self.lastError = "Credit packs aren't available yet. (Sandbox: enable Products.storekit in your scheme. Production: make sure IAP products are approved in App Store Connect.)"
+            } else {
+                self.lastError = nil
+            }
         } catch {
-            self.lastError = "Couldn't load products: \(error.localizedDescription)"
+            self.lastError = "Couldn't load credit packs. Please try again in a moment."
         }
     }
 
@@ -48,8 +53,17 @@ final class IAPStore {
     /// Returns true if the purchase was accepted (verified on the server).
     /// Returns false if the user cancelled or the verification failed.
     func purchase(_ pack: CreditPack) async -> Bool {
+        // If products haven't loaded yet (or returned empty), try once more
+        // before giving up — covers the case where the sheet's .task is still
+        // mid-fetch when the user taps Buy.
+        if products[pack.productId] == nil {
+            await loadProducts()
+        }
         guard let product = products[pack.productId] else {
-            lastError = "Product not loaded yet — try again in a moment."
+            // loadProducts already set a more specific lastError if it failed.
+            if lastError == nil {
+                lastError = "This credit pack isn't available right now. Please try again later."
+            }
             return false
         }
         do {
