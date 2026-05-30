@@ -6,14 +6,14 @@ are skipped.
 
 ## 1. Legal pages live
 
-- [ ] Paste `docs/privacy-policy.md` into a public Notion page
-- [ ] Paste `docs/terms.md` into a public Notion page
-- [ ] Paste `docs/refund-policy.md` into a public Notion page
-- [ ] Paste `docs/help.md` into a public Notion page
-- [ ] In each Notion page: **Share → Publish to web** → copy the URL
-- [ ] Update `VirtualSIM/LegalLinks.swift` with the four real URLs
-- [ ] Update `supportEmail` in the same file to a real address you monitor
-- [ ] Update the support email in each docs/*.md file
+- [x] Paste `docs/privacy-policy.md` into a public Notion page
+- [x] Paste `docs/terms.md` into a public Notion page
+- [x] Paste `docs/refund-policy.md` into a public Notion page
+- [x] Paste `docs/help.md` into a public Notion page
+- [x] In each Notion page: **Share → Publish to web** → copy the URL
+- [x] Update `VirtualSIM/LegalLinks.swift` with the four real URLs
+- [x] Update `supportEmail` in the same file to a real address you monitor
+- [x] Update the support email in each docs/*.md file
 
 ## 2. App icon
 
@@ -28,7 +28,7 @@ are skipped.
 - [ ] Flip `aps-environment` from `development` → `production`
       in `VirtualSIM/VirtualSIM.entitlements` **before archiving**
       (then flip back after if you keep dev-building afterward)
-- [ ] Set Supabase secret `APNS_ENV` to `production`
+- [x] Set Supabase secret `APNS_ENV` to `production`
       (`supabase secrets set APNS_ENV=production`)
       ⚠️ Test pushes from TestFlight first — sandbox tokens won't
       receive prod-env pushes
@@ -37,8 +37,8 @@ are skipped.
 
 Open the project, select the **VirtualSIM** target → Signing & Capabilities:
 
-- [ ] Sign in with Apple ✅
-- [ ] Push Notifications ✅
+- [x] Sign in with Apple ✅
+- [x] Push Notifications ✅
 - [ ] In-App Purchase (auto-added when StoreKit imported)
 - [ ] Background Modes: **not** required (we use alert pushes only)
 

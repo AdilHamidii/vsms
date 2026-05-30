@@ -75,4 +75,4 @@ acceptance of the updated Terms.
 
 ## 8. Contact
 
-Questions about these Terms: **support@example.com**.
+Questions about these Terms: **adil.hamidii123@gmail.com**.

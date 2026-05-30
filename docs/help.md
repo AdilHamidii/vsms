@@ -41,5 +41,5 @@ balance and order history are preserved.
 
 ## Contact
 
-Email **support@example.com** — we usually respond within 2 business
+Email **adil.hamidii123@gmail.com** — we usually respond within 2 business
 days. Please include your account email and the order ID if relevant.

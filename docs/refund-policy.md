@@ -34,5 +34,5 @@ from your wallet.
 
 ## Questions
 
-Email **support@example.com** with your order ID and a brief description
+Email **adil.hamidii123@gmail.com** with your order ID and a brief description
 of the issue, and we'll respond within 2 business days.

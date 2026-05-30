@@ -4,7 +4,7 @@ _Last updated: 30 May 2026_
 
 This Privacy Policy explains what data **vSIM OTP** ("we", "us") collects
 when you use the iOS application of the same name, how we use it, and the
-choices you have. Contact: **support@example.com**.
+choices you have. Contact: **adil.hamidii123@gmail.com**.
 
 ## What we collect
 
@@ -67,7 +67,7 @@ with third parties except as required to provide the service:
 ## Your rights
 
 You have the right to access, correct, or delete the personal data we
-hold about you. Email **support@example.com** with your request, or use
+hold about you. Email **adil.hamidii123@gmail.com** with your request, or use
 in-app account deletion. We respond within 30 days.
 
 ## International transfers
