@@ -1,10 +1,9 @@
 // Called by pg_cron every minute. Scans all 'waiting' orders, polls SMSPVA
-// for incoming SMS, persists OTPs, dispatches push notifications to the
-// user's devices.
+// for incoming SMS, persists OTPs, dispatches push notifications.
 
 import { handleCors, json } from "../_shared/cors.ts";
 import { admin } from "../_shared/supabaseAdmin.ts";
-import { getSms } from "../_shared/smspva.ts";
+import { getSms, isOk } from "../_shared/smspva.ts";
 import { sendPush } from "../_shared/apns.ts";
 
 async function validateCronSecret(req: Request): Promise<boolean> {
@@ -32,7 +31,6 @@ Deno.serve(async (req) => {
 
   const sb = admin();
 
-  // Auto-expire anything past its window before polling.
   const { data: expiredCandidates } = await sb
     .from("orders")
     .select("id")
@@ -43,13 +41,11 @@ Deno.serve(async (req) => {
     await sb.rpc("expire_order", { p_order: row.id });
   }
 
-  // Active orders to poll.
   const { data: pending, error: pErr } = await sb
     .from("orders")
     .select(`
       id, user_id, smspva_id,
-      service:service_id ( id, smspva_code, name ),
-      country:country_id ( smspva_code )
+      service:service_id ( id, name )
     `)
     .eq("status", "waiting")
     .not("smspva_id", "is", null);
@@ -60,25 +56,22 @@ Deno.serve(async (req) => {
 
   for (const o of pending ?? []) {
     polled++;
-    const service = o.service as { smspva_code: string; name: string };
-    const country = o.country as { smspva_code: string };
-
     let resp;
     try {
-      resp = await getSms(country.smspva_code, service.smspva_code, o.smspva_id!);
+      resp = await getSms(o.smspva_id!);
     } catch (e) {
       console.error("SMSPVA poll failed for order", o.id, e);
       continue;
     }
 
-    if ((resp.response === "1" || resp.response === "4") && resp.sms) {
+    if (isOk(resp) && resp.data.sms?.code) {
       arrived++;
       const { error: uErr } = await sb
         .from("orders")
         .update({
           status: "received",
-          otp: resp.sms,
-          raw_message: resp.text ?? null,
+          otp: resp.data.sms.code,
+          raw_message: resp.data.sms.fullText ?? null,
           arrived_at: new Date().toISOString(),
           closed_at: new Date().toISOString(),
         })
@@ -90,7 +83,7 @@ Deno.serve(async (req) => {
         continue;
       }
 
-      // Push to all of this user's devices.
+      const service = o.service as { name: string };
       const { data: devices } = await sb
         .from("push_devices")
         .select("token, environment, bundle_id")
@@ -100,8 +93,8 @@ Deno.serve(async (req) => {
         try {
           const r = await sendPush(d.token, {
             alertTitle: `${service.name} code arrived`,
-            alertBody: `Your code is ${resp.sms}`,
-            customData: { orderId: o.id, otp: resp.sms },
+            alertBody: `Your code is ${resp.data.sms.code}`,
+            customData: { orderId: o.id, otp: resp.data.sms.code },
           }, d.environment as "sandbox" | "production");
           if (r.ok) pushSent++;
           else console.error("APNs status", r.status, r.body);

@@ -28,10 +28,9 @@ Deno.serve(async (req) => {
   if (svcErr || !service) return json({ error: "unknown_service" }, { status: 404 });
 
   const { data: country, error: cErr } = await sb
-    .from("countries").select("id, smspva_code").eq("id", body.country_id).single();
+    .from("countries").select("id, smspva_code, dial_code").eq("id", body.country_id).single();
   if (cErr || !country) return json({ error: "unknown_country" }, { status: 404 });
 
-  // Per-route price: routes.retail_credits overrides service.cost.
   const { data: route, error: rErr } = await sb
     .from("routes")
     .select("retail_credits, status")
@@ -45,14 +44,13 @@ Deno.serve(async (req) => {
 
   const cost = (route.retail_credits ?? service.cost) as number;
 
-  // Atomically deduct credits.
   const { data: spent, error: spendErr } = await sb.rpc("wallet_spend", {
     p_user: userId, p_amount: cost, p_reason: "spend",
   });
   if (spendErr) return json({ error: "spend_failed", detail: spendErr.message }, { status: 500 });
   if (spent === false) return json({ error: "insufficient_credits", needed: cost }, { status: 402 });
 
-  // Ask SMSPVA for a number.
+  // SMSPVA v2 call.
   let smspva;
   try {
     smspva = await getNumber(country.smspva_code, service.smspva_code);
@@ -61,14 +59,19 @@ Deno.serve(async (req) => {
     return json({ error: "smspva_unreachable", detail: String(e) }, { status: 502 });
   }
 
-  if (!isOk(smspva) || !smspva.id) {
+  if (!isOk(smspva)) {
     await sb.rpc("wallet_credit", { p_user: userId, p_amount: cost, p_reason: "refund" });
     return json({
-      error: "no_numbers_available",
-      service_id: service.id, country_id: country.id,
-      smspva_response: smspva.response,
-    }, { status: 503 });
+      error: "smspva_error",
+      smspva_status: smspva.statusCode,
+      smspva_type: smspva.error?.type,
+      smspva_description: smspva.error?.description,
+    }, { status: smspva.statusCode === 407 ? 502 : 503 });
   }
+
+  // v2 returns phoneNumber WITHOUT country code — we format with dial_code so
+  // the iOS UI shows a clickable, copy-pasteable full E.164-ish number.
+  const formattedNumber = `${country.dial_code} ${smspva.data.phoneNumber}`;
 
   const { data: order, error: insertErr } = await sb
     .from("orders")
@@ -76,8 +79,8 @@ Deno.serve(async (req) => {
       user_id: userId,
       service_id: service.id,
       country_id: country.id,
-      smspva_id: String(smspva.id),
-      smspva_number: smspva.number ?? null,
+      smspva_id: String(smspva.data.orderId),
+      smspva_number: formattedNumber,
       cost_credits: cost,
       status: "waiting",
     })

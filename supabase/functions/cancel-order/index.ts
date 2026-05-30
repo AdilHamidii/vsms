@@ -1,6 +1,6 @@
 import { handleCors, json } from "../_shared/cors.ts";
 import { admin, callerUserId } from "../_shared/supabaseAdmin.ts";
-import { denial } from "../_shared/smspva.ts";
+import { cancelOrder } from "../_shared/smspva.ts";
 
 interface Body { order_id: string; }
 
@@ -20,11 +20,7 @@ Deno.serve(async (req) => {
 
   const { data: order, error: oErr } = await sb
     .from("orders")
-    .select(`
-      id, user_id, status, cost_credits, smspva_id,
-      service:service_id ( smspva_code ),
-      country:country_id ( smspva_code )
-    `)
+    .select("id, user_id, status, cost_credits, smspva_id")
     .eq("id", body.order_id)
     .eq("user_id", userId)
     .single();
@@ -33,14 +29,12 @@ Deno.serve(async (req) => {
     return json({ error: "not_cancelable", current_status: order.status }, { status: 409 });
   }
 
-  // Best-effort cancel at SMSPVA. We refund regardless of their response so
-  // the user doesn't lose credits when SMSPVA is degraded.
+  // Best-effort cancel at SMSPVA — we refund regardless so the user doesn't
+  // lose credits when SMSPVA is degraded.
   try {
-    const service = order.service as { smspva_code: string };
-    const country = order.country as { smspva_code: string };
-    await denial(country.smspva_code, service.smspva_code, order.smspva_id!);
+    if (order.smspva_id) await cancelOrder(order.smspva_id);
   } catch (e) {
-    console.error("SMSPVA denial failed (continuing with refund):", e);
+    console.error("SMSPVA cancelorder failed (continuing with refund):", e);
   }
 
   await sb.rpc("wallet_credit", {

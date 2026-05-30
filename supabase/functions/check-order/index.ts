@@ -1,6 +1,6 @@
 import { handleCors, json } from "../_shared/cors.ts";
 import { admin, callerUserId } from "../_shared/supabaseAdmin.ts";
-import { getSms } from "../_shared/smspva.ts";
+import { getSms, isOk } from "../_shared/smspva.ts";
 
 interface Body { order_id: string; }
 
@@ -20,11 +20,7 @@ Deno.serve(async (req) => {
 
   const { data: order, error: oErr } = await sb
     .from("orders")
-    .select(`
-      id, user_id, status, otp, smspva_id, smspva_number, expires_at,
-      service:service_id ( id, smspva_code ),
-      country:country_id ( id, smspva_code )
-    `)
+    .select("id, user_id, status, otp, smspva_id, smspva_number, expires_at")
     .eq("id", body.order_id)
     .eq("user_id", userId)
     .single();
@@ -34,32 +30,26 @@ Deno.serve(async (req) => {
     return json({ order });
   }
 
-  // Auto-expire if the reservation window passed.
   if (new Date(order.expires_at) <= new Date()) {
     await sb.rpc("expire_order", { p_order: order.id });
     const { data: updated } = await sb.from("orders").select("*").eq("id", order.id).single();
     return json({ order: updated });
   }
 
-  // Poll SMSPVA.
-  const service = order.service as { smspva_code: string };
-  const country = order.country as { smspva_code: string };
-
   let resp;
   try {
-    resp = await getSms(country.smspva_code, service.smspva_code, order.smspva_id!);
+    resp = await getSms(order.smspva_id!);
   } catch (e) {
     return json({ error: "smspva_unreachable", detail: String(e) }, { status: 502 });
   }
 
-  if ((resp.response === "1" || resp.response === "4") && resp.sms) {
-    // Code arrived — persist.
+  if (isOk(resp) && resp.data.sms?.code) {
     const { data: updated, error: uErr } = await sb
       .from("orders")
       .update({
         status: "received",
-        otp: resp.sms,
-        raw_message: resp.text ?? null,
+        otp: resp.data.sms.code,
+        raw_message: resp.data.sms.fullText ?? null,
         arrived_at: new Date().toISOString(),
         closed_at: new Date().toISOString(),
       })
@@ -69,7 +59,6 @@ Deno.serve(async (req) => {
     return json({ order: updated, arrived: true });
   }
 
-  // Still waiting — return current order.
   const { data: current } = await sb.from("orders").select("*").eq("id", order.id).single();
   return json({ order: current });
 });
