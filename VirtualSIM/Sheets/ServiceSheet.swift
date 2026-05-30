@@ -4,35 +4,27 @@ struct ServiceSheet: View {
     @Environment(\.theme) private var theme
     @Environment(\.dismiss) private var dismiss
     @Environment(AppState.self) private var state
-    @Binding var filter: SortFilter
     var onPick: (Service) -> Void
 
     @State private var query: String = ""
-    @State private var category: String = "Popular"
-
-    private var matches: [Service] {
-        let q = query.trimmingCharacters(in: .whitespaces).lowercased()
-        var list = state.services.filter { s in
-            q.isEmpty || s.name.lowercased().contains(q) || s.category.lowercased().contains(q)
-        }
-        switch filter {
-        case .all:      break
-        case .cheapest: list.sort { $0.cost < $1.cost }
-        case .fastest:  list.sort { $0.etaSeconds < $1.etaSeconds }
-        }
-        return list
-    }
+    @State private var category: String = "All"
 
     private var filtered: [Service] {
-        if category == "Popular" { return Array(matches.prefix(10)) }
-        return matches.filter { $0.category == category }
+        let q = query.trimmingCharacters(in: .whitespaces).lowercased()
+        return state.services.filter { s in
+            let matchesQuery = q.isEmpty
+                || s.name.lowercased().contains(q)
+                || s.category.lowercased().contains(q)
+            let matchesCategory = (category == "All") || (s.category == category)
+            return matchesQuery && matchesCategory
+        }
     }
 
     var body: some View {
         VStack(spacing: 0) {
             SheetHeader(title: "Choose a service")
             searchField
-            filterRow
+            categoryRow
             list
         }
         .background(theme.bg)
@@ -58,13 +50,9 @@ struct ServiceSheet: View {
         .padding(.bottom, 10)
     }
 
-    private var filterRow: some View {
+    private var categoryRow: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 6) {
-                ChipButton(label: "All",      icon: RIcon.filter, active: filter == .all)     { filter = .all }
-                ChipButton(label: "Cheapest", icon: RIcon.coin,   active: filter == .cheapest) { filter = .cheapest }
-                ChipButton(label: "Fastest",  icon: RIcon.bolt,   active: filter == .fastest)  { filter = .fastest }
-                Rectangle().fill(theme.sep).frame(width: 1, height: 18).padding(.horizontal, 4)
                 ForEach(serviceCategories, id: \.self) { cat in
                     ChipButton(label: cat, active: category == cat, soft: true) {
                         category = cat
@@ -78,7 +66,7 @@ struct ServiceSheet: View {
 
     private var list: some View {
         ScrollView {
-            VStack(spacing: 0) {
+            LazyVStack(spacing: 0) {
                 if filtered.isEmpty {
                     Text("No services found")
                         .font(RFont.text(14))

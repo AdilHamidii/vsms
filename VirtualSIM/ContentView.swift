@@ -134,7 +134,7 @@ struct ContentView: View {
         @Bindable var s = state
         switch which {
         case .services:
-            ServiceSheet(filter: $s.filter, onPick: { picked in
+            ServiceSheet(onPick: { picked in
                 if state.flow == .checkout { state.checkoutService = picked }
                 else { state.lastService = picked }
             })

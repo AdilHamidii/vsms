@@ -120,7 +120,7 @@ enum SeedData {
 }
 
 let serviceCategories: [String] = [
-    "Popular", "AI", "Messaging", "Social", "Dating", "Tech", "Finance", "Crypto",
+    "All", "AI", "Messaging", "Social", "Dating", "Tech", "Finance", "Crypto",
     "Commerce", "Delivery", "Transport", "Travel", "Entertainment", "Productivity",
     "Gambling", "Surveys", "Specialty"
 ]
