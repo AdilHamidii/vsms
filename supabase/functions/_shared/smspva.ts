@@ -5,7 +5,10 @@
 //   success: { statusCode: 200, data: ... }
 //   error:   { statusCode: 4xx|5xx, error: { type, description } }
 
-const BASE = "https://smspva.com";
+// NB: docs.smspva.com lists `https://smspva.com` as the server, but that's
+// the marketing site (returns 404 HTML for /activation/*). The actual API
+// is on the `api.` subdomain. Discovered by probing directly.
+const BASE = "https://api.smspva.com";
 
 function apiKey(): string {
   const k = Deno.env.get("SMSPVA_API_KEY");
