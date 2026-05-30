@@ -5,6 +5,7 @@ struct AuthGate: View {
     @State private var session: Session
     @State private var push = PushManager()
     @State private var iap = IAPStore()
+    @AppStorage("onboardingComplete") private var onboardingComplete = false
 
     init() {
         let client = APIClient()
@@ -18,7 +19,11 @@ struct AuthGate: View {
             case .bootstrapping:
                 BootstrapScreen()
             case .signedOut:
-                SignInScreen()
+                if onboardingComplete {
+                    SignInScreen()
+                } else {
+                    OnboardingScreen(onDone: { onboardingComplete = true })
+                }
             case .signedIn:
                 ContentView()
                     .task {
