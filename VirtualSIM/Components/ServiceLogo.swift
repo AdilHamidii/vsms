@@ -5,10 +5,10 @@ struct ServiceLogo: View {
     var size: CGFloat = 40
     var radius: CGFloat = 10
 
+    @State private var sourceIndex = 0
+
     var body: some View {
         ZStack {
-            // Tinted base — visible while the brand logo loads or if there
-            // is no domain at all.
             RoundedRectangle(cornerRadius: radius, style: .continuous)
                 .fill(service.tint)
                 .overlay(
@@ -17,8 +17,9 @@ struct ServiceLogo: View {
                         .strokeBorder(Color.white.opacity(0.18), lineWidth: 0.5)
                 )
 
-            if let url = service.logoURL {
-                AsyncImage(url: url, transaction: Transaction(animation: .easeOut(duration: 0.2))) { phase in
+            let sources = service.logoURLs
+            if sourceIndex < sources.count {
+                AsyncImage(url: sources[sourceIndex], transaction: Transaction(animation: .easeOut(duration: 0.2))) { phase in
                     switch phase {
                     case .success(let image):
                         image
@@ -27,10 +28,13 @@ struct ServiceLogo: View {
                             .padding(size * 0.16)
                             .background(.white, in: .rect(cornerRadius: radius))
                             .clipShape(.rect(cornerRadius: radius))
-                    case .empty, .failure:
-                        fallback
+                    case .empty:
+                        Color.clear
+                    case .failure:
+                        Color.clear
+                            .task { sourceIndex += 1 }
                     @unknown default:
-                        fallback
+                        Color.clear
                     }
                 }
             } else {

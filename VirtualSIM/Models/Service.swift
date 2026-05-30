@@ -16,10 +16,16 @@ struct Service: Identifiable, Hashable, Codable {
 
     var tint: Color { Color(hexString: tintHex) }
 
-    /// Logo URL via Clearbit's free logo API. Review terms at clearbit.com/logo
-    /// before shipping at high volume.
-    var logoURL: URL? {
-        guard let domain, !domain.isEmpty else { return nil }
-        return URL(string: "https://logo.clearbit.com/\(domain)?size=128")
+    /// Cascading list of logo sources, in priority order.
+    /// Source 1 (Clearbit): transparent-background brand logos, best for SaaS.
+    /// Source 2 (Google FaviconV2): works for any domain with a favicon, up to 128px.
+    /// If both 404, ServiceLogo falls back to an SF Symbol on tinted square.
+    var logoURLs: [URL] {
+        guard let domain, !domain.isEmpty else { return [] }
+        let escaped = "https%3A%2F%2F\(domain)"
+        return [
+            URL(string: "https://logo.clearbit.com/\(domain)?size=128"),
+            URL(string: "https://t2.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=\(escaped)&size=128"),
+        ].compactMap { $0 }
     }
 }
