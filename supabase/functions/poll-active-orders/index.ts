@@ -6,26 +6,17 @@ import { admin } from "../_shared/supabaseAdmin.ts";
 import { getSms, isOk } from "../_shared/smspva.ts";
 import { sendPush } from "../_shared/apns.ts";
 
-async function validateCronSecret(req: Request): Promise<boolean> {
+function validateCronSecret(req: Request): boolean {
   const header = req.headers.get("x-cron-secret");
-  if (!header) return false;
-  const { data, error } = await admin()
-    .schema("vault" as never)
-    .from("decrypted_secrets" as never)
-    .select("decrypted_secret")
-    .eq("name", "cron_secret")
-    .maybeSingle();
-  if (error) {
-    console.error("vault read failed:", error);
-    return false;
-  }
-  return header === (data as { decrypted_secret?: string } | null)?.decrypted_secret;
+  const expected = Deno.env.get("CRON_SECRET");
+  if (!header || !expected) return false;
+  return header === expected;
 }
 
 Deno.serve(async (req) => {
   const cors = handleCors(req); if (cors) return cors;
 
-  if (!(await validateCronSecret(req))) {
+  if (!validateCronSecret(req)) {
     return json({ error: "unauthorized" }, { status: 401 });
   }
 

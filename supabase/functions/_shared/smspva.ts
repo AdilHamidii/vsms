@@ -113,6 +113,22 @@ export function getAllPrices() {
   return call<BulkPriceRow[][]>("GET", "/activation/servicesprices");
 }
 
+/** Per-country price list (short-key format). */
+export interface CountryPriceRow {
+  s: string;        // service code, e.g. "opt0"
+  sd: string;       // service description
+  c: string;        // country code
+  p: string;        // base price as string, e.g. "0.58"
+  po?: Record<string, string>; // optional operator -> price map
+}
+
+export function getCountryPrices(country: string) {
+  return call<CountryPriceRow[]>(
+    "GET",
+    `/activation/serviceprice/${encodeURIComponent(country)}`,
+  );
+}
+
 export function getBalance() {
   return call<{ balance: number }>("GET", "/activation/balance");
 }
