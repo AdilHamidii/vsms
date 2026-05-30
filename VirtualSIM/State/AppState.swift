@@ -67,8 +67,9 @@ final class AppState {
 
     var deliveredCount: Int { orders.filter { $0.status == .received }.count }
 
-    /// Look up the route override for (service, country); fall back to the
-    /// service's base cost. Returns nil if the route is hidden/inactive.
+    /// Look up the route for (service, country). Routes are only sent down
+    /// when they differ from defaults (price override or non-active status);
+    /// any unlisted pair is treated as active at service.cost.
     func cost(for service: Service, country: Country) -> Int {
         if let route = routes.first(where: { $0.serviceId == service.id && $0.countryId == country.id }) {
             if route.status != "active" { return service.cost }
@@ -77,13 +78,10 @@ final class AppState {
         return service.cost
     }
 
-    /// Countries that have at least one active route — used by the country picker
-    /// so we don't show destinations where every service is hidden.
-    var availableCountries: [Country] {
-        countries.filter { c in
-            routes.contains { $0.countryId == c.id && $0.status == "active" }
-        }
-    }
+    /// Country picker shows every country in the catalog. A specific
+    /// (service, country) pair may still be rejected at order time if
+    /// SMSPVA is out of numbers — handled by create-order.
+    var availableCountries: [Country] { countries }
 
     // ─────────── Catalog / profile / wallet bootstrap ───────────
 

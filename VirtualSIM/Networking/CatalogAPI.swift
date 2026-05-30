@@ -30,9 +30,16 @@ struct CatalogAPI {
                     URLQueryItem(name: "order",  value: "sort_order.asc")],
             authenticated: false
         )
+        // We only fetch routes with a non-null retail_credits override or a
+        // non-active status. Every other (service, country) pair just uses
+        // service.cost and is considered active — no need to ship 13,000+
+        // rows that all say the same thing as the service.
         async let rtsTask: [Route] = client.request(
             .get, path: "rest/v1/routes",
-            query: [URLQueryItem(name: "select", value: "*")],
+            query: [
+                URLQueryItem(name: "select", value: "*"),
+                URLQueryItem(name: "or", value: "(retail_credits.not.is.null,status.neq.active)"),
+            ],
             authenticated: false
         )
         return Catalog(services: try await svcTask,
