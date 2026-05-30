@@ -97,14 +97,17 @@ final class IAPStore {
                     await tx.finish()
                     return true
                 }
-                lastError = "Server rejected the transaction."
+                lastError = "We couldn't confirm your purchase. Please try again."
+                return false
+            } catch let apiErr as APIError {
+                lastError = apiErr.userMessage
                 return false
             } catch {
-                lastError = error.localizedDescription
+                lastError = "We couldn't confirm your purchase. Please try again."
                 return false
             }
-        case .unverified(_, let error):
-            lastError = "StoreKit could not verify: \(error.localizedDescription)"
+        case .unverified:
+            lastError = "We couldn't verify that purchase. Please try again."
             return false
         }
     }
