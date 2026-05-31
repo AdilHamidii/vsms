@@ -1,0 +1,135 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+## What this is
+
+**vSIM OTP** — iOS app that rents temporary phone numbers from SMSPVA and delivers SMS verification codes. iOS frontend in SwiftUI + Supabase backend (Postgres + Auth + Edge Functions + pg_cron).
+
+Bundle ID: `com.anthersystems.VirtualSIM` · Supabase ref: `enugzltysdmjzavisloy` · Project root holds `Appidea.md` (original product brief).
+
+## Common commands
+
+```bash
+# iOS build (verify compilation; no simulator launch)
+xcodebuild -project VirtualSIM.xcodeproj -scheme VirtualSIM \
+  -configuration Debug -sdk iphonesimulator \
+  -destination 'generic/platform=iOS Simulator' build 2>&1 \
+  | grep -E "(error:|warning: |BUILD)" | grep -v "Metadata extraction" | tail -10
+
+# Push DB migrations to the linked Supabase project
+supabase db push
+
+# Deploy edge functions (each runs independently)
+supabase functions deploy create-order check-order cancel-order register-push iap-verify delete-account
+supabase functions deploy poll-active-orders sync-prices --no-verify-jwt
+
+# Query the remote DB
+supabase db query --linked "select count(*) from public.routes;"
+
+# Manually trigger sync-prices (rare; cron also covers it later)
+CRON=$(supabase db query --linked --output json \
+  "select decrypted_secret from vault.decrypted_secrets where name='cron_secret';" \
+  | grep -o '"decrypted_secret":"[^"]*"' | cut -d'"' -f4)
+curl -X POST \
+  -H "Authorization: Bearer sb_publishable_IfwQ5IduTyVNawl7jiFA7A_aqJ-qqbk" \
+  -H "apikey: sb_publishable_IfwQ5IduTyVNawl7jiFA7A_aqJ-qqbk" \
+  -H "x-cron-secret: $CRON" \
+  https://enugzltysdmjzavisloy.supabase.co/functions/v1/sync-prices
+```
+
+There is no test suite. Verification is via `xcodebuild` for iOS, and for backend changes — re-deploy then hit the function with curl or trigger from the running app.
+
+## Architecture
+
+```
+iOS (SwiftUI, iOS 26.2 target)            Supabase
+─────────────────────────────             ──────────────────────────────────────────
+AuthGate                                  Postgres tables: profiles, wallets,
+  ↓ Sign in with Apple (native)             wallet_transactions, services, countries,
+ContentView (tabs + flow cover)             routes, orders, push_devices, iap_receipts
+  ↓ APIClient (URLSession + apikey hdr)
+  REST  → /rest/v1/...  (PostgREST)       Edge Functions (Deno):
+  RPC   → /functions/v1/...                  create-order   — wallet_spend → SMSPVA
+                                             check-order    — poll one order
+SMSPVA                                       cancel-order   — refund + SMSPVA denial
+  ←── api.smspva.com/activation/...          poll-active-orders (cron, every 1 min)
+       (apikey HEADER, not query string)     sync-prices    — refresh route prices
+                                             register-push  — store APNs token
+APNs                                         iap-verify     — StoreKit 2 JWS verify
+  ←── token-auth (.p8) HTTP/2               delete-account — auth.admin.deleteUser
+```
+
+### iOS source layout
+
+```
+VirtualSIM/
+  VirtualSIMApp.swift            App entry; resizes URLCache (32MB mem / 64MB disk
+                                 for brand logos + flag PNGs); installs AppDelegate
+  ContentView.swift              Tab routing + fullScreenCover for Checkout/Waiting/
+                                 OTP flow; EnvBundle ViewModifier re-injects every
+                                 @Observable env object into sheet/cover content
+                                 (covers don't inherit reliably)
+  Auth/                          AuthGate (3-state: bootstrap/signedOut/signedIn),
+                                 SignInScreen, Session (@Observable, Keychain-backed)
+  Networking/                    APIClient + per-resource APIs (CatalogAPI, OrdersAPI,
+                                 WalletAPI, ProfileAPI, IAPAPI, AccountAPI, PushAPI,
+                                 AuthAPI). Secrets.swift is gitignored
+  State/AppState.swift           Single @Observable source of truth — services,
+                                 countries, routes, orders, prefs (UserDefaults-
+                                 backed via didSet), checkout/flow machine
+  Models/                        Plain Codable structs mirroring DB column names via
+                                 .convertFromSnakeCase
+  Screens/                       Home, Checkout, Waiting (+ WaitingAnimations),
+                                 OTP, Orders, Account
+  Sheets/                        ServiceSheet (search + categories), CountrySheet
+                                 (sort + per-route price), CreditsSheet (StoreKit 2)
+  Components/                    Theme primitives + ServiceLogo (Clearbit logo with
+                                 Google FaviconV2 fallback), FlagImage (flagcdn.com)
+  Push/, IAP/, Onboarding/, DesignSystem/  Self-explanatory
+  Localizable.xcstrings          String Catalog: en source + de/es/fr/it/ja/pt-BR
+  Products.storekit              Local IAP test config (enable via scheme)
+  VirtualSIM.entitlements        Sign in with Apple + aps-environment
+```
+
+### Backend layout
+
+- `supabase/migrations/` — chronological SQL, each phase ships its own file
+- `supabase/functions/_shared/` — `smspva.ts` (v2 REST wrapper), `apns.ts` (HTTP/2 + JWT), `cors.ts`, `iap.ts`, `supabaseAdmin.ts`
+- `supabase/functions/<name>/index.ts` — one per endpoint, all Deno.serve
+- `supabase/README.md` — deployment + secret setup walkthrough
+
+### Pricing model
+
+`AppState.cost(for:country:)` uses an O(1) `routeIndex` dict (keyed `"serviceId|countryId"`) built in `loadCatalog`. Falls back to `service.cost` when route not present. **Do not** linear-scan `routes` (~17k rows after sync-prices) — that froze the country picker before the index was added.
+
+`sync-prices` formula: `credits = max(1, ceil(price / 0.15))`. Tune `CREDIT_DIVISOR` in `supabase/functions/sync-prices/index.ts` for global margin adjustment. Currently anchors: 15 EUR → 100 cr, ≤ 5¢ → 1 cr.
+
+## Non-obvious gotchas (real bugs we've hit, do not re-introduce)
+
+- **SMSPVA base URL is `https://api.smspva.com`**, NOT `smspva.com` (the docs spec lies — the marketing site 404s every `/activation/*` path).
+- **PostgREST default `max_rows = 1000`** — bumped to 25000 via migration `20260601200000_bump_max_rows.sql`. The catalog fetch needs all ~18k routes.
+- **CatalogAPI fetches only routes where `retail_credits IS NOT NULL OR status != 'active'`**. After sync-prices, all routes have a price → query effectively returns everything. The filter exists so a fresh project without sync data doesn't pull empty rows.
+- **Cover/sheet content does NOT inherit `@Observable` env objects from the presenter.** Always wrap sheet/cover content with the `EnvBundle` modifier in `ContentView`.
+- **`tint_hex`, not `tint`** — Service column is `tint_hex` (snake) → `tintHex` (Swift). Same casing rule for every Service/Country/Route field. Don't reintroduce shorter names.
+- **Cron-secret auth reads from `Deno.env.get("CRON_SECRET")`**, not from `vault.decrypted_secrets`. The vault schema isn't reachable through PostgREST — the function would silently fail. Both `poll-active-orders` and `sync-prices` rely on the env var being mirrored to the vault entry.
+- **IAP environment check constraint must allow `'Xcode'`** for local StoreKit testing alongside `'Sandbox'`/`'Production'`. See migration `..._iap_allow_xcode_env.sql`.
+- **APNs `aps-environment` is `development`** in the entitlements file. Flip to `production` (and set `APNS_ENV=production` secret) before archiving for App Store / TestFlight.
+- **`Secrets.swift` is gitignored.** Template in `supabase/README.md`. Just `supabaseURL` + `supabaseAnonKey`. The publishable key (`sb_publishable_*`) is fine in client code — it's the new name for the anon key.
+- **Logo loading cascades** in `ServiceLogo`: Clearbit → Google FaviconV2 → SF Symbol on tinted background. URLCache caches across launches.
+- **Apple Sign-In is iOS-native flow** — no JWT secret needed in Supabase (the apple provider config). The dashboard's secret/services-id fields stay blank.
+
+## Error UX rule
+
+Never display raw API errors. AppState's catch blocks call `APIError.userMessage`, which maps known business-logic codes (`insufficient_credits`, `no_numbers_available`, `route_unavailable`, `smspva_error`, etc.) to plain English. `errorDescription` stays for the Xcode console only.
+
+## When iOS data looks wrong, check in this order
+
+1. Force-quit the app — `.task` only runs on cold launch (`scenePhase=.active` now also refreshes catalog, but cold start is the cleanest test).
+2. Xcode console for catalog decode errors (column name mismatches show as `keyNotFound`).
+3. `curl` PostgREST directly with the publishable key — if curl returns the data, iOS decoding is the issue.
+4. Function logs in Supabase dashboard → Functions → pick function → Logs.
+
+## Release prep
+
+`docs/submission-checklist.md` is the source of truth for App Store submission steps. `docs/app-store-listing.md` has all metadata copy + nutrition labels pre-filled. Legal docs (`privacy-policy.md`, `terms.md`, `refund-policy.md`, `help.md`) are written to be pasted into Notion as public pages — URLs then go into `VirtualSIM/LegalLinks.swift`.
