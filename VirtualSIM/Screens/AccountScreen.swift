@@ -22,6 +22,7 @@ struct AccountScreen: View {
                 support
                 legal
                 dangerZone
+                credit
             }
             .padding(.top, 8)
             .padding(.bottom, 140)
@@ -268,6 +269,16 @@ struct AccountScreen: View {
         }
         .padding(.horizontal, 16)
         .padding(.top, 22)
+    }
+
+    private var credit: some View {
+        Text("Developed by Adil Hamidi")
+            .font(RFont.text(11))
+            .foregroundStyle(theme.text3)
+            .opacity(0.7)
+            .frame(maxWidth: .infinity)
+            .padding(.top, 32)
+            .padding(.bottom, 16)
     }
 
     private var dangerZone: some View {
