@@ -151,7 +151,7 @@ struct ContentView: View {
                 else { state.lastService = picked }
             })
         case .country:
-            CountrySheet(filter: state.filter, onPick: { picked in
+            CountrySheet(onPick: { picked in
                 if state.flow == .checkout { state.checkoutCountry = picked }
                 else { state.lastCountry = picked }
             })
