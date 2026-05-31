@@ -23,6 +23,10 @@ final class AppState {
     var services: [Service] = SeedData.services
     var countries: [Country] = SeedData.countries
     var routes: [Route] = []
+    /// O(1) lookup index built from `routes`. Rebuilt in loadCatalog so we
+    /// don't linear-scan 17k+ rows on every cost() call.
+    @ObservationIgnored
+    private var routeIndex: [String: Route] = [:]
     var lastService: Service
     var lastCountry: Country
     var orders: [Order] = []
@@ -71,7 +75,7 @@ final class AppState {
     /// when they differ from defaults (price override or non-active status);
     /// any unlisted pair is treated as active at service.cost.
     func cost(for service: Service, country: Country) -> Int {
-        if let route = routes.first(where: { $0.serviceId == service.id && $0.countryId == country.id }) {
+        if let route = routeIndex["\(service.id)|\(country.id)"] {
             if route.status != "active" { return service.cost }
             return route.retailCredits ?? service.cost
         }
@@ -101,11 +105,13 @@ final class AppState {
             countries = catalog.countries
             routes = catalog.routes
 
-            #if DEBUG
-            let google = routes.first { $0.serviceId == "google" && $0.countryId == "us" }
-            print("📦 Catalog loaded: \(services.count) services, \(countries.count) countries, \(routes.count) routes")
-            print("   google/us route: \(String(describing: google))")
-            #endif
+            // Rebuild the lookup index — used by cost(for:country:).
+            var idx: [String: Route] = [:]
+            idx.reserveCapacity(catalog.routes.count)
+            for r in catalog.routes {
+                idx["\(r.serviceId)|\(r.countryId)"] = r
+            }
+            routeIndex = idx
 
             if let match = services.first(where: { $0.id == lastService.id }) {
                 lastService = match
@@ -118,9 +124,7 @@ final class AppState {
                 lastCountry = first
             }
         } catch {
-            #if DEBUG
-            print("❌ Catalog load failed: \(error)")
-            #endif
+            // keep current state
         }
     }
 
