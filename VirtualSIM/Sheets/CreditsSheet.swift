@@ -61,7 +61,7 @@ struct CreditsSheet: View {
                 }
             }
             Spacer()
-            Text("1 cr ≈ 1 SMS")
+            Text("Pay-per-use")
                 .font(RFont.text(12))
                 .foregroundStyle(theme.text2)
                 .padding(.horizontal, 10)
