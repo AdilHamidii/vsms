@@ -1,0 +1,600 @@
+{
+  "sourceLanguage" : "en",
+  "version" : "1.0",
+  "strings" : {
+    "Account" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Konto" } },
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "Cuenta" } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Compte" } },
+        "it" : { "stringUnit" : { "state" : "translated", "value" : "Account" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "アカウント" } },
+        "pt-BR" : { "stringUnit" : { "state" : "translated", "value" : "Conta" } }
+      }
+    },
+    "Active rental" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Aktive Miete" } },
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "Alquiler activo" } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Location active" } },
+        "it" : { "stringUnit" : { "state" : "translated", "value" : "Noleggio attivo" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "アクティブ利用中" } },
+        "pt-BR" : { "stringUnit" : { "state" : "translated", "value" : "Aluguel ativo" } }
+      }
+    },
+    "Appearance" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Darstellung" } },
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "Apariencia" } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Apparence" } },
+        "it" : { "stringUnit" : { "state" : "translated", "value" : "Aspetto" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "外観" } },
+        "pt-BR" : { "stringUnit" : { "state" : "translated", "value" : "Aparência" } }
+      }
+    },
+    "Auto-refund" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Auto-Erstattung" } },
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "Reembolso automático" } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Remboursement auto" } },
+        "it" : { "stringUnit" : { "state" : "translated", "value" : "Rimborso automatico" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "自動返金" } },
+        "pt-BR" : { "stringUnit" : { "state" : "translated", "value" : "Reembolso automático" } }
+      }
+    },
+    "BALANCE" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "GUTHABEN" } },
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "SALDO" } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "SOLDE" } },
+        "it" : { "stringUnit" : { "state" : "translated", "value" : "SALDO" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "残高" } },
+        "pt-BR" : { "stringUnit" : { "state" : "translated", "value" : "SALDO" } }
+      }
+    },
+    "Buy credits" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Guthaben kaufen" } },
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "Comprar créditos" } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Acheter des crédits" } },
+        "it" : { "stringUnit" : { "state" : "translated", "value" : "Compra crediti" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "クレジットを購入" } },
+        "pt-BR" : { "stringUnit" : { "state" : "translated", "value" : "Comprar créditos" } }
+      }
+    },
+    "Cancel" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Abbrechen" } },
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "Cancelar" } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Annuler" } },
+        "it" : { "stringUnit" : { "state" : "translated", "value" : "Annulla" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "キャンセル" } },
+        "pt-BR" : { "stringUnit" : { "state" : "translated", "value" : "Cancelar" } }
+      }
+    },
+    "Change" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Ändern" } },
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "Cambiar" } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Modifier" } },
+        "it" : { "stringUnit" : { "state" : "translated", "value" : "Modifica" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "変更" } },
+        "pt-BR" : { "stringUnit" : { "state" : "translated", "value" : "Alterar" } }
+      }
+    },
+    "Check now" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Jetzt prüfen" } },
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "Comprobar ahora" } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Vérifier" } },
+        "it" : { "stringUnit" : { "state" : "translated", "value" : "Controlla ora" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "今すぐ確認" } },
+        "pt-BR" : { "stringUnit" : { "state" : "translated", "value" : "Verificar agora" } }
+      }
+    },
+    "Cheapest" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Günstigste" } },
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "Más barato" } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Moins cher" } },
+        "it" : { "stringUnit" : { "state" : "translated", "value" : "Più economico" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "最安" } },
+        "pt-BR" : { "stringUnit" : { "state" : "translated", "value" : "Mais barato" } }
+      }
+    },
+    "Choose a country" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Land wählen" } },
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "Elige un país" } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Choisir un pays" } },
+        "it" : { "stringUnit" : { "state" : "translated", "value" : "Scegli un paese" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "国を選択" } },
+        "pt-BR" : { "stringUnit" : { "state" : "translated", "value" : "Escolher país" } }
+      }
+    },
+    "Choose a service" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Dienst wählen" } },
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "Elige un servicio" } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Choisir un service" } },
+        "it" : { "stringUnit" : { "state" : "translated", "value" : "Scegli un servizio" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "サービスを選択" } },
+        "pt-BR" : { "stringUnit" : { "state" : "translated", "value" : "Escolher serviço" } }
+      }
+    },
+    "Code received" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Code erhalten" } },
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "Código recibido" } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Code reçu" } },
+        "it" : { "stringUnit" : { "state" : "translated", "value" : "Codice ricevuto" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "コード受信" } },
+        "pt-BR" : { "stringUnit" : { "state" : "translated", "value" : "Código recebido" } }
+      }
+    },
+    "Confirm" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Bestätigen" } },
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "Confirmar" } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Confirmer" } },
+        "it" : { "stringUnit" : { "state" : "translated", "value" : "Conferma" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "確認" } },
+        "pt-BR" : { "stringUnit" : { "state" : "translated", "value" : "Confirmar" } }
+      }
+    },
+    "Contact support" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Support kontaktieren" } },
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "Contactar soporte" } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Contacter le support" } },
+        "it" : { "stringUnit" : { "state" : "translated", "value" : "Contatta assistenza" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "サポートに連絡" } },
+        "pt-BR" : { "stringUnit" : { "state" : "translated", "value" : "Contatar suporte" } }
+      }
+    },
+    "Continue" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Weiter" } },
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "Continuar" } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Continuer" } },
+        "it" : { "stringUnit" : { "state" : "translated", "value" : "Continua" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "続ける" } },
+        "pt-BR" : { "stringUnit" : { "state" : "translated", "value" : "Continuar" } }
+      }
+    },
+    "Copied" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Kopiert" } },
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "Copiado" } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Copié" } },
+        "it" : { "stringUnit" : { "state" : "translated", "value" : "Copiato" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "コピー済み" } },
+        "pt-BR" : { "stringUnit" : { "state" : "translated", "value" : "Copiado" } }
+      }
+    },
+    "Copy code" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Code kopieren" } },
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "Copiar código" } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Copier le code" } },
+        "it" : { "stringUnit" : { "state" : "translated", "value" : "Copia codice" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "コードをコピー" } },
+        "pt-BR" : { "stringUnit" : { "state" : "translated", "value" : "Copiar código" } }
+      }
+    },
+    "Copy number" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Nummer kopieren" } },
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "Copiar número" } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Copier le numéro" } },
+        "it" : { "stringUnit" : { "state" : "translated", "value" : "Copia numero" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "番号をコピー" } },
+        "pt-BR" : { "stringUnit" : { "state" : "translated", "value" : "Copiar número" } }
+      }
+    },
+    "credits" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Guthaben" } },
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "créditos" } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "crédits" } },
+        "it" : { "stringUnit" : { "state" : "translated", "value" : "crediti" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "クレジット" } },
+        "pt-BR" : { "stringUnit" : { "state" : "translated", "value" : "créditos" } }
+      }
+    },
+    "Danger zone" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Gefahrenzone" } },
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "Zona de peligro" } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Zone sensible" } },
+        "it" : { "stringUnit" : { "state" : "translated", "value" : "Zona di pericolo" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "危険ゾーン" } },
+        "pt-BR" : { "stringUnit" : { "state" : "translated", "value" : "Zona de perigo" } }
+      }
+    },
+    "Default" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Standard" } },
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "Predeterminado" } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Par défaut" } },
+        "it" : { "stringUnit" : { "state" : "translated", "value" : "Predefinito" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "デフォルト" } },
+        "pt-BR" : { "stringUnit" : { "state" : "translated", "value" : "Padrão" } }
+      }
+    },
+    "Default country" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Standardland" } },
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "País predeterminado" } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Pays par défaut" } },
+        "it" : { "stringUnit" : { "state" : "translated", "value" : "Paese predefinito" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "デフォルトの国" } },
+        "pt-BR" : { "stringUnit" : { "state" : "translated", "value" : "País padrão" } }
+      }
+    },
+    "Delete account" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Konto löschen" } },
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "Eliminar cuenta" } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Supprimer le compte" } },
+        "it" : { "stringUnit" : { "state" : "translated", "value" : "Elimina account" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "アカウントを削除" } },
+        "pt-BR" : { "stringUnit" : { "state" : "translated", "value" : "Excluir conta" } }
+      }
+    },
+    "Fastest" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Schnellste" } },
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "Más rápido" } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Plus rapide" } },
+        "it" : { "stringUnit" : { "state" : "translated", "value" : "Più veloce" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "最速" } },
+        "pt-BR" : { "stringUnit" : { "state" : "translated", "value" : "Mais rápido" } }
+      }
+    },
+    "Get a number." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Nummer holen." } },
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "Obtén un número." } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Obtenez un numéro." } },
+        "it" : { "stringUnit" : { "state" : "translated", "value" : "Ottieni un numero." } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "番号を取得しましょう。" } },
+        "pt-BR" : { "stringUnit" : { "state" : "translated", "value" : "Obtenha um número." } }
+      }
+    },
+    "Get number" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Nummer holen" } },
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "Obtener número" } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Obtenir un numéro" } },
+        "it" : { "stringUnit" : { "state" : "translated", "value" : "Ottieni numero" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "番号を取得" } },
+        "pt-BR" : { "stringUnit" : { "state" : "translated", "value" : "Obter número" } }
+      }
+    },
+    "Get started" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Loslegen" } },
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "Comenzar" } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Commencer" } },
+        "it" : { "stringUnit" : { "state" : "translated", "value" : "Inizia" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "始める" } },
+        "pt-BR" : { "stringUnit" : { "state" : "translated", "value" : "Começar" } }
+      }
+    },
+    "Good afternoon" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Guten Tag" } },
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "Buenas tardes" } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Bon après-midi" } },
+        "it" : { "stringUnit" : { "state" : "translated", "value" : "Buon pomeriggio" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "こんにちは" } },
+        "pt-BR" : { "stringUnit" : { "state" : "translated", "value" : "Boa tarde" } }
+      }
+    },
+    "Good evening" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Guten Abend" } },
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "Buenas noches" } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Bonsoir" } },
+        "it" : { "stringUnit" : { "state" : "translated", "value" : "Buona sera" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "こんばんは" } },
+        "pt-BR" : { "stringUnit" : { "state" : "translated", "value" : "Boa noite" } }
+      }
+    },
+    "Good morning" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Guten Morgen" } },
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "Buenos días" } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Bonjour" } },
+        "it" : { "stringUnit" : { "state" : "translated", "value" : "Buongiorno" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "おはようございます" } },
+        "pt-BR" : { "stringUnit" : { "state" : "translated", "value" : "Bom dia" } }
+      }
+    },
+    "Help center" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Hilfecenter" } },
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "Centro de ayuda" } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Centre d’aide" } },
+        "it" : { "stringUnit" : { "state" : "translated", "value" : "Centro assistenza" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "ヘルプセンター" } },
+        "pt-BR" : { "stringUnit" : { "state" : "translated", "value" : "Central de ajuda" } }
+      }
+    },
+    "Home" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Start" } },
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "Inicio" } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Accueil" } },
+        "it" : { "stringUnit" : { "state" : "translated", "value" : "Home" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "ホーム" } },
+        "pt-BR" : { "stringUnit" : { "state" : "translated", "value" : "Início" } }
+      }
+    },
+    "Last used" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Zuletzt verwendet" } },
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "Usado recientemente" } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Dernier utilisé" } },
+        "it" : { "stringUnit" : { "state" : "translated", "value" : "Usato di recente" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "最近使用した" } },
+        "pt-BR" : { "stringUnit" : { "state" : "translated", "value" : "Usado recentemente" } }
+      }
+    },
+    "Legal" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Rechtliches" } },
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "Legal" } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Mentions légales" } },
+        "it" : { "stringUnit" : { "state" : "translated", "value" : "Legale" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "法的情報" } },
+        "pt-BR" : { "stringUnit" : { "state" : "translated", "value" : "Jurídico" } }
+      }
+    },
+    "Number is reserved for 20 minutes." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Nummer ist für 20 Minuten reserviert." } },
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "El número se reserva durante 20 minutos." } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Le numéro est réservé pendant 20 minutes." } },
+        "it" : { "stringUnit" : { "state" : "translated", "value" : "Il numero è riservato per 20 minuti." } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "番号は20分間予約されます。" } },
+        "pt-BR" : { "stringUnit" : { "state" : "translated", "value" : "O número fica reservado por 20 minutos." } }
+      }
+    },
+    "Orders" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Bestellungen" } },
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "Pedidos" } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Commandes" } },
+        "it" : { "stringUnit" : { "state" : "translated", "value" : "Ordini" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "注文" } },
+        "pt-BR" : { "stringUnit" : { "state" : "translated", "value" : "Pedidos" } }
+      }
+    },
+    "OTP reveal" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "OTP-Anzeige" } },
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "Revelación OTP" } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Affichage OTP" } },
+        "it" : { "stringUnit" : { "state" : "translated", "value" : "Rivelazione OTP" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "OTP表示" } },
+        "pt-BR" : { "stringUnit" : { "state" : "translated", "value" : "Revelação do OTP" } }
+      }
+    },
+    "Preferences" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Einstellungen" } },
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "Preferencias" } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Préférences" } },
+        "it" : { "stringUnit" : { "state" : "translated", "value" : "Preferenze" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "設定" } },
+        "pt-BR" : { "stringUnit" : { "state" : "translated", "value" : "Preferências" } }
+      }
+    },
+    "Privacy policy" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Datenschutz" } },
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "Política de privacidad" } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Politique de confidentialité" } },
+        "it" : { "stringUnit" : { "state" : "translated", "value" : "Informativa sulla privacy" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "プライバシーポリシー" } },
+        "pt-BR" : { "stringUnit" : { "state" : "translated", "value" : "Política de privacidade" } }
+      }
+    },
+    "Push notifications" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Push-Benachrichtigungen" } },
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "Notificaciones push" } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Notifications push" } },
+        "it" : { "stringUnit" : { "state" : "translated", "value" : "Notifiche push" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "プッシュ通知" } },
+        "pt-BR" : { "stringUnit" : { "state" : "translated", "value" : "Notificações push" } }
+      }
+    },
+    "Recent" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Kürzlich" } },
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "Reciente" } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Récent" } },
+        "it" : { "stringUnit" : { "state" : "translated", "value" : "Recenti" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "最近" } },
+        "pt-BR" : { "stringUnit" : { "state" : "translated", "value" : "Recentes" } }
+      }
+    },
+    "Refund policy" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Erstattungsrichtlinie" } },
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "Política de reembolso" } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Politique de remboursement" } },
+        "it" : { "stringUnit" : { "state" : "translated", "value" : "Politica di rimborso" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "返金ポリシー" } },
+        "pt-BR" : { "stringUnit" : { "state" : "translated", "value" : "Política de reembolso" } }
+      }
+    },
+    "Search service" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Dienst suchen" } },
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "Buscar servicio" } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Rechercher un service" } },
+        "it" : { "stringUnit" : { "state" : "translated", "value" : "Cerca servizio" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "サービスを検索" } },
+        "pt-BR" : { "stringUnit" : { "state" : "translated", "value" : "Pesquisar serviço" } }
+      }
+    },
+    "Show success metrics" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Erfolgsmetriken zeigen" } },
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "Mostrar métricas de éxito" } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Afficher les métriques" } },
+        "it" : { "stringUnit" : { "state" : "translated", "value" : "Mostra metriche di successo" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "成功指標を表示" } },
+        "pt-BR" : { "stringUnit" : { "state" : "translated", "value" : "Mostrar métricas" } }
+      }
+    },
+    "Sign out" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Abmelden" } },
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "Cerrar sesión" } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Se déconnecter" } },
+        "it" : { "stringUnit" : { "state" : "translated", "value" : "Esci" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "サインアウト" } },
+        "pt-BR" : { "stringUnit" : { "state" : "translated", "value" : "Sair" } }
+      }
+    },
+    "Skip" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Überspringen" } },
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "Omitir" } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Passer" } },
+        "it" : { "stringUnit" : { "state" : "translated", "value" : "Salta" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "スキップ" } },
+        "pt-BR" : { "stringUnit" : { "state" : "translated", "value" : "Pular" } }
+      }
+    },
+    "Support" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Support" } },
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "Soporte" } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Support" } },
+        "it" : { "stringUnit" : { "state" : "translated", "value" : "Assistenza" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "サポート" } },
+        "pt-BR" : { "stringUnit" : { "state" : "translated", "value" : "Suporte" } }
+      }
+    },
+    "Terms of use" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Nutzungsbedingungen" } },
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "Términos de uso" } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Conditions d’utilisation" } },
+        "it" : { "stringUnit" : { "state" : "translated", "value" : "Condizioni d’uso" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "利用規約" } },
+        "pt-BR" : { "stringUnit" : { "state" : "translated", "value" : "Termos de uso" } }
+      }
+    },
+    "Top up" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Aufladen" } },
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "Recargar" } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Recharger" } },
+        "it" : { "stringUnit" : { "state" : "translated", "value" : "Ricarica" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "チャージ" } },
+        "pt-BR" : { "stringUnit" : { "state" : "translated", "value" : "Recarregar" } }
+      }
+    },
+    "VERIFICATION CODE" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "BESTÄTIGUNGSCODE" } },
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "CÓDIGO DE VERIFICACIÓN" } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "CODE DE VÉRIFICATION" } },
+        "it" : { "stringUnit" : { "state" : "translated", "value" : "CODICE DI VERIFICA" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "認証コード" } },
+        "pt-BR" : { "stringUnit" : { "state" : "translated", "value" : "CÓDIGO DE VERIFICAÇÃO" } }
+      }
+    },
+    "Waiting" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Wartet" } },
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "Esperando" } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "En attente" } },
+        "it" : { "stringUnit" : { "state" : "translated", "value" : "In attesa" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "待機中" } },
+        "pt-BR" : { "stringUnit" : { "state" : "translated", "value" : "Aguardando" } }
+      }
+    },
+    "Waiting animation" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Warteanimation" } },
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "Animación de espera" } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Animation d’attente" } },
+        "it" : { "stringUnit" : { "state" : "translated", "value" : "Animazione d’attesa" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "待機アニメーション" } },
+        "pt-BR" : { "stringUnit" : { "state" : "translated", "value" : "Animação de espera" } }
+      }
+    },
+    "YOUR NUMBER" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "DEINE NUMMER" } },
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "TU NÚMERO" } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "VOTRE NUMÉRO" } },
+        "it" : { "stringUnit" : { "state" : "translated", "value" : "IL TUO NUMERO" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "あなたの番号" } },
+        "pt-BR" : { "stringUnit" : { "state" : "translated", "value" : "SEU NÚMERO" } }
+      }
+    }
+  }
+}
