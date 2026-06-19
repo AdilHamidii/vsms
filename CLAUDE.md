@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-**vSIM OTP** — iOS app that rents temporary phone numbers from SMSPVA and delivers SMS verification codes. iOS frontend in SwiftUI + Supabase backend (Postgres + Auth + Edge Functions + pg_cron).
+**vSMS** (App Store display name; formerly "vSIM OTP" — the Xcode target/scheme is still `VirtualSIM`) — iOS app that rents temporary phone numbers from SMSPVA and delivers SMS verification codes. iOS frontend in SwiftUI + Supabase backend (Postgres + Auth + Edge Functions + pg_cron).
 
 Bundle ID: `com.anthersystems.VirtualSIM` · Supabase ref: `enugzltysdmjzavisloy` · Project root holds `Appidea.md` (original product brief).
 
@@ -27,7 +27,8 @@ supabase functions deploy poll-active-orders sync-prices --no-verify-jwt
 # Query the remote DB
 supabase db query --linked "select count(*) from public.routes;"
 
-# Manually trigger sync-prices (rare; cron also covers it later)
+# Manually trigger sync-prices (rare; pg_cron 'relay-sync-prices' runs it daily
+# at 04:00 UTC — see migration 20260602200000_schedule_sync_prices.sql)
 CRON=$(supabase db query --linked --output json \
   "select decrypted_secret from vault.decrypted_secrets where name='cron_secret';" \
   | grep -o '"decrypted_secret":"[^"]*"' | cut -d'"' -f4)
@@ -55,6 +56,8 @@ ContentView (tabs + flow cover)             routes, orders, push_devices, iap_re
 SMSPVA                                       cancel-order   — refund + SMSPVA denial
   ←── api.smspva.com/activation/...          poll-active-orders (cron, every 1 min)
        (apikey HEADER, not query string)     sync-prices    — refresh route prices
+                                                            (cron 'relay-sync-prices',
+                                                             daily 04:00 UTC)
                                              register-push  — store APNs token
 APNs                                         iap-verify     — StoreKit 2 JWS verify
   ←── token-auth (.p8) HTTP/2               delete-account — auth.admin.deleteUser
