@@ -1,11 +1,26 @@
 import { handleCors, json } from "../_shared/cors.ts";
 import { admin, callerUserId } from "../_shared/supabaseAdmin.ts";
-import { getNumber, isOk } from "../_shared/smspva.ts";
+import { getNumber, getServicePrice, isOk } from "../_shared/smspva.ts";
 
 interface Body {
   service_id: string;
   country_id: string;
 }
+
+// Verify-then-charge guard. Before charging the user or reserving a number we
+// re-check the LIVE SMSPVA price and refuse the order unless the credits we'd
+// charge are worth at least MIN_MARGIN× that cost. This closes the loss vectors
+// a stale synced price opens (price spiked since last sync, or a route frozen
+// at a too-low seed), and the multiplier also buffers the random-operator
+// variance (getNumber with no operator can land on a pricier operator than the
+// base price we check here).
+//
+// NET_USD_PER_CREDIT is the conservative net revenue per credit: the largest
+// pack (30 cr / $12.99 ≈ $0.433) after Apple's 30% cut. Using the floor means
+// an order that clears the gate is profitable across every pack. Raise it
+// toward the gross ~0.43 if you'd rather abort fewer orders.
+const MIN_MARGIN = 1.8;
+const NET_USD_PER_CREDIT = 0.30;
 
 Deno.serve(async (req) => {
   const cors = handleCors(req); if (cors) return cors;
@@ -33,16 +48,48 @@ Deno.serve(async (req) => {
 
   const { data: route, error: rErr } = await sb
     .from("routes")
-    .select("retail_credits, status")
+    .select("retail_credits, status, last_cost_cents")
     .eq("service_id", service.id)
     .eq("country_id", country.id)
     .maybeSingle();
   if (rErr) return json({ error: "route_lookup_failed", detail: rErr.message }, { status: 500 });
-  if (!route || route.status !== "active") {
+  // A route is bookable only if it is active AND has a confirmed retail price.
+  // Falling back to service.cost when retail_credits is null could undercharge
+  // the user vs the actual SMSPVA cost — refuse instead.
+  if (!route || route.status !== "active" || route.retail_credits == null) {
     return json({ error: "route_unavailable" }, { status: 409 });
   }
 
-  const cost = (route.retail_credits ?? service.cost) as number;
+  const cost = route.retail_credits as number;
+
+  // Verify-then-charge: re-read the live SMSPVA price and refuse if this order
+  // wouldn't clear MIN_MARGIN. Runs BEFORE wallet_spend and the getNumber
+  // reservation, so a rejected order costs the user nothing.
+  let liveCostUsd: number | null = null;
+  try {
+    const priceResp = await getServicePrice(country.smspva_code, service.smspva_code);
+    if (isOk(priceResp) && Number.isFinite(priceResp.data?.price) && priceResp.data.price > 0) {
+      liveCostUsd = priceResp.data.price;
+    }
+  } catch {
+    // Live lookup failed — fall back to the last synced cost below.
+  }
+  // Graceful degradation: if the live price is unavailable, fall back to the
+  // last synced cost so a transient price-endpoint hiccup doesn't block all
+  // sales. If we have neither, refuse rather than sell on an unknown cost.
+  if (liveCostUsd == null && route.last_cost_cents != null && (route.last_cost_cents as number) > 0) {
+    liveCostUsd = (route.last_cost_cents as number) / 100;
+  }
+  if (liveCostUsd == null) {
+    return json({ error: "route_unavailable" }, { status: 409 });
+  }
+  if (cost * NET_USD_PER_CREDIT < MIN_MARGIN * liveCostUsd) {
+    console.warn(`margin_too_low service=${service.id} country=${country.id} credits=${cost} liveCostUsd=${liveCostUsd}`);
+    return json({
+      error: "margin_too_low",
+      needed_credits: Math.ceil((MIN_MARGIN * liveCostUsd) / NET_USD_PER_CREDIT),
+    }, { status: 409 });
+  }
 
   const { data: spent, error: spendErr } = await sb.rpc("wallet_spend", {
     p_user: userId, p_amount: cost, p_reason: "spend",
