@@ -87,8 +87,8 @@ VirtualSIM/
                                  OTP, Orders, Account
   Sheets/                        ServiceSheet (search + categories), CountrySheet
                                  (sort + per-route price), CreditsSheet (StoreKit 2)
-  Components/                    Theme primitives + ServiceLogo (Clearbit logo with
-                                 Google FaviconV2 fallback), FlagImage (flagcdn.com)
+  Components/                    Theme primitives + ServiceLogo (DuckDuckGo ip3 icon
+                                 with Google FaviconV2 fallback), FlagImage (flagcdn.com)
   Push/, IAP/, Onboarding/, DesignSystem/  Self-explanatory
   Localizable.xcstrings          String Catalog: en source + de/es/fr/it/ja/pt-BR
   Products.storekit              Local IAP test config (enable via scheme)
@@ -119,7 +119,7 @@ VirtualSIM/
 - **IAP environment check constraint must allow `'Xcode'`** for local StoreKit testing alongside `'Sandbox'`/`'Production'`. See migration `..._iap_allow_xcode_env.sql`.
 - **APNs `aps-environment` is `development`** in the entitlements file. Flip to `production` (and set `APNS_ENV=production` secret) before archiving for App Store / TestFlight.
 - **`Secrets.swift` is gitignored.** Template in `supabase/README.md`. Just `supabaseURL` + `supabaseAnonKey`. The publishable key (`sb_publishable_*`) is fine in client code — it's the new name for the anon key.
-- **Logo loading cascades** in `ServiceLogo`: Clearbit → Google FaviconV2 → SF Symbol on tinted background. URLCache caches across launches.
+- **Logo loading cascades** in `ServiceLogo`: DuckDuckGo ip3 (`icons.duckduckgo.com/ip3/<domain>.ico`) → Google FaviconV2 → SF Symbol on tinted background. URLCache caches across launches. **Clearbit (`logo.clearbit.com`) was removed** — HubSpot sunset the free Logo API on 2025-12-01 and its host no longer resolves; leaving it as source #1 made every logo eat a DNS failure before falling through. Do not re-add it.
 - **Apple Sign-In is iOS-native flow** — no JWT secret needed in Supabase (the apple provider config). The dashboard's secret/services-id fields stay blank.
 
 ## Error UX rule
