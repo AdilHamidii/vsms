@@ -9,6 +9,14 @@ struct ServiceSheet: View {
     @State private var query: String = ""
     @State private var category: String = "All"
 
+    /// The country the user is currently configuring. While in checkout we use
+    /// the draft country; otherwise the Home "Last used". Prices shown per
+    /// service are the REAL synced route price for this country (mirrors
+    /// CountrySheet, which fixes the service and varies the country).
+    private var currentCountry: Country {
+        state.checkoutCountry ?? state.lastCountry
+    }
+
     private var filtered: [Service] {
         let q = query.trimmingCharacters(in: .whitespaces).lowercased()
         return state.services.filter { s in
@@ -74,7 +82,8 @@ struct ServiceSheet: View {
             } else {
                 LazyVStack(spacing: 0) {
                     ForEach(filtered) { service in
-                        ServiceRow(service: service) {
+                        ServiceRow(service: service,
+                                   price: state.cost(for: service, country: currentCountry)) {
                             onPick(service)
                             dismiss()
                         }
@@ -95,17 +104,21 @@ struct ServiceSheet: View {
 private struct ServiceRow: View {
     @Environment(\.theme) private var theme
     let service: Service
+    /// Real synced route price for the currently-selected country, or nil when
+    /// the (service, country) pair has no confirmed price (unavailable to book).
+    let price: Int?
     let onTap: () -> Void
 
     var body: some View {
         Button(action: onTap) {
             HStack(spacing: 12) {
                 ServiceLogo(service: service, size: 40)
+                    .opacity(price == nil ? 0.45 : 1)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(service.name)
                         .font(RFont.display(16, weight: .semibold))
                         .tracking(-0.3)
-                        .foregroundStyle(theme.text)
+                        .foregroundStyle(price == nil ? theme.text2 : theme.text)
                     HStack(spacing: 8) {
                         Text(service.category)
                             .font(RFont.text(12))
@@ -121,13 +134,19 @@ private struct ServiceRow: View {
                     }
                 }
                 Spacer(minLength: 0)
-                HStack(alignment: .firstTextBaseline, spacing: 3) {
-                    Text("\(service.cost)")
-                        .font(RFont.display(15, weight: .semibold))
-                        .foregroundStyle(theme.text)
-                    Text("cr")
+                if let price {
+                    HStack(alignment: .firstTextBaseline, spacing: 3) {
+                        Text("\(price)")
+                            .font(RFont.display(15, weight: .semibold))
+                            .foregroundStyle(theme.text)
+                        Text("cr")
+                            .font(RFont.text(12, weight: .medium))
+                            .foregroundStyle(theme.text2)
+                    }
+                } else {
+                    Text("Unavailable")
                         .font(RFont.text(12, weight: .medium))
-                        .foregroundStyle(theme.text2)
+                        .foregroundStyle(theme.text3)
                 }
             }
             .padding(.horizontal, 14)
