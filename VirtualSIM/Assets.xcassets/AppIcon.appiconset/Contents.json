@@ -1,7 +1,7 @@
 {
   "images" : [
     {
-      "filename" : "vSIM-OTP-icon-light-1024.png",
+      "filename" : "vSMS-checkV-SMS-1024-light.png",
       "idiom" : "universal",
       "platform" : "ios",
       "size" : "1024x1024"
@@ -13,7 +13,7 @@
           "value" : "dark"
         }
       ],
-      "filename" : "vSIM-OTP-icon-dark-1024.png",
+      "filename" : "vSMS-checkV-SMS-1024-dark.png",
       "idiom" : "universal",
       "platform" : "ios",
       "size" : "1024x1024"

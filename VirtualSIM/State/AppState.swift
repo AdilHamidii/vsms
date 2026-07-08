@@ -71,15 +71,18 @@ final class AppState {
 
     var deliveredCount: Int { orders.filter { $0.status == .received }.count }
 
-    /// Look up the route for (service, country). Routes are only sent down
-    /// when they differ from defaults (price override or non-active status);
-    /// any unlisted pair is treated as active at service.cost.
-    func cost(for service: Service, country: Country) -> Int {
-        if let route = routeIndex["\(service.id)|\(country.id)"] {
-            if route.status != "active" { return service.cost }
-            return route.retailCredits ?? service.cost
+    /// Returns the credit cost for (service, country), or nil when we don't
+    /// have a confirmed retail price. nil means the pair is unavailable to
+    /// book — UI should show "Unavailable" and disable the Get number button.
+    /// We deliberately do NOT fall back to service.cost (a seed default), as
+    /// undercharging vs the live SMSPVA price would burn margin per order.
+    func cost(for service: Service, country: Country) -> Int? {
+        guard let route = routeIndex["\(service.id)|\(country.id)"],
+              route.status == "active",
+              let credits = route.retailCredits else {
+            return nil
         }
-        return service.cost
+        return credits
     }
 
     /// Country picker shows every country in the catalog. A specific

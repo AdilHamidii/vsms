@@ -35,7 +35,7 @@ final class IAPStore {
             for p in fetched { map[p.id] = p }
             self.products = map
             if fetched.isEmpty {
-                self.lastError = "Credit packs aren't available yet. (Sandbox: enable Products.storekit in your scheme. Production: make sure IAP products are approved in App Store Connect.)"
+                self.lastError = "Credit packs are temporarily unavailable. Please try again in a moment."
             } else {
                 self.lastError = nil
             }

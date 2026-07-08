@@ -11,8 +11,11 @@ struct CheckoutScreen: View {
 
     private var service: Service { state.checkoutService ?? state.lastService }
     private var country: Country { state.checkoutCountry ?? state.lastCountry }
-    private var routeCost: Int { state.cost(for: service, country: country) }
-    private var insufficient: Bool { state.balance < routeCost }
+    private var routeCost: Int? { state.cost(for: service, country: country) }
+    private var insufficient: Bool {
+        guard let routeCost else { return false }
+        return state.balance < routeCost
+    }
 
     var body: some View {
         ZStack(alignment: .bottom) {
@@ -106,18 +109,27 @@ struct CheckoutScreen: View {
                 }, trailing: {
                     HStack(spacing: 8) {
                         VStack(alignment: .trailing, spacing: 1) {
-                            HStack(alignment: .firstTextBaseline, spacing: 4) {
-                                Text("\(routeCost)")
-                                    .font(RFont.display(17, weight: .semibold))
-                                    .tracking(-0.3)
-                                    .foregroundStyle(theme.text)
-                                Text("credits")
-                                    .font(RFont.text(13, weight: .medium))
+                            if let routeCost {
+                                HStack(alignment: .firstTextBaseline, spacing: 4) {
+                                    Text("\(routeCost)")
+                                        .font(RFont.display(17, weight: .semibold))
+                                        .tracking(-0.3)
+                                        .foregroundStyle(theme.text)
+                                    Text("credits")
+                                        .font(RFont.text(13, weight: .medium))
+                                        .foregroundStyle(theme.text2)
+                                }
+                                Text("\(state.balance - routeCost) left after")
+                                    .font(RFont.text(12))
                                     .foregroundStyle(theme.text2)
+                            } else {
+                                Text("Unavailable")
+                                    .font(RFont.display(15, weight: .semibold))
+                                    .foregroundStyle(theme.text2)
+                                Text("Pick another country")
+                                    .font(RFont.text(12))
+                                    .foregroundStyle(theme.text3)
                             }
-                            Text("\(state.balance - routeCost) left after")
-                                .font(RFont.text(12))
-                                .foregroundStyle(theme.text2)
                         }
                     }
                 })
@@ -145,26 +157,36 @@ struct CheckoutScreen: View {
             )
             .frame(height: 28)
             VStack {
-                if insufficient {
-                    PrimaryButton(
-                        label: "Buy credits",
-                        sub: "Need \(routeCost - state.balance) more",
-                        icon: RIcon.plus,
-                        action: openCredits
-                    )
+                if let routeCost {
+                    if insufficient {
+                        PrimaryButton(
+                            label: "Buy credits",
+                            sub: "Need \(routeCost - state.balance) more",
+                            icon: RIcon.plus,
+                            action: openCredits
+                        )
+                    } else {
+                        PrimaryButton(
+                            label: "Get number",
+                            sub: "\(routeCost) cr",
+                            icon: RIcon.bolt,
+                            action: {
+                                Task {
+                                    await state.confirmGetNumber(
+                                        using: OrdersAPI(client: api),
+                                        wallet: WalletAPI(client: api)
+                                    )
+                                }
+                            }
+                        )
+                    }
                 } else {
                     PrimaryButton(
-                        label: "Get number",
-                        sub: "\(routeCost) cr",
+                        label: "Unavailable",
+                        sub: "Pick another country",
                         icon: RIcon.bolt,
-                        action: {
-                            Task {
-                                await state.confirmGetNumber(
-                                    using: OrdersAPI(client: api),
-                                    wallet: WalletAPI(client: api)
-                                )
-                            }
-                        }
+                        disabled: true,
+                        action: {}
                     )
                 }
             }
