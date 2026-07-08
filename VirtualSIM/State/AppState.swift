@@ -14,6 +14,11 @@ private enum PrefKey {
     static let waitingAnimation = "pref.waitingAnimation"
     static let otpAnimation     = "pref.otpAnimation"
     static let showMetrics      = "pref.showMetrics"
+
+    // Review-prompt gating (App Store 5.6.4: native prompt, no incentive).
+    static let successfulCodes  = "review.successfulCodes"
+    static let lastCountedOrder = "review.lastCountedOrder"
+    static let lastPromptVer    = "review.lastPromptVersion"
 }
 
 @Observable
@@ -70,6 +75,30 @@ final class AppState {
     }
 
     var deliveredCount: Int { orders.filter { $0.status == .received }.count }
+
+    /// Whether to surface Apple's native review sheet now that a fresh code
+    /// was delivered. Returns true at most once per app version, and only from
+    /// the user's 2nd successful code onward — a genuinely positive moment.
+    ///
+    /// No credits or incentive are attached: App Store guideline 5.6.4 forbids
+    /// paying for reviews. The system further throttles the actual sheet
+    /// (~3 prompts/user/year), so we spend that quota only on happy outcomes.
+    func shouldRequestReview(forOrderId id: String) -> Bool {
+        let d = UserDefaults.standard
+        // A re-render of the same delivery must not double-count.
+        guard d.string(forKey: PrefKey.lastCountedOrder) != id else { return false }
+        d.set(id, forKey: PrefKey.lastCountedOrder)
+
+        let count = d.integer(forKey: PrefKey.successfulCodes) + 1
+        d.set(count, forKey: PrefKey.successfulCodes)
+        guard count >= 2 else { return false }
+
+        let version = Bundle.main
+            .object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? ""
+        guard d.string(forKey: PrefKey.lastPromptVer) != version else { return false }
+        d.set(version, forKey: PrefKey.lastPromptVer)
+        return true
+    }
 
     /// Look up the route for (service, country). Routes are only sent down
     /// when they differ from defaults (price override or non-active status);

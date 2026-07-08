@@ -1,8 +1,10 @@
 import SwiftUI
+import StoreKit
 
 struct OtpScreen: View {
     @Environment(\.theme) private var theme
     @Environment(AppState.self) private var state
+    @Environment(\.requestReview) private var requestReview
 
     let order: Order
     @State private var copied = false
@@ -24,6 +26,18 @@ struct OtpScreen: View {
                 .padding(.bottom, 60)
             }
             .scrollIndicators(.hidden)
+        }
+        .onAppear(perform: maybeAskForReview)
+    }
+
+    /// The code just landed — the user's happiest moment. If the gate allows,
+    /// let the digit-reveal animation finish, then show Apple's native review
+    /// sheet. Never tied to any reward (App Store 5.6.4).
+    private func maybeAskForReview() {
+        guard state.shouldRequestReview(forOrderId: order.id) else { return }
+        Task {
+            try? await Task.sleep(nanoseconds: 1_400_000_000)
+            requestReview()
         }
     }
 
