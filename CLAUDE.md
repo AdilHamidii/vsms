@@ -84,9 +84,11 @@ VirtualSIM/
   Models/                        Plain Codable structs mirroring DB column names via
                                  .convertFromSnakeCase
   Screens/                       Home, Checkout, Waiting (+ WaitingAnimations),
-                                 OTP, Orders, Account
-  Sheets/                        ServiceSheet (search + categories), CountrySheet
-                                 (sort + per-route price), CreditsSheet (StoreKit 2)
+                                 OTP (fires native review prompt on code
+                                 delivery), Orders, Account
+  Sheets/                        ServiceSheet (search + categories + per-route
+                                 price), CountrySheet (sort + per-route price),
+                                 CreditsSheet (StoreKit 2)
   Components/                    Theme primitives + ServiceLogo (DuckDuckGo ip3 icon
                                  with Google FaviconV2 fallback), FlagImage (flagcdn.com)
   Push/, IAP/, Onboarding/, DesignSystem/  Self-explanatory
@@ -104,7 +106,7 @@ VirtualSIM/
 
 ### Pricing model
 
-`AppState.cost(for:country:)` uses an O(1) `routeIndex` dict (keyed `"serviceId|countryId"`) built in `loadCatalog`. Falls back to `service.cost` when route not present. **Do not** linear-scan `routes` (~17k rows after sync-prices) — that froze the country picker before the index was added.
+`AppState.cost(for:country:) -> Int?` uses an O(1) `routeIndex` dict (keyed `"serviceId|countryId"`) built in `loadCatalog`. Returns `nil` when the pair has no active route with a `retail_credits` price — meaning **unavailable to book**; UI shows "Unavailable" (see ServiceSheet/CountrySheet) and disables the Get-number button. It deliberately does **NOT** fall back to the seed `service.cost`, since undercharging vs the live SMSPVA price burns margin per order. **Do not** linear-scan `routes` (~17k rows after sync-prices) — that froze the country picker before the index was added.
 
 `sync-prices` formula: `credits = max(1, ceil(price / 0.15))`. Tune `CREDIT_DIVISOR` in `supabase/functions/sync-prices/index.ts` for global margin adjustment. Currently anchors: 15 EUR → 100 cr, ≤ 5¢ → 1 cr.
 
@@ -117,10 +119,11 @@ VirtualSIM/
 - **`tint_hex`, not `tint`** — Service column is `tint_hex` (snake) → `tintHex` (Swift). Same casing rule for every Service/Country/Route field. Don't reintroduce shorter names.
 - **Cron-secret auth reads from `Deno.env.get("CRON_SECRET")`**, not from `vault.decrypted_secrets`. The vault schema isn't reachable through PostgREST — the function would silently fail. Both `poll-active-orders` and `sync-prices` rely on the env var being mirrored to the vault entry.
 - **IAP environment check constraint must allow `'Xcode'`** for local StoreKit testing alongside `'Sandbox'`/`'Production'`. See migration `..._iap_allow_xcode_env.sql`.
-- **APNs `aps-environment` is `development`** in the entitlements file. Flip to `production` (and set `APNS_ENV=production` secret) before archiving for App Store / TestFlight.
+- **APNs `aps-environment` is `production`** in the entitlements file (flipped for archiving; set `APNS_ENV=production` secret to match). Flip back to `development` if you need to test push against a dev-token build from Xcode.
 - **`Secrets.swift` is gitignored.** Template in `supabase/README.md`. Just `supabaseURL` + `supabaseAnonKey`. The publishable key (`sb_publishable_*`) is fine in client code — it's the new name for the anon key.
 - **Logo loading cascades** in `ServiceLogo`: DuckDuckGo ip3 (`icons.duckduckgo.com/ip3/<domain>.ico`) → Google FaviconV2 → SF Symbol on tinted background. URLCache caches across launches. **Clearbit (`logo.clearbit.com`) was removed** — HubSpot sunset the free Logo API on 2025-12-01 and its host no longer resolves; leaving it as source #1 made every logo eat a DNS failure before falling through. Do not re-add it.
 - **Apple Sign-In is iOS-native flow** — no JWT secret needed in Supabase (the apple provider config). The dashboard's secret/services-id fields stay blank.
+- **Review prompt must stay incentive-free (App Store 5.6.4).** `OtpScreen` calls Apple's native `@Environment(\.requestReview)` (needs `import StoreKit`) on code delivery, gated by `AppState.shouldRequestReview(forOrderId:)` — fires only from the 2nd successful code onward, at most once per app version, de-duped per order. **Never** tie credits/rewards to leaving a review, and **never** build a custom review UI that deep-links to the App Store page — both are rejectable. A no-strings welcome/bonus credit is fine as long as it isn't conditioned on a review.
 
 ## Error UX rule
 
