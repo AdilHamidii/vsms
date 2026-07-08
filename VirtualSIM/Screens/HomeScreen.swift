@@ -69,7 +69,7 @@ struct HomeScreen: View {
         }
     }
 
-    private var routeCost: Int {
+    private var routeCost: Int? {
         state.cost(for: state.lastService, country: state.lastCountry)
     }
 
@@ -96,14 +96,20 @@ struct HomeScreen: View {
                         }
                         Spacer(minLength: 0)
                         VStack(alignment: .trailing, spacing: 4) {
-                            HStack(alignment: .firstTextBaseline, spacing: 3) {
-                                Text("\(routeCost)")
+                            if let routeCost {
+                                HStack(alignment: .firstTextBaseline, spacing: 3) {
+                                    Text("\(routeCost)")
+                                        .font(RFont.display(22, weight: .semibold))
+                                        .tracking(-0.5)
+                                        .foregroundStyle(theme.text)
+                                    Text("cr")
+                                        .font(RFont.text(13, weight: .medium))
+                                        .foregroundStyle(theme.text2)
+                                }
+                            } else {
+                                Text("—")
                                     .font(RFont.display(22, weight: .semibold))
-                                    .tracking(-0.5)
-                                    .foregroundStyle(theme.text)
-                                Text("cr")
-                                    .font(RFont.text(13, weight: .medium))
-                                    .foregroundStyle(theme.text2)
+                                    .foregroundStyle(theme.text3)
                             }
                             StockPill(level: state.lastCountry.stock)
                         }
@@ -122,14 +128,25 @@ struct HomeScreen: View {
                         }
                         .padding(.top, 14)
                     }
-                    PrimaryButton(
-                        label: "Get number",
-                        sub: "\(routeCost) cr",
-                        icon: RIcon.bolt,
-                        disabled: state.balance < routeCost,
-                        action: onStart
-                    )
-                    .padding(.top, 16)
+                    if let routeCost {
+                        PrimaryButton(
+                            label: "Get number",
+                            sub: "\(routeCost) cr",
+                            icon: RIcon.bolt,
+                            disabled: state.balance < routeCost,
+                            action: onStart
+                        )
+                        .padding(.top, 16)
+                    } else {
+                        PrimaryButton(
+                            label: "Unavailable",
+                            sub: "Pick another country",
+                            icon: RIcon.bolt,
+                            disabled: true,
+                            action: {}
+                        )
+                        .padding(.top, 16)
+                    }
                 }
                 .padding(18)
             }

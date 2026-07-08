@@ -14,6 +14,13 @@ struct CreditsSheet: View {
         CreditPack.all.first { $0.id == selected } ?? CreditPack.all[1]
     }
 
+    private var buttonLabel: String {
+        if purchasing { return "Processing…" }
+        if iap.isLoadingProducts && iap.products[pack.productId] == nil { return "Loading…" }
+        if iap.products[pack.productId] == nil { return "Unavailable" }
+        return "Buy \(pack.credits) credits"
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             SheetHeader(title: "Buy credits")
@@ -30,9 +37,9 @@ struct CreditsSheet: View {
                             .padding(.top, 10)
                     }
                     PrimaryButton(
-                        label: purchasing ? "Processing…" : "Buy \(pack.credits) credits",
-                        sub: iap.displayPrice(pack),
-                        disabled: purchasing,
+                        label: buttonLabel,
+                        sub: iap.products[pack.productId] != nil ? iap.displayPrice(pack) : nil,
+                        disabled: purchasing || iap.products[pack.productId] == nil,
                         action: { Task { await buy() } }
                     )
                     .padding(.top, 16)

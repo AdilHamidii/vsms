@@ -39,7 +39,10 @@ struct CountrySheet: View {
         case .default:  break
         case .fastest:  list.sort { $0.avgSeconds < $1.avgSeconds }
         case .cheapest:
-            let costFor: (Country) -> Int = { state.cost(for: currentService, country: $0) }
+            // Unavailable routes (nil price) sink to the bottom of the list.
+            let costFor: (Country) -> Int = {
+                state.cost(for: currentService, country: $0) ?? .max
+            }
             list.sort { costFor($0) < costFor($1) }
         }
         return list
@@ -90,7 +93,7 @@ struct CountrySheet: View {
 private struct CountryRow: View {
     @Environment(\.theme) private var theme
     let country: Country
-    let price: Int
+    let price: Int?
     let isLast: Bool
     let onTap: () -> Void
 
@@ -99,11 +102,12 @@ private struct CountryRow: View {
             VStack(spacing: 0) {
                 HStack(spacing: 12) {
                     FlagCircle(country: country, size: 36)
+                        .opacity(price == nil ? 0.45 : 1)
                     VStack(alignment: .leading, spacing: 2) {
                         Text(country.name)
                             .font(RFont.display(16, weight: .semibold))
                             .tracking(-0.3)
-                            .foregroundStyle(theme.text)
+                            .foregroundStyle(price == nil ? theme.text2 : theme.text)
                             .lineLimit(1)
                         HStack(spacing: 8) {
                             MonoText(country.dialCode, size: 12, color: theme.text2)
@@ -115,15 +119,21 @@ private struct CountryRow: View {
                     }
                     Spacer(minLength: 0)
                     VStack(alignment: .trailing, spacing: 4) {
-                        HStack(alignment: .firstTextBaseline, spacing: 3) {
-                            Text("\(price)")
-                                .font(RFont.display(15, weight: .semibold))
-                                .foregroundStyle(theme.text)
-                            Text("cr")
+                        if let price {
+                            HStack(alignment: .firstTextBaseline, spacing: 3) {
+                                Text("\(price)")
+                                    .font(RFont.display(15, weight: .semibold))
+                                    .foregroundStyle(theme.text)
+                                Text("cr")
+                                    .font(RFont.text(12, weight: .medium))
+                                    .foregroundStyle(theme.text2)
+                            }
+                            StockPill(level: country.stock)
+                        } else {
+                            Text("Unavailable")
                                 .font(RFont.text(12, weight: .medium))
-                                .foregroundStyle(theme.text2)
+                                .foregroundStyle(theme.text3)
                         }
-                        StockPill(level: country.stock)
                     }
                 }
                 .padding(.horizontal, 14)
