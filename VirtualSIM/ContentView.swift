@@ -67,6 +67,7 @@ struct ContentView: View {
             await state.refreshWallet(using: WalletAPI(client: api))
             await state.refreshProfile(using: ProfileAPI(client: api))
             await state.loadOrders(using: OrdersAPI(client: api))
+            state.applyStartupSelection()
         }
         .onChange(of: scenePhase) { _, phase in
             if phase == .active {
@@ -156,7 +157,7 @@ struct ContentView: View {
                 else { state.lastCountry = picked }
             })
         case .credits:
-            CreditsSheet(balance: state.balance, onPurchased: {
+            CreditsSheet(balance: state.balance, needed: state.creditsShortfall, onPurchased: {
                 Task { await state.refreshWallet(using: WalletAPI(client: api)) }
             })
         }

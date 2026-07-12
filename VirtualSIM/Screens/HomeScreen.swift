@@ -73,9 +73,58 @@ struct HomeScreen: View {
         state.cost(for: state.lastService, country: state.lastCountry)
     }
 
+    /// A user who has never placed an order — show them a "start here" framing
+    /// and, when their free credit covers the default, say so.
+    private var isFirstRun: Bool { state.orders.isEmpty }
+
+    /// The hero's primary action. Mirrors CheckoutScreen: a real "Buy credits"
+    /// path when short, instead of a dead greyed-out button.
+    @ViewBuilder
+    private var heroCTA: some View {
+        if let routeCost {
+            if state.balance < routeCost {
+                PrimaryButton(
+                    label: "Buy credits",
+                    sub: "Need \(routeCost - state.balance) more",
+                    icon: RIcon.plus,
+                    action: openCredits
+                )
+            } else {
+                PrimaryButton(
+                    label: "Get number",
+                    sub: "\(routeCost) cr",
+                    icon: RIcon.bolt,
+                    action: onStart
+                )
+            }
+        } else {
+            PrimaryButton(
+                label: "Unavailable",
+                sub: "Pick another country",
+                icon: RIcon.bolt,
+                disabled: true,
+                action: {}
+            )
+        }
+    }
+
+    private var freeCreditHint: some View {
+        HStack(spacing: 8) {
+            CoinIcon(size: 15, color: theme.live)
+            Text("Your free credit covers this — first number's on us.")
+                .font(RFont.text(12, weight: .medium))
+                .tracking(-0.1)
+                .foregroundStyle(theme.text2)
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .background(theme.liveSoft, in: .rect(cornerRadius: 12))
+    }
+
     private var heroSection: some View {
         VStack(alignment: .leading, spacing: 0) {
-            SectionHeader(label: "Last used")
+            SectionHeader(label: isFirstRun ? "Start here" : "Last used")
             Card {
                 VStack(alignment: .leading, spacing: 0) {
                     HStack(alignment: .center, spacing: 14) {
@@ -128,27 +177,14 @@ struct HomeScreen: View {
                         }
                         .padding(.top, 14)
                     }
-                    if let routeCost {
-                        PrimaryButton(
-                            label: "Get number",
-                            sub: "\(routeCost) cr",
-                            icon: RIcon.bolt,
-                            disabled: state.balance < routeCost,
-                            action: onStart
-                        )
+                    heroCTA
                         .padding(.top, 16)
-                    } else {
-                        PrimaryButton(
-                            label: "Unavailable",
-                            sub: "Pick another country",
-                            icon: RIcon.bolt,
-                            disabled: true,
-                            action: {}
-                        )
-                        .padding(.top, 16)
-                    }
                 }
                 .padding(18)
+            }
+            if isFirstRun, let routeCost, state.balance >= routeCost {
+                freeCreditHint
+                    .padding(.top, 10)
             }
         }
     }

@@ -8,6 +8,7 @@ struct ServiceSheet: View {
 
     @State private var query: String = ""
     @State private var category: String = "All"
+    @State private var affordableOnly = false
 
     /// The country the user is currently configuring. While in checkout we use
     /// the draft country; otherwise the Home "Last used". Prices shown per
@@ -24,8 +25,16 @@ struct ServiceSheet: View {
                 || s.name.lowercased().contains(q)
                 || s.category.lowercased().contains(q)
             let matchesCategory = (category == "All") || (s.category == category)
-            return matchesQuery && matchesCategory
+            return matchesQuery && matchesCategory && matchesAffordable(s)
         }
+    }
+
+    /// When the Affordable toggle is on, keep only services with a route in the
+    /// current country the balance can actually buy.
+    private func matchesAffordable(_ s: Service) -> Bool {
+        guard affordableOnly else { return true }
+        guard let c = state.cost(for: s, country: currentCountry) else { return false }
+        return c <= state.balance
     }
 
     var body: some View {
@@ -61,6 +70,14 @@ struct ServiceSheet: View {
     private var categoryRow: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 6) {
+                ChipButton(label: "Affordable", icon: RIcon.coin,
+                           active: affordableOnly, soft: true) {
+                    affordableOnly.toggle()
+                }
+                Rectangle()
+                    .fill(theme.sep)
+                    .frame(width: 0.5, height: 20)
+                    .padding(.horizontal, 2)
                 ForEach(serviceCategories, id: \.self) { cat in
                     ChipButton(label: cat, active: category == cat, soft: true) {
                         category = cat
@@ -83,7 +100,8 @@ struct ServiceSheet: View {
                 LazyVStack(spacing: 0) {
                     ForEach(filtered) { service in
                         ServiceRow(service: service,
-                                   price: state.cost(for: service, country: currentCountry)) {
+                                   price: state.cost(for: service, country: currentCountry),
+                                   balance: state.balance) {
                             onPick(service)
                             dismiss()
                         }
@@ -107,6 +125,7 @@ private struct ServiceRow: View {
     /// Real synced route price for the currently-selected country, or nil when
     /// the (service, country) pair has no confirmed price (unavailable to book).
     let price: Int?
+    let balance: Int
     let onTap: () -> Void
 
     var body: some View {
@@ -138,7 +157,7 @@ private struct ServiceRow: View {
                     HStack(alignment: .firstTextBaseline, spacing: 3) {
                         Text("\(price)")
                             .font(RFont.display(15, weight: .semibold))
-                            .foregroundStyle(theme.text)
+                            .foregroundStyle(price <= balance ? theme.text : theme.text2)
                         Text("cr")
                             .font(RFont.text(12, weight: .medium))
                             .foregroundStyle(theme.text2)

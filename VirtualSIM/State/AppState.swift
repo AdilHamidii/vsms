@@ -32,6 +32,9 @@ final class AppState {
     /// don't linear-scan 17k+ rows on every cost() call.
     @ObservationIgnored
     private var routeIndex: [String: Route] = [:]
+    /// Guards one-time first-run selection seeding (see applyStartupSelection).
+    @ObservationIgnored
+    private var didSeedStartupSelection = false
     var lastService: Service
     var lastCountry: Country
     var orders: [Order] = []
@@ -118,6 +121,71 @@ final class AppState {
     /// (service, country) pair may still be rejected at order time if
     /// SMSPVA is out of numbers — handled by create-order.
     var availableCountries: [Country] { countries }
+
+    /// Credit shortfall for whatever the user is currently configuring (the
+    /// checkout draft if present, else Home's selection). 0 when it's already
+    /// affordable or the pair is unavailable. Drives CreditsSheet's pack
+    /// preselection so the user is offered the smallest pack that unblocks them.
+    var creditsShortfall: Int {
+        let svc = checkoutService ?? lastService
+        let cty = checkoutCountry ?? lastCountry
+        guard let c = cost(for: svc, country: cty) else { return 0 }
+        return max(0, c - balance)
+    }
+
+    /// Point the Home hero at something the user can actually act on, once per
+    /// launch, after catalog + wallet + orders have loaded:
+    ///  • returning user → mirror their most recent order as "Last used";
+    ///  • brand-new user → default to an affordable, recognizable service the
+    ///    welcome credit can buy, instead of WhatsApp/US (which costs far more
+    ///    than the 1-credit grant and left every first-run CTA greyed out).
+    func applyStartupSelection() {
+        guard !didSeedStartupSelection else { return }
+        didSeedStartupSelection = true
+
+        if let recent = orders.first {
+            lastService = services.first { $0.id == recent.service.id } ?? recent.service
+            lastCountry = countries.first { $0.id == recent.country.id } ?? recent.country
+            return
+        }
+        if let (svc, cty) = affordableStarter() {
+            lastService = svc
+            lastCountry = cty
+        }
+    }
+
+    /// A recognizable service + country pair the current balance can afford.
+    /// Prefers well-known services (in the given order); falls back to any
+    /// affordable available pair. nil only when nothing is affordable yet
+    /// (e.g. catalog not loaded), leaving the seed default in place.
+    private func affordableStarter() -> (Service, Country)? {
+        let preferred = ["telegram", "instagram", "tiktok", "discord", "google",
+                         "whatsapp", "twitter-x", "uber", "openai", "amazon",
+                         "signal", "facebook"]
+        for id in preferred {
+            if let svc = services.first(where: { $0.id == id }),
+               let cty = cheapestAffordableCountry(for: svc) {
+                return (svc, cty)
+            }
+        }
+        for svc in services {
+            if let cty = cheapestAffordableCountry(for: svc) {
+                return (svc, cty)
+            }
+        }
+        return nil
+    }
+
+    /// Cheapest available country whose route for `service` costs no more than
+    /// the current balance, or nil when none is affordable.
+    private func cheapestAffordableCountry(for service: Service) -> Country? {
+        var best: (country: Country, cost: Int)?
+        for c in countries {
+            guard let cost = cost(for: service, country: c), cost <= balance else { continue }
+            if best == nil || cost < best!.cost { best = (c, cost) }
+        }
+        return best?.country
+    }
 
     // ─────────── Catalog / profile / wallet bootstrap ───────────
 

@@ -5,10 +5,14 @@ struct CreditsSheet: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(IAPStore.self) private var iap
     var balance: Int
+    /// Credit shortfall for what the user was trying to buy (0 = no context).
+    /// Used to preselect the smallest pack that unblocks them.
+    var needed: Int = 0
     var onPurchased: () -> Void
 
     @State private var selected: String = "md"
     @State private var purchasing = false
+    @State private var didPreselect = false
 
     private var pack: CreditPack {
         CreditPack.all.first { $0.id == selected } ?? CreditPack.all[1]
@@ -27,6 +31,7 @@ struct CreditsSheet: View {
             ScrollView {
                 VStack(spacing: 0) {
                     balanceRow
+                    if needed > 0 { needHint }
                     packsList
                     footnote
                     if let err = iap.lastError {
@@ -50,7 +55,40 @@ struct CreditsSheet: View {
             }
         }
         .background(theme.bg)
-        .task { await iap.loadProducts() }
+        .task {
+            preselectForNeed()
+            await iap.loadProducts()
+        }
+    }
+
+    /// Preselect the smallest pack that clears the current shortfall so the user
+    /// isn't left reasoning about pack sizes mid-checkout. CreditPack.all is
+    /// ascending by credits, so the first covering pack is the cheapest one.
+    private func preselectForNeed() {
+        guard !didPreselect else { return }
+        didPreselect = true
+        guard needed > 0 else { return }
+        selected = CreditPack.all.first { $0.credits >= needed }?.id
+            ?? CreditPack.all.last?.id
+            ?? selected
+    }
+
+    private var needHint: some View {
+        HStack(alignment: .top, spacing: 8) {
+            Image(systemName: RIcon.bolt)
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(theme.live)
+                .padding(.top, 1)
+            Text("You're \(needed) credit\(needed == 1 ? "" : "s") short for this number — the selected pack covers it.")
+                .font(RFont.text(12, weight: .medium))
+                .foregroundStyle(theme.text2)
+                .lineSpacing(2)
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .background(theme.liveSoft, in: .rect(cornerRadius: 12))
+        .padding(.bottom, 12)
     }
 
     private var balanceRow: some View {

@@ -25,7 +25,9 @@ struct CountrySheet: View {
     @Environment(AppState.self) private var state
     var onPick: (Country) -> Void
 
-    @State private var sort: CountrySort = .default
+    // Default to Cheapest so the one country a small balance can afford
+    // surfaces first instead of being buried among premium/Unavailable markets.
+    @State private var sort: CountrySort = .cheapest
 
     /// The service the user is currently configuring. While in checkout we
     /// use the draft service; otherwise the Home "Last used".
@@ -58,6 +60,7 @@ struct CountrySheet: View {
                         ForEach(Array(sorted.enumerated()), id: \.element.id) { idx, c in
                             CountryRow(country: c,
                                        price: state.cost(for: currentService, country: c),
+                                       balance: state.balance,
                                        isLast: idx == sorted.count - 1) {
                                 onPick(c)
                                 dismiss()
@@ -94,6 +97,7 @@ private struct CountryRow: View {
     @Environment(\.theme) private var theme
     let country: Country
     let price: Int?
+    let balance: Int
     let isLast: Bool
     let onTap: () -> Void
 
@@ -123,7 +127,7 @@ private struct CountryRow: View {
                             HStack(alignment: .firstTextBaseline, spacing: 3) {
                                 Text("\(price)")
                                     .font(RFont.display(15, weight: .semibold))
-                                    .foregroundStyle(theme.text)
+                                    .foregroundStyle(price <= balance ? theme.text : theme.text2)
                                 Text("cr")
                                     .font(RFont.text(12, weight: .medium))
                                     .foregroundStyle(theme.text2)
