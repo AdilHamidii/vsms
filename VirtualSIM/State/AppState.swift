@@ -40,6 +40,7 @@ final class AppState {
     var orders: [Order] = []
     var filter: SortFilter = .all
     var profile: Profile?
+    var maintenance: MaintenanceStatus = .off
 
     var flow: FlowStage?
     var checkoutService: Service?
@@ -196,6 +197,10 @@ final class AppState {
 
     func refreshProfile(using api: ProfileAPI) async {
         profile = try? await api.currentProfile()
+    }
+
+    func refreshMaintenance(using api: MaintenanceAPI) async {
+        if let m = try? await api.current() { maintenance = m }
     }
 
     func loadCatalog(using api: CatalogAPI) async {

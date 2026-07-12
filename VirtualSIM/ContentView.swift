@@ -62,7 +62,20 @@ struct ContentView: View {
                 .environment(state)
                 .animation(.easeOut(duration: 0.25), value: state.lastError)
         }
+        .overlay {
+            if state.maintenance.isActiveNow {
+                MaintenanceView(
+                    until: state.maintenance.until,
+                    message: state.maintenance.message,
+                    onRefresh: { Task { await state.refreshMaintenance(using: MaintenanceAPI(client: api)) } }
+                )
+                .environment(\.theme, theme)
+                .transition(.opacity)
+            }
+        }
+        .animation(.easeOut(duration: 0.3), value: state.maintenance.isActiveNow)
         .task {
+            await state.refreshMaintenance(using: MaintenanceAPI(client: api))
             await state.loadCatalog(using: CatalogAPI(client: api))
             await state.refreshWallet(using: WalletAPI(client: api))
             await state.refreshProfile(using: ProfileAPI(client: api))
@@ -74,6 +87,7 @@ struct ContentView: View {
                 Task {
                     // Re-fetch catalog too so server-side sync-prices runs
                     // show up without an app reinstall / force-quit.
+                    await state.refreshMaintenance(using: MaintenanceAPI(client: api))
                     await state.loadCatalog(using: CatalogAPI(client: api))
                     await state.refreshWallet(using: WalletAPI(client: api))
                     await state.loadOrders(using: OrdersAPI(client: api))
