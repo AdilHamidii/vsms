@@ -64,9 +64,10 @@ Deno.serve(async (req) => {
     dial: country.dial_code,
   };
 
-  // Prefer the provider the route was priced on, else virtualsms.
-  const prefer = route.provider === "smspva" ? "smspva" : "virtualsms";
-  const providers = providerOrder(codes, prefer);
+  // virtualsms is always tried first where it has a code (real-SIM quality);
+  // SMSPVA is the fallback. route.provider only reflects the display-price
+  // source, not the fulfilment preference.
+  const providers = providerOrder(codes);
   if (providers.length === 0) return json({ error: "route_unavailable" }, { status: 409 });
 
   // Charge up-front so a mid-flight failure can't leak a free number; refund on
