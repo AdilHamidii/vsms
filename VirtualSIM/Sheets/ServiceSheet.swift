@@ -143,13 +143,9 @@ private struct ServiceRow: View {
                             .font(RFont.text(12))
                             .foregroundStyle(theme.text2)
                         Text("·").foregroundStyle(theme.text3)
-                        Text("~\(service.etaSeconds)s avg")
+                        Text("~\(service.etaSeconds)s typical")
                             .font(RFont.text(12))
                             .foregroundStyle(theme.text2)
-                        Text("·").foregroundStyle(theme.text3)
-                        Text("\(service.successRate)% delivered")
-                            .font(RFont.text(12, weight: .medium))
-                            .foregroundStyle(theme.live)
                     }
                 }
                 Spacer(minLength: 0)

@@ -101,7 +101,7 @@ struct CheckoutScreen: View {
                         ReceiptIconBox(symbol: RIcon.clock)
                     }, trailing: {
                         ReceiptValue(primary: "~\(service.etaSeconds) sec",
-                                     secondaryText: "\(service.successRate)% delivery success")
+                                     secondaryText: "Auto-refund if no SMS arrives")
                     })
                 }
                 ReceiptRow(label: "Cost", last: true, leading: {

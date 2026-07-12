@@ -169,11 +169,11 @@ struct HomeScreen: View {
                             .frame(height: 0.5)
                             .padding(.top, 16)
                         HStack(spacing: 8) {
-                            Metric(label: "Avg arrival", value: "\(state.lastService.etaSeconds)s")
+                            Metric(label: "Typical wait", value: "~\(state.lastService.etaSeconds)s")
                             Spacer()
-                            Metric(label: "Delivered", value: "\(state.lastService.successRate)%", accent: theme.live)
+                            Metric(label: "No code", value: "Refunded", accent: theme.live)
                             Spacer()
-                            Metric(label: "Last seen", value: "2m ago")
+                            Metric(label: "Held for", value: "20 min")
                         }
                         .padding(.top, 14)
                     }
