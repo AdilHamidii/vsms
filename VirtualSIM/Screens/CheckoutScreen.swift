@@ -89,10 +89,6 @@ struct CheckoutScreen: View {
                     ReceiptValue(primary: country.name, secondary: {
                         HStack(spacing: 4) {
                             MonoText(country.dialCode, size: 11, color: theme.text2)
-                            Text("·").foregroundStyle(theme.text3)
-                            Text(stockText(country.stock))
-                                .font(RFont.text(12))
-                                .foregroundStyle(theme.text2)
                         }
                     }, chev: true)
                 })
@@ -196,9 +192,6 @@ struct CheckoutScreen: View {
         }
     }
 
-    private func stockText(_ level: StockLevel) -> String {
-        switch level { case .high: "High stock"; case .medium: "Medium stock"; case .low: "Low stock" }
-    }
 }
 
 private struct CoinIconBox: View {

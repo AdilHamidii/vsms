@@ -160,7 +160,6 @@ struct HomeScreen: View {
                                     .font(RFont.display(22, weight: .semibold))
                                     .foregroundStyle(theme.text3)
                             }
-                            StockPill(level: state.lastCountry.stock)
                         }
                     }
                     if showMetrics {

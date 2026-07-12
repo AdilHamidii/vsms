@@ -132,7 +132,6 @@ private struct CountryRow: View {
                                     .font(RFont.text(12, weight: .medium))
                                     .foregroundStyle(theme.text2)
                             }
-                            StockPill(level: country.stock)
                         } else {
                             Text("Unavailable")
                                 .font(RFont.text(12, weight: .medium))
