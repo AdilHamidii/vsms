@@ -29,6 +29,12 @@ const CREDIT_DIVISOR = 0.10;
 const MIN_CREDITS = 1;
 const MAX_CREDITS = 999;
 
+// Price ceiling: hide any route whose wholesale cost exceeds this. 5× on a
+// $6–150 SMSPVA WhatsApp price is absurd ($30–750 retail); above the ceiling we
+// mark the route 'hidden' (cost() -> nil -> "Unavailable") instead of listing
+// it. ~96% of the catalog is <= $4, so this only trims the blocked-heavy tail.
+const MAX_WHOLESALE_CENTS = 400;
+
 // Stale-guard safety floor. Only deactivate unrefreshed routes when this run
 // successfully priced at least this many — otherwise a transient SMSPVA failure
 // (empty/partial response) would wrongly inactivate the whole catalog.
@@ -170,7 +176,7 @@ Deno.serve(async (req) => {
         retail_credits:  credits,
         last_cost_cents: cents,
         last_checked_at: nowIso,
-        status:          "active",
+        status:          cents > MAX_WHOLESALE_CENTS ? "hidden" : "active",
       });
     }
   }

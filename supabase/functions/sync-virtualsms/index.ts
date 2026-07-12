@@ -17,6 +17,7 @@ const DIVISOR = 0.10;   // 5× retail markup (keep in lockstep with sync-prices)
 const BATCH = 50;       // combos per invocation (~50s at 60/min → under 60s cron)
 const PACE_MS = 1000;   // 60 requests/minute
 const MIN_CREDITS = 1, MAX_CREDITS = 999;
+const MAX_WHOLESALE_CENTS = 400; // hide routes pricier than this (see sync-prices)
 
 const credits = (usd: number) =>
   Math.max(MIN_CREDITS, Math.min(MAX_CREDITS, Math.ceil(usd / DIVISOR)));
@@ -83,10 +84,11 @@ Deno.serve(async (req) => {
     try {
       const r = await price(cb.vs, cb.vc);
       if (r.ok && r.priceUsd != null && r.priceUsd > 0) {
+        const cents = Math.round(r.priceUsd * 100);
         await sb.from("routes").upsert({
           service_id: cb.sid, country_id: cb.cid, provider: "virtualsms",
-          retail_credits: credits(r.priceUsd), last_cost_cents: Math.round(r.priceUsd * 100),
-          last_checked_at: nowIso, status: "active",
+          retail_credits: credits(r.priceUsd), last_cost_cents: cents,
+          last_checked_at: nowIso, status: cents > MAX_WHOLESALE_CENTS ? "hidden" : "active",
         }, { onConflict: "service_id,country_id" });
         priced++;
       } else {
