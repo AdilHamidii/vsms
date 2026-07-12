@@ -3,7 +3,7 @@
 
 import { handleCors, json } from "../_shared/cors.ts";
 import { admin } from "../_shared/supabaseAdmin.ts";
-import { getSms, isOk } from "../_shared/smspva.ts";
+import { poll, type Provider } from "../_shared/providers.ts";
 import { sendPush } from "../_shared/apns.ts";
 
 function validateCronSecret(req: Request): boolean {
@@ -35,7 +35,7 @@ Deno.serve(async (req) => {
   const { data: pending, error: pErr } = await sb
     .from("orders")
     .select(`
-      id, user_id, smspva_id,
+      id, user_id, provider, smspva_id,
       service:service_id ( id, name )
     `)
     .eq("status", "waiting")
@@ -47,22 +47,22 @@ Deno.serve(async (req) => {
 
   for (const o of pending ?? []) {
     polled++;
-    let resp;
+    let result;
     try {
-      resp = await getSms(o.smspva_id!);
+      result = await poll((o.provider ?? "smspva") as Provider, o.smspva_id!);
     } catch (e) {
-      console.error("SMSPVA poll failed for order", o.id, e);
+      console.error("poll failed for order", o.id, e);
       continue;
     }
 
-    if (isOk(resp) && resp.data.sms?.code) {
+    if (result.state === "received" && result.code) {
       arrived++;
       const { error: uErr } = await sb
         .from("orders")
         .update({
           status: "received",
-          otp: resp.data.sms.code,
-          raw_message: resp.data.sms.fullText ?? null,
+          otp: result.code,
+          raw_message: result.fullText ?? null,
           arrived_at: new Date().toISOString(),
           closed_at: new Date().toISOString(),
         })
@@ -84,8 +84,8 @@ Deno.serve(async (req) => {
         try {
           const r = await sendPush(d.token, {
             alertTitle: `${service.name} code arrived`,
-            alertBody: `Your code is ${resp.data.sms.code}`,
-            customData: { orderId: o.id, otp: resp.data.sms.code },
+            alertBody: `Your code is ${result.code}`,
+            customData: { orderId: o.id, otp: result.code },
           }, d.environment as "sandbox" | "production");
           if (r.ok) pushSent++;
           else console.error("APNs status", r.status, r.body);

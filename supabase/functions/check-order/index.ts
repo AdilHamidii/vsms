@@ -1,6 +1,6 @@
 import { handleCors, json } from "../_shared/cors.ts";
 import { admin, callerUserId } from "../_shared/supabaseAdmin.ts";
-import { getSms, isOk } from "../_shared/smspva.ts";
+import { poll, type Provider } from "../_shared/providers.ts";
 
 interface Body { order_id: string; }
 
@@ -20,7 +20,7 @@ Deno.serve(async (req) => {
 
   const { data: order, error: oErr } = await sb
     .from("orders")
-    .select("id, user_id, status, otp, smspva_id, smspva_number, expires_at")
+    .select("id, user_id, status, otp, provider, smspva_id, smspva_number, expires_at")
     .eq("id", body.order_id)
     .eq("user_id", userId)
     .single();
@@ -36,20 +36,20 @@ Deno.serve(async (req) => {
     return json({ order: updated });
   }
 
-  let resp;
+  let result;
   try {
-    resp = await getSms(order.smspva_id!);
+    result = await poll((order.provider ?? "smspva") as Provider, order.smspva_id!);
   } catch (e) {
-    return json({ error: "smspva_unreachable", detail: String(e) }, { status: 502 });
+    return json({ error: "provider_unreachable", detail: String(e) }, { status: 502 });
   }
 
-  if (isOk(resp) && resp.data.sms?.code) {
+  if (result.state === "received" && result.code) {
     const { data: updated, error: uErr } = await sb
       .from("orders")
       .update({
         status: "received",
-        otp: resp.data.sms.code,
-        raw_message: resp.data.sms.fullText ?? null,
+        otp: result.code,
+        raw_message: result.fullText ?? null,
         arrived_at: new Date().toISOString(),
         closed_at: new Date().toISOString(),
       })

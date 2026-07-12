@@ -96,6 +96,17 @@ export async function cancelOrder(orderId: string): Promise<{ ok: boolean; refun
   return { ok: true, refundUsd: d.refund_amount };
 }
 
+/** POST /customer/swap/{id} — replace a non-delivering number with a fresh one
+ *  for the same service/country at no extra charge (2-min hold applies). Better
+ *  than cancel when the combo is fine but the specific SIM went bad. */
+export async function swapNumber(orderId: string): Promise<{ ok: boolean; newOrderId?: string; phoneNumber?: string; error?: string }> {
+  const d = await req<{ success: boolean; order_id?: string; phone_number?: string; error?: string }>(
+    "POST", `/customer/swap/${encodeURIComponent(orderId)}`,
+  );
+  if (!d.success) return { ok: false, error: d.error ?? "swap_failed" };
+  return { ok: true, newOrderId: d.order_id, phoneNumber: d.phone_number };
+}
+
 /** Pull the OTP out of a full SMS body ("Your code is 12345" → "12345"). */
 export function extractCode(text: string): string {
   const m = text.match(/(\d[\d\s-]{3,7}\d)/);

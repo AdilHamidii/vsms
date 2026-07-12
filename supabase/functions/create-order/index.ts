@@ -1,24 +1,20 @@
 import { handleCors, json } from "../_shared/cors.ts";
 import { admin, callerUserId } from "../_shared/supabaseAdmin.ts";
-import { getNumber, getServicePrice, isOk } from "../_shared/smspva.ts";
+import { livePriceUsd, providerOrder, reserve, type RouteCodes } from "../_shared/providers.ts";
 
 interface Body {
   service_id: string;
   country_id: string;
 }
 
-// Verify-then-charge guard. Before charging the user or reserving a number we
-// re-check the LIVE SMSPVA price and refuse the order unless the credits we'd
-// charge are worth at least MIN_MARGIN× that cost. This closes the loss vectors
-// a stale synced price opens (price spiked since last sync, or a route frozen
-// at a too-low seed), and the multiplier also buffers the random-operator
-// variance (getNumber with no operator can land on a pricier operator than the
-// base price we check here).
+// Verify-then-charge guard. Before reserving a number we re-check the LIVE
+// provider price and refuse unless the credits we'd charge are worth at least
+// MIN_MARGIN× that cost. Runs per candidate provider so we never lose money on
+// a price spike, and we skip a provider (falling back) rather than overpay.
 //
-// NET_USD_PER_CREDIT is the conservative net revenue per credit: the largest
-// pack (30 cr / $12.99 ≈ $0.433) after Apple's 30% cut. Using the floor means
-// an order that clears the gate is profitable across every pack. Raise it
-// toward the gross ~0.43 if you'd rather abort fewer orders.
+// NET_USD_PER_CREDIT: conservative net revenue per credit — the largest pack
+// (30 cr / $12.99 ≈ $0.433) after Apple's cut. With the 5× retail model
+// (credits = ceil(cost/0.10)) this clears comfortably.
 const MIN_MARGIN = 1.8;
 const NET_USD_PER_CREDIT = 0.30;
 
@@ -39,86 +35,78 @@ Deno.serve(async (req) => {
   const sb = admin();
 
   const { data: service, error: svcErr } = await sb
-    .from("services").select("id, smspva_code, cost").eq("id", body.service_id).single();
+    .from("services").select("id, smspva_code, virtualsms_code")
+    .eq("id", body.service_id).single();
   if (svcErr || !service) return json({ error: "unknown_service" }, { status: 404 });
 
   const { data: country, error: cErr } = await sb
-    .from("countries").select("id, smspva_code, dial_code").eq("id", body.country_id).single();
+    .from("countries").select("id, smspva_code, virtualsms_code, dial_code")
+    .eq("id", body.country_id).single();
   if (cErr || !country) return json({ error: "unknown_country" }, { status: 404 });
 
   const { data: route, error: rErr } = await sb
     .from("routes")
-    .select("retail_credits, status, last_cost_cents")
+    .select("retail_credits, status, last_cost_cents, provider")
     .eq("service_id", service.id)
     .eq("country_id", country.id)
     .maybeSingle();
   if (rErr) return json({ error: "route_lookup_failed", detail: rErr.message }, { status: 500 });
-  // A route is bookable only if it is active AND has a confirmed retail price.
-  // Falling back to service.cost when retail_credits is null could undercharge
-  // the user vs the actual SMSPVA cost — refuse instead.
   if (!route || route.status !== "active" || route.retail_credits == null) {
     return json({ error: "route_unavailable" }, { status: 409 });
   }
 
   const cost = route.retail_credits as number;
+  const codes: RouteCodes = {
+    vsService: service.virtualsms_code,
+    vsCountry: country.virtualsms_code,
+    smsService: service.smspva_code,
+    smsCountry: country.smspva_code,
+    dial: country.dial_code,
+  };
 
-  // Verify-then-charge: re-read the live SMSPVA price and refuse if this order
-  // wouldn't clear MIN_MARGIN. Runs BEFORE wallet_spend and the getNumber
-  // reservation, so a rejected order costs the user nothing.
-  let liveCostUsd: number | null = null;
-  try {
-    const priceResp = await getServicePrice(country.smspva_code, service.smspva_code);
-    if (isOk(priceResp) && Number.isFinite(priceResp.data?.price) && priceResp.data.price > 0) {
-      liveCostUsd = priceResp.data.price;
-    }
-  } catch {
-    // Live lookup failed — fall back to the last synced cost below.
-  }
-  // Graceful degradation: if the live price is unavailable, fall back to the
-  // last synced cost so a transient price-endpoint hiccup doesn't block all
-  // sales. If we have neither, refuse rather than sell on an unknown cost.
-  if (liveCostUsd == null && route.last_cost_cents != null && (route.last_cost_cents as number) > 0) {
-    liveCostUsd = (route.last_cost_cents as number) / 100;
-  }
-  if (liveCostUsd == null) {
-    return json({ error: "route_unavailable" }, { status: 409 });
-  }
-  if (cost * NET_USD_PER_CREDIT < MIN_MARGIN * liveCostUsd) {
-    console.warn(`margin_too_low service=${service.id} country=${country.id} credits=${cost} liveCostUsd=${liveCostUsd}`);
-    return json({
-      error: "margin_too_low",
-      needed_credits: Math.ceil((MIN_MARGIN * liveCostUsd) / NET_USD_PER_CREDIT),
-    }, { status: 409 });
-  }
+  // Prefer the provider the route was priced on, else virtualsms.
+  const prefer = route.provider === "smspva" ? "smspva" : "virtualsms";
+  const providers = providerOrder(codes, prefer);
+  if (providers.length === 0) return json({ error: "route_unavailable" }, { status: 409 });
 
+  // Charge up-front so a mid-flight failure can't leak a free number; refund on
+  // any path that doesn't end in a persisted order.
   const { data: spent, error: spendErr } = await sb.rpc("wallet_spend", {
     p_user: userId, p_amount: cost, p_reason: "spend",
   });
   if (spendErr) return json({ error: "spend_failed", detail: spendErr.message }, { status: 500 });
   if (spent === false) return json({ error: "insufficient_credits", needed: cost }, { status: 402 });
 
-  // SMSPVA v2 call.
-  let smspva;
-  try {
-    smspva = await getNumber(country.smspva_code, service.smspva_code);
-  } catch (e) {
-    await sb.rpc("wallet_credit", { p_user: userId, p_amount: cost, p_reason: "refund" });
-    return json({ error: "smspva_unreachable", detail: String(e) }, { status: 502 });
+  const refund = () => sb.rpc("wallet_credit", { p_user: userId, p_amount: cost, p_reason: "refund" });
+
+  // Try providers in preference order; on each, verify margin against the live
+  // price, then reserve. Skip (fall back) on margin failure or a reserve error.
+  let reservation = null as Awaited<ReturnType<typeof reserve>> | null;
+  let used: (typeof providers)[number] | null = null;
+  let lastError = "no_numbers_available";
+
+  for (const p of providers) {
+    let liveCost = await livePriceUsd(p, codes);
+    if (liveCost == null && route.last_cost_cents != null && (route.last_cost_cents as number) > 0) {
+      liveCost = (route.last_cost_cents as number) / 100; // graceful degrade to last synced cost
+    }
+    if (liveCost == null) { lastError = "route_unavailable"; continue; }
+    if (cost * NET_USD_PER_CREDIT < MIN_MARGIN * liveCost) {
+      console.warn(`margin_too_low provider=${p} svc=${service.id} cty=${country.id} credits=${cost} liveUsd=${liveCost}`);
+      lastError = "margin_too_low";
+      continue;
+    }
+    const res = await reserve(p, codes);
+    if (res.ok) { reservation = res; used = p; break; }
+    console.warn(`reserve failed provider=${p} svc=${service.id} cty=${country.id} err=${res.error}`);
+    lastError = res.error ?? "no_numbers_available";
   }
 
-  if (!isOk(smspva)) {
-    await sb.rpc("wallet_credit", { p_user: userId, p_amount: cost, p_reason: "refund" });
-    return json({
-      error: "smspva_error",
-      smspva_status: smspva.statusCode,
-      smspva_type: smspva.error?.type,
-      smspva_description: smspva.error?.description,
-    }, { status: smspva.statusCode === 407 ? 502 : 503 });
+  if (!reservation || !used) {
+    await refund();
+    const status = lastError === "margin_too_low" ? 409 : 503;
+    return json({ error: lastError }, { status });
   }
-
-  // v2 returns phoneNumber WITHOUT country code — we format with dial_code so
-  // the iOS UI shows a clickable, copy-pasteable full E.164-ish number.
-  const formattedNumber = `${country.dial_code} ${smspva.data.phoneNumber}`;
 
   const { data: order, error: insertErr } = await sb
     .from("orders")
@@ -126,15 +114,17 @@ Deno.serve(async (req) => {
       user_id: userId,
       service_id: service.id,
       country_id: country.id,
-      smspva_id: String(smspva.data.orderId),
-      smspva_number: formattedNumber,
+      provider: used,
+      smspva_id: reservation.orderId,      // generic: the provider's order id
+      smspva_number: reservation.number,   // generic: display number
       cost_credits: cost,
       status: "waiting",
     })
     .select("*").single();
 
   if (insertErr || !order) {
-    await sb.rpc("wallet_credit", { p_user: userId, p_amount: cost, p_reason: "refund" });
+    // Release the just-reserved number so we don't pay for an order we can't track.
+    await refund();
     return json({ error: "order_persist_failed", detail: insertErr?.message }, { status: 500 });
   }
 

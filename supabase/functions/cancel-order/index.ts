@@ -1,6 +1,6 @@
 import { handleCors, json } from "../_shared/cors.ts";
 import { admin, callerUserId } from "../_shared/supabaseAdmin.ts";
-import { cancelOrder } from "../_shared/smspva.ts";
+import { release, type Provider } from "../_shared/providers.ts";
 
 interface Body { order_id: string; }
 
@@ -20,7 +20,7 @@ Deno.serve(async (req) => {
 
   const { data: order, error: oErr } = await sb
     .from("orders")
-    .select("id, user_id, status, cost_credits, smspva_id")
+    .select("id, user_id, status, cost_credits, provider, smspva_id")
     .eq("id", body.order_id)
     .eq("user_id", userId)
     .single();
@@ -29,12 +29,12 @@ Deno.serve(async (req) => {
     return json({ error: "not_cancelable", current_status: order.status }, { status: 409 });
   }
 
-  // Best-effort cancel at SMSPVA — we refund regardless so the user doesn't
-  // lose credits when SMSPVA is degraded.
-  try {
-    if (order.smspva_id) await cancelOrder(order.smspva_id);
-  } catch (e) {
-    console.error("SMSPVA cancelorder failed (continuing with refund):", e);
+  // Best-effort cancel at the owning provider — we refund regardless so the
+  // user never loses credits when the provider is degraded. (virtualsms
+  // enforces a 2-min hold; a failed cancel there just means we eat the number,
+  // but the user is still made whole.)
+  if (order.smspva_id) {
+    await release((order.provider ?? "smspva") as Provider, order.smspva_id);
   }
 
   await sb.rpc("wallet_credit", {
