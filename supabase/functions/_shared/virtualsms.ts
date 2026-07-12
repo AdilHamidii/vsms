@@ -1,136 +1,134 @@
-// VirtualSMS (virtualsms.io / api.virtualsms.de) adapter — the SMS-Activate
-// "handler_api" protocol: a single endpoint, `action` + params in the query
-// string, `api_key` for auth. Real physical SIMs (non-reused) → far higher
-// acceptance on WhatsApp/Google than VoIP pools; exposes per-service success
-// rate via getListOfTopCountriesByService, which we use to curate the catalog.
+// VirtualSMS (virtualsms.io) adapter — modern REST API.
+//   Base: https://virtualsms.io/api/v1
+//   Auth: X-API-Key: vsms_...   (NOT Bearer, NOT the api.virtualsms.de handler_api)
+// Real physical SIMs (aggregated, e.g. herosms) → higher WhatsApp/Google
+// acceptance than VoIP pools, but LIMITED live stock (tens of numbers, ~8
+// countries in stock at a time). So we treat it as the primary provider where
+// it has stock and fall back to SMSPVA for coverage (see create-order).
 //
-// Mirrors the shape of smspva.ts so create/check/cancel-order can swap providers
-// with minimal change. NOTE: response field names for the V2 JSON endpoints are
-// best-effort from the public docs and MUST be verified against a live key
-// before cutover (search for VERIFY: below).
+// Shapes verified against the live API + docs. Balance/prices are USD.
 
-const BASE = "https://api.virtualsms.de/stubs/handler_api";
+const BASE = "https://virtualsms.io/api/v1";
 
-function apiKey(): string {
+function key(): string {
   const k = Deno.env.get("VIRTUALSMS_API_KEY");
   if (!k) throw new Error("VIRTUALSMS_API_KEY env var not set");
   return k;
 }
 
-/** Low-level call. handler_api returns either a plain-text envelope
- *  ("ACCESS_NUMBER:123:1555…", "STATUS_OK:9134") or JSON for the *V2 actions. */
-async function call(action: string, params: Record<string, string> = {}): Promise<string> {
-  const qs = new URLSearchParams({ api_key: apiKey(), action, ...params });
-  const resp = await fetch(`${BASE}?${qs.toString()}`, { method: "GET" });
-  return (await resp.text()).trim();
-}
-
-async function callJson<T>(action: string, params: Record<string, string> = {}): Promise<T> {
-  const text = await call(action, params);
-  try {
-    return JSON.parse(text) as T;
-  } catch {
-    // A text error envelope where JSON was expected (e.g. NO_BALANCE, BAD_KEY).
-    throw new Error(`virtualsms ${action} returned non-JSON: ${text.slice(0, 120)}`);
-  }
+async function req<T>(method: "GET" | "POST", path: string, body?: unknown): Promise<T> {
+  const resp = await fetch(`${BASE}${path}`, {
+    method,
+    headers: {
+      "X-API-Key": key(),
+      "Accept": "application/json",
+      ...(body ? { "Content-Type": "application/json" } : {}),
+    },
+    ...(body ? { body: JSON.stringify(body) } : {}),
+  });
+  const text = await resp.text();
+  let json: unknown;
+  try { json = JSON.parse(text); } catch { json = { success: false, error: text.slice(0, 160) }; }
+  return json as T;
 }
 
 // ─────────── Ordering ───────────
 
-export interface GetNumberResult {
+export interface BuyResult {
   ok: boolean;
-  activationId?: string;
-  phoneNumber?: string;      // full number incl. country code
+  orderId?: string;      // UUID
+  phoneNumber?: string;  // full number incl. country code
   costUsd?: number;
-  error?: string;            // handler_api sentinel, e.g. NO_NUMBERS, NO_BALANCE
+  expiresAt?: string;
+  error?: string;
 }
 
-/** Reserve a one-time number for (service, country). service/country are the
- *  provider's own identifiers (service short code e.g. "wa"; numeric country id).
- *  getNumberV2 returns JSON: VERIFY exact keys against a live response. */
-export async function getNumber(service: string, country: string): Promise<GetNumberResult> {
-  const text = await call("getNumberV2", { service, country });
-  // Text sentinel path (NO_NUMBERS / NO_BALANCE / BAD_SERVICE / etc.)
-  if (!text.startsWith("{")) return { ok: false, error: text };
-  try {
-    const d = JSON.parse(text) as {
-      activationId?: number | string;
-      phoneNumber?: string;      // VERIFY: may be "phone" or "number"
-      activationCost?: number | string;
-    };
-    return {
-      ok: true,
-      activationId: d.activationId !== undefined ? String(d.activationId) : undefined,
-      phoneNumber: d.phoneNumber,
-      costUsd: d.activationCost !== undefined ? Number(d.activationCost) : undefined,
-    };
-  } catch {
-    return { ok: false, error: text.slice(0, 120) };
+/** POST /customer/purchase — rent a number. service/country are VirtualSMS
+ *  codes: service short code ("wa","tg","ig") + 2-letter ISO country ("FR"). */
+export async function buyNumber(service: string, country: string): Promise<BuyResult> {
+  const d = await req<{
+    success: boolean; order_id?: string; phone_number?: string;
+    price?: number; expires_at?: string; error?: string;
+  }>("POST", "/customer/purchase", { service, country });
+  if (!d.success) return { ok: false, error: d.error ?? "purchase_failed" };
+  return {
+    ok: true,
+    orderId: d.order_id,
+    phoneNumber: d.phone_number,
+    costUsd: typeof d.price === "number" ? d.price : undefined,
+    expiresAt: d.expires_at,
+  };
+}
+
+export interface OrderStatus {
+  state: "waiting" | "received" | "canceled" | "expired" | "unknown";
+  code?: string;      // extracted OTP digits
+  fullText?: string;  // raw SMS body
+}
+
+const STATE_MAP: Record<string, OrderStatus["state"]> = {
+  waiting: "waiting", completed: "received", cancelled: "canceled",
+  canceled: "canceled", expired: "expired",
+};
+
+/** GET /customer/order/{id} — poll for the SMS. The code lives in
+ *  messages[].content (full text); we extract the numeric OTP. */
+export async function getOrder(orderId: string): Promise<OrderStatus> {
+  const d = await req<{
+    success: boolean; status?: string; sms_received?: boolean;
+    messages?: { sender?: string; content?: string; received_at?: string }[];
+  }>("GET", `/customer/order/${encodeURIComponent(orderId)}`);
+  const state = STATE_MAP[d.status ?? ""] ?? "unknown";
+  const msg = d.messages?.[0];
+  if (msg?.content) {
+    return { state: "received", code: extractCode(msg.content), fullText: msg.content };
   }
+  return { state };
 }
 
-export interface SmsStatus {
-  state: "waiting" | "received" | "canceled" | "unknown";
-  code?: string;       // parsed OTP
-  fullText?: string;   // full SMS body if available
+/** POST /customer/cancel/{id} — full refund while waiting. Blocked in the
+ *  first 2 minutes (HTTP 425). Returns refund_amount on success. */
+export async function cancelOrder(orderId: string): Promise<{ ok: boolean; refundUsd?: number; error?: string }> {
+  const d = await req<{ success: boolean; refund_amount?: number; error?: string; seconds_remaining?: number }>(
+    "POST", `/customer/cancel/${encodeURIComponent(orderId)}`,
+  );
+  if (!d.success) return { ok: false, error: d.error ?? "cancel_failed" };
+  return { ok: true, refundUsd: d.refund_amount };
 }
 
-/** Poll an activation. getStatusV2 returns JSON with the SMS payload;
- *  the text getStatus returns STATUS_WAIT_CODE / STATUS_OK:{code}. */
-export async function getStatus(activationId: string): Promise<SmsStatus> {
-  const text = await call("getStatusV2", { id: activationId });
-  if (text.startsWith("{")) {
-    // VERIFY: doc shows sms payload; exact keys (sms/verificationCode/text) TBD.
-    const d = JSON.parse(text) as {
-      sms?: { code?: string; text?: string } | { code?: string; text?: string }[];
-      verificationCode?: string;
-    };
-    const sms = Array.isArray(d.sms) ? d.sms[0] : d.sms;
-    const code = sms?.code ?? d.verificationCode;
-    if (code) return { state: "received", code, fullText: sms?.text };
-    return { state: "waiting" };
-  }
-  // Text envelope.
-  if (text.startsWith("STATUS_OK")) {
-    const code = text.split(":")[1];
-    return { state: "received", code };
-  }
-  if (text === "STATUS_WAIT_CODE" || text === "STATUS_WAIT_RETRY") return { state: "waiting" };
-  if (text === "STATUS_CANCEL") return { state: "canceled" };
-  return { state: "unknown" };
+/** Pull the OTP out of a full SMS body ("Your code is 12345" → "12345"). */
+export function extractCode(text: string): string {
+  const m = text.match(/(\d[\d\s-]{3,7}\d)/);
+  return m ? m[1].replace(/[\s-]/g, "") : text.trim();
 }
 
-/** setStatus status codes (SMS-Activate standard): 8 = cancel(+refund),
- *  6 = finish/complete, 3 = request another SMS. */
-export function cancelOrder(activationId: string): Promise<string> {
-  return call("setStatus", { id: activationId, status: "8" });
-}
-export function finishOrder(activationId: string): Promise<string> {
-  return call("setStatus", { id: activationId, status: "6" });
-}
+// ─────────── Catalog / pricing / stock (for sync) ───────────
 
-// ─────────── Catalog / pricing / metrics (for sync-prices) ───────────
+export interface VsService { id: string; name: string; category?: string; price?: number; timeout_seconds?: number }
+export interface VsCountry { id: string; name?: string; code?: string; total_phones?: number; available_phones?: number; price?: number }
 
-/** getPrices → nested { country: { service: { cost, count } } }. Used to rebuild
- *  routes. VERIFY nesting/keys against live output. */
-export function getPrices(): Promise<Record<string, Record<string, { cost: number; count: number }>>> {
-  return callJson("getPrices");
+/** GET /services — curated service list with floor prices. */
+export async function listServices(): Promise<VsService[]> {
+  const d = await req<{ services?: VsService[] }>("GET", "/services");
+  return d.services ?? [];
 }
 
-export function getCountries(): Promise<unknown> {
-  return callJson("getCountries");
+/** GET /countries?service=X — countries with LIVE stock for a service. This is
+ *  the authoritative availability source (we build routes only from these). */
+export async function listCountriesForService(service: string): Promise<VsCountry[]> {
+  const d = await req<{ countries?: VsCountry[] }>("GET", `/countries?service=${encodeURIComponent(service)}`);
+  return d.countries ?? [];
 }
 
-export function getServicesList(country?: string): Promise<unknown> {
-  return callJson("getServicesList", country ? { country } : {});
+/** GET /price — public, no auth. Exact price + availability for one combo. */
+export async function price(service: string, country: string): Promise<{ ok: boolean; priceUsd?: number; available?: boolean }> {
+  const resp = await fetch(`${BASE}/price?service=${encodeURIComponent(service)}&country=${encodeURIComponent(country)}`);
+  const d = await resp.json().catch(() => ({ success: false })) as { success?: boolean; price?: number; available?: boolean };
+  if (!d.success) return { ok: false };
+  return { ok: true, priceUsd: d.price, available: d.available };
 }
 
-/** getListOfTopCountriesByService → success-rate metrics per service, used to
- *  hide/rank routes by real delivery rate. Returns NO_METRICS when sparse. */
-export function getTopCountriesByService(service: string): Promise<unknown> {
-  return callJson("getListOfTopCountriesByService", { service });
-}
-
-export function getBalance(): Promise<string> {
-  return call("getBalance"); // "ACCESS_BALANCE:12.34"
+export async function getBalanceUsd(): Promise<number | null> {
+  const d = await req<{ success: boolean; balance?: number }>("GET", "/customer/balance");
+  return d.success && typeof d.balance === "number" ? d.balance : null;
 }
