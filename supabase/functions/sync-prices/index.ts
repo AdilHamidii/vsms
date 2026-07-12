@@ -22,7 +22,10 @@ import { handleCors, json } from "../_shared/cors.ts";
 import { admin } from "../_shared/supabaseAdmin.ts";
 import { getAllPrices, isOk } from "../_shared/smspva.ts";
 
-const CREDIT_DIVISOR = 0.15;
+// 5× retail markup: credits = ceil(cost / 0.10). A credit sells for ~$0.50
+// (blended pack), so this collects ~5× wholesale → ~65% net after Apple's 15%
+// Small-Business fee. Keep in lockstep with sync-virtualsms.
+const CREDIT_DIVISOR = 0.10;
 const MIN_CREDITS = 1;
 const MAX_CREDITS = 999;
 
@@ -62,6 +65,12 @@ Deno.serve(async (req) => {
   if (cErr || !countries) {
     return json({ error: "countries_load_failed", detail: cErr?.message }, { status: 500 });
   }
+
+  // Combos the weekly virtualsms overlay owns — skip them here so we never
+  // clobber the real-SIM price/provider with an SMSPVA one.
+  const { data: vsRoutes } = await sb
+    .from("routes").select("service_id, country_id").eq("provider", "virtualsms");
+  const vsOwned = new Set((vsRoutes ?? []).map((r) => `${r.service_id}|${r.country_id}`));
 
   // A single smspva_code may map to MULTIPLE catalog services — fan a price row
   // out to every one of them, never just the last.
@@ -152,6 +161,7 @@ Deno.serve(async (req) => {
     const credits = priceToCredits(price as number);
     const cents = Math.round((price as number) * 100);
     for (let i = 0; i < svcs.length; i++) {
+      if (vsOwned.has(`${svcs[i].id}|${cid}`)) continue; // virtualsms owns this combo
       if (i > 0) fannedOut++;
       pricedServiceIds.add(svcs[i].id);
       updates.push({
@@ -204,8 +214,11 @@ Deno.serve(async (req) => {
   if (routesUpdated >= DEACTIVATE_FLOOR) {
     const { error: deErr, count } = await sb
       .from("routes")
-      .update({ status: "inactive" }, { count: "exact" })
+      // 'hidden' (not 'inactive' — that violates routes_status_check). Never
+      // touch virtualsms-owned routes; the weekly overlay manages those.
+      .update({ status: "hidden" }, { count: "exact" })
       .eq("status", "active")
+      .neq("provider", "virtualsms")
       .or(`last_checked_at.is.null,last_checked_at.lt."${nowIso}"`);
     if (deErr) {
       return json({
