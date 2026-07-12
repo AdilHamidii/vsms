@@ -15,18 +15,23 @@
 --
 -- SMSPVA's priced catalog has NO Binance/Venmo/Mercari entry (searches for each
 -- returned nothing), so we cannot remap to a correct code here. Disable the
--- three — invalidate the code so sync-prices won't re-price them, and
--- deactivate their live routes — until a correct SMSPVA code is confirmed via
--- SMSPVA support / their full (incl. out-of-stock) service list. To re-enable
--- later, restore smspva_code to the verified value and let sync-prices reprice.
+-- three — invalidate the code so sync-prices won't re-price them, and hide
+-- their live routes — until a correct SMSPVA code is confirmed via SMSPVA
+-- support / their full (incl. out-of-stock) service list. To re-enable later,
+-- restore smspva_code to the verified value and let sync-prices reprice.
+--
+-- 'hidden' (not 'inactive') is the disable value: routes_status_check allows
+-- only active/hidden/premium, and cost() treats any non-'active' status as
+-- unavailable so the pair drops out of the bookable catalog.
 --
 -- The other flagged rows are correct (matcher false positives), left unchanged:
 --   opt7 = "MS Office 365" (ms365), opt84 = "POF.com" (pof),
 --   opt268 = "Pokémon Center Online" (pokemon-center).
 
 update public.routes
-   set status = 'inactive'
- where service_id in ('binance', 'venmo', 'mercari');
+   set status = 'hidden'
+ where service_id in ('binance', 'venmo', 'mercari')
+   and status = 'active';
 
 update public.services
    set smspva_code = 'UNMAPPED_' || smspva_code
