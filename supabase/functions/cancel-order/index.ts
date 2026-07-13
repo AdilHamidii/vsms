@@ -29,24 +29,31 @@ Deno.serve(async (req) => {
     return json({ error: "not_cancelable", current_status: order.status }, { status: 409 });
   }
 
-  // Best-effort cancel at the owning provider — we refund regardless so the
-  // user never loses credits when the provider is degraded. (virtualsms
-  // enforces a 2-min hold; a failed cancel there just means we eat the number,
-  // but the user is still made whole.)
+  // Atomically claim the cancel: flip waiting -> canceled ONLY if it's still
+  // waiting. If a code landed (or it expired) in the race window, this matches
+  // 0 rows and we must NOT refund — otherwise a well-timed cancel could pocket
+  // the delivered code AND get the credits back.
+  const { data: claimed, error: uErr } = await sb
+    .from("orders")
+    .update({ status: "canceled", closed_at: new Date().toISOString() })
+    .eq("id", order.id)
+    .eq("status", "waiting")
+    .select("*");
+  if (uErr) return json({ error: "update_failed", detail: uErr.message }, { status: 500 });
+  if (!claimed || claimed.length === 0) {
+    const { data: current } = await sb.from("orders").select("*").eq("id", order.id).single();
+    return json({ error: "not_cancelable", current_status: current?.status }, { status: 409 });
+  }
+
+  // We won the flip — now it's safe to refund and best-effort release the number
+  // at its provider (virtualsms enforces a 2-min hold; a failed release there
+  // just means we eat the number, but the user is still made whole).
+  await sb.rpc("wallet_credit", {
+    p_user: userId, p_amount: order.cost_credits, p_reason: "refund", p_order: order.id,
+  });
   if (order.smspva_id) {
     await release((order.provider ?? "smspva") as Provider, order.smspva_id);
   }
 
-  await sb.rpc("wallet_credit", {
-    p_user: userId, p_amount: order.cost_credits, p_reason: "refund", p_order: order.id,
-  });
-
-  const { data: updated, error: uErr } = await sb
-    .from("orders")
-    .update({ status: "canceled", closed_at: new Date().toISOString() })
-    .eq("id", order.id)
-    .select("*").single();
-  if (uErr) return json({ error: "update_failed", detail: uErr.message }, { status: 500 });
-
-  return json({ order: updated });
+  return json({ order: claimed[0] });
 });

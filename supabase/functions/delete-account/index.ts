@@ -4,6 +4,7 @@
 
 import { handleCors, json } from "../_shared/cors.ts";
 import { admin, callerUserId } from "../_shared/supabaseAdmin.ts";
+import { release, type Provider } from "../_shared/providers.ts";
 
 Deno.serve(async (req) => {
   const cors = handleCors(req); if (cors) return cors;
@@ -14,24 +15,17 @@ Deno.serve(async (req) => {
 
   const sb = admin();
 
-  // Best-effort cancel any waiting orders before tearing down the account,
-  // so we don't leak SMSPVA reservations.
+  // Best-effort release any waiting orders at their owning provider before
+  // tearing down the account, so we don't leak provider reservations (which
+  // also count against virtualsms's concurrent-order cap).
   const { data: pending } = await sb
     .from("orders")
-    .select("id, smspva_id, service:service_id (smspva_code), country:country_id (smspva_code)")
+    .select("provider, smspva_id")
     .eq("user_id", userId)
     .eq("status", "waiting");
 
   for (const o of pending ?? []) {
-    if (!o.smspva_id) continue;
-    try {
-      const { denial } = await import("../_shared/smspva.ts");
-      const svc = o.service as { smspva_code: string };
-      const cty = o.country as { smspva_code: string };
-      await denial(cty.smspva_code, svc.smspva_code, o.smspva_id);
-    } catch (e) {
-      console.error("denial during delete failed:", e);
-    }
+    if (o.smspva_id) await release((o.provider ?? "smspva") as Provider, o.smspva_id);
   }
 
   const { error } = await sb.auth.admin.deleteUser(userId);

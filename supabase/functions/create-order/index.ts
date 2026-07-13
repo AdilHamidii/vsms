@@ -1,6 +1,6 @@
 import { handleCors, json } from "../_shared/cors.ts";
 import { admin, callerUserId } from "../_shared/supabaseAdmin.ts";
-import { livePriceUsd, providerOrder, reserve, type RouteCodes } from "../_shared/providers.ts";
+import { livePriceUsd, providerOrder, release, reserve, type RouteCodes } from "../_shared/providers.ts";
 
 interface Body {
   service_id: string;
@@ -124,7 +124,10 @@ Deno.serve(async (req) => {
     .select("*").single();
 
   if (insertErr || !order) {
-    // Release the just-reserved number so we don't pay for an order we can't track.
+    // Release the just-reserved number so we don't pay for an order we can't
+    // track (and it wouldn't count against the provider's concurrent cap),
+    // then refund the user.
+    if (reservation.orderId) await release(used, reservation.orderId);
     await refund();
     return json({ error: "order_persist_failed", detail: insertErr?.message }, { status: 500 });
   }
