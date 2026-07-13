@@ -39,7 +39,7 @@ struct SignInScreen: View {
 
     private var copy: some View {
         VStack(spacing: 10) {
-            Text("Relay")
+            Text("vSMS")
                 .font(RFont.display(34, weight: .bold))
                 .tracking(-0.8)
                 .foregroundStyle(theme.text)
@@ -101,7 +101,7 @@ struct SignInScreen: View {
         switch result {
         case .failure(let err):
             if let asError = err as? ASAuthorizationError, asError.code == .canceled { return }
-            error = err.localizedDescription
+            error = "Couldn't sign in with Apple. Please try again."
         case .success(let auth):
             guard
                 let credential = auth.credential as? ASAuthorizationAppleIDCredential,
@@ -120,7 +120,7 @@ struct SignInScreen: View {
                     let supaSession = try await auth.signInWithApple(idToken: idToken, nonce: nonce)
                     session.adopt(supaSession)
                 } catch {
-                    self.error = error.localizedDescription
+                    self.error = (error as? APIError)?.userMessage ?? "Couldn't sign in. Please try again."
                 }
                 inProgress = false
             }

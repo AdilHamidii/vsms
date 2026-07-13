@@ -5,6 +5,7 @@ enum OrdersTab: Hashable { case all, active, past }
 struct OrdersScreen: View {
     @Environment(\.theme) private var theme
     @Environment(AppState.self) private var state
+    @Environment(APIClient.self) private var api
 
     var openCredits: () -> Void
 
@@ -57,6 +58,10 @@ struct OrdersScreen: View {
             .padding(.bottom, 140)
         }
         .scrollIndicators(.hidden)
+        .refreshable {
+            await state.loadOrders(using: OrdersAPI(client: api))
+            await state.refreshWallet(using: WalletAPI(client: api))
+        }
     }
 
     private var header: some View {

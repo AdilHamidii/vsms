@@ -46,6 +46,9 @@ final class AppState {
     var checkoutService: Service?
     var checkoutCountry: Country?
     var activeOrder: Order?
+    /// True while a create-order call is in flight — guards against double-tap
+    /// double-charge and lets the checkout CTA show an in-progress state.
+    var isPlacingOrder = false
 
     /// Latest error string for UI banners. Phase F wires real banner UI.
     var lastError: String?
@@ -263,6 +266,9 @@ final class AppState {
     /// the Waiting flow. On failure, sets lastError and stays on Checkout.
     func confirmGetNumber(using orders: OrdersAPI, wallet: WalletAPI) async {
         guard let svc = checkoutService, let cty = checkoutCountry else { return }
+        guard !isPlacingOrder else { return }   // no double-charge on double-tap
+        isPlacingOrder = true
+        defer { isPlacingOrder = false }
         do {
             let server = try await orders.create(serviceId: svc.id, countryId: cty.id)
             let order = resolve(server)
@@ -331,12 +337,6 @@ final class AppState {
 
     func buyAgain(_ order: Order) {
         startCheckout(service: order.service, country: order.country)
-    }
-
-    // ─────────── Credits (will be replaced by IAP in Phase E) ───────────
-
-    func buy(_ pack: CreditPack) {
-        balance += pack.credits
     }
 
     // ─────────── Fallbacks ───────────

@@ -90,7 +90,7 @@ struct AccountScreen: View {
     }
 
     private var memberSinceLine: String {
-        guard let date = state.profile?.createdAt else { return "Welcome to vSIM OTP" }
+        guard let date = state.profile?.createdAt else { return "Welcome to vSMS" }
         let f = DateFormatter()
         f.dateFormat = "MMMM yyyy"
         return "Member since \(f.string(from: date))"
@@ -309,7 +309,7 @@ struct AccountScreen: View {
     }
 
     private func openMail() {
-        if let url = URL(string: "mailto:\(LegalLinks.supportEmail)?subject=vSIM%20OTP%20support") {
+        if let url = URL(string: "mailto:\(LegalLinks.supportEmail)?subject=vSMS%20support") {
             UIApplication.shared.open(url)
         }
     }

@@ -163,9 +163,10 @@ struct CheckoutScreen: View {
                         )
                     } else {
                         PrimaryButton(
-                            label: "Get number",
-                            sub: "\(routeCost) cr",
+                            label: state.isPlacingOrder ? "Getting number…" : "Get number",
+                            sub: state.isPlacingOrder ? nil : "\(routeCost) cr",
                             icon: RIcon.bolt,
+                            disabled: state.isPlacingOrder,
                             action: {
                                 Task {
                                     await state.confirmGetNumber(

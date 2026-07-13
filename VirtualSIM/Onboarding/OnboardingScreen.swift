@@ -11,7 +11,7 @@ struct OnboardingScreen: View {
             icon: "bolt.fill",
             tint: Color(hex: 0x1B2330),
             title: "A calmer way to verify",
-            body: "vSIM OTP gives you a fresh temporary number for the verification codes you need — without giving up your real number."
+            body: "vSMS gives you a fresh temporary number for the verification codes you need — without giving up your real number."
         ),
         .init(
             icon: "paperplane.fill",
