@@ -34,6 +34,12 @@ Deno.serve(async (req) => {
       updated_at: new Date().toISOString(),
     }, { onConflict: "user_id,token" });
 
-  if (error) return json({ error: "persist_failed", detail: error.message }, { status: 500 });
+  if (error) {
+    console.error(`register-push FAILED user=${userId} env=${body.environment} bundle=${body.bundle_id}: ${error.message}`);
+    return json({ error: "persist_failed", detail: error.message }, { status: 500 });
+  }
+  // Logged so we can tell from function logs whether the app is even calling
+  // this (empty push_devices ⇒ registration path never reached) vs. failing.
+  console.log(`register-push OK user=${userId} env=${body.environment} bundle=${body.bundle_id} token=${body.token.slice(0, 8)}…`);
   return json({ ok: true });
 });

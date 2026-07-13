@@ -4,7 +4,10 @@
 import { handleCors, json } from "../_shared/cors.ts";
 import { admin } from "../_shared/supabaseAdmin.ts";
 import { poll, type Provider } from "../_shared/providers.ts";
+import { getBalanceUsd } from "../_shared/virtualsms.ts";
 import { sendPush } from "../_shared/apns.ts";
+
+const LOW_BALANCE_USD = 2;
 
 function validateCronSecret(req: Request): boolean {
   const header = req.headers.get("x-cron-secret");
@@ -94,6 +97,24 @@ Deno.serve(async (req) => {
         }
       }
     }
+  }
+
+  // Low-balance guardrail: virtualsms has no auto-topup, so a dry balance
+  // silently forces every order onto the SMSPVA fallback (402). Surface it in
+  // app_config + logs before that happens.
+  try {
+    const bal = await getBalanceUsd();
+    if (bal != null) {
+      const low = bal < LOW_BALANCE_USD;
+      await sb.from("app_config").upsert({
+        key: "virtualsms_health",
+        value: { balance_usd: bal, low, checked_at: new Date().toISOString() },
+        updated_at: new Date().toISOString(),
+      }, { onConflict: "key" });
+      if (low) console.error(`virtualsms balance LOW ($${bal}) — top up to keep primary fulfilment`);
+    }
+  } catch (e) {
+    console.error("virtualsms balance check failed:", e);
   }
 
   return json({ polled, arrived, pushSent });

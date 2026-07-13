@@ -84,6 +84,7 @@ Deno.serve(async (req) => {
   // price, then reserve. Skip (fall back) on margin failure or a reserve error.
   let reservation = null as Awaited<ReturnType<typeof reserve>> | null;
   let used: (typeof providers)[number] | null = null;
+  let usedCostUsd: number | null = null;
   let lastError = "no_numbers_available";
 
   for (const p of providers) {
@@ -98,7 +99,7 @@ Deno.serve(async (req) => {
       continue;
     }
     const res = await reserve(p, codes);
-    if (res.ok) { reservation = res; used = p; break; }
+    if (res.ok) { reservation = res; used = p; usedCostUsd = res.costUsd ?? liveCost; break; }
     console.warn(`reserve failed provider=${p} svc=${service.id} cty=${country.id} err=${res.error}`);
     lastError = res.error ?? "no_numbers_available";
   }
@@ -119,6 +120,7 @@ Deno.serve(async (req) => {
       smspva_id: reservation.orderId,      // generic: the provider's order id
       smspva_number: reservation.number,   // generic: display number
       cost_credits: cost,
+      actual_cost_cents: usedCostUsd != null ? Math.round(usedCostUsd * 100) : null,
       status: "waiting",
     })
     .select("*").single();
