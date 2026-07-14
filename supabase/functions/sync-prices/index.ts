@@ -78,6 +78,14 @@ Deno.serve(async (req) => {
     .from("routes").select("service_id, country_id").eq("provider", "virtualsms");
   const vsOwned = new Set((vsRoutes ?? []).map((r) => `${r.service_id}|${r.country_id}`));
 
+  // Manually blocked combos (app_config 'blocked_routes' = ["service|country"]).
+  // Used to hide combos that structurally never deliver on VoIP — e.g. US
+  // WhatsApp/Google/OpenAI/Twitter, which SMSPVA can't fulfil and virtualsms
+  // has no US supply for. Editable without a redeploy.
+  const { data: blkRow } = await sb
+    .from("app_config").select("value").eq("key", "blocked_routes").maybeSingle();
+  const blocked = new Set<string>(Array.isArray(blkRow?.value) ? (blkRow!.value as string[]) : []);
+
   // A single smspva_code may map to MULTIPLE catalog services — fan a price row
   // out to every one of them, never just the last.
   const svcByCode = new Map<string, { id: string }[]>();
@@ -167,16 +175,18 @@ Deno.serve(async (req) => {
     const credits = priceToCredits(price as number);
     const cents = Math.round((price as number) * 100);
     for (let i = 0; i < svcs.length; i++) {
-      if (vsOwned.has(`${svcs[i].id}|${cid}`)) continue; // virtualsms owns this combo
+      const key = `${svcs[i].id}|${cid}`;
+      if (vsOwned.has(key)) continue; // virtualsms owns this combo
       if (i > 0) fannedOut++;
       pricedServiceIds.add(svcs[i].id);
+      const hide = blocked.has(key) || cents > MAX_WHOLESALE_CENTS;
       updates.push({
         service_id:      svcs[i].id,
         country_id:      cid,
         retail_credits:  credits,
         last_cost_cents: cents,
         last_checked_at: nowIso,
-        status:          cents > MAX_WHOLESALE_CENTS ? "hidden" : "active",
+        status:          hide ? "hidden" : "active",
       });
     }
   }
