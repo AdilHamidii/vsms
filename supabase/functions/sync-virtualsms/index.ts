@@ -64,14 +64,11 @@ Deno.serve(async (req) => {
     if (cur.last_completed === today()) {
       return json({ status: "already_completed_today", total });
     }
-    // Fresh start: raise the maintenance banner with an ETA.
-    const mins = Math.ceil(total / BATCH) + 2;
+    // Fresh start. Intentionally NO maintenance banner: a routine price refresh
+    // must not block ordering (that frustrates new users at their activation
+    // moment). Orders during the sync just use whatever price is current, which
+    // is harmless. The maintenance flag stays available for real emergencies.
     cur = { index: 0, running: true, last_completed: cur.last_completed };
-    await setConfig(sb, "maintenance", {
-      active: true,
-      until: new Date(Date.now() + mins * 60_000).toISOString(),
-      message: "Refreshing prices",
-    });
   }
 
   const start = cur.index;
@@ -110,7 +107,6 @@ Deno.serve(async (req) => {
   await setConfig(sb, "virtualsms_sync", done
     ? { index: 0, running: false, last_completed: today() }
     : { index: end, running: true, last_completed: cur.last_completed });
-  if (done) await setConfig(sb, "maintenance", { active: false });
 
   return json({ processed: end - start, priced, reverted, skipped, cursor: done ? 0 : end, total, done });
 });
