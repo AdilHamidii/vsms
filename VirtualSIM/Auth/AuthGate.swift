@@ -38,7 +38,7 @@ struct AuthGate: View {
         .task {
             push.attach(api: api, session: session)
             iap.attach(api: api)
-            AppDelegate.shared.push = push
+            AppDelegate.push = push
             await session.bootstrap()
         }
     }
