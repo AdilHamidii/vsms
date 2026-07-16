@@ -21,6 +21,7 @@ struct WaitingScreen: View {
                     serviceStrip
                     numberCard
                     waitingCard
+                    refundReassurance
                     if state.showMetrics { metric }
                 }
                 .padding(.top, 6)
@@ -203,6 +204,25 @@ struct WaitingScreen: View {
 
     private func formatMMSS(_ s: Int) -> String {
         String(format: "%02d:%02d", s / 60, s % 60)
+    }
+
+    // No SMS provider delivers 100% of the time (numbers get flagged, some
+    // services block non-native SIMs). Make the safety net explicit so an
+    // undelivered code costs the user nothing and doesn't read as a scam —
+    // cancelWaiting (the ✕ above) issues a full refund.
+    private var refundReassurance: some View {
+        HStack(spacing: 8) {
+            Image(systemName: RIcon.shield)
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(theme.text3)
+            Text("No code? Cancel any time — your credits are refunded in full, instantly.")
+                .font(RFont.text(12))
+                .tracking(-0.1)
+                .foregroundStyle(theme.text3)
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 24)
+        .padding(.top, 14)
     }
 
     private var metric: some View {
