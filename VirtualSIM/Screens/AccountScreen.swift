@@ -11,6 +11,11 @@ struct AccountScreen: View {
     @State private var showDeleteConfirm = false
     @State private var deleteInProgress = false
 
+    @State private var inviteCode = ""
+    @State private var redeeming = false
+    @State private var redeemMsg: String?
+    @State private var codeCopied = false
+
     var body: some View {
         @Bindable var state = state
         ScrollView {
@@ -18,6 +23,7 @@ struct AccountScreen: View {
                 title
                 profileCard
                 balanceCard
+                invite
                 preferences(state: state)
                 support
                 legal
@@ -145,6 +151,98 @@ struct AccountScreen: View {
         }
         .padding(.horizontal, 16)
         .padding(.top, 14)
+    }
+
+    private var invite: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            SectionHeader(label: "Invite friends")
+                .padding(.horizontal, 4)
+            Card {
+                VStack(alignment: .leading, spacing: 14) {
+                    Text("Share your code. When a friend signs up and buys their first credit pack, **you get 5 credits**.")
+                        .font(RFont.text(14))
+                        .lineSpacing(2)
+                        .foregroundStyle(theme.text2)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    HStack(spacing: 10) {
+                        Button(action: copyCode) {
+                            HStack(spacing: 8) {
+                                Text(state.profile?.referralCode ?? "—")
+                                    .font(RFont.mono(18, weight: .semibold))
+                                    .foregroundStyle(theme.text)
+                                Spacer(minLength: 0)
+                                Image(systemName: codeCopied ? RIcon.check : RIcon.copy)
+                                    .font(.system(size: 13, weight: .semibold))
+                                    .foregroundStyle(codeCopied ? theme.live : theme.text2)
+                            }
+                            .padding(.horizontal, 14)
+                            .frame(height: 46)
+                            .frame(maxWidth: .infinity)
+                            .background(theme.chipBg, in: .rect(cornerRadius: 12))
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(state.profile?.referralCode == nil)
+
+                        if let code = state.profile?.referralCode {
+                            ShareLink(item: inviteMessage(code)) {
+                                HStack(spacing: 6) {
+                                    Image(systemName: "square.and.arrow.up")
+                                        .font(.system(size: 14, weight: .semibold))
+                                    Text("Share")
+                                        .font(RFont.display(14, weight: .semibold))
+                                        .tracking(-0.2)
+                                }
+                                .foregroundStyle(theme.onInk)
+                                .padding(.horizontal, 16)
+                                .frame(height: 46)
+                                .background(theme.ink, in: .rect(cornerRadius: 12))
+                            }
+                        }
+                    }
+
+                    if state.profile?.referredBy == nil {
+                        Rectangle().fill(theme.sep).frame(height: 0.5)
+                        HStack(spacing: 8) {
+                            TextField("Have an invite code?", text: $inviteCode)
+                                .textInputAutocapitalization(.characters)
+                                .autocorrectionDisabled()
+                                .font(RFont.mono(15))
+                                .foregroundStyle(theme.text)
+                                .padding(.horizontal, 12)
+                                .frame(height: 42)
+                                .background(theme.chipBg, in: .rect(cornerRadius: 10))
+
+                            Button {
+                                Task { await redeemCode() }
+                            } label: {
+                                Text(redeeming ? "…" : "Redeem")
+                                    .font(RFont.display(14, weight: .semibold))
+                                    .foregroundStyle(canRedeem ? theme.text : theme.text3)
+                                    .padding(.horizontal, 16)
+                                    .frame(height: 42)
+                                    .background(theme.chipBg, in: .rect(cornerRadius: 10))
+                            }
+                            .buttonStyle(.plain)
+                            .disabled(!canRedeem)
+                        }
+                        if let redeemMsg {
+                            Text(redeemMsg)
+                                .font(RFont.text(12))
+                                .foregroundStyle(theme.text3)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+                }
+                .padding(18)
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.top, 22)
+    }
+
+    private var canRedeem: Bool {
+        !redeeming && inviteCode.trimmingCharacters(in: .whitespaces).count >= 4
     }
 
     private func preferences(state: AppState) -> some View {
@@ -306,6 +404,44 @@ struct AccountScreen: View {
 
     private func open(_ url: URL) {
         UIApplication.shared.open(url)
+    }
+
+    private func inviteMessage(_ code: String) -> String {
+        "Get a private temporary number for verification codes on vSMS — use my invite code \(code): https://apps.apple.com/app/id6774768570"
+    }
+
+    private func copyCode() {
+        guard let code = state.profile?.referralCode else { return }
+        UIPasteboard.general.string = code
+        codeCopied = true
+        Task {
+            try? await Task.sleep(nanoseconds: 1_600_000_000)
+            codeCopied = false
+        }
+    }
+
+    private func redeemCode() async {
+        let code = inviteCode.trimmingCharacters(in: .whitespaces)
+        guard code.count >= 4 else { return }
+        redeeming = true
+        defer { redeeming = false }
+        do {
+            let status = try await ProfileAPI(client: api).redeemReferral(code: code)
+            switch status {
+            case "ok":
+                redeemMsg = "Invite code applied 🎉 Your friend earns 5 credits when you buy your first pack."
+                inviteCode = ""
+                await state.refreshProfile(using: ProfileAPI(client: api))
+            case "already_referred":
+                redeemMsg = "You've already used an invite code."
+            case "self":
+                redeemMsg = "You can't use your own code."
+            default: // invalid_code
+                redeemMsg = "That code isn't valid."
+            }
+        } catch {
+            redeemMsg = "Couldn't apply that code. Please try again."
+        }
     }
 
     private func openMail() {

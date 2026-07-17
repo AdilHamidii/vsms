@@ -21,6 +21,10 @@ struct CatalogAPI {
         async let svcTask: [Service] = client.request(
             .get, path: "rest/v1/services",
             query: [URLQueryItem(name: "select", value: "*"),
+                    // Skip services flagged not-visible server-side (e.g. ones
+                    // whose only provider code is an UNMAPPED placeholder — a
+                    // guaranteed dead end). Data-driven, no client release needed.
+                    URLQueryItem(name: "visible", value: "eq.true"),
                     URLQueryItem(name: "order",  value: "sort_order.asc")],
             authenticated: false
         )

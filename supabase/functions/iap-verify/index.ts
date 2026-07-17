@@ -63,5 +63,14 @@ Deno.serve(async (req) => {
     p_receipt: inserted?.id ?? null,
   });
 
+  // Referral payout: if this buyer was referred and hasn't triggered the reward
+  // yet, pay their inviter 5 credits. Idempotent server-side, so firing on every
+  // purchase is safe — it only pays out on the buyer's first one.
+  try {
+    await sb.rpc("apply_referral_reward", { p_referee: userId });
+  } catch (e) {
+    console.error("apply_referral_reward failed for", userId, e);
+  }
+
   return json({ ok: true, credits, balance_changed: true });
 });
