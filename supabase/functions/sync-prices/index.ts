@@ -29,6 +29,12 @@ const CREDIT_DIVISOR = 0.10;
 const MIN_CREDITS = 1;
 const MAX_CREDITS = 999;
 
+// Price smoothing: retail_credits is derived from an EWMA of wholesale cost, not
+// the single latest quote, so a one-day SMSPVA spike/dip doesn't flip a route
+// between price tiers. SMOOTH_ALPHA weights the new quote; the rest carries the
+// prior smoothed value. 0.5 ≈ a 2-day half-life. First observation seeds it.
+const SMOOTH_ALPHA = 0.5;
+
 // Price ceiling: hide any route whose wholesale cost exceeds this. 5× on a
 // $6–150 SMSPVA WhatsApp price is absurd ($30–750 retail); above the ceiling we
 // mark the route 'hidden' (cost() -> nil -> "Unavailable") instead of listing
@@ -77,6 +83,16 @@ Deno.serve(async (req) => {
   const { data: vsRoutes } = await sb
     .from("routes").select("service_id, country_id").eq("provider", "virtualsms");
   const vsOwned = new Set((vsRoutes ?? []).map((r) => `${r.service_id}|${r.country_id}`));
+
+  // Prior smoothed cost per route, for the EWMA below.
+  const { data: prevRows } = await sb
+    .from("routes").select("service_id, country_id, smoothed_cost_cents");
+  const prevSmoothed = new Map<string, number>();
+  for (const r of prevRows ?? []) {
+    if (r.smoothed_cost_cents != null) {
+      prevSmoothed.set(`${r.service_id}|${r.country_id}`, r.smoothed_cost_cents as number);
+    }
+  }
 
   // Manually blocked combos (app_config 'blocked_routes' = ["service|country"]).
   // Used to hide combos that structurally never deliver on VoIP — e.g. US
@@ -147,6 +163,7 @@ Deno.serve(async (req) => {
     country_id: string;
     retail_credits: number;
     last_cost_cents: number;
+    smoothed_cost_cents: number;
     last_checked_at: string;
     status: string;
   }[] = [];
@@ -172,21 +189,32 @@ Deno.serve(async (req) => {
     if (!cid) { unknownCountries++; continue; }
 
     seenCountries.add(cid);
-    const credits = priceToCredits(price as number);
     const cents = Math.round((price as number) * 100);
     for (let i = 0; i < svcs.length; i++) {
       const key = `${svcs[i].id}|${cid}`;
       if (vsOwned.has(key)) continue; // virtualsms owns this combo
       if (i > 0) fannedOut++;
       pricedServiceIds.add(svcs[i].id);
+
+      // EWMA the wholesale cost, then derive credits from the smoothed value so a
+      // single-day quote can't flip the route between price tiers. Seed on first
+      // observation. The hide ceiling still uses the raw current cost — if today's
+      // cost is genuinely absurd, don't sell it regardless of history.
+      const prev = prevSmoothed.get(key);
+      const smoothed = prev == null
+        ? cents
+        : Math.round(SMOOTH_ALPHA * cents + (1 - SMOOTH_ALPHA) * prev);
+      const credits = priceToCredits(smoothed / 100);
       const hide = blocked.has(key) || cents > MAX_WHOLESALE_CENTS;
+
       updates.push({
-        service_id:      svcs[i].id,
-        country_id:      cid,
-        retail_credits:  credits,
-        last_cost_cents: cents,
-        last_checked_at: nowIso,
-        status:          hide ? "hidden" : "active",
+        service_id:         svcs[i].id,
+        country_id:         cid,
+        retail_credits:     credits,
+        last_cost_cents:    cents,
+        smoothed_cost_cents: smoothed,
+        last_checked_at:    nowIso,
+        status:             hide ? "hidden" : "active",
       });
     }
   }
