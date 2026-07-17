@@ -6,6 +6,10 @@ struct AuthGate: View {
     @State private var push = PushManager()
     @State private var iap = IAPStore()
     @AppStorage("onboardingComplete") private var onboardingComplete = false
+    // Pre-sign-in screens (onboarding, sign-in, bootstrap) run before AppState
+    // exists, so they can't read its isDark preference — follow the system
+    // appearance instead, otherwise they'd render light-only in Dark Mode.
+    @Environment(\.colorScheme) private var colorScheme
 
     init() {
         let client = APIClient()
@@ -31,6 +35,7 @@ struct AuthGate: View {
                     }
             }
         }
+        .environment(\.theme, colorScheme == .dark ? .dark : .light)
         .environment(api)
         .environment(session)
         .environment(push)

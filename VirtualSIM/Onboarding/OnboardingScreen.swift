@@ -1,146 +1,217 @@
 import SwiftUI
 
+// Single-screen onboarding. The hero is the product itself doing its one job:
+// a temporary number sitting on a card, a verification SMS typing in, and the
+// code landing highlighted in brand green — the same surfaces the user meets on
+// the Waiting/OTP screens. No feature carousel, no abstract icon badges.
 struct OnboardingScreen: View {
     @Environment(\.theme) private var theme
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     var onDone: () -> Void
-
-    @State private var page: Int = 0
-
-    private let pages: [OnboardingPage] = [
-        .init(
-            icon: "bolt.fill",
-            tint: Color(hex: 0x1B2330),
-            title: "A calmer way to verify",
-            body: "vSMS gives you a fresh temporary number for the verification codes you need — without giving up your real number."
-        ),
-        .init(
-            icon: "paperplane.fill",
-            tint: Color(hex: 0x1FA463),
-            title: "Three taps to a number",
-            body: "Pick a service, pick a country, tap Get number. The code lands in the app in seconds. If it doesn't, you're auto-refunded."
-        ),
-        .init(
-            icon: "hand.raised.fill",
-            tint: Color(hex: 0x4A2A8E),
-            title: "Private by default",
-            body: "No ads. No tracking. No marketing emails. Your real number stays yours."
-        ),
-    ]
 
     var body: some View {
         ZStack {
             theme.bg.ignoresSafeArea()
             VStack(spacing: 0) {
-                topBar
-                TabView(selection: $page) {
-                    ForEach(Array(pages.enumerated()), id: \.offset) { idx, p in
-                        OnboardingPageView(page: p)
-                            .tag(idx)
-                    }
+                header
+                Spacer(minLength: 16)
+                VStack(spacing: 30) {
+                    InboxDemo(reduceMotion: reduceMotion)
+                        .padding(.horizontal, 22)
+                    copyBlock
                 }
-                .tabViewStyle(.page(indexDisplayMode: .never))
-                .animation(.easeInOut, value: page)
-
-                dots
-
-                bottomCTA
+                Spacer(minLength: 16)
+                footer
             }
         }
     }
 
-    private var topBar: some View {
-        HStack {
+    private var header: some View {
+        HStack(spacing: 7) {
+            RoundedRectangle(cornerRadius: 7, style: .continuous)
+                .fill(theme.ink)
+                .frame(width: 22, height: 22)
+                .overlay(
+                    Image(systemName: "bolt.fill")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundStyle(theme.onInk)
+                )
+            Text("vSMS")
+                .font(RFont.display(17, weight: .bold))
+                .tracking(-0.3)
+                .foregroundStyle(theme.text)
             Spacer()
-            if page < pages.count - 1 {
-                Button("Skip") {
-                    onDone()
-                }
-                .font(RFont.text(15, weight: .medium))
-                .foregroundStyle(theme.text2)
-                .padding(.horizontal, 8)
-                .padding(.vertical, 6)
-            }
-        }
-        .frame(height: 44)
-        .padding(.horizontal, 16)
-        .padding(.top, 8)
-    }
-
-    private var dots: some View {
-        HStack(spacing: 8) {
-            ForEach(0..<pages.count, id: \.self) { i in
-                Capsule()
-                    .fill(i == page ? theme.ink : theme.sepStrong)
-                    .frame(width: i == page ? 22 : 6, height: 6)
-                    .animation(.easeInOut(duration: 0.25), value: page)
-            }
-        }
-        .padding(.bottom, 14)
-    }
-
-    private var bottomCTA: some View {
-        VStack(spacing: 12) {
-            PrimaryButton(
-                label: page < pages.count - 1 ? "Continue" : "Get started",
-                action: advance
-            )
         }
         .padding(.horizontal, 24)
-        .padding(.bottom, 28)
+        .padding(.top, 14)
+        .frame(height: 44)
     }
 
-    private func advance() {
-        if page < pages.count - 1 {
-            withAnimation { page += 1 }
-        } else {
-            onDone()
+    private var copyBlock: some View {
+        VStack(spacing: 14) {
+            Text("Get the code,\nkeep your number.")
+                .font(RFont.display(30, weight: .bold))
+                .tracking(-0.8)
+                .lineSpacing(2)
+                .multilineTextAlignment(.center)
+                .foregroundStyle(theme.text)
+            Text("Rent a throwaway phone number, catch the verification SMS right here, and keep your real one off every signup form.")
+                .font(RFont.text(15))
+                .lineSpacing(3)
+                .multilineTextAlignment(.center)
+                .foregroundStyle(theme.text2)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.horizontal, 14)
         }
+        .padding(.horizontal, 24)
     }
-}
 
-struct OnboardingPage {
-    let icon: String
-    let tint: Color
-    let title: String
-    let body: String
-}
-
-private struct OnboardingPageView: View {
-    @Environment(\.theme) private var theme
-    let page: OnboardingPage
-
-    var body: some View {
-        VStack(spacing: 28) {
-            Spacer()
-            iconBadge
-            VStack(spacing: 12) {
-                Text(page.title)
-                    .font(RFont.display(28, weight: .bold))
-                    .tracking(-0.7)
-                    .foregroundStyle(theme.text)
+    private var footer: some View {
+        VStack(spacing: 14) {
+            HStack(spacing: 7) {
+                Image(systemName: "checkmark.shield.fill")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(theme.live)
+                Text("No ads or tracking. No code, no charge — refunded instantly.")
+                    .font(RFont.text(12.5))
+                    .foregroundStyle(theme.text3)
                     .multilineTextAlignment(.center)
-                Text(page.body)
-                    .font(RFont.text(16))
-                    .foregroundStyle(theme.text2)
-                    .multilineTextAlignment(.center)
-                    .lineSpacing(3)
                     .fixedSize(horizontal: false, vertical: true)
             }
-            .padding(.horizontal, 32)
+            PrimaryButton(label: "Get started", action: onDone)
+            Text("Sign in with Apple next — that's the only detail we ask for.")
+                .font(RFont.text(11.5))
+                .foregroundStyle(theme.text3)
+                .multilineTextAlignment(.center)
+        }
+        .padding(.horizontal, 24)
+        .padding(.bottom, 24)
+        .padding(.top, 2)
+    }
+}
+
+// MARK: - Live "code arrives" demo
+
+private struct InboxDemo: View {
+    @Environment(\.theme) private var theme
+    let reduceMotion: Bool
+
+    // 0 = number only, 1 = sender typing, 2 = code delivered.
+    @State private var phase = 0
+    @State private var livePulse = false
+
+    var body: some View {
+        Card {
+            VStack(alignment: .leading, spacing: 0) {
+                cardHeader
+                numberRow
+                Rectangle().fill(theme.sep).frame(height: 0.5)
+                    .padding(.vertical, 18)
+                thread
+            }
+            .padding(20)
+        }
+        .task { await run() }
+    }
+
+    private var cardHeader: some View {
+        HStack {
+            Text("YOUR TEMPORARY NUMBER")
+                .font(RFont.text(11, weight: .semibold))
+                .tracking(0.6)
+                .foregroundStyle(theme.text3)
             Spacer()
-            Spacer()
+            HStack(spacing: 5) {
+                Circle()
+                    .fill(theme.live)
+                    .frame(width: 6, height: 6)
+                    .opacity(livePulse ? 1 : 0.3)
+                    .animation(reduceMotion ? nil : .easeInOut(duration: 0.9).repeatForever(autoreverses: true), value: livePulse)
+                Text("Live")
+                    .font(RFont.text(11, weight: .semibold))
+                    .foregroundStyle(theme.live)
+            }
         }
     }
 
-    private var iconBadge: some View {
-        ZStack {
-            RoundedRectangle(cornerRadius: 32, style: .continuous)
-                .fill(page.tint)
-                .frame(width: 120, height: 120)
-                .shadow(color: page.tint.opacity(0.4), radius: 26, x: 0, y: 8)
-            Image(systemName: page.icon)
-                .font(.system(size: 50, weight: .semibold))
-                .foregroundStyle(.white)
+    private var numberRow: some View {
+        HStack(spacing: 10) {
+            Text("🇫🇷").font(.system(size: 26))
+            MonoText("+33 6 12 34 56 78", size: 21, weight: .medium, color: theme.text)
+            Spacer(minLength: 0)
+        }
+        .padding(.top, 14)
+    }
+
+    private var thread: some View {
+        Group {
+            if phase >= 2 {
+                smsBubble
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+            } else if phase == 1 {
+                TypingDots()
+                    .transition(.opacity)
+            } else {
+                // Hold the vertical space so the card doesn't jump on delivery.
+                Color.clear.frame(height: 1)
+            }
+        }
+        .frame(maxWidth: .infinity, minHeight: 78, alignment: .topLeading)
+    }
+
+    private var smsBubble: some View {
+        VStack(alignment: .leading, spacing: 5) {
+            Text("Instagram")
+                .font(RFont.text(12, weight: .semibold))
+                .foregroundStyle(theme.text2)
+            (
+                Text("Your code is ").font(RFont.text(15)).foregroundStyle(theme.text)
+                + Text("4827").font(RFont.mono(16, weight: .bold)).foregroundStyle(theme.live)
+                + Text(" — don't share it.").font(RFont.text(15)).foregroundStyle(theme.text)
+            )
+            .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(theme.elev2, in: .rect(cornerRadius: 16))
+        .overlay(
+            RoundedRectangle(cornerRadius: 16)
+                .stroke(theme.sep, lineWidth: 0.5)
+        )
+    }
+
+    private func run() async {
+        livePulse = true
+        if reduceMotion { phase = 2; return }
+        try? await Task.sleep(nanoseconds: 650_000_000)
+        withAnimation(.easeInOut(duration: 0.25)) { phase = 1 }
+        try? await Task.sleep(nanoseconds: 1_300_000_000)
+        withAnimation(.spring(response: 0.5, dampingFraction: 0.82)) { phase = 2 }
+    }
+}
+
+private struct TypingDots: View {
+    @Environment(\.theme) private var theme
+    @State private var active = 0
+
+    var body: some View {
+        HStack(spacing: 6) {
+            ForEach(0..<3, id: \.self) { i in
+                Circle()
+                    .fill(theme.text3)
+                    .frame(width: 7, height: 7)
+                    .opacity(active == i ? 1 : 0.35)
+            }
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 14)
+        .background(theme.elev2, in: .rect(cornerRadius: 16))
+        .task {
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 300_000_000)
+                withAnimation(.easeInOut(duration: 0.2)) { active = (active + 1) % 3 }
+            }
         }
     }
 }
