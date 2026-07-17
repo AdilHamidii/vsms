@@ -13,40 +13,69 @@ struct SignInScreen: View {
     var body: some View {
         ZStack {
             theme.bg.ignoresSafeArea()
-            VStack(spacing: 28) {
-                Spacer()
-                logo
-                copy
-                Spacer()
+            VStack(spacing: 0) {
+                lockup
+                Spacer(minLength: 20)
+                headline
+                dealCard
+                    .padding(.top, 26)
+                Spacer(minLength: 20)
                 buttons
             }
-            .padding(.horizontal, 32)
-            .padding(.bottom, 60)
+            .padding(.horizontal, 28)
+            .padding(.top, 24)
+            .padding(.bottom, 44)
         }
     }
 
-    private var logo: some View {
-        ZStack {
-            RoundedRectangle(cornerRadius: 26, style: .continuous)
+    private var lockup: some View {
+        HStack(spacing: 8) {
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
                 .fill(theme.ink)
-                .frame(width: 88, height: 88)
-            Image(systemName: "bolt.fill")
-                .font(.system(size: 36, weight: .semibold))
-                .foregroundStyle(theme.onInk)
+                .frame(width: 26, height: 26)
+                .overlay(
+                    Image(systemName: "bolt.fill")
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundStyle(theme.onInk)
+                )
+            Text("vSMS")
+                .font(RFont.display(19, weight: .bold))
+                .tracking(-0.3)
+                .foregroundStyle(theme.text)
+            Spacer()
         }
-        .shadow(color: theme.glow, radius: 24, x: 0, y: 6)
     }
 
-    private var copy: some View {
-        VStack(spacing: 10) {
-            Text("vSMS")
-                .font(RFont.display(34, weight: .bold))
+    private var headline: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Signing in asks\nfor almost nothing.")
+                .font(RFont.display(30, weight: .bold))
                 .tracking(-0.8)
+                .lineSpacing(2)
                 .foregroundStyle(theme.text)
-            Text("Get a temporary number, receive the code, done.")
+            Text("That's the whole idea — you're here to keep your real number to yourself.")
                 .font(RFont.text(15))
-                .multilineTextAlignment(.center)
+                .lineSpacing(3)
                 .foregroundStyle(theme.text2)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var dealCard: some View {
+        Card {
+            VStack(alignment: .leading, spacing: 0) {
+                Text("WHAT SIGNING IN MEANS")
+                    .font(RFont.text(11, weight: .semibold))
+                    .tracking(0.6)
+                    .foregroundStyle(theme.text3)
+                    .padding(.bottom, 16)
+                DealRow(text: "One tap with Apple — no password to make")
+                DealRow(text: "Your email stays hidden if you want it to")
+                DealRow(text: "Your real phone number never touches this app")
+                DealRow(text: "No ads, no tracking, no email list", last: true)
+            }
+            .padding(20)
         }
     }
 
@@ -94,6 +123,28 @@ struct SignInScreen: View {
                 }
             }
             .multilineTextAlignment(.center)
+        }
+    }
+
+    private struct DealRow: View {
+        @Environment(\.theme) private var theme
+        let text: String
+        var last: Bool = false
+
+        var body: some View {
+            HStack(spacing: 12) {
+                Image(systemName: "checkmark")
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundStyle(theme.live)
+                    .frame(width: 22, height: 22)
+                    .background(theme.liveSoft, in: .circle)
+                Text(text)
+                    .font(RFont.text(14))
+                    .foregroundStyle(theme.text)
+                    .fixedSize(horizontal: false, vertical: true)
+                Spacer(minLength: 0)
+            }
+            .padding(.bottom, last ? 0 : 14)
         }
     }
 
