@@ -264,6 +264,14 @@ final class AppState {
 
     /// Calls create-order. On success, deducts credits and transitions to
     /// the Waiting flow. On failure, sets lastError and stays on Checkout.
+    ///
+    /// @MainActor is load-bearing: AppState is @Observable but not otherwise
+    /// actor-isolated, so without this the double-tap guard below is a racy
+    /// check-then-set. Two taps spawn two Tasks that run off the main actor and
+    /// can both read isPlacingOrder == false before either sets it, each placing
+    /// a (charged) order. Pinning to the main actor makes guard+set atomic: the
+    /// second tap runs only after the first has set the flag and suspended.
+    @MainActor
     func confirmGetNumber(using orders: OrdersAPI, wallet: WalletAPI) async {
         guard let svc = checkoutService, let cty = checkoutCountry else { return }
         guard !isPlacingOrder else { return }   // no double-charge on double-tap

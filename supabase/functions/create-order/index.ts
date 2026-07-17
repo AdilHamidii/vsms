@@ -55,6 +55,26 @@ Deno.serve(async (req) => {
     return json({ error: "route_unavailable" }, { status: 409 });
   }
 
+  // Idempotency backstop against a double-submit (fast double-tap, a retry, or
+  // two devices): if the user already has a live 'waiting' order for this exact
+  // service+country from the last few seconds, return it instead of charging +
+  // reserving a second number. The client also guards this on the main actor;
+  // this makes the server safe even if that guard is bypassed. A short window
+  // (not a blanket rule) so a deliberate repeat order later still works.
+  const dedupeSince = new Date(Date.now() - 15_000).toISOString();
+  const { data: existing } = await sb
+    .from("orders")
+    .select("*")
+    .eq("user_id", userId)
+    .eq("service_id", service.id)
+    .eq("country_id", country.id)
+    .eq("status", "waiting")
+    .gte("created_at", dedupeSince)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (existing) return json({ order: existing, deduped: true });
+
   const cost = route.retail_credits as number;
   const codes: RouteCodes = {
     vsService: service.virtualsms_code,
