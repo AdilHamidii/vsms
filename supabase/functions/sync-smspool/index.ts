@@ -54,22 +54,25 @@ Deno.serve(async (req) => {
   // ── Bootstrap smspool_code mappings (idempotent).
   //    Countries: by lowercased name (robust across UK/GB etc.).
   //    Services: override map first, then exact lowercased name match.
+  // Normalize names (lowercase + strip punctuation/spaces) so "Proton Mail" ==
+  // "ProtonMail", "Mail.ru" == "MailRu", "Tencent QQ" == "Tencent / QQ", etc.
+  const norm = (x: string) => x.toLowerCase().replace(/[^a-z0-9]/g, "");
   const [spServices, spCountries] = await Promise.all([listServices(), listCountries()]);
   const spSvcByName = new Map<string, number>();
-  for (const s of spServices) spSvcByName.set(s.name.trim().toLowerCase(), s.ID);
+  for (const s of spServices) spSvcByName.set(norm(s.name), s.ID);
   const spCtyByName = new Map<string, number>();
-  for (const c of spCountries) spCtyByName.set(c.name.trim().toLowerCase(), c.ID);
+  for (const c of spCountries) spCtyByName.set(norm(c.name), c.ID);
 
   const svcMapUpserts: { id: string; smspool_code: string }[] = [];
   for (const s of services) {
     if (s.smspool_code) continue;
-    const id = SERVICE_OVERRIDES[s.id] ?? spSvcByName.get((s.name ?? "").trim().toLowerCase());
+    const id = SERVICE_OVERRIDES[s.id] ?? spSvcByName.get(norm(s.name ?? ""));
     if (id != null) svcMapUpserts.push({ id: s.id, smspool_code: String(id) });
   }
   const ctyMapUpserts: { id: string; smspool_code: string }[] = [];
   for (const c of countries) {
     if (c.smspool_code) continue;
-    const id = spCtyByName.get((c.name ?? "").trim().toLowerCase());
+    const id = spCtyByName.get(norm(c.name ?? ""));
     if (id != null) ctyMapUpserts.push({ id: c.id, smspool_code: String(id) });
   }
   for (const u of svcMapUpserts) await sb.from("services").update({ smspool_code: u.smspool_code }).eq("id", u.id);
