@@ -121,6 +121,31 @@ final class AppState {
         return credits
     }
 
+    /// Provider self-reported delivery success (0-100) for (service, country),
+    /// or nil when we have no figure. Separate from `cost` on purpose — a
+    /// missing rate hides the badge, it does NOT make the route unavailable.
+    func successRate(for service: Service, country: Country) -> Int? {
+        guard let route = routeIndex["\(service.id)|\(country.id)"],
+              route.status == "active" else { return nil }
+        return route.successRate
+    }
+
+    /// The most reliable country we can currently book for this service (highest
+    /// success, ties broken by lower cost). Used to steer a freshly-picked
+    /// service onto a route that actually delivers. nil if nothing is priced.
+    func bestCountry(for service: Service) -> Country? {
+        countries
+            .filter { cost(for: service, country: $0) != nil }
+            .max { a, b in
+                let ra = successRate(for: service, country: a) ?? -1
+                let rb = successRate(for: service, country: b) ?? -1
+                if ra != rb { return ra < rb }
+                let ca = cost(for: service, country: a) ?? .max
+                let cb = cost(for: service, country: b) ?? .max
+                return ca > cb
+            }
+    }
+
     /// Country picker shows every country in the catalog. A specific
     /// (service, country) pair may still be rejected at order time if
     /// SMSPVA is out of numbers — handled by create-order.

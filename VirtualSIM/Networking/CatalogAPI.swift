@@ -6,6 +6,7 @@ struct Route: Codable, Hashable {
     let retailCredits: Int?
     let status: String
     let lastCostCents: Int?
+    let successRate: Int?   // 0-100, provider self-reported; nil = no badge
 }
 
 struct Catalog: Codable {
@@ -42,7 +43,7 @@ struct CatalogAPI {
             .get, path: "rest/v1/routes",
             query: [
                 URLQueryItem(name: "select", value: "*"),
-                URLQueryItem(name: "or", value: "(retail_credits.not.is.null,status.neq.active)"),
+                URLQueryItem(name: "or", value: "(retail_credits.not.is.null,status.neq.active,success_rate.not.is.null)"),
             ],
             authenticated: false
         )

@@ -73,6 +73,10 @@ struct HomeScreen: View {
         state.cost(for: state.lastService, country: state.lastCountry)
     }
 
+    private var routeSuccess: Int? {
+        state.successRate(for: state.lastService, country: state.lastCountry)
+    }
+
     /// A user who has never placed an order — show them a "start here" framing
     /// and, when their free credit covers the default, say so.
     private var isFirstRun: Bool { state.orders.isEmpty }
@@ -172,7 +176,12 @@ struct HomeScreen: View {
                             Spacer()
                             Metric(label: "No code", value: "Refunded", accent: theme.live)
                             Spacer()
-                            Metric(label: "Held for", value: "20 min")
+                            if let routeSuccess {
+                                Metric(label: "Success", value: "\(routeSuccess)%",
+                                       accent: routeSuccess >= 70 ? theme.live : theme.warn)
+                            } else {
+                                Metric(label: "Held for", value: "20 min")
+                            }
                         }
                         .padding(.top, 14)
                     }

@@ -162,8 +162,16 @@ struct ContentView: View {
         switch which {
         case .services:
             ServiceSheet(onPick: { picked in
-                if state.flow == .checkout { state.checkoutService = picked }
-                else { state.lastService = picked }
+                // Show + steer: land the freshly-picked service on its most
+                // reliable country instead of keeping whatever was selected.
+                let best = state.bestCountry(for: picked)
+                if state.flow == .checkout {
+                    state.checkoutService = picked
+                    if let best { state.checkoutCountry = best }
+                } else {
+                    state.lastService = picked
+                    if let best { state.lastCountry = best }
+                }
             })
         case .country:
             CountrySheet(onPick: { picked in

@@ -1,20 +1,22 @@
 import SwiftUI
 
 enum CountrySort: String, Hashable, CaseIterable {
-    case `default`, cheapest, fastest
+    case bestSuccess, cheapest, fastest, `default`
 
     var label: String {
         switch self {
-        case .default:  "Default"
-        case .cheapest: "Cheapest"
-        case .fastest:  "Fastest"
+        case .bestSuccess: "Best success"
+        case .cheapest:    "Cheapest"
+        case .fastest:     "Fastest"
+        case .default:     "A–Z"
         }
     }
     var icon: String {
         switch self {
-        case .default:  RIcon.filter
-        case .cheapest: RIcon.coin
-        case .fastest:  RIcon.bolt
+        case .bestSuccess: RIcon.shield
+        case .cheapest:    RIcon.coin
+        case .fastest:     RIcon.bolt
+        case .default:     RIcon.filter
         }
     }
 }
@@ -25,9 +27,9 @@ struct CountrySheet: View {
     @Environment(AppState.self) private var state
     var onPick: (Country) -> Void
 
-    // Default to Cheapest so the one country a small balance can afford
-    // surfaces first instead of being buried among premium/Unavailable markets.
-    @State private var sort: CountrySort = .cheapest
+    // Default to Best success — steer users onto the countries that actually
+    // deliver for this service instead of the cheapest/first one.
+    @State private var sort: CountrySort = .bestSuccess
 
     /// The service the user is currently configuring. While in checkout we
     /// use the draft service; otherwise the Home "Last used".
@@ -46,6 +48,15 @@ struct CountrySheet: View {
                 state.cost(for: currentService, country: $0) ?? .max
             }
             list.sort { costFor($0) < costFor($1) }
+        case .bestSuccess:
+            // Available first, then highest success rate, then cheapest.
+            func key(_ c: Country) -> (Int, Int, Int) {
+                let avail = state.cost(for: currentService, country: c) != nil ? 0 : 1
+                let rate  = state.successRate(for: currentService, country: c) ?? -1
+                let price = state.cost(for: currentService, country: c) ?? .max
+                return (avail, -rate, price)
+            }
+            list.sort { key($0) < key($1) }
         }
         return list
     }
@@ -60,6 +71,7 @@ struct CountrySheet: View {
                         ForEach(Array(sorted.enumerated()), id: \.element.id) { idx, c in
                             CountryRow(country: c,
                                        price: state.cost(for: currentService, country: c),
+                                       successRate: state.successRate(for: currentService, country: c),
                                        balance: state.balance,
                                        isLast: idx == sorted.count - 1) {
                                 onPick(c)
@@ -97,6 +109,7 @@ private struct CountryRow: View {
     @Environment(\.theme) private var theme
     let country: Country
     let price: Int?
+    let successRate: Int?
     let balance: Int
     let isLast: Bool
     let onTap: () -> Void
@@ -136,6 +149,9 @@ private struct CountryRow: View {
                             Text("Unavailable")
                                 .font(RFont.text(12, weight: .medium))
                                 .foregroundStyle(theme.text3)
+                        }
+                        if let successRate {
+                            SuccessBadge(rate: successRate, compact: true)
                         }
                     }
                 }

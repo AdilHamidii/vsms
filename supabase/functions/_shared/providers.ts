@@ -1,9 +1,12 @@
-// Unified provider router: virtualsms.io (primary) + SMSPVA (fallback).
-// The order functions call these instead of a specific provider, so routing +
-// failover live in one place. Each provider owns its identifier scheme:
-//   virtualsms — service short code ("wa") + ISO country ("FR")
+// Unified provider router. Preference order: SMSPool (primary) -> SMSPVA
+// (fallback) -> virtualsms (last; currently degraded). The order functions call
+// these instead of a specific provider, so routing + failover live in one place.
+// Each provider owns its identifier scheme:
+//   smspool    — numeric service id ("1363") + numeric country id ("3")
 //   smspva     — smspva_code ("opt20") + smspva country code ("US")
+//   virtualsms — service short code ("wa") + ISO country ("FR")
 
+import * as sp from "./smspool.ts";
 import * as vs from "./virtualsms.ts";
 import {
   getNumber as smsGetNumber,
@@ -13,9 +16,11 @@ import {
   isOk,
 } from "./smspva.ts";
 
-export type Provider = "virtualsms" | "smspva";
+export type Provider = "smspool" | "smspva" | "virtualsms";
 
 export interface RouteCodes {
+  spService?: string | null;   // SMSPool numeric service id
+  spCountry?: string | null;   // SMSPool numeric country id
   vsService?: string | null;
   vsCountry?: string | null;
   smsService?: string | null;
@@ -23,21 +28,25 @@ export interface RouteCodes {
   dial: string;
 }
 
-/** Providers that can serve this route, preferred first. Default: virtualsms
- *  (real-SIM quality + webhooks/swap), SMSPVA as backup. */
-export function providerOrder(c: RouteCodes, prefer: Provider = "virtualsms"): Provider[] {
+/** Providers that can serve this route, preferred first. Default primary is
+ *  SMSPool, then the standard fallback chain. */
+export function providerOrder(c: RouteCodes, prefer: Provider = "smspool"): Provider[] {
   const can = new Set<Provider>();
-  if (c.vsService && c.vsCountry) can.add("virtualsms");
+  if (c.spService && c.spCountry) can.add("smspool");
   if (c.smsService && c.smsCountry) can.add("smspva");
-  const pref: Provider[] = prefer === "virtualsms"
-    ? ["virtualsms", "smspva"]
-    : ["smspva", "virtualsms"];
+  if (c.vsService && c.vsCountry) can.add("virtualsms");
+  const base: Provider[] = ["smspool", "smspva", "virtualsms"];
+  const pref = [prefer, ...base.filter((p) => p !== prefer)];
   return pref.filter((p) => can.has(p));
 }
 
 /** Live wholesale price (USD) at a provider, or null if unavailable. */
 export async function livePriceUsd(p: Provider, c: RouteCodes): Promise<number | null> {
   try {
+    if (p === "smspool" && c.spService && c.spCountry) {
+      const r = await sp.getPrice(c.spCountry, c.spService);
+      return r.ok && r.priceUsd != null ? r.priceUsd : null;
+    }
     if (p === "virtualsms" && c.vsService && c.vsCountry) {
       const r = await vs.price(c.vsService, c.vsCountry);
       return r.ok && r.priceUsd != null ? r.priceUsd : null;
@@ -61,6 +70,11 @@ export interface Reservation {
 /** Reserve a number at a provider. */
 export async function reserve(p: Provider, c: RouteCodes): Promise<Reservation> {
   try {
+    if (p === "smspool" && c.spService && c.spCountry) {
+      const r = await sp.purchase(c.spCountry, c.spService);
+      if (!r.ok) return { ok: false, error: r.error };
+      return { ok: true, orderId: r.orderId, number: r.phoneNumber ?? "", costUsd: r.costUsd };
+    }
     if (p === "virtualsms" && c.vsService && c.vsCountry) {
       const r = await vs.buyNumber(c.vsService, c.vsCountry);
       if (!r.ok) return { ok: false, error: r.error };
@@ -88,6 +102,10 @@ export interface PollResult {
 
 /** Poll a provider order for the SMS code. */
 export async function poll(p: Provider, orderId: string): Promise<PollResult> {
+  if (p === "smspool") {
+    const s = await sp.check(orderId);
+    return { state: s.state, code: s.code, fullText: s.fullText };
+  }
   if (p === "virtualsms") {
     const s = await vs.getOrder(orderId);
     return { state: s.state, code: s.code, fullText: s.fullText };
@@ -102,6 +120,7 @@ export async function poll(p: Provider, orderId: string): Promise<PollResult> {
 /** Best-effort release/cancel at a provider (local refund happens regardless). */
 export async function release(p: Provider, orderId: string): Promise<void> {
   try {
+    if (p === "smspool") { await sp.cancel(orderId); return; }
     if (p === "virtualsms") { await vs.cancelOrder(orderId); return; }
     await smsCancel(orderId);
   } catch (e) {

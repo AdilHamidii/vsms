@@ -35,12 +35,12 @@ Deno.serve(async (req) => {
   const sb = admin();
 
   const { data: service, error: svcErr } = await sb
-    .from("services").select("id, smspva_code, virtualsms_code")
+    .from("services").select("id, smspva_code, virtualsms_code, smspool_code")
     .eq("id", body.service_id).single();
   if (svcErr || !service) return json({ error: "unknown_service" }, { status: 404 });
 
   const { data: country, error: cErr } = await sb
-    .from("countries").select("id, smspva_code, virtualsms_code, dial_code")
+    .from("countries").select("id, smspva_code, virtualsms_code, smspool_code, dial_code")
     .eq("id", body.country_id).single();
   if (cErr || !country) return json({ error: "unknown_country" }, { status: 404 });
 
@@ -77,6 +77,8 @@ Deno.serve(async (req) => {
 
   const cost = route.retail_credits as number;
   const codes: RouteCodes = {
+    spService: service.smspool_code,
+    spCountry: country.smspool_code,
     vsService: service.virtualsms_code,
     vsCountry: country.virtualsms_code,
     smsService: service.smspva_code,

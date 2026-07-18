@@ -100,6 +100,14 @@ struct CheckoutScreen: View {
                                      secondaryText: "Auto-refund if no SMS arrives")
                     })
                 }
+                if state.showMetrics, let rate = state.successRate(for: service, country: country) {
+                    ReceiptRow(label: "Delivery", leading: {
+                        ReceiptIconBox(symbol: RIcon.shield)
+                    }, trailing: {
+                        ReceiptValue(primary: "\(rate)% delivered",
+                                     secondaryText: rate >= 70 ? "Reliable route" : "Lower-success — refunded if it fails")
+                    })
+                }
                 ReceiptRow(label: "Cost", last: true, leading: {
                     CoinIconBox()
                 }, trailing: {

@@ -80,9 +80,11 @@ Deno.serve(async (req) => {
 
   // Combos the weekly virtualsms overlay owns — skip them here so we never
   // clobber the real-SIM price/provider with an SMSPVA one.
-  const { data: vsRoutes } = await sb
-    .from("routes").select("service_id, country_id").eq("provider", "virtualsms");
-  const vsOwned = new Set((vsRoutes ?? []).map((r) => `${r.service_id}|${r.country_id}`));
+  // Combos owned by another provider (virtualsms overlay OR smspool primary) —
+  // skip them here so this SMSPVA sync never clobbers their price/success.
+  const { data: ownedRoutes } = await sb
+    .from("routes").select("service_id, country_id").in("provider", ["virtualsms", "smspool"]);
+  const vsOwned = new Set((ownedRoutes ?? []).map((r) => `${r.service_id}|${r.country_id}`));
 
   // Prior smoothed cost per route, for the EWMA below.
   const { data: prevRows } = await sb
