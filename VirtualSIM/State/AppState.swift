@@ -1,11 +1,11 @@
 import SwiftUI
 
 enum AppTab: String, Hashable, CaseIterable {
-    case home, orders, account
+    case home, esim, orders, account
 }
 
 enum FlowStage: String, Hashable, Identifiable {
-    case checkout, waiting, otp
+    case checkout, waiting, otp, esimCheckout, esimDetail
     var id: String { rawValue }
 }
 
@@ -43,6 +43,15 @@ final class AppState {
     var maintenance: MaintenanceStatus = .off
 
     var flow: FlowStage?
+
+    // eSIM product line
+    var esimPlans: [EsimPlan] = []
+    var esimOrders: [EsimOrder] = []
+    var checkoutEsimPlan: EsimPlan?
+    var activeEsimOrder: EsimOrder?
+    var isBuyingEsim = false
+    @ObservationIgnored
+    private var esimPlanIndex: [String: EsimPlan] = [:]
     var checkoutService: Service?
     var checkoutCountry: Country?
     var activeOrder: Order?
@@ -156,6 +165,9 @@ final class AppState {
     /// affordable or the pair is unavailable. Drives CreditsSheet's pack
     /// preselection so the user is offered the smallest pack that unblocks them.
     var creditsShortfall: Int {
+        if flow == .esimCheckout, let plan = checkoutEsimPlan, let c = plan.retailCredits {
+            return max(0, c - balance)
+        }
         let svc = checkoutService ?? lastService
         let cty = checkoutCountry ?? lastCountry
         guard let c = cost(for: svc, country: cty) else { return 0 }
@@ -259,6 +271,77 @@ final class AppState {
         } catch {
             // keep current state
         }
+    }
+
+    // ─────────── eSIM ───────────
+
+    func loadEsimCatalog(using api: EsimPlansAPI) async {
+        guard let plans = try? await api.fetch() else { return }
+        esimPlans = plans
+        var idx: [String: EsimPlan] = [:]
+        for p in plans { idx[p.id] = p }
+        esimPlanIndex = idx
+        // Re-resolve any already-loaded orders against the fresh catalog.
+        esimOrders = esimOrders.map { EsimOrder(server: $0.server, plan: idx[$0.server.planId ?? ""]) }
+    }
+
+    func loadEsimOrders(using api: EsimOrdersAPI) async {
+        guard let rows = try? await api.list() else { return }
+        esimOrders = rows.map { EsimOrder(server: $0, plan: esimPlanIndex[$0.planId ?? ""]) }
+    }
+
+    /// eSIM plans grouped by country (cheapest tier per country), for the store.
+    var esimCountries: [(code: String, name: String, from: Int)] {
+        var byCode: [String: (name: String, minCr: Int)] = [:]
+        for p in esimPlans {
+            let code = p.countryCode ?? "??"
+            let cr = p.retailCredits ?? Int.max
+            if let ex = byCode[code] { if cr < ex.minCr { byCode[code] = (ex.name, cr) } }
+            else { byCode[code] = (p.name, cr) }
+        }
+        return byCode.map { (code: $0.key, name: $0.value.name, from: $0.value.minCr) }
+            .sorted { $0.name < $1.name }
+    }
+    func esimPlans(forCountry code: String) -> [EsimPlan] {
+        esimPlans.filter { $0.countryCode == code }
+            .sorted { ($0.retailCredits ?? 0) < ($1.retailCredits ?? 0) }
+    }
+
+    func startEsimCheckout(_ plan: EsimPlan) {
+        checkoutEsimPlan = plan
+        flow = .esimCheckout
+    }
+    func openEsimDetail(_ order: EsimOrder) {
+        activeEsimOrder = order
+        flow = .esimDetail
+    }
+
+    /// @MainActor for the same atomic double-tap guard reasoning as confirmGetNumber.
+    @MainActor
+    func confirmBuyEsim(using api: EsimOrdersAPI, wallet: WalletAPI) async {
+        guard let plan = checkoutEsimPlan, !isBuyingEsim else { return }
+        isBuyingEsim = true
+        defer { isBuyingEsim = false }
+        do {
+            let server = try await api.create(planId: plan.id)
+            let order = EsimOrder(server: server, plan: esimPlanIndex[server.planId ?? ""] ?? plan)
+            esimOrders.insert(order, at: 0)
+            activeEsimOrder = order
+            flow = .esimDetail
+            await refreshWallet(using: wallet)
+        } catch let apiErr as APIError {
+            lastError = apiErr.userMessage
+        } catch {
+            lastError = "Couldn't buy that eSIM. Please try again."
+        }
+    }
+
+    func refreshEsimUsage(using api: EsimOrdersAPI) async {
+        guard let current = activeEsimOrder else { return }
+        guard let server = try? await api.checkUsage(orderId: current.id) else { return }
+        let updated = EsimOrder(server: server, plan: current.plan)
+        activeEsimOrder = updated
+        if let idx = esimOrders.firstIndex(where: { $0.id == updated.id }) { esimOrders[idx] = updated }
     }
 
     func loadOrders(using api: OrdersAPI) async {

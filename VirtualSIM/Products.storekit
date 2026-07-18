@@ -46,6 +46,36 @@
       "productID" : "com.anthersystems.VirtualSIM.credits.30",
       "referenceName" : "30 Credits",
       "type" : "Consumable"
+    },
+    {
+      "displayPrice" : "24.99",
+      "familyShareable" : false,
+      "internalID" : "44444444-4444-4444-4444-444444444444",
+      "localizations" : [
+        {
+          "description" : "60 credits — enough for most eSIM data plans",
+          "displayName" : "60 Credits",
+          "locale" : "en_US"
+        }
+      ],
+      "productID" : "com.anthersystems.VirtualSIM.credits.60",
+      "referenceName" : "60 Credits",
+      "type" : "Consumable"
+    },
+    {
+      "displayPrice" : "59.99",
+      "familyShareable" : false,
+      "internalID" : "55555555-5555-5555-5555-555555555555",
+      "localizations" : [
+        {
+          "description" : "150 credits — for larger eSIM data plans",
+          "displayName" : "150 Credits",
+          "locale" : "en_US"
+        }
+      ],
+      "productID" : "com.anthersystems.VirtualSIM.credits.150",
+      "referenceName" : "150 Credits",
+      "type" : "Consumable"
     }
   ],
   "settings" : {

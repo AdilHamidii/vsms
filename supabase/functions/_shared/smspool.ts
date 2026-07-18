@@ -143,3 +143,87 @@ export async function getBalanceUsd(): Promise<number | null> {
   const b = d.balance != null ? parseFloat(d.balance) : NaN;
   return Number.isFinite(b) ? b : null;
 }
+
+// ─────────── eSIM (data plans) ───────────
+// Confirmed live 2026-07-18. Catalog is per-country (/esim/plans?country=CC);
+// purchase returns only a transactionId; the QR/activation + usage come from
+// /esim/profile.
+
+export interface EsimPlanRow {
+  ID: number;
+  dataInGb: number;
+  duration: number;      // validity days
+  price: string;         // wholesale USD
+  speed: string;         // "3G/4G/5G"
+  network?: string;      // JSON string of countries+operators
+  extendable?: number;
+}
+
+/** GET/POST /esim/plans — all data-plan tiers for a 2-letter country code. */
+export function esimPlans(countryCode: string): Promise<EsimPlanRow[]> {
+  return form<EsimPlanRow[]>("/esim/plans", { country: countryCode });
+}
+
+/** POST /esim/purchase — buy a plan by its numeric id. Returns a transactionId
+ *  only; the profile (QR/activation) is fetched separately. */
+export async function esimPurchase(planId: string | number):
+  Promise<{ ok: boolean; transactionId?: string; error?: string }> {
+  const d = await form<{ success?: number; transactionId?: string; message?: string }>(
+    "/esim/purchase", { plan: planId },
+  );
+  if (d?.success !== 1 || !d.transactionId) return { ok: false, error: d?.message ?? "esim_purchase_failed" };
+  return { ok: true, transactionId: d.transactionId };
+}
+
+export interface EsimProfile {
+  ok: boolean;
+  activationCode?: string;   // full LPA string "LPA:1$smdp$token"
+  smdp?: string;
+  matchingId?: string;       // the token
+  apn?: string;
+  activated?: boolean;
+  dataTotalMb?: number;
+  dataUsedMb?: number;
+  extendable?: boolean;
+  error?: string;
+}
+
+/** POST /esim/profile — the delivery payload (LPA/QR + SM-DP+) AND live usage
+ *  (remainingData/totalData) for a purchased eSIM, keyed by transactionId. */
+export async function esimProfile(transactionId: string): Promise<EsimProfile> {
+  const d = await form<{
+    success?: number; ac?: string; smdp?: string; activationCode?: string; apn?: string;
+    activated?: number; topup?: number; remainingData?: string; totalData?: string;
+  }>("/esim/profile", { transactionId });
+  if (d?.success !== 1) return { ok: false, error: "esim_profile_failed" };
+  const total = parseDataMb(d.totalData);
+  const remaining = parseDataMb(d.remainingData);
+  return {
+    ok: true,
+    activationCode: d.ac,
+    smdp: d.smdp,
+    matchingId: d.activationCode,   // SMSPool names the token "activationCode"
+    apn: d.apn,
+    activated: d.activated === 1,
+    dataTotalMb: total,
+    dataUsedMb: total != null && remaining != null ? Math.max(0, total - remaining) : undefined,
+    extendable: d.topup === 1,
+  };
+}
+
+/** POST /esim/history — list purchased eSIMs (summary). */
+export function esimHistory(): Promise<{ data?: unknown[] }> {
+  return form("/esim/history");
+}
+
+/** "500 MB" / "1.5 GB" -> MB int. */
+function parseDataMb(s?: string): number | undefined {
+  if (!s) return undefined;
+  const m = s.match(/([\d.]+)\s*(MB|GB|KB)?/i);
+  if (!m) return undefined;
+  const n = parseFloat(m[1]);
+  const unit = (m[2] ?? "MB").toUpperCase();
+  if (unit === "GB") return Math.round(n * 1000);
+  if (unit === "KB") return Math.round(n / 1000);
+  return Math.round(n);
+}

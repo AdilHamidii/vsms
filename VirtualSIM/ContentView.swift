@@ -40,6 +40,8 @@ struct ContentView: View {
                         },
                         onSeeAllOrders: { state.tab = .orders }
                     )
+                case .esim:
+                    EsimStoreScreen(openCredits: { sheet = .credits })
                 case .orders:
                     OrdersScreen(openCredits: { sheet = .credits })
                 case .account:
@@ -81,6 +83,8 @@ struct ContentView: View {
             await state.refreshProfile(using: ProfileAPI(client: api))
             await state.loadOrders(using: OrdersAPI(client: api))
             state.applyStartupSelection()
+            await state.loadEsimCatalog(using: EsimPlansAPI(client: api))
+            await state.loadEsimOrders(using: EsimOrdersAPI(client: api))
         }
         .onChange(of: scenePhase) { _, phase in
             if phase == .active {
@@ -148,6 +152,12 @@ struct ContentView: View {
         case .otp:
             if let order = state.activeOrder {
                 OtpScreen(order: order)
+            } else { emptyFlow }
+        case .esimCheckout:
+            EsimCheckoutScreen(openCredits: { sheet = .credits })
+        case .esimDetail:
+            if let order = state.activeEsimOrder {
+                EsimDetailScreen(order: order)
             } else { emptyFlow }
         }
     }
