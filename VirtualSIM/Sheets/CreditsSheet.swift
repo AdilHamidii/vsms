@@ -122,7 +122,9 @@ struct CreditsSheet: View {
     private var packsList: some View {
         VStack(spacing: 8) {
             ForEach(CreditPack.all) { p in
-                PackRow(pack: p, active: selected == p.id, displayPrice: iap.displayPrice(p)) {
+                PackRow(pack: p, active: selected == p.id,
+                        displayPrice: iap.displayPrice(p),
+                        displayPerCredit: iap.perCredit(p)) {
                     withAnimation(.easeOut(duration: 0.15)) { selected = p.id }
                 }
             }
@@ -163,6 +165,7 @@ private struct PackRow: View {
     let pack: CreditPack
     let active: Bool
     let displayPrice: String
+    let displayPerCredit: String
     let onTap: () -> Void
 
     var body: some View {
@@ -182,8 +185,8 @@ private struct PackRow: View {
                         Text("credits")
                             .font(RFont.text(14))
                             .foregroundStyle(theme.text2)
-                        if pack.bestValue {
-                            Text("BEST VALUE")
+                        if let badge = pack.badge {
+                            Text(badge)
                                 .font(RFont.text(11, weight: .semibold))
                                 .tracking(0.1)
                                 .foregroundStyle(theme.live)
@@ -192,7 +195,7 @@ private struct PackRow: View {
                                 .background(theme.liveSoft, in: .capsule)
                         }
                     }
-                    Text(pack.perCredit)
+                    Text(displayPerCredit)
                         .font(RFont.text(12))
                         .foregroundStyle(theme.text2)
                 }

@@ -50,6 +50,17 @@ final class IAPStore {
         products[pack.productId]?.displayPrice ?? pack.price
     }
 
+    /// Per-credit price for a pack, derived from the live StoreKit price so it
+    /// always matches what the store actually charges (in the buyer's currency).
+    /// Falls back to the static `CreditPack.perCredit` until the product loads.
+    func perCredit(_ pack: CreditPack) -> String {
+        guard let product = products[pack.productId], pack.credits > 0 else {
+            return pack.perCredit
+        }
+        let per = product.price / Decimal(pack.credits)
+        return "\(per.formatted(product.priceFormatStyle)) / cr"
+    }
+
     /// Returns true if the purchase was accepted (verified on the server).
     /// Returns false if the user cancelled or the verification failed.
     func purchase(_ pack: CreditPack) async -> Bool {

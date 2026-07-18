@@ -23,7 +23,7 @@
       "internalID" : "22222222-2222-2222-2222-222222222222",
       "localizations" : [
         {
-          "description" : "Get 12 SMS verification codes — best value per credit",
+          "description" : "Get 12 SMS verification codes — our most popular pack",
           "displayName" : "12 OTP Credits",
           "locale" : "en_US"
         }
@@ -38,7 +38,7 @@
       "internalID" : "33333333-3333-3333-3333-333333333333",
       "localizations" : [
         {
-          "description" : "Get 30 SMS verification codes at maximum savings",
+          "description" : "Get 30 SMS verification codes",
           "displayName" : "30 OTP Credits",
           "locale" : "en_US"
         }
@@ -48,7 +48,7 @@
       "type" : "Consumable"
     },
     {
-      "displayPrice" : "24.99",
+      "displayPrice" : "22.99",
       "familyShareable" : false,
       "internalID" : "44444444-4444-4444-4444-444444444444",
       "localizations" : [
@@ -63,12 +63,12 @@
       "type" : "Consumable"
     },
     {
-      "displayPrice" : "59.99",
+      "displayPrice" : "49.99",
       "familyShareable" : false,
       "internalID" : "55555555-5555-5555-5555-555555555555",
       "localizations" : [
         {
-          "description" : "150 credits — for larger eSIM data plans",
+          "description" : "150 credits — best value per credit, for larger eSIM data plans",
           "displayName" : "150 Credits",
           "locale" : "en_US"
         }
