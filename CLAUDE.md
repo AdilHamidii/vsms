@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-**vSMS** (App Store display name; formerly "vSIM OTP" — the Xcode target/scheme is still `VirtualSIM`) — iOS app that rents temporary phone numbers from SMSPVA and delivers SMS verification codes. iOS frontend in SwiftUI + Supabase backend (Postgres + Auth + Edge Functions + pg_cron).
+**vSMS** (App Store display name; formerly "vSIM OTP" — the Xcode target/scheme is still `VirtualSIM`) — iOS app selling two products, both paid with in-app **credits**: (1) **temporary phone numbers** for SMS verification codes, sourced from multiple providers with failover — **SMSPool (primary) → SMSPVA (fallback) → virtualsms (degraded)** via `_shared/providers.ts`; and (2) **eSIM data plans** (SMSPool) priced at 3× wholesale. iOS frontend in SwiftUI + Supabase backend (Postgres + Auth + Edge Functions + pg_cron).
 
 Bundle ID: `com.anthersystems.VirtualSIM` · Supabase ref: `enugzltysdmjzavisloy` · Project root holds `Appidea.md` (original product brief).
 
@@ -21,8 +21,9 @@ xcodebuild -project VirtualSIM.xcodeproj -scheme VirtualSIM \
 supabase db push
 
 # Deploy edge functions (each runs independently)
-supabase functions deploy create-order check-order cancel-order register-push iap-verify delete-account
-supabase functions deploy poll-active-orders sync-prices --no-verify-jwt
+supabase functions deploy create-order check-order cancel-order register-push iap-verify delete-account \
+  create-esim-order check-esim-usage redeem-referral winback
+supabase functions deploy poll-active-orders sync-prices sync-smspool sync-esim-plans --no-verify-jwt
 
 # Query the remote DB
 supabase db query --linked "select count(*) from public.routes;"
@@ -48,19 +49,18 @@ iOS (SwiftUI, iOS 26.2 target)            Supabase
 ─────────────────────────────             ──────────────────────────────────────────
 AuthGate                                  Postgres tables: profiles, wallets,
   ↓ Sign in with Apple (native)             wallet_transactions, services, countries,
-ContentView (tabs + flow cover)             routes, orders, push_devices, iap_receipts
+ContentView (4 tabs: home / esim /          routes, orders, esim_plans, esim_orders,
+  orders / account + flow cover)             referrals, push_devices, iap_receipts
   ↓ APIClient (URLSession + apikey hdr)
   REST  → /rest/v1/...  (PostgREST)       Edge Functions (Deno):
-  RPC   → /functions/v1/...                  create-order   — wallet_spend → SMSPVA
-                                             check-order    — poll one order
-SMSPVA                                       cancel-order   — refund + SMSPVA denial
-  ←── api.smspva.com/activation/...          poll-active-orders (cron, every 1 min)
-       (apikey HEADER, not query string)     sync-prices    — refresh route prices
-                                                            (cron 'relay-sync-prices',
-                                                             daily 04:00 UTC)
-                                             register-push  — store APNs token
-APNs                                         iap-verify     — StoreKit 2 JWS verify
-  ←── token-auth (.p8) HTTP/2               delete-account — auth.admin.deleteUser
+  RPC   → /functions/v1/...                  create-order/check-order/cancel-order
+                                             poll-active-orders (cron, every 1 min)
+Providers — _shared/providers.ts routes      create-esim-order/check-esim-usage
+  + fails over across:                       sync-prices / sync-smspool /
+    SMSPool  (primary, api.smspool.net)        sync-esim-plans  (crons, daily)
+    SMSPVA   (fallback, api.smspva.com)      redeem-referral / winback
+    virtualsms (last; degraded)             register-push / iap-verify / delete-account
+APNs ←── token-auth (.p8) HTTP/2
 ```
 
 ### iOS source layout
@@ -69,10 +69,12 @@ APNs                                         iap-verify     — StoreKit 2 JWS v
 VirtualSIM/
   VirtualSIMApp.swift            App entry; resizes URLCache (32MB mem / 64MB disk
                                  for brand logos + flag PNGs); installs AppDelegate
-  ContentView.swift              Tab routing + fullScreenCover for Checkout/Waiting/
-                                 OTP flow; EnvBundle ViewModifier re-injects every
-                                 @Observable env object into sheet/cover content
-                                 (covers don't inherit reliably)
+  ContentView.swift              4-tab routing (home/esim/orders/account) +
+                                 fullScreenCover for Checkout/Waiting/OTP + eSIM
+                                 flow (esimCheckout/esimDetail); EnvBundle
+                                 ViewModifier re-injects every @Observable env
+                                 object into sheet/cover content (covers don't
+                                 inherit reliably)
   Auth/                          AuthGate (3-state: bootstrap/signedOut/signedIn),
                                  SignInScreen, Session (@Observable, Keychain-backed)
   Networking/                    APIClient + per-resource APIs (CatalogAPI, OrdersAPI,
@@ -82,15 +84,18 @@ VirtualSIM/
                                  countries, routes, orders, prefs (UserDefaults-
                                  backed via didSet), checkout/flow machine
   Models/                        Plain Codable structs mirroring DB column names via
-                                 .convertFromSnakeCase
+                                 .convertFromSnakeCase (Service, Country, Route,
+                                 Order, EsimPlan, EsimOrder, CreditPack)
   Screens/                       Home, Checkout, Waiting (+ WaitingAnimations),
                                  OTP (fires native review prompt on code
-                                 delivery), Orders, Account
+                                 delivery), Orders, Account, + eSIM flow
+                                 (EsimStore, EsimCheckout, EsimDetail = QR + usage)
   Sheets/                        ServiceSheet (search + categories + per-route
                                  price), CountrySheet (sort + per-route price),
                                  CreditsSheet (StoreKit 2)
-  Components/                    Theme primitives + ServiceLogo (DuckDuckGo ip3 icon
-                                 with Google FaviconV2 fallback), FlagImage (flagcdn.com)
+  Components/                    Theme primitives + ServiceLogo / FlagImage /
+                                 FlagCircle — bundle-first via BundledImageStore,
+                                 network cascade (DuckDuckGo/FaviconV2, flagcdn) as fallback
   Push/, IAP/, Onboarding/, DesignSystem/  Self-explanatory
   Localizable.xcstrings          String Catalog: en source + de/es/fr/it/ja/pt-BR
   Products.storekit              Local IAP test config (enable via scheme)
@@ -100,15 +105,19 @@ VirtualSIM/
 ### Backend layout
 
 - `supabase/migrations/` — chronological SQL, each phase ships its own file
-- `supabase/functions/_shared/` — `smspva.ts` (v2 REST wrapper), `apns.ts` (HTTP/2 + JWT), `cors.ts`, `iap.ts`, `supabaseAdmin.ts`
+- `supabase/functions/_shared/` — `providers.ts` (unified router + SMSPool→SMSPVA→virtualsms failover; order/poll functions call this, NOT a specific provider), `smspool.ts` (numbers + eSIM), `smspva.ts` (v2 REST wrapper), `virtualsms.ts`, `apns.ts` (HTTP/2 + JWT), `cors.ts`, `iap.ts`, `supabaseAdmin.ts`
 - `supabase/functions/<name>/index.ts` — one per endpoint, all Deno.serve
 - `supabase/README.md` — deployment + secret setup walkthrough
 
 ### Pricing model
 
-`AppState.cost(for:country:) -> Int?` uses an O(1) `routeIndex` dict (keyed `"serviceId|countryId"`) built in `loadCatalog`. Returns `nil` when the pair has no active route with a `retail_credits` price — meaning **unavailable to book**; UI shows "Unavailable" (see ServiceSheet/CountrySheet) and disables the Get-number button. It deliberately does **NOT** fall back to the seed `service.cost`, since undercharging vs the live SMSPVA price burns margin per order. **Do not** linear-scan `routes` (~17k rows after sync-prices) — that froze the country picker before the index was added.
+`AppState.cost(for:country:) -> Int?` uses an O(1) `routeIndex` dict (keyed `"serviceId|countryId"`) built in `loadCatalog`. Returns `nil` when the pair has no active route with a `retail_credits` price — meaning **unavailable to book**; UI shows "Unavailable" (see ServiceSheet/CountrySheet) and disables the Get-number button. It deliberately does **NOT** fall back to the seed `service.cost`, since undercharging vs the live provider price burns margin per order. **Do not** linear-scan `routes` (~17k rows after sync-prices) — that froze the country picker before the index was added.
 
-`sync-prices` formula: `credits = max(1, ceil(price / 0.15))`. Tune `CREDIT_DIVISOR` in `supabase/functions/sync-prices/index.ts` for global margin adjustment. Currently anchors: 15 EUR → 100 cr, ≤ 5¢ → 1 cr.
+`sync-prices` formula: `credits = max(1, ceil(price / 0.15))`. Tune `CREDIT_DIVISOR` in `supabase/functions/sync-prices/index.ts` for global margin adjustment. Currently anchors: 15 EUR → 100 cr, ≤ 5¢ → 1 cr. It **EWMA-smooths** each route's cost (`smoothed_cost_cents`) so `retail_credits` stops flapping day-to-day. `sync-smspool` refreshes SMSPool routes + provider success rates (used for primary-provider routing).
+
+**eSIM** plans (`sync-esim-plans`) are priced **separately** at 3× wholesale — `ESIM_MARGIN = 3`, `CREDIT_VALUE_USD = 0.48`, `retail_credits = ceil(usd * 3 / 0.48)` — NOT via `CREDIT_DIVISOR`, so the two product lines never collide.
+
+**Credit packs** (`Models/CreditPack.swift` + `Products.storekit` + `_shared/iap.ts` `PRODUCT_TO_CREDITS`): 5/$2.99, 12/$5.99 (MOST POPULAR), 30/$12.99, 60/$22.99, 150/$49.99 (BEST VALUE) — a strictly improving per-credit ladder (each pack beats stacking smaller ones). The per-credit label is computed **live** from the StoreKit price in `IAPStore.perCredit`, so it never drifts; production prices must be set to match in App Store Connect.
 
 ## Non-obvious gotchas (real bugs we've hit, do not re-introduce)
 
@@ -148,5 +157,7 @@ Never display raw API errors. AppState's catch blocks call `APIError.userMessage
 ```
 
 vSMS is a single-target app, so only one `Info.plist` needs patching. The real fixes are building on stable macOS or Xcode Cloud; patch is the interim path while on the beta.
+
+**Submitting is fully headless via the App Store Connect API** (no Xcode Organizer) — see the `app-store-submission-asc` memory for the exact working pipeline: `xcodebuild archive` with `-allowProvisioningUpdates -authenticationKeyPath/-authenticationKeyID/-authenticationKeyIssuerID` (auto-provisions the Distribution cert; the Mac only has an *Apple Development* cert locally, which is fine) → patch `BuildMachineOSBuild` (above) → `xcodebuild -exportArchive` → `xcrun altool --upload-app` → ASC REST API (`POST /v1/appStoreVersions`, attach build, set `whatsNew`, `reviewSubmissions` submit). ASC API key lives at `~/.appstoreconnect/private_keys/AuthKey_R5ZVLBTUR6.p8`; app id `6774768570`. Store state: **1.3 (build 12)** submitted / in review — the next build is **1.4 (build 13)** (bump `MARKETING_VERSION` + `CURRENT_PROJECT_VERSION` in `project.pbxproj`).
 
 `docs/submission-checklist.md` is the source of truth for App Store submission steps. `docs/app-store-listing.md` has all metadata copy + nutrition labels pre-filled. Legal docs (`privacy-policy.md`, `terms.md`, `refund-policy.md`, `help.md`) are written to be pasted into Notion as public pages — URLs then go into `VirtualSIM/LegalLinks.swift`.
