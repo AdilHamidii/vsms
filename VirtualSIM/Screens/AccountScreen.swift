@@ -159,7 +159,7 @@ struct AccountScreen: View {
                 .padding(.horizontal, 4)
             Card {
                 VStack(alignment: .leading, spacing: 14) {
-                    Text("Share your code. When a friend signs up and buys their first credit pack, **you get 5 credits**.")
+                    Text("Share your code. A friend who joins with it gets **2 free credits** — and you get **5 credits** when they buy their first pack.")
                         .font(RFont.text(14))
                         .lineSpacing(2)
                         .foregroundStyle(theme.text2)
@@ -407,7 +407,7 @@ struct AccountScreen: View {
     }
 
     private func inviteMessage(_ code: String) -> String {
-        "Get a private temporary number for verification codes on vSMS — use my invite code \(code): https://apps.apple.com/app/id6774768570"
+        String(localized: "Get a private temporary number for verification codes on vSMS — my invite code \(code) gives you 2 free credits: https://apps.apple.com/app/id6774768570")
     }
 
     private func copyCode() {
@@ -429,18 +429,19 @@ struct AccountScreen: View {
             let status = try await ProfileAPI(client: api).redeemReferral(code: code)
             switch status {
             case "ok":
-                redeemMsg = "Invite code applied 🎉 Your friend earns 5 credits when you buy your first pack."
+                redeemMsg = String(localized: "Invite code applied 🎉 You got 2 free credits — your friend earns 5 more when you buy your first pack.")
                 inviteCode = ""
                 await state.refreshProfile(using: ProfileAPI(client: api))
+                await state.refreshWallet(using: WalletAPI(client: api))
             case "already_referred":
-                redeemMsg = "You've already used an invite code."
+                redeemMsg = String(localized: "You've already used an invite code.")
             case "self":
-                redeemMsg = "You can't use your own code."
+                redeemMsg = String(localized: "You can't use your own code.")
             default: // invalid_code
-                redeemMsg = "That code isn't valid."
+                redeemMsg = String(localized: "That code isn't valid.")
             }
         } catch {
-            redeemMsg = "Couldn't apply that code. Please try again."
+            redeemMsg = String(localized: "Couldn't apply that code. Please try again.")
         }
     }
 
