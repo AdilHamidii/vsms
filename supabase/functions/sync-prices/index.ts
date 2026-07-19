@@ -260,11 +260,14 @@ Deno.serve(async (req) => {
   if (routesUpdated >= DEACTIVATE_FLOOR) {
     const { error: deErr, count } = await sb
       .from("routes")
-      // 'hidden' (not 'inactive' — that violates routes_status_check). Never
-      // touch virtualsms-owned routes; the weekly overlay manages those.
+      // 'hidden' (not 'inactive' — that violates routes_status_check). Sweep
+      // ONLY smspva-owned routes: this function prices smspva combos, so any
+      // other provider's routes always look "stale" to it — excluding just
+      // virtualsms let the guard hide the entire smspool catalog (live
+      // incident 2026-07-19: 6,317 smspool routes swept to hidden).
       .update({ status: "hidden" }, { count: "exact" })
       .eq("status", "active")
-      .neq("provider", "virtualsms")
+      .eq("provider", "smspva")
       .or(`last_checked_at.is.null,last_checked_at.lt."${nowIso}"`);
     if (deErr) {
       return json({
