@@ -10,6 +10,9 @@ DerivedData/
 # Local secrets (Supabase URL/anon key, etc.)
 VirtualSIM/Networking/Secrets.swift
 
+# App Store Connect submission checkpoints
+.asc/
+
 # Supabase local dev
 supabase/.temp/
 supabase/.branches/
