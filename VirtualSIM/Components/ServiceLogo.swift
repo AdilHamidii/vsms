@@ -17,28 +17,37 @@ struct ServiceLogo: View {
                         .strokeBorder(Color.white.opacity(0.18), lineWidth: 0.5)
                 )
 
-            let sources = service.logoURLs
-            if sourceIndex < sources.count {
-                AsyncImage(url: sources[sourceIndex], transaction: Transaction(animation: .easeOut(duration: 0.2))) { phase in
-                    switch phase {
-                    case .success(let image):
-                        image
-                            .resizable()
-                            .aspectRatio(contentMode: .fit)
-                            .padding(size * 0.16)
-                            .background(.white, in: .rect(cornerRadius: radius))
-                            .clipShape(.rect(cornerRadius: radius))
-                    case .empty:
-                        Color.clear
-                    case .failure:
-                        Color.clear
-                            .task { sourceIndex += 1 }
-                    @unknown default:
-                        Color.clear
-                    }
-                }
+            if let bundled = BundledImageStore.shared.logo(forDomain: service.domain) {
+                Image(uiImage: bundled)
+                    .resizable()
+                    .aspectRatio(contentMode: .fit)
+                    .padding(size * 0.16)
+                    .background(.white, in: .rect(cornerRadius: radius))
+                    .clipShape(.rect(cornerRadius: radius))
             } else {
-                fallback
+                let sources = service.logoURLs
+                if sourceIndex < sources.count {
+                    AsyncImage(url: sources[sourceIndex], transaction: Transaction(animation: .easeOut(duration: 0.2))) { phase in
+                        switch phase {
+                        case .success(let image):
+                            image
+                                .resizable()
+                                .aspectRatio(contentMode: .fit)
+                                .padding(size * 0.16)
+                                .background(.white, in: .rect(cornerRadius: radius))
+                                .clipShape(.rect(cornerRadius: radius))
+                        case .empty:
+                            Color.clear
+                        case .failure:
+                            Color.clear
+                                .task { sourceIndex += 1 }
+                        @unknown default:
+                            Color.clear
+                        }
+                    }
+                } else {
+                    fallback
+                }
             }
         }
         .frame(width: size, height: size)
