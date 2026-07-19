@@ -13,7 +13,13 @@ struct FlagImage: View {
             RoundedRectangle(cornerRadius: radius, style: .continuous)
                 .fill(theme.chipBg)
 
-            if let url = country.flagImageURL(width: 160) {
+            if let bundled = BundledImageStore.shared.flag(forCode: country.flagImageCode) {
+                Image(uiImage: bundled)
+                    .resizable()
+                    .aspectRatio(contentMode: .fill)
+                    .frame(width: size, height: size)
+                    .clipShape(.rect(cornerRadius: radius))
+            } else if let url = country.flagImageURL(width: 160) {
                 AsyncImage(url: url, transaction: Transaction(animation: .easeOut(duration: 0.18))) { phase in
                     switch phase {
                     case .success(let image):
@@ -52,7 +58,13 @@ struct FlagCircle: View {
         ZStack {
             Circle().fill(theme.chipBg)
 
-            if let url = country.flagImageURL(width: 160) {
+            if let bundled = BundledImageStore.shared.flag(forCode: country.flagImageCode) {
+                Image(uiImage: bundled)
+                    .resizable()
+                    .aspectRatio(contentMode: .fill)
+                    .frame(width: size, height: size)
+                    .clipShape(.circle)
+            } else if let url = country.flagImageURL(width: 160) {
                 AsyncImage(url: url, transaction: Transaction(animation: .easeOut(duration: 0.18))) { phase in
                     switch phase {
                     case .success(let image):
