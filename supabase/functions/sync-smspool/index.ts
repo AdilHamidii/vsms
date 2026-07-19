@@ -115,10 +115,13 @@ Deno.serve(async (req) => {
     if (r.smoothed_cost_cents != null) prevSmoothed.set(`${r.service_id}|${r.country_id}`, r.smoothed_cost_cents);
   }
 
-  // SMSPool lists one bulk row PER POOL, so a (service, country) can appear many
-  // times. Dedupe to one row per combo (cheapest pool) or the upsert hits
-  // "ON CONFLICT cannot affect row a second time".
-  const cheapest = new Map<string, { cents: number; svcId: string; cty: string }>();
+  // SMSPool lists one bulk row PER POOL, so a (service, country) can appear
+  // many times. Track the cheapest AND priciest pool per combo: the cheapest
+  // decides whether the combo is fillable under our wholesale ceiling at all,
+  // but the PRICE must cover the priciest pool we'd accept — a purchase fills
+  // from any pool (the quote doesn't bind it), so pricing from the cheapest
+  // pool sold 1-credit numbers that filled at $0.79 (live, 2026-07-19).
+  const pools = new Map<string, { minCents: number; maxCents: number; svcId: string; cty: string }>();
   for (const row of bulk) {
     const ourSvcs = spToOurSvc.get(row.service);
     const ourCty = spToOurCty.get(row.country);
@@ -128,19 +131,29 @@ Deno.serve(async (req) => {
     const cents = Math.round(price * 100);
     for (const svcId of ourSvcs) {
       const k = `${svcId}|${ourCty}`;
-      const ex = cheapest.get(k);
-      if (!ex || cents < ex.cents) cheapest.set(k, { cents, svcId, cty: ourCty });
+      const ex = pools.get(k);
+      if (!ex) pools.set(k, { minCents: cents, maxCents: cents, svcId, cty: ourCty });
+      else {
+        ex.minCents = Math.min(ex.minCents, cents);
+        ex.maxCents = Math.max(ex.maxCents, cents);
+      }
     }
   }
-  const updates = [...cheapest.values()].map(({ cents, svcId, cty }) => {
+  const updates = [...pools.values()].map(({ minCents, maxCents, svcId, cty }) => {
+    // Cost basis = worst fill we'd allow (create-order's max_price cap blocks
+    // anything above credits×10¢ ≥ basis, so ≥3× margin holds for every fill).
+    const basis = Math.min(maxCents, MAX_WHOLESALE_CENTS);
     const prev = prevSmoothed.get(`${svcId}|${cty}`);
-    const smoothed = prev == null ? cents : Math.round(SMOOTH_ALPHA * cents + (1 - SMOOTH_ALPHA) * prev);
+    // Ratchet: cost rises reprice immediately (margin-safe); falls smooth in.
+    const smoothed = prev == null || basis > prev
+      ? basis
+      : Math.round(SMOOTH_ALPHA * basis + (1 - SMOOTH_ALPHA) * prev);
     return {
       service_id: svcId, country_id: cty,
       retail_credits: priceToCredits(smoothed / 100),
-      last_cost_cents: cents, smoothed_cost_cents: smoothed,
+      last_cost_cents: basis, smoothed_cost_cents: smoothed,
       provider: "smspool",
-      status: cents > MAX_WHOLESALE_CENTS ? "hidden" : "active",
+      status: minCents > MAX_WHOLESALE_CENTS ? "hidden" : "active",
       last_checked_at: runStart,
     };
   });
