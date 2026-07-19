@@ -51,12 +51,21 @@ export interface BuyResult {
   error?: string;
 }
 
-/** POST /purchase/sms — rent a number. country/service are numeric SMSPool ids. */
-export async function purchase(country: string | number, service: string | number): Promise<BuyResult> {
+/** POST /purchase/sms — rent a number. country/service are numeric SMSPool ids.
+ *  maxPriceUsd caps the fill price: the /request/price quote is per cheapest
+ *  POOL, but an uncapped purchase can fill from a pricier pool (seen live:
+ *  6¢ quote filled at $0.79). */
+export async function purchase(
+  country: string | number, service: string | number, maxPriceUsd?: number,
+): Promise<BuyResult> {
+  const params: Record<string, string | number> = { country, service };
+  if (maxPriceUsd != null && Number.isFinite(maxPriceUsd)) {
+    params.max_price = maxPriceUsd.toFixed(2);
+  }
   const d = await form<{
     success?: number; order_id?: string; number?: string | number; phonenumber?: string | number;
     cost?: string; cost_in_cents?: number; message?: string;
-  }>("/purchase/sms", { country, service });
+  }>("/purchase/sms", params);
   if (!d || d.success !== 1) return { ok: false, error: d?.message ?? "purchase_failed" };
   const raw = String(d.number ?? d.phonenumber ?? "");
   const num = raw ? (raw.startsWith("+") ? raw : `+${raw}`) : "";

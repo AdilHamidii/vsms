@@ -109,19 +109,33 @@ Deno.serve(async (req) => {
   let usedCostUsd: number | null = null;
   let lastError = "no_numbers_available";
 
+  // The most we can pay and still keep MIN_MARGIN on what we charged. Passed
+  // to the provider as a purchase-time cap AND enforced on the actual charged
+  // cost — the live quote is per cheapest pool and does not bind the fill
+  // price (seen live: wechat/kg quoted 6¢, uncapped purchase filled at 79¢).
+  const maxCostUsd = (cost * NET_USD_PER_CREDIT) / MIN_MARGIN;
+
   for (const p of providers) {
     let liveCost = await livePriceUsd(p, codes);
     if (liveCost == null && route.last_cost_cents != null && (route.last_cost_cents as number) > 0) {
       liveCost = (route.last_cost_cents as number) / 100; // graceful degrade to last synced cost
     }
     if (liveCost == null) { lastError = "route_unavailable"; continue; }
-    if (cost * NET_USD_PER_CREDIT < MIN_MARGIN * liveCost) {
+    if (liveCost > maxCostUsd) {
       console.warn(`margin_too_low provider=${p} svc=${service.id} cty=${country.id} credits=${cost} liveUsd=${liveCost}`);
       lastError = "margin_too_low";
       continue;
     }
-    const res = await reserve(p, codes);
-    if (res.ok) { reservation = res; used = p; usedCostUsd = res.costUsd ?? liveCost; break; }
+    const res = await reserve(p, codes, maxCostUsd);
+    if (res.ok) {
+      if (res.costUsd != null && res.costUsd > maxCostUsd + 0.001) {
+        console.warn(`actual_cost_over_ceiling provider=${p} svc=${service.id} cty=${country.id} credits=${cost} paidUsd=${res.costUsd} maxUsd=${maxCostUsd}`);
+        if (res.orderId) await release(p, res.orderId).catch(() => {});
+        lastError = "margin_too_low";
+        continue;
+      }
+      reservation = res; used = p; usedCostUsd = res.costUsd ?? liveCost; break;
+    }
     console.warn(`reserve failed provider=${p} svc=${service.id} cty=${country.id} err=${res.error}`);
     lastError = res.error ?? "no_numbers_available";
   }
