@@ -224,9 +224,17 @@ Deno.serve(async (req) => {
     { onConflict: "key" },
   );
 
+  // ── Phase C: override SMSPool's self-reported success_rate with what
+  // actually happened on OUR orders, and auto-hide any route with proven
+  // total failure. Runs LAST so it wins over phase A's stock-based status.
+  // See migration 20260720003000 for the full rationale (live incident:
+  // facebook/ch showed "100% success" while 9/9 real attempts failed).
+  const { data: observedHidden } = await sb.rpc("refresh_smspool_observed_success");
+
   return json({
     routesUpdated, reverted, enriched,
     servicesMapped: svcMapUpserts.length, countriesMapped: ctyMapUpserts.length,
     bulkRows: bulk.length, enrichCursor: nextCursor,
+    observedHidden: observedHidden ?? 0,
   });
 });
