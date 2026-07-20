@@ -20,6 +20,7 @@ const MAX_WHOLESALE_CENTS = 400;  // hide absurdly-priced routes
 const SMOOTH_ALPHA = 0.5;         // EWMA on wholesale cost
 const UPDATE_FLOOR = 500;         // safety: don't revert stale routes on a thin run
 const ENRICH_BATCH = 120;         // success_rate calls per run
+const SELF_REPORT_CAP = 90;       // max displayable UNVERIFIED success rate
 const ENRICH_PACE_MS = 350;
 
 // Priority services enriched first (by our service id). Known SMSPool ids.
@@ -213,7 +214,13 @@ Deno.serve(async (req) => {
     if (spS == null || spC == null) continue;
     const p = await getPrice(spC, spS);
     if (p.ok && p.successRate != null) {
-      await sb.from("routes").update({ success_rate: p.successRate }).eq("service_id", combo.s).eq("country_id", combo.c);
+      // SMSPool's self-reported rate is marketing, not measurement: it claimed
+      // 100% for facebook/ch while that route delivered 0 of 9 real orders.
+      // Cap unverified claims so the app never promises near-certainty on a
+      // route we haven't actually seen work. Phase C overwrites this with our
+      // own observed rate as soon as there's enough real sample.
+      const claimed = Math.min(p.successRate, SELF_REPORT_CAP);
+      await sb.from("routes").update({ success_rate: claimed }).eq("service_id", combo.s).eq("country_id", combo.c);
       enriched++;
     }
     await sleep(ENRICH_PACE_MS);

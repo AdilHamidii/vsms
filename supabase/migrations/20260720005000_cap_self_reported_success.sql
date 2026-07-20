@@ -1,25 +1,19 @@
--- success_rate was PURELY SMSPool's self-reported /request/price number —
--- never checked against what actually happens on our own orders. Live
--- incident 2026-07-20: facebook/ch showed "100%" while 9/9 real attempts
--- over 2.5h delivered zero codes (a paying customer who'd just bought 30
--- credits). Credits were correctly refunded every time (no money lost), but
--- the displayed reliability was fiction the whole time.
+-- Cap unverified success claims + tighten the dead-route threshold.
 --
--- This computes a REAL success rate from public.orders and overrides the
--- self-reported one once there's enough same-route sample, and auto-hides
--- any route with proven total failure (0 successes across >= p_min_sample
--- genuine attempts). "Genuine attempt" excludes near-instant cancels
--- (< 90s) — those are inconclusive (not enough time for an SMS to land),
--- not evidence of delivery failure, so one impatient user can't tank a
--- route's stats on their own.
+-- SMSPool self-reported >=95% on 5,036 of 6,320 routes — it claimed 100% for
+-- facebook/ch while that route delivered 0 of 9 real orders. Nothing we have
+-- not measured ourselves may promise near-certainty, so unverified claims are
+-- capped at 90 on every hourly run (routes inherited from a retired provider
+-- carry stale 100% ratings, so this must run continuously, not once).
 --
--- Self-healing: the bulk pricing phase in sync-smspool re-activates any
--- in-stock route every run; this function re-evaluates right after, so a
--- route only stays hidden while its trailing lookback window still shows
--- zero successes. One real delivery is enough to stop the hide.
+-- min_sample 5 -> 3: five separate users had to be failed before a dead route
+-- was pulled. Three genuine attempts is enough proof.
+drop function if exists public.refresh_smspool_observed_success(interval, integer);
+
 create or replace function public.refresh_smspool_observed_success(
   p_lookback interval default interval '3 days',
-  p_min_sample integer default 3
+  p_min_sample integer default 3,
+  p_self_report_cap integer default 90
 )
 returns integer
 language plpgsql
@@ -29,6 +23,10 @@ as $$
 declare
   v_hidden integer;
 begin
+  update public.routes
+  set success_rate = p_self_report_cap
+  where provider = 'smspool' and success_rate > p_self_report_cap;
+
   with obs as (
     select service_id, country_id,
       count(*) filter (
@@ -59,5 +57,5 @@ begin
 end;
 $$;
 
-revoke execute on function public.refresh_smspool_observed_success(interval, integer)
+revoke execute on function public.refresh_smspool_observed_success(interval, integer, integer)
   from public, anon, authenticated;
