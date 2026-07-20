@@ -121,7 +121,13 @@ Deno.serve(async (req) => {
   // but the PRICE must cover the priciest pool we'd accept — a purchase fills
   // from any pool (the quote doesn't bind it), so pricing from the cheapest
   // pool sold 1-credit numbers that filled at $0.79 (live, 2026-07-19).
-  const pools = new Map<string, { minCents: number; maxCents: number; svcId: string; cty: string }>();
+  // Per combo, track the cheapest pool (fillability under the ceiling) and the
+  // BEST AFFORDABLE pool — the priciest one ≤ MAX_WHOLESALE_CENTS. We price
+  // from and purchase-pin to that pool: pool price tiers are quality tiers,
+  // and the 3× sticker already pays for the good one.
+  const pools = new Map<string, {
+    minCents: number; bestCents: number; bestPool: string | null; svcId: string; cty: string;
+  }>();
   for (const row of bulk) {
     const ourSvcs = spToOurSvc.get(row.service);
     const ourCty = spToOurCty.get(row.country);
@@ -129,20 +135,29 @@ Deno.serve(async (req) => {
     const price = parseFloat(row.price);
     if (!Number.isFinite(price) || price <= 0) continue;
     const cents = Math.round(price * 100);
+    const affordable = cents <= MAX_WHOLESALE_CENTS;
+    const poolId = row.pool != null ? String(row.pool) : null;
     for (const svcId of ourSvcs) {
       const k = `${svcId}|${ourCty}`;
       const ex = pools.get(k);
-      if (!ex) pools.set(k, { minCents: cents, maxCents: cents, svcId, cty: ourCty });
-      else {
+      if (!ex) {
+        pools.set(k, {
+          minCents: cents,
+          bestCents: affordable ? cents : 0,
+          bestPool: affordable ? poolId : null,
+          svcId, cty: ourCty,
+        });
+      } else {
         ex.minCents = Math.min(ex.minCents, cents);
-        ex.maxCents = Math.max(ex.maxCents, cents);
+        if (affordable && cents > ex.bestCents) { ex.bestCents = cents; ex.bestPool = poolId; }
       }
     }
   }
-  const updates = [...pools.values()].map(({ minCents, maxCents, svcId, cty }) => {
-    // Cost basis = worst fill we'd allow (create-order's max_price cap blocks
-    // anything above credits×10¢ ≥ basis, so ≥3× margin holds for every fill).
-    const basis = Math.min(maxCents, MAX_WHOLESALE_CENTS);
+  const updates = [...pools.values()].map(({ minCents, bestCents, bestPool, svcId, cty }) => {
+    // Cost basis = the pool we will actually buy from. If no pool is under the
+    // ceiling the combo is unfillable → hidden (record the cheapest for ops).
+    const fillable = bestCents > 0;
+    const basis = fillable ? bestCents : minCents;
     const prev = prevSmoothed.get(`${svcId}|${cty}`);
     // Ratchet: cost rises reprice immediately (margin-safe); falls smooth in.
     const smoothed = prev == null || basis > prev
@@ -152,8 +167,9 @@ Deno.serve(async (req) => {
       service_id: svcId, country_id: cty,
       retail_credits: priceToCredits(smoothed / 100),
       last_cost_cents: basis, smoothed_cost_cents: smoothed,
+      smspool_pool: fillable ? bestPool : null,
       provider: "smspool",
-      status: minCents > MAX_WHOLESALE_CENTS ? "hidden" : "active",
+      status: fillable ? "active" : "hidden",
       last_checked_at: runStart,
     };
   });

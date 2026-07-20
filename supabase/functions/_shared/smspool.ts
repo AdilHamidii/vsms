@@ -57,11 +57,15 @@ export interface BuyResult {
  *  6¢ quote filled at $0.79). */
 export async function purchase(
   country: string | number, service: string | number, maxPriceUsd?: number,
+  pool?: string | number,
 ): Promise<BuyResult> {
   const params: Record<string, string | number> = { country, service };
   if (maxPriceUsd != null && Number.isFinite(maxPriceUsd)) {
     params.max_price = maxPriceUsd.toFixed(2);
   }
+  // Pin the pool we priced from (quality tier the sticker pays for); without
+  // it SMSPool defaults to the cheapest pool — typically the worst numbers.
+  if (pool != null && pool !== "") params.pool = pool;
   const d = await form<{
     success?: number; order_id?: string; number?: string | number; phonenumber?: string | number;
     cost?: string; cost_in_cents?: number; message?: string;

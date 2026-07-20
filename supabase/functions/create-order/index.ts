@@ -51,7 +51,7 @@ Deno.serve(async (req) => {
 
   const { data: route, error: rErr } = await sb
     .from("routes")
-    .select("retail_credits, status, last_cost_cents, provider")
+    .select("retail_credits, status, last_cost_cents, provider, smspool_pool")
     .eq("service_id", service.id)
     .eq("country_id", country.id)
     .maybeSingle();
@@ -131,7 +131,7 @@ Deno.serve(async (req) => {
       lastError = "margin_too_low";
       continue;
     }
-    const res = await reserve(p, codes, maxCostUsd);
+    const res = await reserve(p, codes, maxCostUsd, route.smspool_pool);
     if (res.ok) {
       if (res.costUsd != null && res.costUsd > maxCostUsd + 0.001) {
         console.warn(`actual_cost_over_ceiling provider=${p} svc=${service.id} cty=${country.id} credits=${cost} paidUsd=${res.costUsd} maxUsd=${maxCostUsd}`);

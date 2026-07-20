@@ -65,11 +65,14 @@ export interface Reservation {
 }
 
 /** Reserve a number at a provider. maxPriceUsd caps the fill price where the
- *  provider supports it (SMSPool max_price). */
-export async function reserve(p: Provider, c: RouteCodes, maxPriceUsd?: number): Promise<Reservation> {
+ *  provider supports it (SMSPool max_price); pool pins the SMSPool quality
+ *  tier the route was priced from. */
+export async function reserve(
+  p: Provider, c: RouteCodes, maxPriceUsd?: number, pool?: string | null,
+): Promise<Reservation> {
   try {
     if (p === "smspool" && c.spService && c.spCountry) {
-      const r = await sp.purchase(c.spCountry, c.spService, maxPriceUsd);
+      const r = await sp.purchase(c.spCountry, c.spService, maxPriceUsd, pool ?? undefined);
       if (!r.ok) return { ok: false, error: r.error };
       return { ok: true, orderId: r.orderId, number: r.phoneNumber ?? "", costUsd: r.costUsd };
     }
