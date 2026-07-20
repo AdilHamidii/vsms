@@ -59,15 +59,28 @@ Deno.serve(async (req) => {
   // "ProtonMail", "Mail.ru" == "MailRu", "Tencent QQ" == "Tencent / QQ", etc.
   const norm = (x: string) => x.toLowerCase().replace(/[^a-z0-9]/g, "");
   const [spServices, spCountries] = await Promise.all([listServices(), listCountries()]);
+  // SMSPool bundles aliases into one name ("Uber / Postmates", "Amazon /
+  // Amazon Web Services", "Battle.net / Blizzard"), so an exact-name match
+  // silently missed them — 'uber' and 'amazon' sat unmapped for months and
+  // vanished from the app the moment SMSPVA was retired. Index every alias
+  // segment, keeping the first (canonical) claim on each key.
   const spSvcByName = new Map<string, number>();
-  for (const s of spServices) spSvcByName.set(norm(s.name), s.ID);
+  for (const s of spServices) {
+    for (const part of [s.name, ...s.name.split(/[/(),]/)]) {
+      const k = norm(part);
+      if (k && !spSvcByName.has(k)) spSvcByName.set(k, s.ID);
+    }
+  }
   const spCtyByName = new Map<string, number>();
   for (const c of spCountries) spCtyByName.set(norm(c.name), c.ID);
 
   const svcMapUpserts: { id: string; smspool_code: string }[] = [];
   for (const s of services) {
     if (s.smspool_code) continue;
-    const id = SERVICE_OVERRIDES[s.id] ?? spSvcByName.get(norm(s.name ?? ""));
+    // Try the override, then the service's display name, then its slug.
+    const id = SERVICE_OVERRIDES[s.id]
+      ?? spSvcByName.get(norm(s.name ?? ""))
+      ?? spSvcByName.get(norm(s.id));
     if (id != null) svcMapUpserts.push({ id: s.id, smspool_code: String(id) });
   }
   const ctyMapUpserts: { id: string; smspool_code: string }[] = [];
@@ -238,10 +251,17 @@ Deno.serve(async (req) => {
   // facebook/ch showed "100% success" while 9/9 real attempts failed).
   const { data: observedHidden } = await sb.rpc("refresh_smspool_observed_success");
 
+  // ── Phase D: keep service visibility in step with real coverage. A service
+  // is shown iff it has at least one bookable route. Without this, anything
+  // hidden during the SMSPool-only cutover stayed hidden forever even after
+  // its routes came back (how 'uber' disappeared once it was re-mapped).
+  const { data: visibilityChanged } = await sb.rpc("sync_service_visibility");
+
   return json({
     routesUpdated, reverted, enriched,
     servicesMapped: svcMapUpserts.length, countriesMapped: ctyMapUpserts.length,
     bulkRows: bulk.length, enrichCursor: nextCursor,
     observedHidden: observedHidden ?? 0,
+    visibilityChanged: visibilityChanged ?? 0,
   });
 });
