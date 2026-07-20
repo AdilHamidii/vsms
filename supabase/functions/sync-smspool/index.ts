@@ -166,12 +166,13 @@ Deno.serve(async (req) => {
     routesUpdated += Math.min(CHUNK, updates.length - i);
   }
 
-  // Hand stale smspool routes (out of stock this run) back to SMSPVA so its sync
-  // re-owns/re-prices them; fulfilment also falls back to smspva at reserve time.
+  // SMSPool-only (2026-07-20): stale smspool routes (out of stock this run)
+  // are hidden, not handed back to SMSPVA — there is no fallback provider.
   let reverted = 0;
   if (routesUpdated >= UPDATE_FLOOR) {
-    const { count } = await sb.from("routes").update({ provider: "smspva" }, { count: "exact" })
+    const { count } = await sb.from("routes").update({ status: "hidden" }, { count: "exact" })
       .eq("provider", "smspool")
+      .eq("status", "active")
       .or(`last_checked_at.is.null,last_checked_at.lt."${runStart}"`);
     reverted = count ?? 0;
   }

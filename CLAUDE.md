@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-**vSMS** (App Store display name; formerly "vSIM OTP" — the Xcode target/scheme is still `VirtualSIM`) — iOS app selling two products, both paid with in-app **credits**: (1) **temporary phone numbers** for SMS verification codes, sourced from multiple providers with failover — **SMSPool (primary) → SMSPVA (fallback) → virtualsms (degraded)** via `_shared/providers.ts`; and (2) **eSIM data plans** (SMSPool) priced at 3× wholesale. iOS frontend in SwiftUI + Supabase backend (Postgres + Auth + Edge Functions + pg_cron).
+**vSMS** (App Store display name; formerly "vSIM OTP" — the Xcode target/scheme is still `VirtualSIM`) — iOS app selling two products, both paid with in-app **credits**: (1) **temporary phone numbers** for SMS verification codes — **SMSPool ONLY as of 2026-07-20** (owner decision; SMSPVA + virtualsms retired: routes hidden not deleted, their sync crons unscheduled, adapters kept solely so historical orders still poll/cancel — see `providerOrder` in `_shared/providers.ts` for the re-enable checklist); and (2) **eSIM data plans** (SMSPool) priced at 3× wholesale. iOS frontend in SwiftUI + Supabase backend (Postgres + Auth + Edge Functions + pg_cron).
 
 Bundle ID: `com.anthersystems.VirtualSIM` · Supabase ref: `enugzltysdmjzavisloy` · Project root holds `Appidea.md` (original product brief).
 

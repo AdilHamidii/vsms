@@ -28,16 +28,13 @@ export interface RouteCodes {
   dial: string;
 }
 
-/** Providers that can serve this route, preferred first. Default primary is
- *  SMSPool, then the standard fallback chain. */
-export function providerOrder(c: RouteCodes, prefer: Provider = "smspool"): Provider[] {
-  const can = new Set<Provider>();
-  if (c.spService && c.spCountry) can.add("smspool");
-  if (c.smsService && c.smsCountry) can.add("smspva");
-  if (c.vsService && c.vsCountry) can.add("virtualsms");
-  const base: Provider[] = ["smspool", "smspva", "virtualsms"];
-  const pref = [prefer, ...base.filter((p) => p !== prefer)];
-  return pref.filter((p) => can.has(p));
+/** Providers that can serve this route, preferred first.
+ *  SMSPool-ONLY as of 2026-07-20 (owner decision): SMSPVA and virtualsms are
+ *  retired for NEW orders — their adapters stay only so poll/cancel/refund
+ *  keep working for historical orders. To re-enable a fallback, restore the
+ *  chain here AND un-hide its routes + re-schedule its sync cron. */
+export function providerOrder(c: RouteCodes, _prefer: Provider = "smspool"): Provider[] {
+  return c.spService && c.spCountry ? ["smspool"] : [];
 }
 
 /** Live wholesale price (USD) at a provider, or null if unavailable. */
