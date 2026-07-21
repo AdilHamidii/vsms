@@ -52,6 +52,10 @@ Deno.serve(async (req) => {
   if (!order.smdp_address && profile.smdp) patch.smdp_address = profile.smdp;
   if (!order.matching_id && profile.matchingId) patch.matching_id = profile.matchingId;
   if (!order.apn && profile.apn) patch.apn = profile.apn;
+  // Backfill PIN/PUK for eSIMs bought before we captured them — a user stuck
+  // at the iOS "enter SIM PIN" prompt has no other way to get it.
+  if (!order.sim_pin && profile.pin) patch.sim_pin = profile.pin;
+  if (!order.sim_puk && profile.puk) patch.sim_puk = profile.puk;
 
   const { data: updated } = await sb
     .from("esim_orders").update(patch).eq("id", order.id).select("*").single();

@@ -348,6 +348,10 @@ export interface EsimProfile {
   smdp?: string;
   matchingId?: string;       // the token
   apn?: string;
+  /** iOS prompts for this when the line activates; without it the eSIM cannot
+   *  come up at all, which reads to the user as "the internet doesn't work". */
+  pin?: string;
+  puk?: string;
   activated?: boolean;
   dataTotalMb?: number;
   dataUsedMb?: number;
@@ -361,6 +365,7 @@ export async function esimProfile(transactionId: string): Promise<EsimProfile> {
   const d = await form<{
     success?: number; ac?: string; smdp?: string; activationCode?: string; apn?: string;
     activated?: number; topup?: number; remainingData?: string; totalData?: string;
+    pin?: string; puk?: string;
   }>("/esim/profile", { transactionId });
   if (d?.success !== 1) return { ok: false, error: "esim_profile_failed" };
   const total = parseDataMb(d.totalData);
@@ -371,6 +376,8 @@ export async function esimProfile(transactionId: string): Promise<EsimProfile> {
     smdp: d.smdp,
     matchingId: d.activationCode,   // SMSPool names the token "activationCode"
     apn: d.apn,
+    pin: d.pin ?? undefined,
+    puk: d.puk ?? undefined,
     activated: d.activated === 1,
     dataTotalMb: total,
     dataUsedMb: total != null && remaining != null ? Math.max(0, total - remaining) : undefined,

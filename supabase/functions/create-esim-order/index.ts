@@ -65,6 +65,8 @@ Deno.serve(async (req) => {
       smdp_address: profile?.smdp ?? null,
       matching_id: profile?.matchingId ?? null,
       apn: profile?.apn ?? null,
+      sim_pin: profile?.pin ?? null,
+      sim_puk: profile?.puk ?? null,
       data_total_mb: profile?.dataTotalMb ?? null,
       data_used_mb: profile?.dataUsedMb ?? null,
       activated: profile?.activated ?? false,
