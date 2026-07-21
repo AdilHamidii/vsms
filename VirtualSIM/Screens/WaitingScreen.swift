@@ -264,17 +264,8 @@ struct WaitingScreen: View {
     // undelivered code costs the user nothing and doesn't read as a scam —
     // cancelWaiting (the ✕ above) issues a full refund.
     private var refundReassurance: some View {
-        HStack(spacing: 8) {
-            Image(systemName: RIcon.shield)
-                .font(.system(size: 13, weight: .medium))
-                .foregroundStyle(theme.text3)
-            Text("You only pay for a code that arrives. Trying another number is free.")
-                .font(RFont.text(12))
-                .tracking(-0.1)
-                .foregroundStyle(theme.text3)
-            Spacer(minLength: 0)
-        }
-        .padding(.horizontal, 24)
+        DeliveryNotice(density: .compact)
+            .padding(.horizontal, 24)
         .padding(.top, 14)
     }
 

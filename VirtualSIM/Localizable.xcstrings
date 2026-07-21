@@ -68,6 +68,47 @@
       },
       "shouldTranslate" : false
     },
+    "%@ rejected it" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ hat sie abgelehnt"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ lo rechazó"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ l'a refusé"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ l'ha rifiutato"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@に拒否されました"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ recusou"
+          }
+        }
+      }
+    },
     "%@ · %@" : {
       "localizations" : {
         "en" : {
@@ -237,6 +278,47 @@
     },
     "4827" : {
       "shouldTranslate" : false
+    },
+    "8 min" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "8 Min."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "8 min"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "8 min"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "8 min"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "8分"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "8 min"
+          }
+        }
+      }
     },
     "Account" : {
       "extractionState" : "manual",
@@ -849,6 +931,47 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Código recebido"
+          }
+        }
+      }
+    },
+    "Codes don't always arrive" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Codes kommen nicht immer an"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Los códigos no siempre llegan"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Les codes n'arrivent pas toujours"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "I codici non arrivano sempre"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "コードが届かないことがあります"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Os códigos nem sempre chegam"
           }
         }
       }
@@ -2569,6 +2692,47 @@
         }
       }
     },
+    "No code in 8 min? Refunded in full, automatically." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kein Code in 8 Min.? Automatisch voll erstattet."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "¿Sin código en 8 min? Reembolso total automático."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pas de code en 8 min ? Remboursement intégral automatique."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nessun codice in 8 min? Rimborso totale automatico."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "8分以内にコードが届かない場合、自動で全額返金。"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sem código em 8 min? Reembolso total automático."
+          }
+        }
+      }
+    },
     "No code? Cancel any time — your credits are refunded in full, instantly." : {
       "localizations" : {
         "de" : {
@@ -2774,6 +2938,47 @@
         }
       }
     },
+    "Number is reserved for 8 minutes. You only pay if a code arrives." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nummer ist 8 Minuten reserviert. Sie zahlen nur, wenn ein Code ankommt."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Número reservado 8 minutos. Solo pagas si llega un código."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Numéro réservé 8 minutes. Vous ne payez que si un code arrive."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Numero riservato per 8 minuti. Paghi solo se arriva un codice."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "番号は8分間確保されます。コードが届いた場合のみ課金されます。"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Número reservado por 8 minutos. Você só paga se um código chegar."
+          }
+        }
+      }
+    },
     "OTP reveal" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -2811,6 +3016,47 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Revelação do OTP"
+          }
+        }
+      }
+    },
+    "Only charged if a code arrives" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nur berechnet, wenn ein Code ankommt"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Solo se cobra si llega un código"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Facturé uniquement si un code arrive"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Addebitato solo se arriva un codice"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "コードが届いた場合のみ課金"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cobrado só se um código chegar"
           }
         }
       }
@@ -3835,6 +4081,88 @@
         }
       }
     },
+    "Some services block temporary numbers, so a code may never come through. If that happens you're not charged — and trying another number is free, as many times as you like." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Manche Dienste blockieren temporäre Nummern, sodass ein Code möglicherweise nie ankommt. In diesem Fall wird Ihnen nichts berechnet – und eine andere Nummer zu versuchen ist kostenlos, so oft Sie möchten."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Algunos servicios bloquean los números temporales, así que puede que el código no llegue nunca. Si pasa, no se te cobra nada, y probar otro número es gratis, tantas veces como quieras."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Certains services bloquent les numéros temporaires : il se peut qu'aucun code n'arrive. Dans ce cas, rien ne vous est facturé — et essayer un autre numéro est gratuit, autant de fois que vous le souhaitez."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Alcuni servizi bloccano i numeri temporanei, quindi un codice potrebbe non arrivare mai. In tal caso non ti viene addebitato nulla e provare un altro numero è gratis, tutte le volte che vuoi."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "一部のサービスは一時的な番号をブロックするため、コードが届かない場合があります。その場合、料金は発生しません。別の番号を何度試しても無料です。"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Alguns serviços bloqueiam números temporários, então o código pode nunca chegar. Se isso acontecer, você não é cobrado — e tentar outro número é grátis, quantas vezes quiser."
+          }
+        }
+      }
+    },
+    "Some services block temporary numbers, so a code may not arrive. Trying another is free — you only pay for one that works. Sorry for the hassle; we're working on it." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Manche Dienste blockieren temporäre Nummern, ein Code kommt daher evtl. nicht an. Eine andere zu versuchen ist kostenlos – Sie zahlen nur für eine, die funktioniert. Entschuldigung, wir arbeiten daran."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Algunos servicios bloquean los números temporales, así que el código puede no llegar. Probar otro es gratis: solo pagas por el que funciona. Perdona las molestias, estamos en ello."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Certains services bloquent les numéros temporaires : le code peut ne pas arriver. En essayer un autre est gratuit — vous ne payez que celui qui marche. Désolés, nous y travaillons."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Alcuni servizi bloccano i numeri temporanei, quindi il codice potrebbe non arrivare. Provarne un altro è gratis: paghi solo quello che funziona. Ci scusiamo, ci stiamo lavorando."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "一部のサービスは一時的な番号をブロックするため、コードが届かないことがあります。別の番号を試すのは無料で、届いた分だけのお支払いです。ご不便をおかけします。改善中です。"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Alguns serviços bloqueiam números temporários, então o código pode não chegar. Tentar outro é grátis — você só paga pelo que funciona. Desculpe o transtorno; estamos trabalhando nisso."
+          }
+        }
+      }
+    },
     "Support" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -4202,6 +4530,47 @@
         }
       }
     },
+    "Try another number" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Andere Nummer versuchen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Probar otro número"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Essayer un autre numéro"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Prova un altro numero"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "別の番号を試す"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tentar outro número"
+          }
+        }
+      }
+    },
     "Unavailable" : {
       "comment" : "A message indicating that the selected country is unavailable.",
       "isCommentAutoGenerated" : true,
@@ -4527,6 +4896,47 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Aguardando o código de %@…"
+          }
+        }
+      }
+    },
+    "We're sorry for the hassle. We're actively working on improving delivery rates." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wir bitten um Entschuldigung für die Unannehmlichkeiten. Wir arbeiten aktiv daran, die Zustellraten zu verbessern."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sentimos las molestias. Estamos trabajando activamente para mejorar las tasas de entrega."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Désolés pour la gêne occasionnée. Nous travaillons activement à améliorer les taux de réception."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ci scusiamo per il disagio. Stiamo lavorando attivamente per migliorare i tassi di consegna."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ご不便をおかけして申し訳ありません。到達率の改善に取り組んでいます。"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pedimos desculpas pelo transtorno. Estamos trabalhando ativamente para melhorar as taxas de entrega."
           }
         }
       }

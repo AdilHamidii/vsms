@@ -23,6 +23,7 @@ enum RIcon {
     static let shield  = "checkmark.shield"
     static let trash   = "trash"
     static let back    = "chevron.left"
+    static let info    = "info.circle"
 }
 
 struct CoinIcon: View {
