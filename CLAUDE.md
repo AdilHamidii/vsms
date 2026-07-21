@@ -46,9 +46,13 @@ supabase db push
 
 # Deploy edge functions (each runs independently)
 supabase functions deploy create-order check-order cancel-order register-push iap-verify delete-account \
-  create-esim-order check-esim-usage redeem-referral winback
+  create-esim-order check-esim-usage redeem-referral
+# Cron-gated functions MUST ship --no-verify-jwt: their pg_cron relays send
+# only x-cron-secret, no Authorization header. winback lived in the JWT group
+# until 2026-07-21 and silently 401'd on every daily run — zero nudges ever
+# sent, invisible because pg_net purges response history within hours.
 supabase functions deploy poll-active-orders sync-prices sync-smspool sync-esim-plans \
-  sync-smspva-operators telegram-notify telegram-webhook --no-verify-jwt
+  sync-smspva-operators winback telegram-notify telegram-webhook --no-verify-jwt
 
 # Query the remote DB
 supabase db query --linked "select count(*) from public.routes;"
