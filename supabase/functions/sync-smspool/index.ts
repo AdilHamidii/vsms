@@ -11,7 +11,7 @@
 
 import { handleCors, json } from "../_shared/cors.ts";
 import { admin } from "../_shared/supabaseAdmin.ts";
-import { getPricingBulk, listServices, listCountries } from "../_shared/smspool.ts";
+import { allStock, listServices, listCountries } from "../_shared/smspool.ts";
 
 const CREDIT_DIVISOR = 0.10;      // 10x markup; keep in lockstep with sync-prices
 const MIN_CREDITS = 1;
@@ -111,10 +111,15 @@ Deno.serve(async (req) => {
     spToOurCty.set(n, c.id);
   }
 
-  // ── Phase A: bulk price/availability.
-  const bulk = await getPricingBulk(MAX_WHOLESALE_CENTS / 100);
-  if (!Array.isArray(bulk) || bulk.length === 0) {
-    return json({ error: "pricing_bulk_failed", got: JSON.stringify(bulk).slice(0, 200) }, { status: 502 });
+  // ── Phase A: bulk price + AVAILABILITY.
+  // /sms/all_stock is a strict superset of /request/pricing — the same
+  // per-pool price matrix plus the inventory count. Without stock we were
+  // listing routes SMSPool could not fill and only discovering it after
+  // charging the user: those are the "no number available" failures, which
+  // are ~54% of all paid attempts.
+  const bulk = await allStock();
+  if (bulk.length === 0) {
+    return json({ error: "all_stock_failed" }, { status: 502 });
   }
 
   // Prior smoothed cost for EWMA.
@@ -145,7 +150,8 @@ Deno.serve(async (req) => {
   // from and purchase-pin to that pool: pool price tiers are quality tiers,
   // and the 3× sticker already pays for the good one.
   const pools = new Map<string, {
-    minCents: number; bestCents: number; bestPool: string | null; svcId: string; cty: string;
+    minCents: number; bestCents: number; bestPool: string | null;
+    stock: number; svcId: string; cty: string;
   }>();
   for (const row of bulk) {
     const ourSvcs = spToOurSvc.get(row.service);
@@ -156,6 +162,9 @@ Deno.serve(async (req) => {
     const cents = Math.round(price * 100);
     const affordable = cents <= MAX_WHOLESALE_CENTS;
     const poolId = row.pool != null ? String(row.pool) : null;
+    // Only stock in pools we could actually buy from counts as availability —
+    // inventory above our price ceiling can never fill our order.
+    const usableStock = affordable && Number.isFinite(row.stock) ? Math.max(0, row.stock) : 0;
     for (const svcId of ourSvcs) {
       const k = `${svcId}|${ourCty}`;
       const ex = pools.get(k);
@@ -164,18 +173,22 @@ Deno.serve(async (req) => {
           minCents: cents,
           bestCents: affordable ? cents : 0,
           bestPool: affordable ? poolId : null,
+          stock: usableStock,
           svcId, cty: ourCty,
         });
       } else {
         ex.minCents = Math.min(ex.minCents, cents);
+        ex.stock += usableStock;
         if (affordable && cents > ex.bestCents) { ex.bestCents = cents; ex.bestPool = poolId; }
       }
     }
   }
-  const updates = [...pools.values()].map(({ minCents, bestCents, bestPool, svcId, cty }) => {
+  let outOfStock = 0;
+  const updates = [...pools.values()].map(({ minCents, bestCents, bestPool, stock, svcId, cty }) => {
     // Cost basis = the pool we will actually buy from. If no pool is under the
     // ceiling the combo is unfillable → hidden (record the cheapest for ops).
-    const fillable = bestCents > 0;
+    const fillable = bestCents > 0 && stock > 0;
+    if (bestCents > 0 && stock === 0) outOfStock++;
     const basis = fillable ? bestCents : minCents;
     const prev = prevSmoothed.get(`${svcId}|${cty}`);
     // Ratchet: cost rises reprice immediately (margin-safe); falls smooth in.
@@ -187,6 +200,7 @@ Deno.serve(async (req) => {
       retail_credits: priceToCredits(smoothed / 100),
       last_cost_cents: basis, smoothed_cost_cents: smoothed,
       smspool_pool: fillable ? bestPool : null,
+      stock,
       provider: "smspool",
       status: fillable && !blocked.has(`${svcId}|${cty}`) ? "active" : "hidden",
       last_checked_at: runStart,
@@ -240,7 +254,7 @@ Deno.serve(async (req) => {
   const { data: visibilityChanged } = await sb.rpc("sync_service_visibility");
 
   return json({
-    routesUpdated, reverted,
+    routesUpdated, reverted, outOfStock,
     servicesMapped: svcMapUpserts.length, countriesMapped: ctyMapUpserts.length,
     bulkRows: bulk.length,
     observedHidden: observedHidden ?? 0,

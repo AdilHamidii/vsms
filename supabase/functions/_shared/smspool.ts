@@ -388,3 +388,27 @@ function parseDataMb(s?: string): number | undefined {
   if (unit === "KB") return Math.round(n / 1000);
   return Math.round(n);
 }
+
+/** POST /sms/all_stock — stock + price + pool + last_update for every
+ *  (country, service, pool) in one call. Optional filters narrow it.
+ *  Strict superset of /request/pricing: same price matrix, plus the inventory
+ *  count that tells us whether a route can actually be filled. */
+export interface StockRow {
+  country: number; country_name: string;
+  service: number; service_name: string;
+  pool: number; pool_name: string;
+  stock: number; price: string; last_update?: string;
+}
+export async function allStock(
+  filter: { country?: string | number; service?: string | number; pool?: string | number } = {},
+): Promise<StockRow[]> {
+  const p: Record<string, string | number> = {};
+  if (filter.country != null) p.country = filter.country;
+  if (filter.service != null) p.service = filter.service;
+  if (filter.pool != null) p.pool = filter.pool;
+  const d = await form<unknown>("/sms/all_stock", p);
+  if (!Array.isArray(d)) return [];
+  // SMSPool returns this one double-nested ([[row, ...]]), unlike every other
+  // list endpoint. Flatten one level so callers see a plain row array.
+  return (d.length && Array.isArray(d[0]) ? (d as unknown[][]).flat() : d) as StockRow[];
+}
