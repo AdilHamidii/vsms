@@ -5,6 +5,10 @@ import { livePriceUsd, providerOrder, release, reserve, type RouteCodes } from "
 interface Body {
   service_id: string;
   country_id: string;
+  /** "standard" (default; random SMSPVA pool — today's behavior) or
+   *  "premium" (pinned to the route's real-SIM operator, fail-fast). Old
+   *  clients never send this. */
+  tier?: string;
 }
 
 // Verify-then-charge guard. Before reserving a number we re-check the LIVE
@@ -36,6 +40,10 @@ Deno.serve(async (req) => {
   if (!body.service_id || !body.country_id) {
     return json({ error: "missing_fields" }, { status: 400 });
   }
+  const tier = body.tier ?? "standard";
+  if (tier !== "standard" && tier !== "premium") {
+    return json({ error: "invalid_body" }, { status: 400 });
+  }
 
   const sb = admin();
 
@@ -51,13 +59,19 @@ Deno.serve(async (req) => {
 
   const { data: route, error: rErr } = await sb
     .from("routes")
-    .select("retail_credits, status, last_cost_cents, provider, smspool_pool")
+    .select("retail_credits, status, last_cost_cents, provider, smspool_pool, smspva_operator, smspva_operator_cents, premium_credits")
     .eq("service_id", service.id)
     .eq("country_id", country.id)
     .maybeSingle();
   if (rErr) return json({ error: "route_lookup_failed", detail: rErr.message }, { status: 500 });
   if (!route || route.status !== "active" || route.retail_credits == null) {
     return json({ error: "route_unavailable" }, { status: 409 });
+  }
+  // Premium exists only where sync-smspva-operators found a real-SIM carrier
+  // it could price. The app hides the option when premium_credits is null, so
+  // hitting this means a stale client cache — same remedy as a dead route.
+  if (tier === "premium" && (route.smspva_operator == null || route.premium_credits == null)) {
+    return json({ error: "premium_unavailable" }, { status: 409 });
   }
 
   // Idempotency backstop against a double-submit (fast double-tap, a retry, or
@@ -70,7 +84,9 @@ Deno.serve(async (req) => {
   // advisory lock per user). The old version SELECTed here and INSERTed ~200
   // lines later, with a multi-second provider call in between — two concurrent
   // requests both passed this check and both charged.
-  const cost = route.retail_credits as number;
+  const cost = tier === "premium"
+    ? route.premium_credits as number
+    : route.retail_credits as number;
   const codes: RouteCodes = {
     spService: service.smspool_code,
     spCountry: country.smspool_code,
@@ -96,6 +112,7 @@ Deno.serve(async (req) => {
     p_service: service.id,
     p_country: country.id,
     p_credits: cost,
+    p_tier: tier,
   });
   if (beginErr) {
     return json({ error: "spend_failed", detail: beginErr.message }, { status: 500 });
@@ -145,17 +162,26 @@ Deno.serve(async (req) => {
   const maxCostUsd = (cost * NET_USD_PER_CREDIT) / MIN_MARGIN;
 
   for (const p of providers) {
-    let liveCost = await livePriceUsd(p, codes);
+    // Premium margins are checked against the pinned operator's own synced
+    // price — livePriceUsd returns the country/service BASE price, which is
+    // usually the cheapest pool and can sit well under the carrier we will
+    // actually buy from (whatsapp/UK: base 1.40, Giffgaff 6.00).
+    let liveCost = tier === "premium" && route.smspva_operator_cents != null
+      ? (route.smspva_operator_cents as number) / 100
+      : await livePriceUsd(p, codes);
     if (liveCost == null && route.last_cost_cents != null && (route.last_cost_cents as number) > 0) {
       liveCost = (route.last_cost_cents as number) / 100; // graceful degrade to last synced cost
     }
     if (liveCost == null) { lastError = "route_unavailable"; continue; }
     if (liveCost > maxCostUsd) {
-      console.warn(`margin_too_low provider=${p} svc=${service.id} cty=${country.id} credits=${cost} liveUsd=${liveCost}`);
+      console.warn(`margin_too_low provider=${p} tier=${tier} svc=${service.id} cty=${country.id} credits=${cost} liveUsd=${liveCost}`);
       lastError = "margin_too_low";
       continue;
     }
-    const res = await reserve(p, codes, maxCostUsd, route.smspool_pool);
+    // Pin: premium rides the route's real-SIM SMSPVA operator; standard keeps
+    // the (SMSPool-era) pool pin, which is null on smspva routes = random.
+    const pin = tier === "premium" ? route.smspva_operator as string : route.smspool_pool;
+    const res = await reserve(p, codes, maxCostUsd, pin);
     if (res.ok) {
       if (res.costUsd != null && res.costUsd > maxCostUsd + 0.001) {
         console.warn(`actual_cost_over_ceiling provider=${p} svc=${service.id} cty=${country.id} credits=${cost} paidUsd=${res.costUsd} maxUsd=${maxCostUsd}`);

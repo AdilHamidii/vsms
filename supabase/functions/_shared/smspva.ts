@@ -58,9 +58,13 @@ export interface GetNumberData {
   countryCode?: number | string;
 }
 
-/** Reserve a new activation number for (country, service). */
-export function getNumber(country: string, service: string) {
-  return call<GetNumberData>("GET", `/activation/number/${encodeURIComponent(country)}/${encodeURIComponent(service)}`);
+/** Reserve a new activation number for (country, service).
+ *  `operator` pins a specific pool (optional third path segment) — real
+ *  carriers like "Vodafone_UK" vs anonymized donor pools ("DonorAlpha_UK").
+ *  Omitted = SMSPVA picks randomly and "the price will depend on it". */
+export function getNumber(country: string, service: string, operator?: string) {
+  const base = `/activation/number/${encodeURIComponent(country)}/${encodeURIComponent(service)}`;
+  return call<GetNumberData>("GET", operator ? `${base}/${encodeURIComponent(operator)}` : base);
 }
 
 export interface GetSmsData {

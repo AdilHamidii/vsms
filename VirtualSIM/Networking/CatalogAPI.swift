@@ -6,7 +6,8 @@ struct Route: Codable, Hashable {
     let retailCredits: Int?
     let status: String
     let lastCostCents: Int?
-    let successRate: Int?   // 0-100, provider self-reported; nil = no badge
+    let successRate: Int?    // 0-100, provider self-reported; nil = no badge
+    let premiumCredits: Int? // real-SIM tier price; nil = no premium option
 }
 
 struct Catalog: Codable {

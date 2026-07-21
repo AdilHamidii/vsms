@@ -54,6 +54,10 @@ final class AppState {
     private var esimPlanIndex: [String: EsimPlan] = [:]
     var checkoutService: Service?
     var checkoutCountry: Country?
+    /// True when the user picked the Real-SIM (premium) tier in checkout.
+    /// Reset on every startCheckout so the pricier tier is always an explicit
+    /// choice, never a sticky default.
+    var checkoutPremium = false
     var activeOrder: Order?
     /// True while a create-order call is in flight — guards against double-tap
     /// double-charge and lets the checkout CTA show an in-progress state.
@@ -130,6 +134,20 @@ final class AppState {
         return credits
     }
 
+    /// Credit cost of the Real-SIM (premium) tier for (service, country), or
+    /// nil when the route has no pinned real carrier — the checkout hides the
+    /// tier choice entirely in that case. Never falls back to the standard
+    /// price: a nil here means "not sellable as premium", same contract as
+    /// cost(for:country:).
+    func premiumCost(for service: Service, country: Country) -> Int? {
+        guard let route = routeIndex["\(service.id)|\(country.id)"],
+              route.status == "active",
+              route.retailCredits != nil else {
+            return nil
+        }
+        return route.premiumCredits
+    }
+
     /// Provider self-reported delivery success (0-100) for (service, country),
     /// or nil when we have no figure. Separate from `cost` on purpose — a
     /// missing rate hides the badge, it does NOT make the route unavailable.
@@ -186,7 +204,12 @@ final class AppState {
         }
         let svc = checkoutService ?? lastService
         let cty = checkoutCountry ?? lastCountry
-        guard let c = cost(for: svc, country: cty) else { return 0 }
+        // Respect the tier being configured: a premium pick must preselect a
+        // pack that covers the premium price, not the standard one.
+        let selected = flow == .checkout && checkoutPremium
+            ? premiumCost(for: svc, country: cty)
+            : cost(for: svc, country: cty)
+        guard let c = selected else { return 0 }
         return max(0, c - balance)
     }
 
@@ -400,6 +423,7 @@ final class AppState {
     func startCheckout(service: Service? = nil, country: Country? = nil) {
         checkoutService = service ?? lastService
         checkoutCountry = country ?? lastCountry
+        checkoutPremium = false
         flow = .checkout
     }
 
@@ -419,7 +443,8 @@ final class AppState {
         isPlacingOrder = true
         defer { isPlacingOrder = false }
         do {
-            let server = try await orders.create(serviceId: svc.id, countryId: cty.id)
+            let server = try await orders.create(serviceId: svc.id, countryId: cty.id,
+                                                 premium: checkoutPremium)
             let order = resolve(server)
             lastService = svc
             lastCountry = cty

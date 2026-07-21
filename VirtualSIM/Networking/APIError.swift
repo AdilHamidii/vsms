@@ -39,6 +39,8 @@ enum APIError: Error, LocalizedError {
                     return "Not enough credits. Tap Top up to buy more."
                 case "no_numbers_available", "route_unavailable":
                     return "No numbers available for this combination right now. Try another country or service."
+                case "premium_unavailable":
+                    return "Real-SIM numbers just sold out here. Try Standard, or another country."
                 case "smspva_error":
                     return "Numbers aren't available right now. Please try a different country or service."
                 // The backend sends `provider_unreachable` (not the older

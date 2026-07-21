@@ -11,7 +11,15 @@ struct CheckoutScreen: View {
 
     private var service: Service { state.checkoutService ?? state.lastService }
     private var country: Country { state.checkoutCountry ?? state.lastCountry }
-    private var routeCost: Int? { state.cost(for: service, country: country) }
+    private var standardCost: Int? { state.cost(for: service, country: country) }
+    private var premiumCost: Int? { state.premiumCost(for: service, country: country) }
+    /// Price of the tier currently selected. Premium is only selectable when
+    /// the route carries a premium price, so the fallback never actually
+    /// charges standard for a premium pick — it just keeps the receipt sane
+    /// while the catalog refreshes underneath an open checkout.
+    private var routeCost: Int? {
+        state.checkoutPremium ? (premiumCost ?? standardCost) : standardCost
+    }
     private var insufficient: Bool {
         guard let routeCost else { return false }
         return state.balance < routeCost
@@ -95,6 +103,23 @@ struct CheckoutScreen: View {
                         }
                     }, chev: true)
                 })
+                if let premiumCost {
+                    ReceiptRow(label: "Number type", leading: {
+                        ReceiptIconBox(symbol: RIcon.shield)
+                    }, trailing: {
+                        HStack(spacing: 6) {
+                            TierChip(title: "Standard",
+                                     selected: !state.checkoutPremium) {
+                                state.checkoutPremium = false
+                            }
+                            TierChip(title: "Real SIM",
+                                     selected: state.checkoutPremium) {
+                                state.checkoutPremium = true
+                            }
+                        }
+                    })
+                    .accessibilityHint(Text("Real SIM costs \(premiumCost) credits and has the best delivery rate"))
+                }
                 if state.showMetrics {
                     ReceiptRow(label: "Expected", leading: {
                         ReceiptIconBox(symbol: RIcon.clock)
@@ -103,7 +128,17 @@ struct CheckoutScreen: View {
                                      secondaryText: "Only charged if a code arrives")
                     })
                 }
-                if state.showMetrics, let rate = state.successRate(for: service, country: country) {
+                if state.showMetrics, state.checkoutPremium {
+                    // The measured rate describes the standard (random-pool)
+                    // tier; quoting it under a Real-SIM pick would undersell
+                    // the thing being paid for.
+                    ReceiptRow(label: "Delivery", leading: {
+                        ReceiptIconBox(symbol: RIcon.shield)
+                    }, trailing: {
+                        ReceiptValue(primary: "Real carrier number",
+                                     secondaryText: "Best delivery — refunded if it fails")
+                    })
+                } else if state.showMetrics, let rate = state.successRate(for: service, country: country) {
                     ReceiptRow(label: "Delivery", leading: {
                         ReceiptIconBox(symbol: RIcon.shield)
                     }, trailing: {
@@ -212,5 +247,27 @@ private struct CoinIconBox: View {
         CoinIcon(size: 14, color: theme.text2)
             .frame(width: 32, height: 32)
             .background(theme.chipBg, in: .rect(cornerRadius: 9))
+    }
+}
+
+/// One option of the Standard / Real SIM tier toggle.
+private struct TierChip: View {
+    @Environment(\.theme) private var theme
+    let title: LocalizedStringKey
+    let selected: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Text(title)
+                .font(RFont.text(13, weight: .semibold))
+                .tracking(-0.2)
+                .foregroundStyle(selected ? theme.bg : theme.text)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 7)
+                .background(selected ? theme.text : theme.chipBg, in: .capsule)
+        }
+        .buttonStyle(.plain)
+        .accessibilityAddTraits(selected ? .isSelected : [])
     }
 }

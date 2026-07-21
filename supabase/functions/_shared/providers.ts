@@ -134,8 +134,15 @@ export async function reserve(
       // purchase with balance reads so the caller learns the REAL charge and
       // can hide/reprice the route. Best-effort: if either read fails we
       // still complete the order, just without a measured cost.
+      //
+      // `pool` here is an SMSPVA OPERATOR (premium tier pins a real carrier,
+      // e.g. "Vodafone_UK"; standard passes null = random pool). Deliberately
+      // NO unpinned retry on failure: a premium buyer paid for the real-SIM
+      // pool, and a silent random fill is most likely the donor/VoIP pool
+      // they paid to avoid — fail fast, create-order refunds (owner decision
+      // 2026-07-21).
       const before = await smsGetBalance().catch(() => null);
-      const r = await smsGetNumber(c.smsCountry, c.smsService);
+      const r = await smsGetNumber(c.smsCountry, c.smsService, pool ?? undefined);
       if (!isOk(r)) {
         const raw = r.error?.type ?? "smspva_error";
         return { ok: false, error: raw, errorType: classifySmspvaFault(raw) };
@@ -150,6 +157,7 @@ export async function reserve(
         orderId: String(r.data.orderId),
         number: `${c.dial} ${r.data.phoneNumber}`,
         costUsd,
+        pool: pool ?? undefined,
       };
     }
   } catch (e) {

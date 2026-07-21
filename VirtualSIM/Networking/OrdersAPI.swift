@@ -15,6 +15,7 @@ struct ServerOrder: Codable, Hashable {
     let expiresAt: Date
     let arrivedAt: Date?
     let closedAt: Date?
+    let tier: String?        // "standard" | "premium"; nil on pre-tier rows
 }
 
 private struct OrderEnvelope: Codable { let order: ServerOrder }
@@ -33,11 +34,12 @@ struct OrdersAPI {
         )
     }
 
-    func create(serviceId: String, countryId: String) async throws -> ServerOrder {
-        struct Body: Encodable { let service_id: String; let country_id: String }
+    func create(serviceId: String, countryId: String, premium: Bool = false) async throws -> ServerOrder {
+        struct Body: Encodable { let service_id: String; let country_id: String; let tier: String }
         let env: OrderEnvelope = try await client.request(
             .post, path: "functions/v1/create-order",
-            body: Body(service_id: serviceId, country_id: countryId)
+            body: Body(service_id: serviceId, country_id: countryId,
+                       tier: premium ? "premium" : "standard")
         )
         return env.order
     }
