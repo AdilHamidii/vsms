@@ -1,8 +1,34 @@
 import { handleCors, json } from "../_shared/cors.ts";
 import { admin, callerUserId } from "../_shared/supabaseAdmin.ts";
 import { verifyTransactionJWS, creditsForProduct } from "../_shared/iap.ts";
+import { notifySafe, esc } from "../_shared/telegram.ts";
 
 interface Body { jws: string; }
+
+/** Claim the event, then alert. The claim makes this exactly-once against the
+ *  per-minute sweep in telegram-notify, which re-sends anything that fails
+ *  here. Swallows everything — this must never affect a purchase. */
+async function alertPurchase(
+  sb: ReturnType<typeof admin>,
+  p: { receiptId?: number | null; credits: number; productId: string; environment: string },
+): Promise<void> {
+  try {
+    if (p.receiptId == null) return;
+    const { data: claimed } = await sb
+      .from("telegram_events")
+      .insert({ kind: "purchase", ref: String(p.receiptId) })
+      .select("ref").maybeSingle();
+    if (!claimed) return;   // sweep already sent it
+
+    const pack = p.productId.split(".").pop();
+    const sandbox = p.environment !== "Production" ? `\n<i>${esc(p.environment)}</i>` : "";
+    await notifySafe(
+      `💳 <b>Credits purchased</b>\n${p.credits} credits (pack ${esc(pack)})${sandbox}`,
+    );
+  } catch (e) {
+    console.error("alertPurchase failed (ignored):", e);
+  }
+}
 
 Deno.serve(async (req) => {
   const cors = handleCors(req); if (cors) return cors;
@@ -70,6 +96,20 @@ Deno.serve(async (req) => {
     await sb.rpc("apply_referral_reward", { p_referee: userId });
   } catch (e) {
     console.error("apply_referral_reward failed for", userId, e);
+  }
+
+  // Operator alert. Deliberately NOT awaited: waitUntil lets it run after the
+  // response is sent, so a slow or dead Telegram can never add latency to — or
+  // fail — a real purchase. The whole call is wrapped because a synchronous
+  // throw here (e.g. a missing env var) would otherwise escape into this path.
+  // Unreachable for a replayed receipt: the duplicate transaction_id returns
+  // early above, so this only ever runs for a genuinely new purchase.
+  try {
+    EdgeRuntime.waitUntil(alertPurchase(sb, {
+      receiptId: inserted?.id, credits, productId: tx.productId, environment: tx.environment,
+    }));
+  } catch (e) {
+    console.error("purchase alert dispatch failed (ignored):", e);
   }
 
   return json({ ok: true, credits, balance_changed: true });

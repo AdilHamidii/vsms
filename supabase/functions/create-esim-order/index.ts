@@ -3,6 +3,7 @@
 // 20-min auto-refund — an eSIM is a one-shot provisioned profile.
 
 import { handleCors, json } from "../_shared/cors.ts";
+import { notifySafe, esc } from "../_shared/telegram.ts";
 import { admin, callerUserId } from "../_shared/supabaseAdmin.ts";
 import { esimPurchase, esimProfile } from "../_shared/smspool.ts";
 
@@ -77,5 +78,33 @@ Deno.serve(async (req) => {
     return json({ error: "order_persist_failed", detail: insErr?.message }, { status: 500 });
   }
 
+  // Operator alert — same non-blocking contract as iap-verify: never awaited,
+  // never throws, and the per-minute sweep re-sends if Telegram is down.
+  try {
+    EdgeRuntime.waitUntil(alertEsim(sb, {
+      id: order.id, credits: cost, planId: plan.id, status: order.status,
+    }));
+  } catch (e) {
+    console.error("esim alert dispatch failed (ignored):", e);
+  }
+
   return json({ order });
 });
+
+async function alertEsim(
+  sb: ReturnType<typeof admin>,
+  e: { id: string; credits: number; planId: string; status: string },
+): Promise<void> {
+  try {
+    const { data: claimed } = await sb
+      .from("telegram_events")
+      .insert({ kind: "esim", ref: String(e.id) })
+      .select("ref").maybeSingle();
+    if (!claimed) return;
+    await notifySafe(
+      `🌍 <b>eSIM purchased</b>\n${e.credits} credits · plan ${esc(e.planId)} · ${esc(e.status)}`,
+    );
+  } catch (err) {
+    console.error("alertEsim failed (ignored):", err);
+  }
+}
