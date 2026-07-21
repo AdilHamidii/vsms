@@ -202,8 +202,15 @@ Deno.serve(async (req) => {
       // single-day quote can't flip the route between price tiers. Seed on first
       // observation. The hide ceiling still uses the raw current cost — if today's
       // cost is genuinely absurd, don't sell it regardless of history.
+      // RATCHET: cost RISES apply immediately, only falls are smoothed.
+      // Symmetric EWMA underprices after any jump — pricing off a smoothed
+      // value below the real cost breaks the 3x rule until it catches up. When
+      // this sync had been unscheduled for days, the first run produced 4,384
+      // routes priced under their own wholesale cost. Same rule sync-smspool
+      // already uses; smoothing only ever protects the user from a spike, it
+      // must never protect the price from reality.
       const prev = prevSmoothed.get(key);
-      const smoothed = prev == null
+      const smoothed = prev == null || cents > prev
         ? cents
         : Math.round(SMOOTH_ALPHA * cents + (1 - SMOOTH_ALPHA) * prev);
       const credits = priceToCredits(smoothed / 100);

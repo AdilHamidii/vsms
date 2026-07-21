@@ -30,15 +30,23 @@ export interface RouteCodes {
 }
 
 /** Providers that can serve this route, preferred first.
- *  SMSPool-ONLY (owner decision 2026-07-20, reaffirmed after reviewing the
- *  59%-vs-13% measured gap — that gap did not survive controls: on the only
- *  3 combos both providers served, BOTH delivered zero, and 21 of 29 lifetime
- *  deliveries were one service used by two users).
- *  SMSPVA + virtualsms keep their adapters purely so historical orders can
- *  still poll/cancel/refund. To re-enable one: restore it to this chain AND
- *  un-hide its routes AND re-schedule its sync cron. */
-export function providerOrder(c: RouteCodes, _prefer: Provider = "smspool"): Provider[] {
-  return c.spService && c.spCountry ? ["smspool"] : [];
+ *  SMSPVA for SMS; SMSPool keeps the eSIM line only (owner decision
+ *  2026-07-21). SMSPool served 43 SMS orders across 3 days and delivered 3.
+ *  The decisive test: leboncoin/NL — 8 of 13 on SMSPVA — went 0 of 1 on
+ *  SMSPool with everything working (number issued from the pinned pool at 7c
+ *  against a 1-credit charge, held 173s); the SMS simply never arrived.
+ *
+ *  SMSPool is deliberately NOT a fallback here: its ToS 6.7 bans financial,
+ *  crypto, KYC, telecom and government verifications outright, and SMSPVA
+ *  carries ~134 services SMSPool has no mapping for at all — so routing SMS
+ *  to it costs coverage as well as delivery.
+ *
+ *  eSIMs are untouched and stay on SMSPool (9 of 9 delivered, a separate
+ *  table and code path).
+ *
+ *  virtualsms stays retired: its purchase endpoint 503s for every combo. */
+export function providerOrder(c: RouteCodes, _prefer: Provider = "smspva"): Provider[] {
+  return c.smsService && c.smsCountry ? ["smspva"] : [];
 }
 
 /** Live wholesale price (USD) at a provider, or null if unavailable. */
