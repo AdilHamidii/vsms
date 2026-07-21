@@ -157,15 +157,20 @@ final class AppState {
         return route.successRate
     }
 
-    /// The most reliable country we can currently book for this service. Ranks
-    /// by evidence, not by price: routes we've measured delivering come first,
-    /// then untested ones, then routes measured as failing.
-    ///
-    /// Among untested routes we deliberately avoid the cheapest — the provider's
-    /// cheapest pool is its worst inventory, so the old "ties break to lower
-    /// cost" rule was actively steering users onto the numbers least likely to
-    /// deliver (it picked Albania for Facebook on zero evidence).
-    func bestCountry(for service: Service) -> Country? {
+    /// The country to land on when the user picks `service`. Ranks by
+    /// evidence, but NEVER silently swaps a working selection:
+    ///  1. A country we've measured delivering wins — real steering.
+    ///  2. Otherwise KEEP `current` when the service is bookable there and not
+    ///     measured-failing. The sheet just showed the user a price for that
+    ///     country; the buy button must say the same number.
+    ///  3. Otherwise the cheapest untested bookable country. The old rule took
+    ///     the PRICIEST — a SMSPool-era heuristic where the cheapest pool
+    ///     really was the worst inventory. With SMSPVA, per-country carrier
+    ///     prices are flat and the cross-country spread is country cost, not
+    ///     quality — "priciest" was quoting 40cr Thailand right after the list
+    ///     showed 3cr Netherlands, on zero evidence.
+    ///  4. Everything left is measured-failing; give back the cheapest.
+    func bestCountry(for service: Service, keeping current: Country? = nil) -> Country? {
         let bookable = countries.filter { cost(for: service, country: $0) != nil }
         guard !bookable.isEmpty else { return nil }
 
@@ -176,14 +181,20 @@ final class AppState {
         }
         if let best = proven.max(by: { $0.1 < $1.1 }) { return best.0 }
 
-        // 2) Otherwise the priciest untested route we can still book — skipping
-        //    the bottom of the price range rather than diving into it.
+        // 2) No evidence anywhere — stay where the user already is.
+        if let current,
+           cost(for: service, country: current) != nil,
+           (successRate(for: service, country: current) ?? 1) > 0 {
+            return current
+        }
+
+        // 3) Cheapest untested.
         let untested = bookable.filter { successRate(for: service, country: $0) == nil }
-        if let pick = untested.max(by: {
-            (cost(for: service, country: $0) ?? 0) < (cost(for: service, country: $1) ?? 0)
+        if let pick = untested.min(by: {
+            (cost(for: service, country: $0) ?? .max) < (cost(for: service, country: $1) ?? .max)
         }) { return pick }
 
-        // 3) Everything left is measured-failing; give back the cheapest.
+        // 4) Everything left is measured-failing; give back the cheapest.
         return bookable.min(by: {
             (cost(for: service, country: $0) ?? .max) < (cost(for: service, country: $1) ?? .max)
         })

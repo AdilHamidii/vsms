@@ -172,9 +172,12 @@ struct ContentView: View {
         switch which {
         case .services:
             ServiceSheet(onPick: { picked in
-                // Show + steer: land the freshly-picked service on its most
-                // reliable country instead of keeping whatever was selected.
-                let best = state.bestCountry(for: picked)
+                // Show + steer: land the freshly-picked service on a country
+                // we've SEEN deliver. Without evidence, bestCountry keeps the
+                // current selection — the sheet priced every row for it, and a
+                // silent swap made the buy button contradict the tapped row.
+                let best = state.bestCountry(for: picked,
+                                             keeping: state.checkoutCountry ?? state.lastCountry)
                 if state.flow == .checkout {
                     state.checkoutService = picked
                     if let best { state.checkoutCountry = best }
