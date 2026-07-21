@@ -1,6 +1,6 @@
 import { handleCors, json } from "../_shared/cors.ts";
 import { admin, callerUserId } from "../_shared/supabaseAdmin.ts";
-import { poll, type Provider } from "../_shared/providers.ts";
+import { markSuccess, poll, type Provider } from "../_shared/providers.ts";
 
 interface Body { order_id: string; }
 
@@ -70,6 +70,9 @@ Deno.serve(async (req) => {
     if (uErr) return json({ error: "update_failed", detail: uErr.message }, { status: 500 });
 
     if (rows && rows.length > 0) {
+      // Tell SMSPVA the activation succeeded — best-effort account-karma
+      // hygiene, never blocks handing the code to the user.
+      await markSuccess((order.provider ?? "smspva") as Provider, order.smspva_id!);
       return json({ order: rows[0], arrived: true });
     }
 

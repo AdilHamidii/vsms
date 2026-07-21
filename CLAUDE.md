@@ -52,7 +52,7 @@ supabase functions deploy create-order check-order cancel-order register-push ia
 # until 2026-07-21 and silently 401'd on every daily run — zero nudges ever
 # sent, invisible because pg_net purges response history within hours.
 supabase functions deploy poll-active-orders sync-prices sync-smspool sync-esim-plans \
-  sync-smspva-operators winback telegram-notify telegram-webhook --no-verify-jwt
+  sync-smspva-operators sync-smspva-conversions winback telegram-notify telegram-webhook --no-verify-jwt
 
 # Query the remote DB
 supabase db query --linked "select count(*) from public.routes;"

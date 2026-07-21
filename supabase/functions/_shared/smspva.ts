@@ -136,3 +136,14 @@ export function getCountryPrices(country: string) {
 export function getBalance() {
   return call<{ balance: number }>("GET", "/activation/balance");
 }
+
+/** SMSPVA's own per-country conversion quality for a service — a coarse 0-3
+ *  score keyed by country code (probed live: instagram ES=3, UK/FR/DE/US=2).
+ *  Positive grades seed routes.success_rate via sync-smspva-conversions;
+ *  0 is ambiguous (bad OR just unmeasured) and is deliberately ignored. */
+export function getConversions(service: string) {
+  return call<{ service: string; conversions: Record<string, number> }>(
+    "GET",
+    `/activation/conversions/${encodeURIComponent(service)}`,
+  );
+}

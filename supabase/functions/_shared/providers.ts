@@ -12,6 +12,7 @@ import {
   getNumber as smsGetNumber,
   getSms,
   cancelOrder as smsCancel,
+  blockNumber as smsBlock,
   getServicePrice,
   getBalance as smsGetBalance,
   isOk,
@@ -83,10 +84,12 @@ export interface Reservation {
 }
 
 /** Reserve a number at a provider. maxPriceUsd caps the fill price where the
- *  provider supports it (SMSPool max_price); pool pins the SMSPool quality
- *  tier the route was priced from. */
+ *  provider supports it (SMSPool max_price); pool pins the pool/carrier the
+ *  route was priced from. pinStrict=true (premium tier) makes a dry pin a
+ *  hard failure instead of retrying unpinned. */
 export async function reserve(
   p: Provider, c: RouteCodes, maxPriceUsd?: number, pool?: string | null,
+  pinStrict = false,
 ): Promise<Reservation> {
   try {
     if (p === "smspool" && c.spService && c.spCountry) {
@@ -135,14 +138,28 @@ export async function reserve(
       // can hide/reprice the route. Best-effort: if either read fails we
       // still complete the order, just without a measured cost.
       //
-      // `pool` here is an SMSPVA OPERATOR (premium tier pins a real carrier,
-      // e.g. "Vodafone_UK"; standard passes null = random pool). Deliberately
-      // NO unpinned retry on failure: a premium buyer paid for the real-SIM
-      // pool, and a silent random fill is most likely the donor/VoIP pool
-      // they paid to avoid — fail fast, create-order refunds (owner decision
-      // 2026-07-21).
+      // `pool` here is an SMSPVA OPERATOR pin — a real carrier such as
+      // "Vodafone_UK". Random (unpinned) fills come from the anonymized
+      // Donor* pools, the VoIP-style stock strict services reject.
+      //
+      //  - premium (pinStrict): a dry carrier FAILS and create-order refunds
+      //    — the buyer paid for the real-SIM pool, never silently downgrade
+      //    (owner decision 2026-07-21).
+      //  - standard: pin opportunistically and fall back to a random fill
+      //    when the carrier is dry or the error is unclassified. Probed
+      //    2026-07-21: the carrier costs the same or less than a random fill
+      //    on all 16,320 active routes, so this is a free delivery upgrade
+      //    that can never do worse than the old always-random behavior.
       const before = await smsGetBalance().catch(() => null);
-      const r = await smsGetNumber(c.smsCountry, c.smsService, pool ?? undefined);
+      let usedPool = pool ?? undefined;
+      let r = await smsGetNumber(c.smsCountry, c.smsService, usedPool);
+      if (!isOk(r) && usedPool && !pinStrict) {
+        const t = classifySmspvaFault(r.error?.type ?? "smspva_error");
+        if (t === undefined || t === "OUT_OF_STOCK") {
+          usedPool = undefined;
+          r = await smsGetNumber(c.smsCountry, c.smsService);
+        }
+      }
       if (!isOk(r)) {
         const raw = r.error?.type ?? "smspva_error";
         return { ok: false, error: raw, errorType: classifySmspvaFault(raw) };
@@ -157,7 +174,7 @@ export async function reserve(
         orderId: String(r.data.orderId),
         number: `${c.dial} ${r.data.phoneNumber}`,
         costUsd,
-        pool: pool ?? undefined,
+        pool: usedPool,
       };
     }
   } catch (e) {
@@ -197,6 +214,15 @@ function classifySmspvaFault(raw: string): sp.SmspoolErrorType | undefined {
   // NOT invent a classification we cannot justify — but we do make it visible.
   console.error(`smspva: unclassified error type "${raw}" — add it to classifySmspvaFault`);
   return undefined;
+}
+
+/** Tell the provider an activation SUCCEEDED. SMSPVA's blocknumber marks the
+ *  number used — their docs ask for it, and account karma influences the
+ *  quality of numbers they hand out next. Best-effort hygiene: a failure here
+ *  must never affect the delivered order. */
+export async function markSuccess(p: Provider, orderId: string): Promise<void> {
+  if (p !== "smspva") return;
+  try { await smsBlock(orderId); } catch { /* hygiene only */ }
 }
 
 export interface PollResult {

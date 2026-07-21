@@ -161,6 +161,17 @@ Deno.serve(async (req) => {
   // price (seen live: wechat/kg quoted 6¢, uncapped purchase filled at 79¢).
   const maxCostUsd = (cost * NET_USD_PER_CREDIT) / MIN_MARGIN;
 
+  // Standard orders pin the route's real-SIM carrier too, whenever it fits
+  // the margin ceiling. Probed 2026-07-21: on all 16,320 active routes the
+  // carrier costs the same or LESS than a random fill — random just means
+  // "probably a Donor* pool", the stock strict services reject. reserve()
+  // falls back to a random fill if the carrier is dry (premium doesn't).
+  const standardCarrier =
+    route.smspva_operator != null && route.smspva_operator_cents != null &&
+      (route.smspva_operator_cents as number) / 100 <= maxCostUsd
+      ? route.smspva_operator as string
+      : null;
+
   for (const p of providers) {
     // Premium margins are checked against the pinned operator's own synced
     // price — livePriceUsd returns the country/service BASE price, which is
@@ -178,10 +189,12 @@ Deno.serve(async (req) => {
       lastError = "margin_too_low";
       continue;
     }
-    // Pin: premium rides the route's real-SIM SMSPVA operator; standard keeps
-    // the (SMSPool-era) pool pin, which is null on smspva routes = random.
-    const pin = tier === "premium" ? route.smspva_operator as string : route.smspool_pool;
-    const res = await reserve(p, codes, maxCostUsd, pin);
+    // Pin per provider: smspva rides the real-SIM carrier (mandatory for
+    // premium, opportunistic for standard); smspool keeps its pool pin.
+    const pin = p === "smspva"
+      ? (tier === "premium" ? route.smspva_operator as string : standardCarrier)
+      : route.smspool_pool;
+    const res = await reserve(p, codes, maxCostUsd, pin, tier === "premium");
     if (res.ok) {
       if (res.costUsd != null && res.costUsd > maxCostUsd + 0.001) {
         console.warn(`actual_cost_over_ceiling provider=${p} svc=${service.id} cty=${country.id} credits=${cost} paidUsd=${res.costUsd} maxUsd=${maxCostUsd}`);

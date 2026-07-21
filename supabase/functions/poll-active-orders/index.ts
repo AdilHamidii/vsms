@@ -4,7 +4,7 @@
 
 import { handleCors, json } from "../_shared/cors.ts";
 import { admin } from "../_shared/supabaseAdmin.ts";
-import { poll, type Provider } from "../_shared/providers.ts";
+import { markSuccess, poll, type Provider } from "../_shared/providers.ts";
 import { getBalanceUsd } from "../_shared/smspool.ts";
 import { getBalance as getSmspvaBalance, isOk } from "../_shared/smspva.ts";
 import { sendPush } from "../_shared/apns.ts";
@@ -139,6 +139,9 @@ Deno.serve(async (req) => {
 
       if (uErr) { console.error("update failed for order", o.id, uErr); continue; }
       if (!claimed || claimed.length === 0) continue; // already handled
+
+      // Tell SMSPVA the activation succeeded — best-effort karma hygiene.
+      await markSuccess((o.provider ?? "smspva") as Provider, o.smspva_id);
 
       arrived++;
       const service = o.service as { name: string };
