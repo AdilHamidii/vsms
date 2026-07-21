@@ -30,14 +30,31 @@ export function isOk<T>(r: SmsPvaResponse<T>): r is SmsPvaSuccess<T> {
   return r.statusCode === 200 && "data" in r && (r as SmsPvaSuccess<T>).data !== undefined;
 }
 
+// Hard per-call timeout. Every batch job's timing math (12 countries × ~4s <
+// the 150s worker kill) assumes each request returns promptly; a single hung
+// TCP connection with no response would otherwise burn the whole budget on one
+// call and silently erase that margin — and hang a user's create-order.
+const CALL_TIMEOUT_MS = 10000;
+
 async function call<T>(method: "GET" | "PUT", path: string): Promise<SmsPvaResponse<T>> {
-  const resp = await fetch(`${BASE}${path}`, {
-    method,
-    headers: {
-      apikey: apiKey(),
-      Accept: "application/json",
-    },
-  });
+  let resp: Response;
+  try {
+    resp = await fetch(`${BASE}${path}`, {
+      method,
+      headers: {
+        apikey: apiKey(),
+        Accept: "application/json",
+      },
+      signal: AbortSignal.timeout(CALL_TIMEOUT_MS),
+    });
+  } catch (e) {
+    // Timeout or network error — surface as a normal envelope so callers'
+    // isOk()/errorType handling treats it like any other failure.
+    return {
+      statusCode: 0,
+      error: { type: "UPSTREAM_TIMEOUT", description: String(e).slice(0, 200) },
+    };
+  }
   const text = await resp.text();
   try {
     return JSON.parse(text) as SmsPvaResponse<T>;

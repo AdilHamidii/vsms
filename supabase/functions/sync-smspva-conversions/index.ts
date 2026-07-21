@@ -133,12 +133,18 @@ Deno.serve(async (req) => {
     if (curErr) console.error("sync-smspva-conversions: cursor write failed", curErr.message);
   }
 
-  return json({
+  // Fail LOUD when every fetch in a non-empty batch failed (see
+  // sync-smspva-operators for why 200-on-total-failure is dangerous).
+  const body = {
     codesProcessed: batch.length - fetchErrors,
     servicesSeeded,
     routesSeeded,
     fetchErrors,
     cursor: batch.length > 0 ? batch[batch.length - 1] : null,
     wrapped: start === 0 && cursor != null,
-  });
+  };
+  if (batch.length > 0 && fetchErrors === batch.length) {
+    return json({ error: "all_fetches_failed", ...body }, { status: 502 });
+  }
+  return json(body);
 });

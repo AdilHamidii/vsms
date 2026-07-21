@@ -25,6 +25,7 @@ async function req<T>(method: "GET" | "POST", path: string, body?: unknown): Pro
       ...(body ? { "Content-Type": "application/json" } : {}),
     },
     ...(body ? { body: JSON.stringify(body) } : {}),
+    signal: AbortSignal.timeout(10000),
   });
   const text = await resp.text();
   let json: unknown;

@@ -173,13 +173,23 @@ Deno.serve(async (req) => {
       : null;
 
   for (const p of providers) {
-    // Premium margins are checked against the pinned operator's own synced
-    // price — livePriceUsd returns the country/service BASE price, which is
-    // usually the cheapest pool and can sit well under the carrier we will
-    // actually buy from (whatsapp/UK: base 1.40, Giffgaff 6.00).
-    let liveCost = tier === "premium" && route.smspva_operator_cents != null
-      ? (route.smspva_operator_cents as number) / 100
-      : await livePriceUsd(p, codes);
+    // Premium margins are checked against the pinned operator's own price —
+    // livePriceUsd returns the country/service BASE price, usually the
+    // cheapest pool, which can sit well under the carrier we actually buy from
+    // (whatsapp/UK: base 1.40, Giffgaff 6.00). But smspva_operator_cents is a
+    // DAILY-cached column (sync-smspva-operators cursor): if SMSPVA raised
+    // prices since the last pass it is stale-LOW, and checking margin against
+    // it alone would sell under floor for up to ~24h. So take the HIGHER of
+    // the cached operator price and the live base price — a broad live price
+    // rise is caught immediately, the carrier premium is still respected.
+    let liveCost: number | null;
+    if (tier === "premium" && route.smspva_operator_cents != null) {
+      const cachedOp = (route.smspva_operator_cents as number) / 100;
+      const liveBase = p === "smspva" ? await livePriceUsd(p, codes) : null;
+      liveCost = liveBase != null ? Math.max(cachedOp, liveBase) : cachedOp;
+    } else {
+      liveCost = await livePriceUsd(p, codes);
+    }
     if (liveCost == null && route.last_cost_cents != null && (route.last_cost_cents as number) > 0) {
       liveCost = (route.last_cost_cents as number) / 100; // graceful degrade to last synced cost
     }

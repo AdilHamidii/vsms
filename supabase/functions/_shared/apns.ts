@@ -73,6 +73,8 @@ export async function sendPush(
     ...(payload.customData ?? {}),
   };
 
+  // Timeout so one unreachable device can't stall the poll-active-orders loop
+  // (which sends per delivered order) up to the worker kill.
   const resp = await fetch(`${host}/3/device/${deviceToken}`, {
     method: "POST",
     headers: {
@@ -83,6 +85,7 @@ export async function sendPush(
       "content-type": "application/json",
     },
     body: JSON.stringify(body),
+    signal: AbortSignal.timeout(10000),
   });
 
   return {

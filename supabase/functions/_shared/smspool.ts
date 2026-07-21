@@ -72,6 +72,9 @@ function classify(status: number, body: unknown, raw: string): SmspoolFault | nu
 async function request<T>(
   path: string, params: Record<string, string | number>, method: "POST" | "GET",
 ): Promise<T> {
+  // Hard per-call timeout: a hung connection must fast-fail, not stall the
+  // caller (create-esim-order, the eSIM syncs) up to the 150s worker kill.
+  const signal = AbortSignal.timeout(10000);
   let resp: Response;
   try {
     if (method === "POST") {
@@ -79,10 +82,11 @@ async function request<T>(
         method: "POST",
         headers: { "Content-Type": "application/x-www-form-urlencoded", Accept: "application/json" },
         body: new URLSearchParams({ key: key(), ...toStr(params) }),
+        signal,
       });
     } else {
       const qs = new URLSearchParams({ key: key(), ...toStr(params) }).toString();
-      resp = await fetch(`${BASE}${path}?${qs}`, { headers: { Accept: "application/json" } });
+      resp = await fetch(`${BASE}${path}?${qs}`, { headers: { Accept: "application/json" }, signal });
     }
   } catch (e) {
     return { ok: false, type: "TRANSPORT_ERROR", status: 0, message: String(e) } as unknown as T;

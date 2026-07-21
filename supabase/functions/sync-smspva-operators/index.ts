@@ -210,12 +210,20 @@ Deno.serve(async (req) => {
     if (curErr) console.error("sync-smspva-operators: cursor write failed", curErr.message);
   }
 
-  return json({
+  // Fail LOUD when every fetch in a non-empty batch failed: otherwise an
+  // SMSPVA per-country endpoint outage returns 200, premium pins silently go
+  // stale, and no HTTP-status monitor ever notices (sync-prices' bulk call
+  // can keep working while this one is dead).
+  const body = {
     countriesProcessed: processed.length,
     countries: processed,
     routesPinned: pinned,
     routesCleared: cleared,
     fetchErrors,
     wrapped: start === 0 && cursor != null,
-  });
+  };
+  if (batch.length > 0 && fetchErrors === batch.length) {
+    return json({ error: "all_fetches_failed", ...body }, { status: 502 });
+  }
+  return json(body);
 });

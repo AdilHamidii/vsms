@@ -8,6 +8,7 @@ import { markSuccess, poll, type Provider } from "../_shared/providers.ts";
 import { getBalanceUsd } from "../_shared/smspool.ts";
 import { getBalance as getSmspvaBalance, isOk } from "../_shared/smspva.ts";
 import { sendPush } from "../_shared/apns.ts";
+import { notifySafe } from "../_shared/telegram.ts";
 
 // 5x the wholesale ceiling for a single order ($4), so the alert fires while
 // there is still room to act. $2 was below the cost of one expensive number:
@@ -183,17 +184,35 @@ Deno.serve(async (req) => {
   /** Record one provider's balance. Each call is independently guarded so an
    *  outage at one provider can never suppress the other's reading — which is
    *  precisely how SMSPVA would stay invisible on the day it matters. */
-  async function recordBalance(key: string, read: () => Promise<number | null>) {
+  async function recordBalance(
+    key: string, label: string, read: () => Promise<number | null>,
+  ) {
     try {
       const bal = await read();
       if (bal == null || !Number.isFinite(bal)) return;
       const low = bal < LOW_BALANCE_USD;
+
+      // Read the prior reading so we alert only on the healthy→low EDGE, not
+      // every minute while low (which would be 1440 pings/day of spam). The
+      // 6-hourly digest still carries the standing status; this is the instant
+      // page the digest cadence was too slow to be.
+      const { data: prev } = await sb
+        .from("app_config").select("value").eq("key", key).maybeSingle();
+      const wasLow = (prev?.value as { low?: boolean } | null)?.low === true;
+
       await sb.from("app_config").upsert({
         key,
         value: { balance_usd: bal, low, checked_at: new Date().toISOString() },
         updated_at: new Date().toISOString(),
       }, { onConflict: "key" });
-      if (low) console.error(`${key} balance LOW ($${bal}) — top up or orders fail`);
+
+      if (low && !wasLow) {
+        console.error(`${key} balance LOW ($${bal}) — top up or orders fail`);
+        await notifySafe(
+          `⚠️ <b>${label} balance low: $${bal.toFixed(2)}</b>\n` +
+          `Below the $${LOW_BALANCE_USD} floor — top up before orders start failing.`,
+        );
+      }
     } catch (e) {
       console.error(`${key} balance check failed:`, e);
     }
@@ -203,7 +222,7 @@ Deno.serve(async (req) => {
     // SMSPVA fulfils every SMS order as of 2026-07-20. Until now nothing read
     // this at all: the account could empty and every order would fail with no
     // alert anywhere.
-    recordBalance("smspva_health", async () => {
+    recordBalance("smspva_health", "SMSPVA (SMS)", async () => {
       // SMSPVA wraps every response in {statusCode, data} — the balance is at
       // r.data.balance, NOT r.balance. Reading the wrong level yields NaN and
       // writes nothing at all, which looks identical to "provider is fine".
@@ -217,7 +236,7 @@ Deno.serve(async (req) => {
     }),
     // SMSPool no longer serves SMS — it funds eSIMs only, so a low reading here
     // means the eSIM product is at risk, not SMS.
-    recordBalance("smspool_health", getBalanceUsd),
+    recordBalance("smspool_health", "SMSPool (eSIM)", getBalanceUsd),
   ]);
 
   return json({ expired, polled, arrived, pushSent });
