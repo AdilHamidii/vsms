@@ -129,6 +129,15 @@ Deno.serve(async (req) => {
     if (r.smoothed_cost_cents != null) prevSmoothed.set(`${r.service_id}|${r.country_id}`, r.smoothed_cost_cents);
   }
 
+  // Manually blocked combos (app_config 'blocked_routes' = ["service|country"]).
+  // sync-prices honoured these but is no longer scheduled, so nothing enforced
+  // them and every blocked route drifted back to 'active' — whatsapp|us was
+  // live at 25 credits with 0 deliveries in 4 orders. Editable without a
+  // redeploy; create-order should enforce this too as defence in depth.
+  const { data: blkRow } = await sb
+    .from("app_config").select("value").eq("key", "blocked_routes").maybeSingle();
+  const blocked = new Set<string>(Array.isArray(blkRow?.value) ? (blkRow!.value as string[]) : []);
+
   // SMSPool lists one bulk row PER POOL, so a (service, country) can appear
   // many times. Track the cheapest AND priciest pool per combo: the cheapest
   // decides whether the combo is fillable under our wholesale ceiling at all,
@@ -183,7 +192,7 @@ Deno.serve(async (req) => {
       last_cost_cents: basis, smoothed_cost_cents: smoothed,
       smspool_pool: fillable ? bestPool : null,
       provider: "smspool",
-      status: fillable ? "active" : "hidden",
+      status: fillable && !blocked.has(`${svcId}|${cty}`) ? "active" : "hidden",
       last_checked_at: runStart,
     };
   });
