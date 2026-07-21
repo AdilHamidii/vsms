@@ -78,6 +78,19 @@ Deno.serve(async (req) => {
   // One message each normally; a burst gets coalesced so a viral hour can't
   // hit Telegram's ~1 msg/sec-per-chat limit and lose alerts to rate limiting.
   const newSignups = signups ?? [];
+
+  // The granted amount comes from the ledger, never a constant: the bonus has
+  // already changed 5→1→3→1, and a hardcoded figure was lying within hours of
+  // the last change.
+  const bonusByUser = new Map<string, number>();
+  if (newSignups.length > 0) {
+    const { data: bonusRows } = await sb
+      .from("wallet_transactions")
+      .select("user_id, delta")
+      .eq("reason", "signup_bonus")
+      .in("user_id", newSignups.map((p) => p.user_id));
+    for (const b of bonusRows ?? []) bonusByUser.set(b.user_id as string, b.delta as number);
+  }
   if (newSignups.length > 3) {
     const refs: string[] = [];
     for (const p of newSignups) {
@@ -101,8 +114,12 @@ Deno.serve(async (req) => {
   } else {
     for (const p of newSignups) {
       const name = p.display_name ? esc(p.display_name) : "someone";
+      const b = bonusByUser.get(p.user_id);
+      const bonusLine = b != null
+        ? `${b} free credit${b === 1 ? "" : "s"} granted`
+        : "welcome credit granted";
       await claimAndSend("signup", p.user_id,
-        `👤 <b>New signup</b>\n${name}\n<i>3 free credits granted</i>`);
+        `👤 <b>New signup</b>\n${name}\n<i>${bonusLine}</i>`);
     }
   }
 
