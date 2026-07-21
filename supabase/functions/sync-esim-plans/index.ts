@@ -66,7 +66,11 @@ function coverageLabel(network: unknown): string | null {
 
   if (names.size === 0) return null;
   const list = [...names];
-  if (list.length === 1) return list[0];
+  // "Romania" alone reads like a destination label and a buyer can still assume
+  // it roams. "Romania only" is the fact they need before paying — every plan
+  // in the live catalog is single-country, which is exactly the assumption that
+  // cost us a working Poland eSIM.
+  if (list.length === 1) return `${list[0]} only`;
   if (list.length <= 3) return list.join(", ");
   return `${list.length} countries`;
 }
