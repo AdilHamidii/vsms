@@ -25,7 +25,7 @@ struct CheckoutScreen: View {
                     topBar
                     titleBlock
                     receiptCard
-                    DeliveryNotice(density: .full)
+                    DeliveryNotice(density: .full, service: service)
                         .padding(.horizontal, 16)
                         .padding(.top, 12)
                     rules

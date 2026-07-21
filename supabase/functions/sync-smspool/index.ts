@@ -322,12 +322,19 @@ Deno.serve(async (req) => {
   // its routes came back (how 'uber' disappeared once it was re-mapped).
   const { data: visibilityChanged } = await sb.rpc("sync_service_visibility");
 
+  // ── Phase E: per-service delivery evidence, so the app can warn honestly
+  // about the specific thing a user is buying. Per-ROUTE sample is
+  // unreachable at ~25 orders/day, but per SERVICE it is already decisive:
+  // facebook 3/39 vs leboncoin 21/34.
+  const { data: svcEvidence } = await sb.rpc("refresh_service_delivery");
+
   return json({
     routesUpdated, reverted, outOfStock, poolsProbed, poolsPinned, poolErr,
     hotCombos: (hotRows ?? []).length,
     servicesMapped: svcMapUpserts.length, countriesMapped: ctyMapUpserts.length,
     bulkRows: bulk.length,
     observedHidden: observedHidden ?? 0,
+    serviceEvidence: svcEvidence ?? 0,
     visibilityChanged: visibilityChanged ?? 0,
   });
 });
