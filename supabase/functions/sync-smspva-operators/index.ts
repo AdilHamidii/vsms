@@ -9,18 +9,22 @@
 //
 // One API call per country (GET /activation/serviceprice/{CC} returns every
 // service with a `po` operator→price map — 273/273 rows carried one when
-// probed). Runs as a DAILY full pass (cron 04:30 UTC) behind the app's
-// maintenance screen: ~69 countries at 4s spacing ≈ 5 minutes.
+// probed), paced at 4s per SMSPVA's rate rules.
 //
-// The pass runs as a BACKGROUND task (EdgeRuntime.waitUntil) and the request
-// returns immediately. This is load-bearing, not a style choice: the edge
-// runtime kills any request that hasn't started responding within 150s
-// (IDLE_TIMEOUT, hit live on the first single-request attempt), while
-// background tasks may run to the 400s worker ceiling. The cron never reads
-// the response anyway; progress lands in the DB (cursor, pins) and logs.
-// Crash safety is layered: the maintenance flag always carries an `until`
-// bound (the client ignores active flags past it), and the per-country
-// cursor makes the next run resume where a dead one stopped.
+// ARCHITECTURE (learned the hard way, live, twice): this edge runtime kills a
+// worker at ~150s WALL CLOCK — a single synchronous request dies with
+// IDLE_TIMEOUT, and an EdgeRuntime.waitUntil background task dies just the
+// same. A full ~69-country pass (~5 min) therefore CANNOT run in one
+// invocation. So each invocation processes a small cursor-resumable batch
+// (12 countries ≈ 55s), and pg_cron fans the daily pass across six slots
+// inside a fixed nightly maintenance window it manages itself with plain
+// SQL (see migration 20260721140000):
+//   04:29 UTC  maintenance up (until-bounded — stale flags can't wedge app)
+//   04:30–:40  this function, every 2 min; 6 x 12 covers all ~69 countries
+//   04:43 UTC  maintenance down
+// This function deliberately contains NO maintenance logic: every piece of
+// the window is independently idempotent, and a failed slot just leaves its
+// countries for tomorrow's pass (pins are stable day to day).
 
 import { handleCors, json } from "../_shared/cors.ts";
 import { admin } from "../_shared/supabaseAdmin.ts";
@@ -32,6 +36,7 @@ const MIN_CREDITS = 1;
 const MAX_CREDITS = 999;
 const MAX_WHOLESALE_CENTS = 400;
 
+const COUNTRIES_PER_RUN = 12;   // ~12 x 4s ≈ 55s, safely under the 150s kill
 const CALL_SPACING_MS = 4000;   // SMSPVA: "interval of 4 to 5 seconds"
 const CURSOR_KEY = "smspva_operator_sync";
 
@@ -56,25 +61,34 @@ function validateCronSecret(req: Request): boolean {
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-async function runPass(): Promise<void> {
+Deno.serve(async (req) => {
+  const cors = handleCors(req); if (cors) return cors;
+  if (!validateCronSecret(req)) {
+    return json({ error: "unauthorized" }, { status: 401 });
+  }
+
   const sb = admin();
 
   const { data: services, error: sErr } = await sb
     .from("services").select("id, smspva_code");
-  if (sErr || !services) throw new Error(`services_load_failed: ${sErr?.message}`);
-
+  if (sErr || !services) {
+    return json({ error: "services_load_failed", detail: sErr?.message }, { status: 500 });
+  }
   const { data: countries, error: cErr } = await sb
     .from("countries").select("id, smspva_code")
     .not("smspva_code", "is", null)
     .order("id");
-  if (cErr || !countries) throw new Error(`countries_load_failed: ${cErr?.message}`);
+  if (cErr || !countries) {
+    return json({ error: "countries_load_failed", detail: cErr?.message }, { status: 500 });
+  }
 
   // Only routes that already exist get annotated — sync-prices owns creation.
   const { data: routeRows, error: rErr } = await sb
     .from("routes").select("service_id, country_id, retail_credits")
     .eq("provider", "smspva");
-  if (rErr || !routeRows) throw new Error(`routes_load_failed: ${rErr?.message}`);
-
+  if (rErr || !routeRows) {
+    return json({ error: "routes_load_failed", detail: rErr?.message }, { status: 500 });
+  }
   const routeRetail = new Map<string, number | null>();
   for (const r of routeRows) {
     routeRetail.set(`${r.service_id}|${r.country_id}`, r.retail_credits as number | null);
@@ -89,150 +103,119 @@ async function runPass(): Promise<void> {
     else svcByCode.set(s.smspva_code, [s.id]);
   }
 
-  // Full pass, rotated to start after the cursor: a healthy run covers every
-  // country regardless of where it starts, and a crashed run left the cursor
-  // at its last completed country so the retry finishes the remainder first.
+  // Resume after the cursor; wrap to the start when past the end.
   const { data: curRow } = await sb
     .from("app_config").select("value").eq("key", CURSOR_KEY).maybeSingle();
   const cursor = (curRow?.value as { cursor?: string } | null)?.cursor ?? null;
   let start = cursor ? countries.findIndex((c) => c.id === cursor) + 1 : 0;
   if (start >= countries.length || start < 0) start = 0;
-  const rotation = [...countries.slice(start), ...countries.slice(0, start)];
-
-  // Maintenance up while pins are rewritten, so the clear-then-set window is
-  // never user-visible. `until` bounds the blockage even if this run dies.
-  const estMs = rotation.length * (CALL_SPACING_MS + 500) + 60_000;
-  const setMaintenance = (value: Record<string, unknown>) =>
-    sb.from("app_config").upsert({ key: "maintenance", value }, { onConflict: "key" });
-  {
-    const { error: mErr } = await setMaintenance({
-      active: true,
-      until: new Date(Date.now() + estMs).toISOString(),
-      message: "Refreshing the number catalog — back in a few minutes.",
-    });
-    if (mErr) console.error("sync-smspva-operators: maintenance raise failed", mErr.message);
-  }
+  const batch = countries.slice(start, start + COUNTRIES_PER_RUN);
 
   let pinned = 0;
   let cleared = 0;
   let fetchErrors = 0;
-  let processed = 0;
+  const processed: string[] = [];
 
-  try {
-    for (const [i, country] of rotation.entries()) {
-      if (i > 0) await sleep(CALL_SPACING_MS);
+  for (const [i, country] of batch.entries()) {
+    if (i > 0) await sleep(CALL_SPACING_MS);
 
-      const resp = await getCountryPrices(country.smspva_code as string);
-      if (!isOk(resp) || !Array.isArray(resp.data)) {
-        // A failed fetch must not clear existing pins — skip the country whole.
-        fetchErrors++;
-        console.warn(`sync-smspva-operators: fetch failed for ${country.id}:`,
-          (resp as { error?: { type?: string } }).error?.type ?? "bad shape");
-        continue;
-      }
-
-      const picks: {
-        service_id: string;
-        country_id: string;
-        smspva_operator: string;
-        smspva_operator_cents: number;
-        premium_credits: number;
-      }[] = [];
-
-      for (const row of resp.data) {
-        const svcIds = svcByCode.get(row.s);
-        if (!svcIds || !row.po) continue;
-
-        // Cheapest real carrier under the wholesale ceiling. Price is NOT a
-        // quality signal among carriers (mostly flat; where it spreads, SMSPVA
-        // prices demand) — the win premium buys is carrier-vs-donor, so take
-        // the margin-friendly carrier and let per-operator order outcomes
-        // (orders.smspool_pool) steer upgrades later.
-        let bestOp: string | null = null;
-        let bestCents = Infinity;
-        for (const [op, priceStr] of Object.entries(row.po)) {
-          if (!isRealCarrier(op)) continue;
-          const usd = parseFloat(priceStr);
-          if (!Number.isFinite(usd) || usd <= 0) continue;
-          const cents = Math.round(usd * 100);
-          if (cents > MAX_WHOLESALE_CENTS) continue;
-          if (cents < bestCents) { bestCents = cents; bestOp = op; }
-        }
-        if (!bestOp) continue;
-
-        for (const svcId of svcIds) {
-          const key = `${svcId}|${country.id}`;
-          if (!routeRetail.has(key)) continue;
-          // Premium is never cheaper than standard: equal wholesale still buys
-          // the real-SIM pin + fail-fast guarantee.
-          const floor = routeRetail.get(key) ?? MIN_CREDITS;
-          picks.push({
-            service_id: svcId,
-            country_id: country.id,
-            smspva_operator: bestOp,
-            smspva_operator_cents: bestCents,
-            premium_credits: Math.max(floor, toCredits(bestCents)),
-          });
-        }
-      }
-
-      // Clear-then-set: stale pins from carriers that vanished must not
-      // linger. Invisible to users — the maintenance screen is up.
-      const { count: clearCount, error: clearErr } = await sb
-        .from("routes")
-        .update(
-          { smspva_operator: null, smspva_operator_cents: null, premium_credits: null },
-          { count: "exact" },
-        )
-        .eq("country_id", country.id)
-        .eq("provider", "smspva")
-        .not("smspva_operator", "is", null);
-      if (clearErr) throw new Error(`clear_failed for ${country.id}: ${clearErr.message}`);
-      cleared += clearCount ?? 0;
-
-      const CHUNK = 500;
-      for (let j = 0; j < picks.length; j += CHUNK) {
-        const { error: upErr } = await sb
-          .from("routes")
-          .upsert(picks.slice(j, j + CHUNK), { onConflict: "service_id,country_id" });
-        if (upErr) throw new Error(`upsert_failed for ${country.id}: ${upErr.message}`);
-      }
-      pinned += picks.length;
-      processed++;
-
-      // Cursor after every country, so a mid-pass crash resumes here.
-      const { error: curErr } = await sb
-        .from("app_config")
-        .upsert({ key: CURSOR_KEY, value: { cursor: country.id } }, { onConflict: "key" });
-      if (curErr) console.error("sync-smspva-operators: cursor write failed", curErr.message);
+    const resp = await getCountryPrices(country.smspva_code as string);
+    if (!isOk(resp) || !Array.isArray(resp.data)) {
+      // A failed fetch must not clear existing pins — skip the country whole.
+      fetchErrors++;
+      console.warn(`sync-smspva-operators: fetch failed for ${country.id}:`,
+        (resp as { error?: { type?: string } }).error?.type ?? "bad shape");
+      continue;
     }
-  } finally {
-    // Thrown errors above still lower the screen; a hard worker death is
-    // covered by `until`.
-    const { error: mErr } = await setMaintenance({ active: false });
-    if (mErr) console.error("sync-smspva-operators: maintenance clear failed", mErr.message);
+
+    const picks: {
+      service_id: string;
+      country_id: string;
+      smspva_operator: string;
+      smspva_operator_cents: number;
+      premium_credits: number;
+    }[] = [];
+
+    for (const row of resp.data) {
+      const svcIds = svcByCode.get(row.s);
+      if (!svcIds || !row.po) continue;
+
+      // Cheapest real carrier under the wholesale ceiling. Price is NOT a
+      // quality signal among carriers (mostly flat; where it spreads, SMSPVA
+      // prices demand) — the win premium buys is carrier-vs-donor, so take
+      // the margin-friendly carrier and let per-operator order outcomes
+      // (orders.smspool_pool) steer upgrades later.
+      let bestOp: string | null = null;
+      let bestCents = Infinity;
+      for (const [op, priceStr] of Object.entries(row.po)) {
+        if (!isRealCarrier(op)) continue;
+        const usd = parseFloat(priceStr);
+        if (!Number.isFinite(usd) || usd <= 0) continue;
+        const cents = Math.round(usd * 100);
+        if (cents > MAX_WHOLESALE_CENTS) continue;
+        if (cents < bestCents) { bestCents = cents; bestOp = op; }
+      }
+      if (!bestOp) continue;
+
+      for (const svcId of svcIds) {
+        const key = `${svcId}|${country.id}`;
+        if (!routeRetail.has(key)) continue;
+        // Premium is never cheaper than standard: equal wholesale still buys
+        // the real-SIM pin + fail-fast guarantee.
+        const floor = routeRetail.get(key) ?? MIN_CREDITS;
+        picks.push({
+          service_id: svcId,
+          country_id: country.id,
+          smspva_operator: bestOp,
+          smspva_operator_cents: bestCents,
+          premium_credits: Math.max(floor, toCredits(bestCents)),
+        });
+      }
+    }
+
+    // Clear-then-set: stale pins from carriers that vanished must not linger.
+    // The nightly window has the maintenance screen up, so the seconds-wide
+    // gap is invisible; a midday manual run is covered by create-order's
+    // premium_unavailable re-check.
+    const { count: clearCount, error: clearErr } = await sb
+      .from("routes")
+      .update(
+        { smspva_operator: null, smspva_operator_cents: null, premium_credits: null },
+        { count: "exact" },
+      )
+      .eq("country_id", country.id)
+      .eq("provider", "smspva")
+      .not("smspva_operator", "is", null);
+    if (clearErr) {
+      return json({ error: "clear_failed", detail: clearErr.message, country: country.id }, { status: 500 });
+    }
+    cleared += clearCount ?? 0;
+
+    const CHUNK = 500;
+    for (let j = 0; j < picks.length; j += CHUNK) {
+      const { error: upErr } = await sb
+        .from("routes")
+        .upsert(picks.slice(j, j + CHUNK), { onConflict: "service_id,country_id" });
+      if (upErr) {
+        return json({ error: "upsert_failed", detail: upErr.message, country: country.id }, { status: 500 });
+      }
+    }
+    pinned += picks.length;
+    processed.push(country.id);
+
+    // Cursor after every country, so a mid-batch death resumes exactly here.
+    const { error: curErr } = await sb
+      .from("app_config")
+      .upsert({ key: CURSOR_KEY, value: { cursor: country.id } }, { onConflict: "key" });
+    if (curErr) console.error("sync-smspva-operators: cursor write failed", curErr.message);
   }
 
-  console.log(`sync-smspva-operators: pass complete — countries=${processed}/${rotation.length} pinned=${pinned} cleared=${cleared} fetchErrors=${fetchErrors}`);
-}
-
-Deno.serve((req) => {
-  const cors = handleCors(req); if (cors) return cors;
-  if (!validateCronSecret(req)) {
-    return json({ error: "unauthorized" }, { status: 401 });
-  }
-
-  const work = runPass().catch((e) => {
-    console.error("sync-smspva-operators: pass failed", String(e));
+  return json({
+    countriesProcessed: processed.length,
+    countries: processed,
+    routesPinned: pinned,
+    routesCleared: cleared,
+    fetchErrors,
+    wrapped: start === 0 && cursor != null,
   });
-
-  const rt = (globalThis as {
-    EdgeRuntime?: { waitUntil: (p: Promise<unknown>) => void };
-  }).EdgeRuntime;
-  if (rt?.waitUntil) {
-    rt.waitUntil(work);
-    return json({ accepted: true });
-  }
-  // Local dev (no EdgeRuntime): degrade to synchronous.
-  return work.then(() => json({ accepted: true, ranInline: true }));
 });
