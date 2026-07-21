@@ -11,7 +11,18 @@ Bundle ID: `com.anthersystems.VirtualSIM` · Supabase ref: `enugzltysdmjzavisloy
 ## Common commands
 
 ```bash
+# iOS type-check (verify ALL Swift compiles; no simulator, no platform install)
+# Use this when xcodebuild refuses to build — see the destination note below.
+# The project has ZERO SwiftPM dependencies, so swiftc alone type-checks the
+# whole app against the simulator SDK. Exit 0 = everything compiles.
+xcrun swiftc -typecheck \
+  -sdk "$(xcrun --sdk iphonesimulator --show-sdk-path)" \
+  -target arm64-apple-ios26.5-simulator -swift-version 5 \
+  $(find VirtualSIM -name '*.swift')
+
 # iOS build (verify compilation; no simulator launch)
+# NOTE: this FAILS on this machine until the iOS platform is installed —
+# "iOS 26.5 is not installed" (see the destination gotcha below).
 xcodebuild -project VirtualSIM.xcodeproj -scheme VirtualSIM \
   -configuration Debug -sdk iphonesimulator \
   -destination 'generic/platform=iOS Simulator' build 2>&1 \
@@ -135,6 +146,32 @@ VirtualSIM/
 - **Logos + flags are bundled** (`VirtualSIM/BundledLogos/<domain>.png`, `VirtualSIM/BundledFlags/<code>.png`). `ServiceLogo`/`FlagImage`/`FlagCircle` render the bundled PNG **first** (via `BundledImageStore.shared`) and only fall back to the network cascade above for catalog entries not yet bundled. The Xcode file-system-synchronized group **flattens** these into the bundle root, so lookup is by flat filename (`Bundle.main.url(forResource: "<key>.png", withExtension: nil)`) — do NOT expect a `BundledLogos/` subdirectory at runtime. Logo key = `Service.domain`; flag key = `Country.flagImageCode` (`uk`→`gb`). After the catalog grows, regenerate + commit with `scripts/fetch-bundled-assets.sh --refresh`, then ship an app update; new services/countries work via the network fallback in the meantime.
 - **Apple Sign-In is iOS-native flow** — no JWT secret needed in Supabase (the apple provider config). The dashboard's secret/services-id fields stay blank.
 - **Review prompt must stay incentive-free (App Store 5.6.4).** `OtpScreen` calls Apple's native `@Environment(\.requestReview)` (needs `import StoreKit`) on code delivery, gated by `AppState.shouldRequestReview(forOrderId:)` — fires only from the 2nd successful code onward, at most once per app version, de-duped per order. **Never** tie credits/rewards to leaving a review, and **never** build a custom review UI that deep-links to the App Store page — both are rejectable. A no-strings welcome/bonus credit is fine as long as it isn't conditioned on a review.
+
+- **`xcodebuild` can refuse to build while the code is perfectly fine.** Symptom:
+  `Unable to find a destination matching the provided destination specifier` with
+  `iOS 26.5 is not installed. Please download and install the platform from
+  Xcode > Settings > Components` — listed against *device* destinations, including
+  `Any iOS Device`. This is NOT a code problem and NOT a signing problem:
+  - `xcodebuild -showsdks` lists iOS 26.5, and BOTH SDKs are on disk
+    (`iPhoneOS26.5.sdk`, `iPhoneSimulator26.5.sdk`).
+  - But `xcrun simctl runtime list` shows only **iOS 27.0** installed; the 26.x
+    runtimes appear under `Unavailable:` — stale references left behind when
+    Xcode updated. Xcode will not offer a simulator destination whose runtime is
+    NEWER than its SDK, so with SDK 26.5 + runtime 27.0 there are no eligible
+    simulator destinations at all.
+  - It cannot be repaired by re-downloading 26.5. Verified live:
+    `xcodebuild -downloadPlatform iOS` → `No matching downloadable found`, and
+    `xcodebuild -downloadPlatform iOS -buildVersion 26.5` →
+    **`iOS 26.5 is not available for download`**. Apple has stopped shipping it,
+    so the Components GUI cannot supply it either.
+  - The real fix is therefore to **install an Xcode whose SDK matches the
+    installed runtime** (iOS 27.0 is already on disk, 7.8 GB, `Ready`), not to
+    chase the 26.5 runtime. Until then this Mac can type-check but not archive.
+  To verify code WITHOUT fixing any of this, use the `swiftc -typecheck` command
+  at the top of this file — the project has zero SwiftPM dependencies, so it
+  type-checks all 72 sources against the simulator SDK and needs no runtime.
+  Archiving still needs the platform installed, so this blocks shipping a build
+  even though it does not block verifying one.
 
 ## Error UX rule
 
