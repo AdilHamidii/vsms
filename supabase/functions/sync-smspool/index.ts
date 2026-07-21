@@ -328,6 +328,14 @@ Deno.serve(async (req) => {
   // facebook 3/39 vs leboncoin 21/34.
   const { data: svcEvidence } = await sb.rpc("refresh_service_delivery");
 
+  // ── Phase F: let the data re-rank the catalog. Platform blocking is
+  // reputation-based — platforms remember which number ranges have verified
+  // many accounts, and that only ratchets one way. Services that tolerate
+  // rental numbers today do so because they have not built that history yet,
+  // so every winner is a decaying asset. The hand-written seed order stands
+  // until our own orders contradict it, then the data wins automatically.
+  const { data: reranked } = await sb.rpc("apply_measured_service_ranking");
+
   return json({
     routesUpdated, reverted, outOfStock, poolsProbed, poolsPinned, poolErr,
     hotCombos: (hotRows ?? []).length,
@@ -335,6 +343,7 @@ Deno.serve(async (req) => {
     bulkRows: bulk.length,
     observedHidden: observedHidden ?? 0,
     serviceEvidence: svcEvidence ?? 0,
+    reranked: reranked ?? 0,
     visibilityChanged: visibilityChanged ?? 0,
   });
 });
