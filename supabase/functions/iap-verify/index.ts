@@ -1,6 +1,6 @@
 import { handleCors, json } from "../_shared/cors.ts";
 import { admin, callerUserId } from "../_shared/supabaseAdmin.ts";
-import { verifyTransactionJWS, creditsForProduct } from "../_shared/iap.ts";
+import { verifyTransactionJWS, creditsForProduct, IapVerificationError } from "../_shared/iap.ts";
 import { notifySafe, esc } from "../_shared/telegram.ts";
 
 interface Body { jws: string; }
@@ -46,8 +46,37 @@ Deno.serve(async (req) => {
   try {
     tx = await verifyTransactionJWS(body.jws);
   } catch (e) {
-    return json({ error: "verification_failed", detail: String(e) }, { status: 400 });
+    // A rejection here is now load-bearing, so make it LOUD. Before, this
+    // returned 400 with no log and no persisted trace, which meant a genuine
+    // regression (Apple rotates a certificate, we reject real purchases) would
+    // look exactly like silence. The client does NOT call tx.finish() on
+    // failure, so StoreKit keeps redelivering the transaction — a real buyer
+    // is recoverable, but only if we know it happened.
+    const code = e instanceof IapVerificationError ? e.code : "unknown";
+    console.error(`iap verification REJECTED user=${userId} code=${code}`, String(e));
+    try {
+      EdgeRuntime.waitUntil(notifySafe(
+        `🚨 <b>IAP verification rejected</b>\ncode: ${esc(code)}\nuser: ${esc(userId)}\n` +
+        `<i>If this is a real buyer, credit them manually — StoreKit will keep retrying.</i>`,
+      ));
+    } catch { /* alerting must never mask the response */ }
+    return json({ error: "verification_failed", detail: code }, { status: 400 });
   }
+
+  // Only a PRODUCTION purchase moves real money. Sandbox and Xcode receipts are
+  // genuine Apple-signed transactions that cost $0 — any Apple ID can switch to
+  // a Sandbox account in Settings and "buy" packs for free. Receipt id 21 shows
+  // this already happened: a real user was granted 12 credits 39 seconds after
+  // signing up, for $0.
+  //
+  // This gate is worthless without the chain verification above, because
+  // `environment` is just another field in the payload — a forger writes
+  // "Production". It only became meaningful once the payload is trusted.
+  //
+  // Non-production receipts are still PERSISTED (audit trail, and the local
+  // StoreKit test flow still sees success and finishes the transaction) — they
+  // simply do not credit the wallet.
+  const isProduction = tx.environment === "Production";
 
   const credits = creditsForProduct(tx.productId);
   if (!credits) {
@@ -66,7 +95,7 @@ Deno.serve(async (req) => {
       product_id: tx.productId,
       bundle_id: tx.bundleId,
       environment: tx.environment,
-      granted_credits: credits,
+      granted_credits: isProduction ? credits : 0,
       purchase_date_ms: tx.purchaseDate,
       raw_jws: body.jws,
     })
@@ -81,21 +110,29 @@ Deno.serve(async (req) => {
     return json({ error: "persist_failed", detail: insertErr.message }, { status: 500 });
   }
 
-  await sb.rpc("wallet_credit", {
-    p_user: userId,
-    p_amount: credits,
-    p_reason: "purchase",
-    p_order: null,
-    p_receipt: inserted?.id ?? null,
-  });
+  if (isProduction) {
+    await sb.rpc("wallet_credit", {
+      p_user: userId,
+      p_amount: credits,
+      p_reason: "purchase",
+      p_order: null,
+      p_receipt: inserted?.id ?? null,
+    });
+  } else {
+    console.warn(`iap: ${tx.environment} receipt persisted WITHOUT credit — user=${userId} product=${tx.productId}`);
+  }
 
   // Referral payout: if this buyer was referred and hasn't triggered the reward
   // yet, pay their inviter 5 credits. Idempotent server-side, so firing on every
   // purchase is safe — it only pays out on the buyer's first one.
-  try {
-    await sb.rpc("apply_referral_reward", { p_referee: userId });
-  } catch (e) {
-    console.error("apply_referral_reward failed for", userId, e);
+  // Production only — a free Sandbox "purchase" must not trigger a real
+  // 5-credit payout to an inviter either.
+  if (isProduction) {
+    try {
+      await sb.rpc("apply_referral_reward", { p_referee: userId });
+    } catch (e) {
+      console.error("apply_referral_reward failed for", userId, e);
+    }
   }
 
   // Operator alert. Deliberately NOT awaited: waitUntil lets it run after the
@@ -112,5 +149,11 @@ Deno.serve(async (req) => {
     console.error("purchase alert dispatch failed (ignored):", e);
   }
 
-  return json({ ok: true, credits, balance_changed: true });
+  // ok:true even for a sandbox receipt, so the client calls tx.finish() and
+  // StoreKit stops redelivering it. credits/balance_changed report the truth.
+  return json({
+    ok: true,
+    credits: isProduction ? credits : 0,
+    balance_changed: isProduction,
+  });
 });
