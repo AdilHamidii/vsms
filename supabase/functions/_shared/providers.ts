@@ -67,6 +67,8 @@ export interface Reservation {
   costUsd?: number;
   /** Provider's own hold deadline (epoch seconds) when it reports one. */
   expiresAt?: number;
+  /** Pool that actually filled (SMSPool), for outcome attribution. */
+  pool?: string;
   error?: string;
   /** Documented provider failure class, so callers map to real user copy. */
   errorType?: sp.SmspoolErrorType;
@@ -80,9 +82,20 @@ export async function reserve(
 ): Promise<Reservation> {
   try {
     if (p === "smspool" && c.spService && c.spCountry) {
-      // pool intentionally not forwarded — see sp.purchase(): auto beats our
-      // priciest-pool inference. Kept in the signature for a manual override.
-      const r = await sp.purchase(c.spCountry, c.spService, maxPriceUsd);
+      // Pin the pool the route was priced from. Pools are SUPPLIERS with
+      // different carriers and measurably different delivery — and sync picks
+      // the pin on MEASURED success rate, not price (price is mildly
+      // ANTI-correlated with delivery: on 20 sampled combos the priciest pool
+      // was the worst-performing one 10 times, and the best-rate pool was also
+      // cheaper on 13).
+      //
+      // Pinning without a fallback would convert "this pool is dry" into a
+      // hard failure, so an OUT_OF_STOCK on the pinned pool retries once on
+      // auto — we would rather fill from a mediocre pool than not at all.
+      let r = await sp.purchase(c.spCountry, c.spService, maxPriceUsd, pool ?? undefined);
+      if (!r.ok && pool && r.errorType === "OUT_OF_STOCK") {
+        r = await sp.purchase(c.spCountry, c.spService, maxPriceUsd);
+      }
       if (!r.ok) return { ok: false, error: r.error, errorType: r.errorType };
       // A number still activating cannot receive a code (SMSPool FAQ), so a
       // failed wait means release it and let the caller fall through rather
@@ -96,7 +109,7 @@ export async function reserve(
       }
       return {
         ok: true, orderId: r.orderId, number: r.phoneNumber ?? "",
-        costUsd: r.costUsd, expiresAt: r.expiresAt,
+        costUsd: r.costUsd, expiresAt: r.expiresAt, pool: r.pool,
       };
     }
     if (p === "virtualsms" && c.vsService && c.vsCountry) {

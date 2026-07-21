@@ -177,6 +177,7 @@ Deno.serve(async (req) => {
       cost_credits: cost,
       actual_cost_cents: usedCostUsd != null ? Math.round(usedCostUsd * 100) : null,
       status: "waiting",
+      smspool_pool: reservation.pool ?? null,
       // Honour the provider's own hold window when it tells us one. The DB
       // default is a flat 8 minutes, but SMSPool's window is pool-dependent
       // (their docs show 1200s) — expiring first meant refunding and

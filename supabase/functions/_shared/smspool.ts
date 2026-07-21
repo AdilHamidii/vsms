@@ -119,6 +119,9 @@ export interface BuyResult {
    *  pool-dependent (docs show 1200s; Foxtrot US runs days) — honour it instead
    *  of assuming, or we abandon a number we already paid for. */
   expiresAt?: number;
+  /** Pool (supplier) that actually filled. Recorded so pool strategy can be
+   *  validated against OUR outcomes, not just SMSPool's self-report. */
+  pool?: string;
   error?: string;
   errorType?: SmspoolErrorType;
 }
@@ -149,7 +152,7 @@ export async function purchase(
   const d = await form<{
     success?: number; order_id?: string; number?: string | number; phonenumber?: string | number;
     cc?: string; cost?: string; cost_in_cents?: number; message?: string;
-    expires_in?: number; expiration?: number;
+    expires_in?: number; expiration?: number; pool?: number | string;
   }>("/purchase/sms", params);
 
   const fault = faultOf(d);
@@ -168,7 +171,10 @@ export async function purchase(
   const expiresAt = typeof d.expiration === "number" ? d.expiration
     : (typeof d.expires_in === "number" ? Math.floor(Date.now() / 1000) + d.expires_in : undefined);
 
-  return { ok: true, orderId: d.order_id, phoneNumber: num, costUsd: usd, expiresAt };
+  return {
+    ok: true, orderId: d.order_id, phoneNumber: num, costUsd: usd, expiresAt,
+    pool: d.pool != null ? String(d.pool) : undefined,
+  };
 }
 
 export interface OrderStatus {
@@ -411,4 +417,48 @@ export async function allStock(
   // SMSPool returns this one double-nested ([[row, ...]]), unlike every other
   // list endpoint. Flatten one level so callers see a plain row array.
   return (d.length && Array.isArray(d[0]) ? (d as unknown[][]).flat() : d) as StockRow[];
+}
+
+/** POST /pool/retrieve_valid — pools that can serve this combo, with price and
+ *  a custom_area capability flag. */
+export interface ValidPool { pool: number; name: string; custom_area?: number; price?: string }
+
+/** The live response is an OBJECT keyed by pool id — {"3":"Charlie","7":"Foxtrot"}
+ *  — not the array of {pool,name,custom_area,price} the Postman docs show.
+ *  Verified against the live API 2026-07-21. Handle both. */
+export async function validPools(service: string | number, country: string | number): Promise<ValidPool[]> {
+  const d = await form<unknown>("/pool/retrieve_valid", { service, country });
+  if (faultOf(d)) return [];
+  if (Array.isArray(d)) return d as ValidPool[];
+  if (d && typeof d === "object") {
+    return Object.entries(d as Record<string, unknown>)
+      .filter(([k]) => /^\d+$/.test(k))
+      .map(([k, v]) => ({ pool: Number(k), name: String(v) }));
+  }
+  return [];
+}
+
+/** POST /request/price with an explicit pool — the ONLY endpoint that returns a
+ *  per-pool success_rate. SMSPool support defines it as "the overall successful
+ *  verifications compared to the unsuccessful verifications for the last 500
+ *  records", i.e. a real trailing outcome ratio.
+ *
+ *  Two values are NOT measurements and must be discarded:
+ *    100 — means zero measured pools, not perfect (facebook/ch reported 100 on
+ *          both its pools while we went 0-for-9 on it)
+ *     30 — a hard floor the API emits for low/no sample
+ *  Only 31..99 carries information. */
+export async function poolSuccessRate(
+  country: string | number, service: string | number, pool: string | number,
+): Promise<{ rate: number | null; priceUsd: number | null }> {
+  const d = await form<{ price?: string; success_rate?: number }>(
+    "/request/price", { country, service, pool },
+  );
+  if (faultOf(d)) return { rate: null, priceUsd: null };
+  const sr = typeof d.success_rate === "number" ? d.success_rate : null;
+  const price = d.price != null ? parseFloat(d.price) : NaN;
+  return {
+    rate: sr != null && sr > 30 && sr < 100 ? sr : null,
+    priceUsd: Number.isFinite(price) ? price : null,
+  };
 }

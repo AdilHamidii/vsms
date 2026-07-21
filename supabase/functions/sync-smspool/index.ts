@@ -11,12 +11,13 @@
 
 import { handleCors, json } from "../_shared/cors.ts";
 import { admin } from "../_shared/supabaseAdmin.ts";
-import { allStock, listServices, listCountries } from "../_shared/smspool.ts";
+import { allStock, listServices, listCountries, validPools, poolSuccessRate } from "../_shared/smspool.ts";
 
 const CREDIT_DIVISOR = 0.10;      // 10x markup; keep in lockstep with sync-prices
 const MIN_CREDITS = 1;
 const MAX_CREDITS = 999;
 const MAX_WHOLESALE_CENTS = 400;  // hide absurdly-priced routes
+const POOL_PROBE_LIMIT = 60;      // combos to pool-probe per run
 const SMOOTH_ALPHA = 0.5;         // EWMA on wholesale cost
 const UPDATE_FLOOR = 500;         // safety: don't revert stale routes on a thin run
 
@@ -199,7 +200,10 @@ Deno.serve(async (req) => {
       service_id: svcId, country_id: cty,
       retail_credits: priceToCredits(smoothed / 100),
       last_cost_cents: basis, smoothed_cost_cents: smoothed,
-      smspool_pool: fillable ? bestPool : null,
+      // NOTE: Phase A deliberately does NOT set smspool_pool. It only knows
+      // PRICE, and price is mildly anti-correlated with delivery — pinning the
+      // priciest affordable pool picked the worst-performing pool 10 times out
+      // of 20 on sampled combos. Only Phase B pins, on measured success rate.
       stock,
       provider: "smspool",
       status: fillable && !blocked.has(`${svcId}|${cty}`) ? "active" : "hidden",
@@ -240,6 +244,71 @@ Deno.serve(async (req) => {
   // Net: ~2,880 API calls and ~42s of deliberate sleeping per day, for data we
   // delete and would not display. Observed rates (Phase C) are the only ones
   // we trust or show.
+  // ── Phase B: choose the pool to buy from, by MEASURED delivery.
+  //
+  // Pools are independent suppliers with different carriers, and which one
+  // fills genuinely changes delivery. Our first attempt pinned the priciest
+  // affordable pool on the theory that price = quality. Sampling 20 combos
+  // with >=2 measured pools showed that was backwards: the priciest pool was
+  // the WORST performer 10 times and the best only 5, and the best-rate pool
+  // was also CHEAPER on 13 of 20. Examples: tiktok/GB Mike $0.20 sr33 vs
+  // Charlie $0.04 sr60; instagram/GB Mike $0.20 sr30 vs Romeo $0.05 sr55.
+  //
+  // So: pick the highest per-pool success_rate (31..99 only — 100 means "no
+  // sample" and 30 is the API's floor), tie-break cheapest. When no pool has a
+  // usable rate we store nothing and let SMSPool's own pricing_option=1 decide.
+  //
+  // Scoped to routes that actually get ordered: per-combo this costs 1 +
+  // N_pools calls, so the whole 5,258-route catalog is out of budget, while
+  // the couple of hundred combos users touch is trivial.
+  const { data: hotRows, error: hotErr } = await sb.rpc("smspool_hot_combos", { p_limit: POOL_PROBE_LIMIT });
+  if (hotErr) console.error("hot_combos failed:", hotErr.message);
+  let poolsProbed = 0, poolsPinned = 0;
+  let poolErr: string | null = hotErr?.message ?? null;
+  for (const hot of (hotRows ?? []) as { service_id: string; country_id: string }[]) {
+    const spS = ourSvcToSp.get(hot.service_id);
+    const spC = ourCtyToSp.get(hot.country_id);
+    if (spS == null || spC == null) continue;
+    const candidates = await validPools(spS, spC);
+    if (candidates.length < 2) continue;          // nothing to choose between
+    let best: { pool: string; rate: number; price: number } | null = null;
+    for (const cand of candidates.slice(0, 6)) {
+      const { rate, priceUsd } = await poolSuccessRate(spC, spS, cand.pool);
+      poolsProbed++;
+      if (rate == null) continue;
+      const price = priceUsd ?? parseFloat(cand.price) ?? 0;
+      if (!best || rate > best.rate || (rate === best.rate && price < best.price)) {
+        best = { pool: String(cand.pool), rate, price };
+      }
+    }
+    // Pin AND reprice from the same pool. Pricing from pool X while buying
+    // from pool Y is the worst of both: if the pinned pool costs more than
+    // max_price (= credits x $0.10) the purchase fails PRICE_NOT_FOUND, and if
+    // it costs less we overcharge. facebook/cl is the live example — Charlie
+    // scores 51 at $0.25 vs Mike 37 at $0.15, but the route sells for 1 credit
+    // ($0.10 ceiling), so pinning Charlie without repricing can never fill.
+    if (best) {
+      const cents = Math.max(1, Math.round(best.price * 100));
+      await sb.from("routes")
+        .update({
+          smspool_pool: best.pool,
+          last_cost_cents: cents,
+          smoothed_cost_cents: cents,
+          retail_credits: priceToCredits(cents / 100),
+        })
+        .eq("service_id", hot.service_id).eq("country_id", hot.country_id)
+        .eq("provider", "smspool");
+    } else {
+      // No pool has a usable rate — clear any stale pin and let SMSPool's own
+      // pricing_option=1 choose. Leave Phase A's price alone.
+      await sb.from("routes")
+        .update({ smspool_pool: null })
+        .eq("service_id", hot.service_id).eq("country_id", hot.country_id)
+        .eq("provider", "smspool");
+    }
+    if (best) poolsPinned++;
+  }
+
   // ── Phase C: override SMSPool's self-reported success_rate with what
   // actually happened on OUR orders, and auto-hide any route with proven
   // total failure. Runs LAST so it wins over phase A's stock-based status.
@@ -254,7 +323,8 @@ Deno.serve(async (req) => {
   const { data: visibilityChanged } = await sb.rpc("sync_service_visibility");
 
   return json({
-    routesUpdated, reverted, outOfStock,
+    routesUpdated, reverted, outOfStock, poolsProbed, poolsPinned, poolErr,
+    hotCombos: (hotRows ?? []).length,
     servicesMapped: svcMapUpserts.length, countriesMapped: ctyMapUpserts.length,
     bulkRows: bulk.length,
     observedHidden: observedHidden ?? 0,
