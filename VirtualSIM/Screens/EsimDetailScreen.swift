@@ -90,6 +90,22 @@ struct EsimDetailScreen: View {
                 }
                 Text("Settings → Cellular → Add eSIM → Use QR Code, or tap Install.")
                     .font(RFont.text(12)).foregroundStyle(theme.text3).multilineTextAlignment(.center)
+
+                // iOS asks for the SIM PIN DURING this flow, so it has to be
+                // on screen at this moment — not buried below. Without it the
+                // line never comes up and the plan looks broken.
+                if let pin = live.simPin, !pin.isEmpty {
+                    VStack(spacing: 4) {
+                        Text("iOS will ask for a SIM PIN")
+                            .font(RFont.text(12, weight: .medium)).foregroundStyle(theme.text2)
+                        Text(pin)
+                            .font(RFont.mono(20)).foregroundStyle(theme.text)
+                            .textSelection(.enabled)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 10)
+                    .background(theme.chipBg, in: .rect(cornerRadius: 12))
+                }
             }
             .padding(20)
         }
@@ -103,6 +119,8 @@ struct EsimDetailScreen: View {
                 labelValue("SM-DP+ Address", live.smdp ?? "—")
                 labelValue("Activation Code", live.manualCode ?? "—")
                 if let apn = live.apn { labelValue("APN", apn) }
+                if let pin = live.simPin, !pin.isEmpty { labelValue("SIM PIN", pin) }
+                if let puk = live.simPuk, !puk.isEmpty { labelValue("SIM PUK", puk) }
                 Button(action: copyManual) {
                     HStack(spacing: 7) {
                         Image(systemName: copied ? RIcon.check : RIcon.copy)
@@ -164,7 +182,11 @@ struct EsimDetailScreen: View {
     }
 
     private func copyManual() {
-        let s = "SM-DP+: \(live.smdp ?? "")\nActivation code: \(live.manualCode ?? "")"
+        var s = "SM-DP+: \(live.smdp ?? "")\nActivation code: \(live.manualCode ?? "")"
+        // The PIN is needed to finish activation, so it belongs in the copy too
+        // — a user pasting these into Settings shouldn't have to come back.
+        if let pin = live.simPin, !pin.isEmpty { s += "\nSIM PIN: \(pin)" }
+        if let puk = live.simPuk, !puk.isEmpty { s += "\nSIM PUK: \(puk)" }
         UIPasteboard.general.string = s
         copied = true
         Task { try? await Task.sleep(nanoseconds: 1_600_000_000); copied = false }

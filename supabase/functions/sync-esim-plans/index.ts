@@ -25,6 +25,52 @@ function validateCronSecret(req: Request): boolean {
 }
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+/** Derive a short human coverage label from SMSPool's `network` field.
+ *
+ *  The exact shape is not documented and has never been stored, so this parses
+ *  defensively and returns null rather than guessing: a WRONG coverage claim is
+ *  worse than none, because the user would act on it. When this yields null the
+ *  app falls back to naming the plan's own country, which is always true.
+ *
+ *  The raw value is persisted alongside in `network`, so a better parser can be
+ *  written later against real data instead of assumptions. */
+function coverageLabel(network: unknown): string | null {
+  if (typeof network !== "string") return null;
+  const raw = network.trim();
+  if (raw === "") return null;
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    // Not JSON — a plain operator/coverage string is usable as-is if short.
+    return raw.length <= 80 ? raw : null;
+  }
+
+  const names = new Set<string>();
+  const collect = (v: unknown, depth = 0): void => {
+    if (v == null || depth > 4) return;
+    if (Array.isArray(v)) { for (const x of v) collect(x, depth + 1); return; }
+    if (typeof v === "object") {
+      const o = v as Record<string, unknown>;
+      for (const k of ["country", "countryName", "country_name", "name"]) {
+        const val = o[k];
+        if (typeof val === "string" && val.trim() !== "") { names.add(val.trim()); return; }
+      }
+      for (const x of Object.values(o)) collect(x, depth + 1);
+      return;
+    }
+    if (typeof v === "string" && v.trim() !== "" && v.length <= 40) names.add(v.trim());
+  };
+  collect(parsed);
+
+  if (names.size === 0) return null;
+  const list = [...names];
+  if (list.length === 1) return list[0];
+  if (list.length <= 3) return list.join(", ");
+  return `${list.length} countries`;
+}
+
 Deno.serve(async (req) => {
   const cors = handleCors(req); if (cors) return cors;
   if (!validateCronSecret(req)) return json({ error: "unauthorized" }, { status: 401 });
@@ -68,7 +114,8 @@ Deno.serve(async (req) => {
         id,
         name: c.name,
         country_code: cc,
-        region: null,
+        network: typeof p.network === "string" ? p.network : null,
+        region: coverageLabel(p.network),
         data_mb: Math.round((p.dataInGb ?? 0) * 1000),
         validity_days: p.duration ?? null,
         speed: p.speed ?? null,

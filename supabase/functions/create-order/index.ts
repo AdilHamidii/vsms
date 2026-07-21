@@ -66,20 +66,10 @@ Deno.serve(async (req) => {
   // reserving a second number. The client also guards this on the main actor;
   // this makes the server safe even if that guard is bypassed. A short window
   // (not a blanket rule) so a deliberate repeat order later still works.
-  const dedupeSince = new Date(Date.now() - 15_000).toISOString();
-  const { data: existing } = await sb
-    .from("orders")
-    .select("*")
-    .eq("user_id", userId)
-    .eq("service_id", service.id)
-    .eq("country_id", country.id)
-    .eq("status", "waiting")
-    .gte("created_at", dedupeSince)
-    .order("created_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-  if (existing) return json({ order: existing, deduped: true });
-
+  // Dedupe + charge now happen together in begin_order (one transaction, an
+  // advisory lock per user). The old version SELECTed here and INSERTed ~200
+  // lines later, with a multi-second provider call in between — two concurrent
+  // requests both passed this check and both charged.
   const cost = route.retail_credits as number;
   const codes: RouteCodes = {
     spService: service.smspool_code,
@@ -97,15 +87,49 @@ Deno.serve(async (req) => {
   const providers = providerOrder(codes);
   if (providers.length === 0) return json({ error: "route_unavailable" }, { status: 409 });
 
-  // Charge up-front so a mid-flight failure can't leak a free number; refund on
-  // any path that doesn't end in a persisted order.
-  const { data: spent, error: spendErr } = await sb.rpc("wallet_spend", {
-    p_user: userId, p_amount: cost, p_reason: "spend",
+  // Write the order row AND charge, atomically. Every paid attempt now has a
+  // row from this point on, so a failure below is recorded instead of vanishing
+  // — 51% of all charge attempts previously left no trace, which is why the
+  // real failure rate was never measurable.
+  const { data: begun, error: beginErr } = await sb.rpc("begin_order", {
+    p_user: userId,
+    p_service: service.id,
+    p_country: country.id,
+    p_credits: cost,
   });
-  if (spendErr) return json({ error: "spend_failed", detail: spendErr.message }, { status: 500 });
-  if (spent === false) return json({ error: "insufficient_credits", needed: cost }, { status: 402 });
+  if (beginErr) {
+    return json({ error: "spend_failed", detail: beginErr.message }, { status: 500 });
+  }
 
-  const refund = () => sb.rpc("wallet_credit", { p_user: userId, p_amount: cost, p_reason: "refund" });
+  const begunStatus = (begun as { status?: string } | null)?.status;
+  const orderId = (begun as { order_id?: string } | null)?.order_id;
+
+  if (begunStatus === "insufficient_credits") {
+    return json({ error: "insufficient_credits", needed: cost }, { status: 402 });
+  }
+  if (begunStatus === "duplicate" && orderId) {
+    const { data: dupe } = await sb.from("orders").select("*").eq("id", orderId).single();
+    return json({ order: dupe, deduped: true });
+  }
+  if (begunStatus !== "ok" || !orderId) {
+    return json({ error: "spend_failed", detail: String(begunStatus) }, { status: 500 });
+  }
+
+  /** Close the reserved row and return the credits. Linked to the order, so the
+   *  ledger reconciles and the attempt stays visible as a closed order rather
+   *  than disappearing. */
+  const failOrder = async (reason: string) => {
+    const { error: cErr } = await sb
+      .from("orders")
+      .update({ status: "canceled", closed_at: new Date().toISOString() })
+      .eq("id", orderId)
+      .eq("status", "waiting");
+    if (cErr) console.error("failOrder: could not close order", orderId, cErr);
+    await sb.rpc("wallet_credit", {
+      p_user: userId, p_amount: cost, p_reason: "refund", p_order: orderId,
+    });
+    console.warn(`create-order failed svc=${service.id} cty=${country.id} reason=${reason} order=${orderId}`);
+  };
 
   // Try providers in preference order; on each, verify margin against the live
   // price, then reserve. Skip (fall back) on margin failure or a reserve error.
@@ -160,23 +184,21 @@ Deno.serve(async (req) => {
   }
 
   if (!reservation || !used) {
-    await refund();
+    await failOrder(lastError);
     const status = lastError === "margin_too_low" ? 409 : 503;
     return json({ error: lastError }, { status });
   }
 
-  const { data: order, error: insertErr } = await sb
+  // UPDATE, not insert: the row already exists (begin_order wrote it with the
+  // charge). Attach the reservation to it. Guarded on status='waiting' so a
+  // row the expiry sweep has already closed underneath us is not resurrected.
+  const { data: rows, error: insertErr } = await sb
     .from("orders")
-    .insert({
-      user_id: userId,
-      service_id: service.id,
-      country_id: country.id,
+    .update({
       provider: used,
       smspva_id: reservation.orderId,      // generic: the provider's order id
       smspva_number: reservation.number,   // generic: display number
-      cost_credits: cost,
       actual_cost_cents: usedCostUsd != null ? Math.round(usedCostUsd * 100) : null,
-      status: "waiting",
       smspool_pool: reservation.pool ?? null,
       // Honour the provider's own hold window when it tells us one. The DB
       // default is a flat 8 minutes, but SMSPool's window is pool-dependent
@@ -191,14 +213,18 @@ Deno.serve(async (req) => {
           )).toISOString() }
         : {}),
     })
-    .select("*").single();
+    .eq("id", orderId)
+    .eq("status", "waiting")
+    .select("*");
+
+  const order = rows && rows.length > 0 ? rows[0] : null;
 
   if (insertErr || !order) {
     // Release the just-reserved number so we don't pay for an order we can't
     // track (and it wouldn't count against the provider's concurrent cap),
-    // then refund the user.
+    // then close the row and refund the user.
     if (reservation.orderId) await release(used, reservation.orderId);
-    await refund();
+    await failOrder("order_persist_failed");
     return json({ error: "order_persist_failed", detail: insertErr?.message }, { status: 500 });
   }
 

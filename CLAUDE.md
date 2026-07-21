@@ -23,7 +23,8 @@ supabase db push
 # Deploy edge functions (each runs independently)
 supabase functions deploy create-order check-order cancel-order register-push iap-verify delete-account \
   create-esim-order check-esim-usage redeem-referral winback
-supabase functions deploy poll-active-orders sync-prices sync-smspool sync-esim-plans --no-verify-jwt
+supabase functions deploy poll-active-orders sync-prices sync-smspool sync-esim-plans \
+  telegram-notify telegram-webhook --no-verify-jwt
 
 # Query the remote DB
 supabase db query --linked "select count(*) from public.routes;"

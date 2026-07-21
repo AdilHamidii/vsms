@@ -53,6 +53,13 @@ struct ServerEsimOrder: Codable, Hashable, Identifiable {
     let smdpAddress: String?
     let matchingId: String?
     let apn: String?
+    // iOS prompts for the SIM PIN while the line activates. The backend has
+    // stored these since 2026-07-21, but they were absent here — so
+    // .convertFromSnakeCase silently dropped sim_pin/sim_puk on decode and the
+    // value never reached the screen. The user cannot bring the eSIM up and it
+    // reads to them as "the data plan doesn't work".
+    let simPin: String?
+    let simPuk: String?
     let dataTotalMb: Int?
     let dataUsedMb: Int?
     let activated: Bool
@@ -73,6 +80,8 @@ struct EsimOrder: Identifiable, Hashable {
     var smdp: String? { server.smdpAddress }
     var manualCode: String? { server.matchingId }
     var apn: String? { server.apn }
+    var simPin: String? { server.simPin }
+    var simPuk: String? { server.simPuk }
     var createdAt: Date { server.createdAt }
     var expiresAt: Date? { server.expiresAt }
 

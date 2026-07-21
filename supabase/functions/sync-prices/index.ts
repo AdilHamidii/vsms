@@ -294,6 +294,41 @@ Deno.serve(async (req) => {
     .filter((s) => !pricedServiceIds.has(s.id))
     .map((s) => s.id);
 
+  // ── Catalog maintenance ────────────────────────────────────────────────
+  // These four used to live in sync-smspool. They are not SMSPool-specific
+  // work, but they died when relay-sync-smspool was unscheduled for the SMSPVA
+  // move — silently, so the "self-correcting" catalog quietly stopped
+  // correcting: services that recovered never became visible again, and
+  // delivery evidence froze at the moment SMSPool was retired.
+  //
+  // They live here now because sync-prices owns the active provider's pricing
+  // and runs hourly. The two provider-scoped ones resolve the provider from
+  // the data (active_sms_provider()) rather than a hardcoded string, so the
+  // next provider switch cannot break them the same way.
+  //
+  // Order matters: observed success first (it can hide a proven-dead route),
+  // then visibility (which reads route status), then evidence, then ranking
+  // (which reads the evidence). Each is wrapped so one failure cannot abort
+  // the others or fail the whole price sync.
+  const maintenance: Record<string, unknown> = {};
+  for (
+    const [name, fn] of [
+      ["observedHidden", "refresh_route_observed_success"],
+      ["visibilityChanged", "sync_service_visibility"],
+      ["serviceEvidence", "refresh_service_delivery"],
+      ["reranked", "apply_measured_service_ranking"],
+    ] as const
+  ) {
+    try {
+      const { data, error } = await sb.rpc(fn);
+      maintenance[name] = error ? `error: ${error.message}` : data ?? 0;
+      if (error) console.error(`sync-prices: ${fn} failed`, error.message);
+    } catch (e) {
+      maintenance[name] = `threw: ${String(e)}`;
+      console.error(`sync-prices: ${fn} threw`, e);
+    }
+  }
+
   return json({
     countriesProcessed: seenCountries.size,
     routesUpdated,
@@ -304,6 +339,7 @@ Deno.serve(async (req) => {
     unknownCountries,
     badRows,
     flatRows: flat.length,
+    maintenance,
     servicesWithoutPricesCount: servicesWithoutPrices.length,
     servicesWithoutPrices: servicesWithoutPrices.slice(0, 40),
     unknownServiceCodes: [...unknownServiceCodes].slice(0, 40),

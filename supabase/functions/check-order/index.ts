@@ -44,7 +44,18 @@ Deno.serve(async (req) => {
   }
 
   if (result.state === "received" && result.code) {
-    const { data: updated, error: uErr } = await sb
+    // ATOMIC CLAIM — .eq("status","waiting") is load-bearing, not decoration.
+    //
+    // We read this order as "waiting", then spent a network round trip polling
+    // the provider. The poll-active-orders cron runs every 60s and can, in that
+    // window, independently expire this same order: claim it, refund the
+    // credits, and push "no code arrived". Without the guard, this update then
+    // overwrites that terminal state back to "received" with a valid OTP — the
+    // user keeps the refund AND gets a working code. That is the only path in
+    // the lifecycle that could hand out a number for free, and it was the one
+    // status write here missing the guard that every other branch has,
+    // including the expired/canceled branch directly below.
+    const { data: rows, error: uErr } = await sb
       .from("orders")
       .update({
         status: "received",
@@ -54,9 +65,24 @@ Deno.serve(async (req) => {
         closed_at: new Date().toISOString(),
       })
       .eq("id", order.id)
-      .select("*").single();
+      .eq("status", "waiting")
+      .select("*");
     if (uErr) return json({ error: "update_failed", detail: uErr.message }, { status: 500 });
-    return json({ order: updated, arrived: true });
+
+    if (rows && rows.length > 0) {
+      return json({ order: rows[0], arrived: true });
+    }
+
+    // Lost the race: something already closed this order. The refund stands and
+    // we deliberately do NOT resurrect it — the user has their credits back and
+    // can order again. Worth logging: a code arriving after we gave up means
+    // the expiry window is too aggressive for this route.
+    console.warn(
+      `check-order: code arrived for ${order.id} AFTER it was closed — ` +
+      `refund stands, code discarded. Expiry may be too short for this route.`,
+    );
+    const { data: closed } = await sb.from("orders").select("*").eq("id", order.id).single();
+    return json({ order: closed, arrived: false, closed: true });
   }
 
   // The provider has already closed this order (refunded / cancelled / expired

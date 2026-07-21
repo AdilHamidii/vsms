@@ -5,9 +5,16 @@
 import { handleCors, json } from "../_shared/cors.ts";
 import { notifySafe, esc } from "../_shared/telegram.ts";
 import { admin, callerUserId } from "../_shared/supabaseAdmin.ts";
-import { esimPurchase, esimProfile } from "../_shared/smspool.ts";
+import { esimPurchase, esimProfile, esimPlans } from "../_shared/smspool.ts";
 
 interface Body { plan_id: string; }
+
+// Mirrors sync-esim-plans: retail_credits = ceil(usd * ESIM_MARGIN / CREDIT_VALUE_USD).
+// Inverted, the most we may pay for a plan sold at N credits is
+// N * CREDIT_VALUE_USD / ESIM_MARGIN = N * 0.16.
+const ESIM_MARGIN = 3;
+const CREDIT_VALUE_USD = 0.48;
+const MAX_COST_PER_CREDIT_USD = CREDIT_VALUE_USD / ESIM_MARGIN;
 
 Deno.serve(async (req) => {
   const cors = handleCors(req); if (cors) return cors;
@@ -25,13 +32,49 @@ Deno.serve(async (req) => {
 
   const { data: plan, error: pErr } = await sb
     .from("esim_plans")
-    .select("id, retail_credits, status, last_cost_cents")
+    .select("id, retail_credits, status, last_cost_cents, country_code")
     .eq("id", body.plan_id).single();
   if (pErr || !plan) return json({ error: "unknown_plan" }, { status: 404 });
   if (plan.status !== "active" || plan.retail_credits == null) {
     return json({ error: "plan_unavailable" }, { status: 409 });
   }
   const cost = plan.retail_credits as number;
+
+  // ── Live price check ─────────────────────────────────────────────────────
+  // SMSPool's /esim/purchase takes only a plan id: it accepts no price cap and
+  // its response reports no cost, so nothing downstream can detect a bad buy.
+  // Worse, actual_cost_cents used to be filled from the CACHED catalog price,
+  // so a loss would show healthy margins in our own tables. sync-esim-plans
+  // runs once daily, leaving a 24h window in which SMSPool can raise a price
+  // and every sale in that window loses money silently.
+  //
+  // /esim/plans is the same endpoint sync-esim-plans uses, so this is a fresh
+  // quote for the exact plan we are about to buy.
+  //
+  // Fail-CLOSED on evidence of a bad price, fail-OPEN on a failed lookup: an
+  // unreachable SMSPool must not make eSIMs unbuyable, and the cached price
+  // already satisfied the 3x margin when it was written. We only override the
+  // catalog when we actually have a contradicting number.
+  const maxCostUsd = cost * MAX_COST_PER_CREDIT_USD;
+  let liveCostUsd: number | null = null;
+  try {
+    const rows = await esimPlans(String(plan.country_code));
+    const match = (rows ?? []).find((p) => String(p.ID) === String(plan.id));
+    const usd = match ? parseFloat(String(match.price)) : NaN;
+    if (Number.isFinite(usd) && usd > 0) liveCostUsd = usd;
+  } catch (e) {
+    console.error(`esim: live price lookup failed for ${plan.id} (proceeding on cached):`, e);
+  }
+
+  if (liveCostUsd != null && liveCostUsd > maxCostUsd) {
+    console.error(
+      `esim BLOCKED ${plan.id}: live $${liveCostUsd.toFixed(2)} exceeds ` +
+      `$${maxCostUsd.toFixed(2)} ceiling for ${cost} credits — catalog is stale`,
+    );
+    // Nothing has been charged yet: the spend happens below. Refusing here
+    // costs a sale; letting it through costs real money on every sale.
+    return json({ error: "margin_too_low" }, { status: 409 });
+  }
 
   const { data: spent, error: spendErr } = await sb.rpc("wallet_spend", {
     p_user: userId, p_amount: cost, p_reason: "spend",
@@ -59,7 +102,12 @@ Deno.serve(async (req) => {
       plan_id: plan.id,
       smspool_tx: buy.transactionId,
       cost_credits: cost,
-      actual_cost_cents: plan.last_cost_cents,
+      // The FRESH quote when we have one. This column previously echoed the
+      // cached catalog price, which made it useless as a cost record — margin
+      // analysis over it was circular and could never reveal drift.
+      actual_cost_cents: liveCostUsd != null
+        ? Math.round(liveCostUsd * 100)
+        : plan.last_cost_cents,
       status: profile?.ok ? "installed" : "provisioning",
       activation_code: profile?.activationCode ?? null,
       smdp_address: profile?.smdp ?? null,

@@ -58,6 +58,12 @@ struct EsimCheckoutScreen: View {
                 row("Data", value: plan.dataLabel)
                 row("Valid for", value: plan.validityLabel)
                 row("Network", value: plan.speed ?? "—")
+                // Coverage, stated BEFORE paying. Nothing used to say this, so
+                // a buyer had no way to learn a "Poland" plan is Poland-only
+                // until their data failed abroad. When the provider gives us no
+                // coverage detail we still name the country and say "only",
+                // which is always true for a single-country plan.
+                row("Covers", value: plan.region ?? "\(plan.name) only")
                 Rectangle().fill(theme.sep).frame(height: 0.5).padding(.vertical, 4)
                 HStack {
                     Text("Cost").font(RFont.text(14)).foregroundStyle(theme.text2)
