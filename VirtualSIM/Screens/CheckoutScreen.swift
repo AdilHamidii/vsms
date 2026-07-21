@@ -66,7 +66,7 @@ struct CheckoutScreen: View {
                 .font(RFont.display(30, weight: .bold))
                 .tracking(-0.8)
                 .foregroundStyle(theme.text)
-            Text("Number is reserved for 20 minutes.")
+            Text("Number is reserved for 8 minutes. You only pay if a code arrives.")
                 .font(RFont.text(15))
                 .tracking(-0.2)
                 .foregroundStyle(theme.text2)
@@ -97,7 +97,7 @@ struct CheckoutScreen: View {
                         ReceiptIconBox(symbol: RIcon.clock)
                     }, trailing: {
                         ReceiptValue(primary: "~\(service.etaSeconds) sec",
-                                     secondaryText: "Auto-refund if no SMS arrives")
+                                     secondaryText: "Only charged if a code arrives")
                     })
                 }
                 if state.showMetrics, let rate = state.successRate(for: service, country: country) {
@@ -145,7 +145,7 @@ struct CheckoutScreen: View {
 
     private var rules: some View {
         VStack(spacing: 0) {
-            Bullet(text: "Auto-refund if no SMS within 20 min.")
+            Bullet(text: "No code in 8 min? Refunded in full, automatically.")
             Bullet(text: "Numbers are single-use, fresh.")
             Bullet(text: "No guarantee for services with security checks.")
         }

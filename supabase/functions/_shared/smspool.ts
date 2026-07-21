@@ -54,17 +54,25 @@ export interface BuyResult {
 /** POST /purchase/sms — rent a number. country/service are numeric SMSPool ids.
  *  maxPriceUsd caps the fill price: the /request/price quote is per cheapest
  *  POOL, but an uncapped purchase can fill from a pricier pool (seen live:
- *  6¢ quote filled at $0.79). */
+ *  6¢ quote filled at $0.79).
+ *
+ *  `pricing_option: 1` is SMSPool's documented "highest success rate" selector
+ *  (0 = cheapest). We ask for quality and let max_price hold the margin line.
+ *
+ *  We deliberately do NOT pin `pool`. That was our own inference that priciest
+ *  pool = best quality; SMSPool's FAQ says to leave pool on auto because it
+ *  "automatically picks the best one for you", and our order data disagrees
+ *  with the inference anyway (successful fills averaged 13.9¢, failures 42¢ —
+ *  expensive fills correlate with FAILURE). The param is still accepted for
+ *  a deliberate override. */
 export async function purchase(
   country: string | number, service: string | number, maxPriceUsd?: number,
   pool?: string | number,
 ): Promise<BuyResult> {
-  const params: Record<string, string | number> = { country, service };
+  const params: Record<string, string | number> = { country, service, pricing_option: 1 };
   if (maxPriceUsd != null && Number.isFinite(maxPriceUsd)) {
     params.max_price = maxPriceUsd.toFixed(2);
   }
-  // Pin the pool we priced from (quality tier the sticker pays for); without
-  // it SMSPool defaults to the cheapest pool — typically the worst numbers.
   if (pool != null && pool !== "") params.pool = pool;
   const d = await form<{
     success?: number; order_id?: string; number?: string | number; phonenumber?: string | number;
@@ -79,23 +87,55 @@ export async function purchase(
 }
 
 export interface OrderStatus {
-  state: "waiting" | "received" | "canceled" | "expired" | "unknown";
+  state: "waiting" | "activating" | "received" | "canceled" | "expired" | "unknown";
   code?: string;
   fullText?: string;
 }
 
-/** GET /sms/check — poll for the code. status 3 => received. */
+/** SMSPool documents EIGHT status codes; we previously handled only 3 and 6 and
+ *  mapped everything else to "waiting" — so expired/cancelled orders polled
+ *  until our own timeout, and status 8 was invisible.
+ *
+ *  8 = "activating" matters most: SMSPool's FAQ states that all modem ports are
+ *  busy and "if you send the code while it's still activating, it will not be
+ *  received." A number surfaced during status 8 is a guaranteed dead order, so
+ *  callers must hold it back until it reaches pending. */
+const SP_STATUS = {
+  PENDING: 1, EXPIRED: 2, COMPLETED: 3, RESEND: 4,
+  CANCELLED: 5, REFUNDED: 6, PROCESSING: 7, ACTIVATING: 8,
+} as const;
+
+/** GET /sms/check — poll for the code. */
 export async function check(orderId: string): Promise<OrderStatus> {
   const d = await get<{
     status?: number; sms?: string; full_sms?: string; code?: string; full_code?: string;
   }>("/sms/check", { orderid: orderId });
   const code = d.sms ?? d.code;
   const full = d.full_sms ?? d.full_code;
-  if (d.status === 3 || (code && code !== "0" && code !== "")) {
+  if (d.status === SP_STATUS.COMPLETED || (code && code !== "0" && code !== "")) {
     return { state: "received", code: extractCode(code ?? full ?? ""), fullText: full ?? undefined };
   }
-  if (d.status === 6) return { state: "canceled" };
-  return { state: "waiting" };
+  switch (d.status) {
+    case SP_STATUS.EXPIRED:    return { state: "expired" };
+    case SP_STATUS.CANCELLED:
+    case SP_STATUS.REFUNDED:   return { state: "canceled" };
+    case SP_STATUS.ACTIVATING: return { state: "activating" };
+    default:                   return { state: "waiting" };  // 1 pending, 4 resend, 7 processing
+  }
+}
+
+/** Block until the number leaves "activating", or give up. Returns true when the
+ *  number is safe to hand to the user. Bounded so create-order stays responsive. */
+export async function waitUntilReady(
+  orderId: string, maxMs = 12_000, stepMs = 1_500,
+): Promise<boolean> {
+  const deadline = Date.now() + maxMs;
+  for (;;) {
+    const s = await check(orderId).catch(() => null);
+    if (!s || s.state !== "activating") return true;
+    if (Date.now() + stepMs >= deadline) return false;
+    await new Promise((r) => setTimeout(r, stepMs));
+  }
 }
 
 /** POST /sms/cancel — best-effort. Blocked for the first ~2 min; no-code numbers

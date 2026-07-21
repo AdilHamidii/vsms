@@ -49,12 +49,19 @@ struct CountrySheet: View {
             }
             list.sort { costFor($0) < costFor($1) }
         case .bestSuccess:
-            // Available first, then highest success rate, then cheapest.
+            // Available first, then by EVIDENCE tier, then price — and among
+            // untested routes the cheapest is deliberately NOT preferred: the
+            // provider's cheapest pool is its worst inventory, and when every
+            // route was tied at a placeholder rate this sort silently became
+            // "cheapest first", steering users onto the numbers least likely
+            // to deliver. Tiers: proven → untested → proven-bad.
             func key(_ c: Country) -> (Int, Int, Int) {
-                let avail = state.cost(for: currentService, country: c) != nil ? 0 : 1
-                let rate  = state.successRate(for: currentService, country: c) ?? -1
                 let price = state.cost(for: currentService, country: c) ?? .max
-                return (avail, -rate, price)
+                let avail = state.cost(for: currentService, country: c) != nil ? 0 : 1
+                guard let rate = state.successRate(for: currentService, country: c) else {
+                    return (avail, 1, -price)   // untested: pricier (better pool) first
+                }
+                return rate > 0 ? (avail, 0, -rate) : (avail, 2, price)
             }
             list.sort { key($0) < key($1) }
         }

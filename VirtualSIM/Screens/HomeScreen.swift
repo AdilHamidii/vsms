@@ -180,7 +180,7 @@ struct HomeScreen: View {
                                 Metric(label: "Success", value: "\(routeSuccess)%",
                                        accent: routeSuccess >= 70 ? theme.live : theme.warn)
                             } else {
-                                Metric(label: "Held for", value: "20 min")
+                                Metric(label: "Held for", value: "8 min")
                             }
                         }
                         .padding(.top, 14)

@@ -139,20 +139,36 @@ final class AppState {
         return route.successRate
     }
 
-    /// The most reliable country we can currently book for this service (highest
-    /// success, ties broken by lower cost). Used to steer a freshly-picked
-    /// service onto a route that actually delivers. nil if nothing is priced.
+    /// The most reliable country we can currently book for this service. Ranks
+    /// by evidence, not by price: routes we've measured delivering come first,
+    /// then untested ones, then routes measured as failing.
+    ///
+    /// Among untested routes we deliberately avoid the cheapest — the provider's
+    /// cheapest pool is its worst inventory, so the old "ties break to lower
+    /// cost" rule was actively steering users onto the numbers least likely to
+    /// deliver (it picked Albania for Facebook on zero evidence).
     func bestCountry(for service: Service) -> Country? {
-        countries
-            .filter { cost(for: service, country: $0) != nil }
-            .max { a, b in
-                let ra = successRate(for: service, country: a) ?? -1
-                let rb = successRate(for: service, country: b) ?? -1
-                if ra != rb { return ra < rb }
-                let ca = cost(for: service, country: a) ?? .max
-                let cb = cost(for: service, country: b) ?? .max
-                return ca > cb
-            }
+        let bookable = countries.filter { cost(for: service, country: $0) != nil }
+        guard !bookable.isEmpty else { return nil }
+
+        // 1) Anything we've actually seen deliver.
+        let proven = bookable.compactMap { c -> (Country, Int)? in
+            guard let r = successRate(for: service, country: c), r > 0 else { return nil }
+            return (c, r)
+        }
+        if let best = proven.max(by: { $0.1 < $1.1 }) { return best.0 }
+
+        // 2) Otherwise the priciest untested route we can still book — skipping
+        //    the bottom of the price range rather than diving into it.
+        let untested = bookable.filter { successRate(for: service, country: $0) == nil }
+        if let pick = untested.max(by: {
+            (cost(for: service, country: $0) ?? 0) < (cost(for: service, country: $1) ?? 0)
+        }) { return pick }
+
+        // 3) Everything left is measured-failing; give back the cheapest.
+        return bookable.min(by: {
+            (cost(for: service, country: $0) ?? .max) < (cost(for: service, country: $1) ?? .max)
+        })
     }
 
     /// Country picker shows every country in the catalog. A specific
@@ -200,21 +216,38 @@ final class AppState {
     /// affordable available pair. nil only when nothing is affordable yet
     /// (e.g. catalog not loaded), leaving the seed default in place.
     private func affordableStarter() -> (Service, Country)? {
-        let preferred = ["telegram", "instagram", "tiktok", "discord", "google",
-                         "whatsapp", "twitter-x", "uber", "openai", "amazon",
-                         "signal", "facebook"]
+        // Ordered by MEASURED delivery, not by brand recognition. The previous
+        // list led with telegram/instagram/google/whatsapp/facebook — which is
+        // almost exactly the set that measures ~9% delivered, versus ~52% for
+        // everything else. Every new user was being defaulted onto the worst
+        // part of the catalog, and most never saw a code at all.
+        //
+        // Meta and the messengers stay fully browsable; they're just no longer
+        // the first thing a brand-new user is pointed at.
+        let preferred = ["leboncoin", "deliveroo", "glovo", "whatnot", "walmart",
+                         "vinted", "wallapop", "subito", "olx", "uber",
+                         "tiktok", "discord"]
         for id in preferred {
             if let svc = services.first(where: { $0.id == id }),
-               let cty = cheapestAffordableCountry(for: svc) {
+               let cty = bestAffordableCountry(for: svc) {
                 return (svc, cty)
             }
         }
         for svc in services {
-            if let cty = cheapestAffordableCountry(for: svc) {
+            if let cty = bestAffordableCountry(for: svc) {
                 return (svc, cty)
             }
         }
         return nil
+    }
+
+    /// Affordable country for `service`, chosen by the same evidence-first rule
+    /// as `bestCountry(for:)` rather than by lowest price.
+    private func bestAffordableCountry(for service: Service) -> Country? {
+        guard let best = bestCountry(for: service),
+              let c = cost(for: service, country: best), c <= balance
+        else { return cheapestAffordableCountry(for: service) }
+        return best
     }
 
     /// Cheapest available country whose route for `service` costs no more than
@@ -443,6 +476,71 @@ final class AppState {
         }
         flow = nil
         activeOrder = nil
+    }
+
+    /// Swap the current number for a fresh one without leaving the wait screen.
+    ///
+    /// This is already how people use the app — 72 of the last 122 orders were
+    /// re-orders placed within 10 minutes of the previous one, median gap 19
+    /// seconds — but until now it took six taps (✕ → home → picker → country →
+    /// checkout → get). It's also economically free: cancelling refunds the
+    /// credits in full and the new order charges the same, so the user only
+    /// ever pays for the number that actually delivers.
+    ///
+    /// `differentCountry` matters when a platform rejected the number outright:
+    /// the whole range is usually flagged, so another number from it will fail
+    /// the same way. Falls back to the same route when there's no alternative.
+    func rerollNumber(using orders: OrdersAPI, wallet: WalletAPI,
+                      differentCountry: Bool) async {
+        guard let order = activeOrder, !isPlacingOrder else { return }
+        let svc = order.service
+
+        var next = order.country
+        if differentCountry {
+            let alternatives = countries.filter {
+                $0.id != order.country.id
+                && cost(for: svc, country: $0) != nil
+                && (cost(for: svc, country: $0) ?? .max) <= balance + order.costCredits
+            }
+            // Prefer a route we've measured delivering; otherwise avoid the
+            // cheapest pool for the same reason bestCountry(for:) does.
+            next = alternatives.max {
+                (successRate(for: svc, country: $0) ?? -1, cost(for: svc, country: $0) ?? 0)
+                < (successRate(for: svc, country: $1) ?? -1, cost(for: svc, country: $1) ?? 0)
+            } ?? order.country
+        }
+
+        isPlacingOrder = true
+        defer { isPlacingOrder = false }
+
+        // Release the old number first so its credits are back before we spend
+        // again — a reroll must never need a bigger balance than the original.
+        if let server = try? await orders.cancel(orderId: order.id) {
+            let updated = resolve(server)
+            if let idx = self.orders.firstIndex(where: { $0.id == updated.id }) {
+                self.orders[idx] = updated
+            }
+        }
+        await refreshWallet(using: wallet)
+
+        do {
+            let server = try await orders.create(serviceId: svc.id, countryId: next.id)
+            let fresh = resolve(server)
+            lastService = svc
+            lastCountry = next
+            activeOrder = fresh
+            self.orders.insert(fresh, at: 0)
+            flow = .waiting               // stay put; only the number changes
+            await refreshWallet(using: wallet)
+        } catch let apiErr as APIError {
+            lastError = apiErr.userMessage
+            flow = nil
+            activeOrder = nil
+        } catch {
+            lastError = "Couldn't get another number. Please try again."
+            flow = nil
+            activeOrder = nil
+        }
     }
 
     func finishOtp() {

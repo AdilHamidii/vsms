@@ -147,12 +147,65 @@ struct WaitingScreen: View {
                     .buttonStyle(.plain)
                 }
                 .padding(.top, 16)
+
+                rerollActions
+                    .padding(.top, 10)
             }
             .padding(.horizontal, 18)
             .padding(.vertical, 22)
         }
         .padding(.horizontal, 16)
         .padding(.top, 14)
+    }
+
+    /// The two ways a number dies, each with a one-tap recovery.
+    ///
+    /// "Rejected" is the common case for high-security services: the site
+    /// refuses the number at its signup form within ~20 seconds, so no timer
+    /// can detect it — only the user knows. That path must move to a DIFFERENT
+    /// country, because a rejection usually means the whole range is flagged.
+    private var rerollActions: some View {
+        HStack(spacing: 8) {
+            rerollButton(
+                title: "\(order.service.name) rejected it",
+                icon: RIcon.close,
+                differentCountry: true
+            )
+            rerollButton(
+                title: "Try another number",
+                icon: RIcon.refresh,
+                differentCountry: false
+            )
+        }
+    }
+
+    private func rerollButton(title: String, icon: String,
+                              differentCountry: Bool) -> some View {
+        Button {
+            Task {
+                await state.rerollNumber(
+                    using: OrdersAPI(client: api),
+                    wallet: WalletAPI(client: api),
+                    differentCountry: differentCountry
+                )
+            }
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: icon)
+                    .font(.system(size: 12, weight: .semibold))
+                Text(title)
+                    .font(RFont.text(13, weight: .medium))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.85)
+            }
+            .foregroundStyle(theme.text2)
+            .frame(maxWidth: .infinity)
+            .frame(height: 40)
+            .background(theme.chipBg, in: .rect(cornerRadius: 12))
+        }
+        .buttonStyle(.plain)
+        .disabled(state.isPlacingOrder)
+        .opacity(state.isPlacingOrder ? 0.5 : 1)
     }
 
     private var waitingCard: some View {
@@ -215,7 +268,7 @@ struct WaitingScreen: View {
             Image(systemName: RIcon.shield)
                 .font(.system(size: 13, weight: .medium))
                 .foregroundStyle(theme.text3)
-            Text("No code? Cancel any time — your credits are refunded in full, instantly.")
+            Text("You only pay for a code that arrives. Trying another number is free.")
                 .font(RFont.text(12))
                 .tracking(-0.1)
                 .foregroundStyle(theme.text3)

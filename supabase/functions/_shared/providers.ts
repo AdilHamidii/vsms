@@ -13,6 +13,7 @@ import {
   getSms,
   cancelOrder as smsCancel,
   getServicePrice,
+  getBalance as smsGetBalance,
   isOk,
 } from "./smspva.ts";
 
@@ -29,12 +30,17 @@ export interface RouteCodes {
 }
 
 /** Providers that can serve this route, preferred first.
- *  SMSPool-ONLY as of 2026-07-20 (owner decision): SMSPVA and virtualsms are
- *  retired for NEW orders — their adapters stay only so poll/cancel/refund
- *  keep working for historical orders. To re-enable a fallback, restore the
- *  chain here AND un-hide its routes + re-schedule its sync cron. */
-export function providerOrder(c: RouteCodes, _prefer: Provider = "smspool"): Provider[] {
-  return c.spService && c.spCountry ? ["smspool"] : [];
+ *  SMSPool → SMSPVA as of 2026-07-20. The brief SMSPool-only period was
+ *  reversed on measured delivery: over 30 days SMSPVA delivered 59% (29/49)
+ *  vs SMSPool's 13% (2/16), at a LOWER average cost when it succeeded (13¢
+ *  vs 20¢) — and SMSPool's catalog lacks ~134 services SMSPVA carries
+ *  (PayPal, Revolut, Coinbase, Binance, Wise, Klarna…).
+ *  virtualsms stays retired: its purchase endpoint 503s for every combo. */
+export function providerOrder(c: RouteCodes, prefer: Provider = "smspool"): Provider[] {
+  const can: Provider[] = [];
+  if (c.spService && c.spCountry) can.push("smspool");
+  if (c.smsService && c.smsCountry) can.push("smspva");
+  return prefer === "smspva" ? can.reverse() : can;
 }
 
 /** Live wholesale price (USD) at a provider, or null if unavailable. */
@@ -72,8 +78,13 @@ export async function reserve(
 ): Promise<Reservation> {
   try {
     if (p === "smspool" && c.spService && c.spCountry) {
-      const r = await sp.purchase(c.spCountry, c.spService, maxPriceUsd, pool ?? undefined);
+      // pool intentionally not forwarded — see sp.purchase(): auto beats our
+      // priciest-pool inference. Kept in the signature for a manual override.
+      const r = await sp.purchase(c.spCountry, c.spService, maxPriceUsd);
       if (!r.ok) return { ok: false, error: r.error };
+      // Hold the number back until it leaves "activating" — a code requested
+      // during that window is never delivered (SMSPool FAQ).
+      if (r.orderId) await sp.waitUntilReady(r.orderId).catch(() => true);
       return { ok: true, orderId: r.orderId, number: r.phoneNumber ?? "", costUsd: r.costUsd };
     }
     if (p === "virtualsms" && c.vsService && c.vsCountry) {
@@ -85,9 +96,25 @@ export async function reserve(
       return { ok: true, orderId: r.orderId, number: num, costUsd: r.costUsd };
     }
     if (p === "smspva" && c.smsService && c.smsCountry) {
+      // SMSPVA's allocation endpoint accepts no price cap and reports no cost
+      // — it once billed $3.60 on a route quoted at pennies. Bracket the
+      // purchase with balance reads so the caller learns the REAL charge and
+      // can hide/reprice the route. Best-effort: if either read fails we
+      // still complete the order, just without a measured cost.
+      const before = await smsGetBalance().catch(() => null);
       const r = await smsGetNumber(c.smsCountry, c.smsService);
       if (!isOk(r)) return { ok: false, error: r.error?.type ?? "smspva_error" };
-      return { ok: true, orderId: String(r.data.orderId), number: `${c.dial} ${r.data.phoneNumber}` };
+      let costUsd: number | undefined;
+      const after = await smsGetBalance().catch(() => null);
+      const b0 = isOk(before) ? before.data?.balance : undefined;
+      const b1 = isOk(after) ? after.data?.balance : undefined;
+      if (typeof b0 === "number" && typeof b1 === "number" && b0 > b1) costUsd = b0 - b1;
+      return {
+        ok: true,
+        orderId: String(r.data.orderId),
+        number: `${c.dial} ${r.data.phoneNumber}`,
+        costUsd,
+      };
     }
   } catch (e) {
     return { ok: false, error: String(e) };
@@ -105,7 +132,10 @@ export interface PollResult {
 export async function poll(p: Provider, orderId: string): Promise<PollResult> {
   if (p === "smspool") {
     const s = await sp.check(orderId);
-    return { state: s.state, code: s.code, fullText: s.fullText };
+    // "activating" is not terminal — the number simply isn't live yet. Report
+    // it as waiting so callers keep polling rather than expiring the order.
+    const state = s.state === "activating" ? "waiting" : s.state;
+    return { state, code: s.code, fullText: s.fullText };
   }
   if (p === "virtualsms") {
     const s = await vs.getOrder(orderId);
