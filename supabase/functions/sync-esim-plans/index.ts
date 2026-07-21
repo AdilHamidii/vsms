@@ -55,7 +55,15 @@ Deno.serve(async (req) => {
       const cents = Math.round(usd * 100);
       const id = String(p.ID);
       const prevS = prevSmoothed.get(id);
-      const smoothed = prevS == null ? cents : Math.round(0.5 * cents + 0.5 * prevS);
+      // RATCHET, not a symmetric EWMA. A cost RISE must apply immediately;
+      // only falls are smoothed. Averaging a rise against yesterday's cheaper
+      // price sets retail below what we are about to pay — that exact bug put
+      // 4,384 SMS routes under wholesale on 2026-07-21 before sync-prices and
+      // sync-smspool were both given this guard. eSIMs never got it, and they
+      // have no order-time margin check to catch the loss afterwards.
+      const smoothed = prevS == null || cents > prevS
+        ? cents
+        : Math.round(0.5 * cents + 0.5 * prevS);
       updates.push({
         id,
         name: c.name,

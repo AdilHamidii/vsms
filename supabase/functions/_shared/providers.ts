@@ -136,7 +136,10 @@ export async function reserve(
       // still complete the order, just without a measured cost.
       const before = await smsGetBalance().catch(() => null);
       const r = await smsGetNumber(c.smsCountry, c.smsService);
-      if (!isOk(r)) return { ok: false, error: r.error?.type ?? "smspva_error" };
+      if (!isOk(r)) {
+        const raw = r.error?.type ?? "smspva_error";
+        return { ok: false, error: raw, errorType: classifySmspvaFault(raw) };
+      }
       let costUsd: number | undefined;
       const after = await smsGetBalance().catch(() => null);
       const b0 = isOk(before) ? before.data?.balance : undefined;
@@ -153,6 +156,39 @@ export async function reserve(
     return { ok: false, error: String(e) };
   }
   return { ok: false, error: "provider_not_configured" };
+}
+
+/** Map an SMSPVA error `type` onto the shared fault taxonomy.
+ *
+ *  Until now the SMSPVA branch set `error` (a free string) but never
+ *  `errorType`, and create-order classifies purely on `errorType`. So EVERY
+ *  SMSPVA failure — dead account, bad key, rate limit, genuine stockout — fell
+ *  through to "no_numbers_available". Two consequences, both bad:
+ *
+ *    - the user is told "try another country or service", so they dutifully
+ *      try every country and get the same lie each time;
+ *    - the one console.error written to make a dead provider loud is itself
+ *      gated on errorType, so it never fired for the only SMS provider we have.
+ *
+ *  With SMSPVA the sole SMS provider, an empty balance would take the product
+ *  down with no signal anywhere.
+ *
+ *  SMSPVA's error vocabulary is not publicly documented (docs.smspva.com
+ *  describes a different, older API), and the only string confirmed live is
+ *  APIKEY_NOT_SET. So match on substrings rather than pretending to know the
+ *  full enum, and log anything unrecognised so the real vocabulary can be
+ *  learned from production instead of guessed.
+ */
+function classifySmspvaFault(raw: string): sp.SmspoolErrorType | undefined {
+  const t = raw.toUpperCase();
+  if (/BALANCE|FUND|MONEY|DEPOSIT|PAYMENT/.test(t)) return "BALANCE_ERROR";
+  if (/APIKEY|API_KEY|AUTH|TOKEN|FORBID|DENIED/.test(t)) return "AUTH_ERROR";
+  if (/LIMIT|FREQUENT|TOO_MANY|FLOOD|THROTTL/.test(t)) return "RATE_LIMITED";
+  if (/STOCK|NO_NUMBER|NUMBERS|AVAIL|EMPTY|SOLD/.test(t)) return "OUT_OF_STOCK";
+  // Deliberately undefined: create-order then uses its existing default. We do
+  // NOT invent a classification we cannot justify — but we do make it visible.
+  console.error(`smspva: unclassified error type "${raw}" — add it to classifySmspvaFault`);
+  return undefined;
 }
 
 export interface PollResult {

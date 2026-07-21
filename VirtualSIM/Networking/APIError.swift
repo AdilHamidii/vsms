@@ -41,8 +41,15 @@ enum APIError: Error, LocalizedError {
                     return "No numbers available for this combination right now. Try another country or service."
                 case "smspva_error":
                     return "Numbers aren't available right now. Please try a different country or service."
-                case "smspva_unreachable":
+                // The backend sends `provider_unreachable` (not the older
+                // `smspva_unreachable`) for a provider that is down, rate
+                // limited, or OUT OF BALANCE. Unmapped, it fell through to the
+                // 5xx fallback and blamed us for a third-party outage — and
+                // told the user to retry into a wall.
+                case "provider_unreachable", "smspva_unreachable":
                     return "The number provider is unreachable. Please try again in a moment."
+                case "margin_too_low":
+                    return "That number costs more than expected right now. Try another country or service."
                 case "order_not_found":
                     return "We couldn't find that order anymore."
                 case "not_cancelable":

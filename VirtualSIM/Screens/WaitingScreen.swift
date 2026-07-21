@@ -269,18 +269,31 @@ struct WaitingScreen: View {
         .padding(.top, 14)
     }
 
+    // MEASURED delivery only, and nothing at all when we have no measurement.
+    //
+    // This used to render `order.service.successRate` — seed data that sits at
+    // 86-99% for all 268 services (avg 91%) and which Service.swift explicitly
+    // says "must never be shown as fact". It was the last place in the app
+    // still doing so: Checkout, ServiceSheet and CountrySheet were all moved to
+    // the measured route rate. Worst of all it fired here, right after the user
+    // paid, promising ~91% on clusters that actually measure ~9% delivered.
+    // Inventing a comforting number at the moment of maximum anxiety is how you
+    // turn one failed order into a refund request and a 1-star review.
+    @ViewBuilder
     private var metric: some View {
-        HStack(spacing: 8) {
-            Image(systemName: RIcon.spark)
-                .font(.system(size: 13, weight: .medium))
-                .foregroundStyle(theme.text3)
-            Text("\(order.service.successRate)% of \(order.service.name) codes arrive in under \(order.service.etaSeconds + 8)s.")
-                .font(RFont.text(12))
-                .tracking(-0.1)
-                .foregroundStyle(theme.text3)
+        if let rate = state.successRate(for: order.service, country: order.country) {
+            HStack(spacing: 8) {
+                Image(systemName: RIcon.spark)
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(theme.text3)
+                Text("\(rate)% of \(order.service.name) codes in \(order.country.name) have arrived.")
+                    .font(RFont.text(12))
+                    .tracking(-0.1)
+                    .foregroundStyle(theme.text3)
+            }
+            .padding(.horizontal, 24)
+            .padding(.top, 14)
         }
-        .padding(.horizontal, 24)
-        .padding(.top, 14)
     }
 
     private func copy() {
