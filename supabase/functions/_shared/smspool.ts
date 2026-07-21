@@ -15,21 +15,88 @@ function key(): string {
   return k;
 }
 
-async function form<T>(path: string, params: Record<string, string | number> = {}): Promise<T> {
-  const body = new URLSearchParams({ key: key(), ...toStr(params) });
-  const resp = await fetch(`${BASE}${path}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded", Accept: "application/json" },
-    body,
-  });
-  return parse<T>(await resp.text());
+/** SMSPool's documented failure `type`s, plus our own for transport problems.
+ *  Previously every non-200 was parsed as if it were a success body, which
+ *  made three very different problems indistinguishable:
+ *    - 429 rate-limit → parsed to {} → check() read status as undefined and
+ *      reported "waiting", so throttling looked exactly like "no code yet"
+ *      and the order silently expired.
+ *    - 403 bad key → purchase() reported a generic "purchase_failed".
+ *    - 400/403 on list endpoints → returned an object where callers expected
+ *      an array, throwing a TypeError that aborted the whole sync. */
+export type SmspoolErrorType =
+  | "OUT_OF_STOCK" | "PRICE_NOT_FOUND" | "BALANCE_ERROR"
+  | "RATE_LIMITED" | "AUTH_ERROR" | "TRANSPORT_ERROR";
+
+export interface SmspoolFault {
+  ok: false;
+  type: SmspoolErrorType;
+  status: number;
+  message: string;
+  /** Per-pool breakdown SMSPool returns on OUT_OF_STOCK — which supplier ran dry. */
+  pools?: Record<string, unknown>;
 }
 
-async function get<T>(path: string, params: Record<string, string | number> = {}): Promise<T> {
-  const qs = new URLSearchParams({ key: key(), ...toStr(params) }).toString();
-  const resp = await fetch(`${BASE}${path}?${qs}`, { headers: { Accept: "application/json" } });
-  return parse<T>(await resp.text());
+/** Non-null when the payload is a documented error rather than a result. */
+export function faultOf(v: unknown): SmspoolFault | null {
+  return v && typeof v === "object" && (v as SmspoolFault).ok === false &&
+         "type" in (v as object) ? v as SmspoolFault : null;
 }
+
+function classify(status: number, body: unknown, raw: string): SmspoolFault | null {
+  if (status === 429) {
+    return { ok: false, type: "RATE_LIMITED", status, message: "rate limited" };
+  }
+  if (status === 401 || status === 403) {
+    return { ok: false, type: "AUTH_ERROR", status, message: "invalid api key" };
+  }
+  const b = (body ?? {}) as Record<string, unknown>;
+  const declared = typeof b.type === "string" ? b.type : null;
+  if (declared === "OUT_OF_STOCK" || declared === "PRICE_NOT_FOUND" || declared === "BALANCE_ERROR") {
+    return {
+      ok: false, type: declared, status,
+      // SMSPool wraps these in HTML; strip tags so nothing markup-y can reach a user.
+      message: String(b.message ?? "").replace(/<[^>]*>/g, "").trim() || declared,
+      pools: b.pools as Record<string, unknown> | undefined,
+    };
+  }
+  if (status >= 400) {
+    return {
+      ok: false, type: "TRANSPORT_ERROR", status,
+      message: String(b.message ?? raw.slice(0, 160)).replace(/<[^>]*>/g, "").trim(),
+    };
+  }
+  return null;
+}
+
+async function request<T>(
+  path: string, params: Record<string, string | number>, method: "POST" | "GET",
+): Promise<T> {
+  let resp: Response;
+  try {
+    if (method === "POST") {
+      resp = await fetch(`${BASE}${path}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded", Accept: "application/json" },
+        body: new URLSearchParams({ key: key(), ...toStr(params) }),
+      });
+    } else {
+      const qs = new URLSearchParams({ key: key(), ...toStr(params) }).toString();
+      resp = await fetch(`${BASE}${path}?${qs}`, { headers: { Accept: "application/json" } });
+    }
+  } catch (e) {
+    return { ok: false, type: "TRANSPORT_ERROR", status: 0, message: String(e) } as unknown as T;
+  }
+  const raw = await resp.text();
+  const body = parse<unknown>(raw);
+  const fault = classify(resp.status, body, raw);
+  return (fault ?? body) as T;
+}
+
+const form = <T>(path: string, params: Record<string, string | number> = {}) =>
+  request<T>(path, params, "POST");
+const get = <T>(path: string, params: Record<string, string | number> = {}) =>
+  request<T>(path, params, "GET");
 
 function toStr(p: Record<string, string | number>): Record<string, string> {
   const o: Record<string, string> = {};
@@ -48,7 +115,12 @@ export interface BuyResult {
   orderId?: string;      // SMSPool order_code
   phoneNumber?: string;  // full number incl. country code, "+" prefixed
   costUsd?: number;      // what SMSPool actually charged
+  /** Absolute epoch seconds when SMSPool releases the number. Their window is
+   *  pool-dependent (docs show 1200s; Foxtrot US runs days) — honour it instead
+   *  of assuming, or we abandon a number we already paid for. */
+  expiresAt?: number;
   error?: string;
+  errorType?: SmspoolErrorType;
 }
 
 /** POST /purchase/sms — rent a number. country/service are numeric SMSPool ids.
@@ -76,14 +148,27 @@ export async function purchase(
   if (pool != null && pool !== "") params.pool = pool;
   const d = await form<{
     success?: number; order_id?: string; number?: string | number; phonenumber?: string | number;
-    cost?: string; cost_in_cents?: number; message?: string;
+    cc?: string; cost?: string; cost_in_cents?: number; message?: string;
+    expires_in?: number; expiration?: number;
   }>("/purchase/sms", params);
+
+  const fault = faultOf(d);
+  if (fault) return { ok: false, error: fault.message, errorType: fault.type };
   if (!d || d.success !== 1) return { ok: false, error: d?.message ?? "purchase_failed" };
-  const raw = String(d.number ?? d.phonenumber ?? "");
-  const num = raw ? (raw.startsWith("+") ? raw : `+${raw}`) : "";
+
+  // `number` is full E.164 digits; `phonenumber` is only the NATIONAL part with
+  // `cc` split out, so falling back to it would build a wrong number (a US
+  // "234567890" would become +234567890 — Nigeria). Rebuild from cc if needed.
+  const num = d.number != null && String(d.number) !== ""
+    ? `+${String(d.number).replace(/^\+/, "")}`
+    : (d.phonenumber != null && d.cc ? `+${d.cc}${d.phonenumber}` : "");
+
   const usd = typeof d.cost_in_cents === "number" ? d.cost_in_cents / 100
     : (d.cost ? parseFloat(d.cost) : undefined);
-  return { ok: true, orderId: d.order_id, phoneNumber: num, costUsd: usd };
+  const expiresAt = typeof d.expiration === "number" ? d.expiration
+    : (typeof d.expires_in === "number" ? Math.floor(Date.now() / 1000) + d.expires_in : undefined);
+
+  return { ok: true, orderId: d.order_id, phoneNumber: num, costUsd: usd, expiresAt };
 }
 
 export interface OrderStatus {
@@ -110,6 +195,11 @@ export async function check(orderId: string): Promise<OrderStatus> {
   const d = await get<{
     status?: number; sms?: string; full_sms?: string; code?: string; full_code?: string;
   }>("/sms/check", { orderid: orderId });
+  // A fault must never read as "waiting" — a 429 used to be indistinguishable
+  // from "no code yet", so throttling quietly ran orders to expiry.
+  const fault = faultOf(d);
+  if (fault) return { state: "unknown" };
+
   const code = d.sms ?? d.code;
   const full = d.full_sms ?? d.full_code;
   if (d.status === SP_STATUS.COMPLETED || (code && code !== "0" && code !== "")) {
@@ -124,15 +214,21 @@ export async function check(orderId: string): Promise<OrderStatus> {
   }
 }
 
-/** Block until the number leaves "activating", or give up. Returns true when the
- *  number is safe to hand to the user. Bounded so create-order stays responsive. */
+/** Block until the number leaves "activating". Returns true when it's safe to
+ *  hand to the user, false if it never became ready.
+ *
+ *  SMSPool documents this as "usually takes around a minute", so a short budget
+ *  defeats the purpose — the caller would reveal exactly the dead number the
+ *  gate exists to withhold. 45s keeps create-order inside Deno's request
+ *  budget while covering the documented window. */
 export async function waitUntilReady(
-  orderId: string, maxMs = 12_000, stepMs = 1_500,
+  orderId: string, maxMs = 45_000, stepMs = 3_000,
 ): Promise<boolean> {
   const deadline = Date.now() + maxMs;
   for (;;) {
     const s = await check(orderId).catch(() => null);
-    if (!s || s.state !== "activating") return true;
+    if (!s) return false;                       // API trouble: don't claim ready
+    if (s.state !== "activating") return true;
     if (Date.now() + stepMs >= deadline) return false;
     await new Promise((r) => setTimeout(r, stepMs));
   }
@@ -176,19 +272,31 @@ export interface PricingRow {
   price: string; pool?: number;
 }
 
-/** POST /request/pricing — the full in-stock price matrix in one call (no success_rate). */
-export function getPricingBulk(): Promise<PricingRow[]> {
-  return form<PricingRow[]>("/request/pricing");
+/** POST /request/pricing — the in-stock price matrix in one call (no success_rate).
+ *  `max_price` is a documented server-side filter. Unfiltered this returns
+ *  ~120k rows / ~15MB, parsed whole in an edge function every hour — and we
+ *  discard everything above the wholesale ceiling anyway, so filtering at the
+ *  source is free payload (and headroom against the memory limit). */
+export function getPricingBulk(maxPriceUsd?: number): Promise<PricingRow[]> {
+  const p: Record<string, string | number> = {};
+  if (maxPriceUsd != null && Number.isFinite(maxPriceUsd)) p.max_price = maxPriceUsd.toFixed(2);
+  return form<PricingRow[]>("/request/pricing", p);
 }
+
+/** Array endpoints must never hand back a fault object — callers iterate the
+ *  result, so a 403/429 used to throw a TypeError that aborted the whole sync
+ *  with an opaque 500. Empty array lets the caller's own floors decide. */
+function asArray<T>(v: unknown): T[] { return Array.isArray(v) ? v as T[] : []; }
 
 /** GET /service/retrieve_all — {ID, name}. No auth needed but key is harmless. */
-export function listServices(): Promise<{ ID: number; name: string }[]> {
-  return get<{ ID: number; name: string }[]>("/service/retrieve_all");
+export async function listServices(): Promise<{ ID: number; name: string }[]> {
+  return asArray(await get<unknown>("/service/retrieve_all"));
 }
 
-/** GET /country/retrieve_all — {ID, name, short_name, cc}. */
-export function listCountries(): Promise<{ ID: number; name: string; short_name: string; cc?: string }[]> {
-  return get("/country/retrieve_all");
+/** GET /country/retrieve_all — {ID, name, short_name, cc, region}. */
+export async function listCountries():
+  Promise<{ ID: number; name: string; short_name: string; cc?: string; region?: string }[]> {
+  return asArray(await get<unknown>("/country/retrieve_all"));
 }
 
 export async function getBalanceUsd(): Promise<number | null> {

@@ -5,10 +5,13 @@
 import { handleCors, json } from "../_shared/cors.ts";
 import { admin } from "../_shared/supabaseAdmin.ts";
 import { poll, type Provider } from "../_shared/providers.ts";
-import { getBalanceUsd } from "../_shared/virtualsms.ts";
+import { getBalanceUsd } from "../_shared/smspool.ts";
 import { sendPush } from "../_shared/apns.ts";
 
-const LOW_BALANCE_USD = 2;
+// 5x the wholesale ceiling for a single order ($4), so the alert fires while
+// there is still room to act. $2 was below the cost of one expensive number:
+// by the time it tripped, the account could already be unable to fill.
+const LOW_BALANCE_USD = 20;
 
 function validateCronSecret(req: Request): boolean {
   const header = req.headers.get("x-cron-secret");
@@ -99,7 +102,7 @@ Deno.serve(async (req) => {
   const { data: pending, error: pErr } = await sb
     .from("orders")
     .select(`
-      id, user_id, provider, smspva_id,
+      id, user_id, provider, smspva_id, cost_credits,
       service:service_id ( id, name )
     `)
     .eq("status", "waiting")
@@ -144,25 +147,48 @@ Deno.serve(async (req) => {
         `Your code is ${result.code}`,
         { orderId: o.id, otp: result.code },
       );
+    } else if (result.state === "expired" || result.state === "canceled") {
+      // Provider-side close. Previously computed and ignored, so the order sat
+      // "waiting" — and kept being polled — until our own timer caught up.
+      const { data: claimed } = await sb
+        .from("orders")
+        .update({ status: "expired", closed_at: new Date().toISOString() })
+        .eq("id", o.id)
+        .eq("status", "waiting")
+        .select("id");
+      if (!claimed || claimed.length === 0) continue;
+      await sb.rpc("wallet_credit", {
+        p_user: o.user_id, p_amount: o.cost_credits, p_reason: "refund", p_order: o.id,
+      });
+      expired++;
+      const svc = o.service as { name: string } | null;
+      pushSent += await notify(
+        o.user_id,
+        "No code arrived",
+        `Your ${svc?.name ?? "verification"} number closed — ${o.cost_credits} credits refunded.`,
+        { event: "expired" },
+      );
     }
   }
 
-  // Low-balance guardrail: virtualsms has no auto-topup, so a dry balance
-  // silently forces every order onto the SMSPVA fallback (402). Surface it in
-  // app_config + logs before that happens.
+  // Low-balance guardrail. This used to watch VIRTUALSMS — a provider that was
+  // retired and isn't in providerOrder at all — while SMSPool, the only
+  // provider that actually fulfils orders, went unmonitored. A dry SMSPool
+  // balance means 100% order failure (documented 422 BALANCE_ERROR) with no
+  // alert anywhere, so point it at the provider we actually spend on.
   try {
     const bal = await getBalanceUsd();
     if (bal != null) {
       const low = bal < LOW_BALANCE_USD;
       await sb.from("app_config").upsert({
-        key: "virtualsms_health",
+        key: "smspool_health",
         value: { balance_usd: bal, low, checked_at: new Date().toISOString() },
         updated_at: new Date().toISOString(),
       }, { onConflict: "key" });
-      if (low) console.error(`virtualsms balance LOW ($${bal}) — top up to keep primary fulfilment`);
+      if (low) console.error(`smspool balance LOW ($${bal}) — top up or every order fails`);
     }
   } catch (e) {
-    console.error("virtualsms balance check failed:", e);
+    console.error("smspool balance check failed:", e);
   }
 
   return json({ expired, polled, arrived, pushSent });

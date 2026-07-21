@@ -142,7 +142,21 @@ Deno.serve(async (req) => {
       reservation = res; used = p; usedCostUsd = res.costUsd ?? liveCost; break;
     }
     console.warn(`reserve failed provider=${p} svc=${service.id} cty=${country.id} err=${res.error}`);
-    lastError = res.error ?? "no_numbers_available";
+    // Map the provider's documented failure types onto codes the app already
+    // has copy for. Previously every one of these arrived as raw provider text
+    // (SMSPool wraps them in HTML), matched nothing in APIError.userMessage,
+    // and fell through to "Something went wrong on our side." — the least
+    // actionable message, on the most common failure.
+    lastError = res.errorType === "OUT_OF_STOCK"    ? "no_numbers_available"
+              : res.errorType === "PRICE_NOT_FOUND" ? "margin_too_low"
+              : res.errorType === "BALANCE_ERROR"   ? "provider_unreachable"
+              : res.errorType === "RATE_LIMITED"    ? "provider_unreachable"
+              : res.errorType === "AUTH_ERROR"      ? "provider_unreachable"
+              : res.error === "number_never_activated" ? "no_numbers_available"
+              : "no_numbers_available";
+    if (res.errorType === "BALANCE_ERROR" || res.errorType === "AUTH_ERROR") {
+      console.error(`SMSPOOL ${res.errorType} — orders will keep failing until fixed: ${res.error}`);
+    }
   }
 
   if (!reservation || !used) {
@@ -163,6 +177,18 @@ Deno.serve(async (req) => {
       cost_credits: cost,
       actual_cost_cents: usedCostUsd != null ? Math.round(usedCostUsd * 100) : null,
       status: "waiting",
+      // Honour the provider's own hold window when it tells us one. The DB
+      // default is a flat 8 minutes, but SMSPool's window is pool-dependent
+      // (their docs show 1200s) — expiring first meant refunding and
+      // abandoning a number we had already paid to hold. Never EXTEND past the
+      // default though: every code we have ever received arrived within 337s,
+      // so a longer wait only leaves the user staring at a dead number.
+      ...(reservation.expiresAt
+        ? { expires_at: new Date(Math.min(
+            reservation.expiresAt * 1000,
+            Date.now() + 8 * 60 * 1000,
+          )).toISOString() }
+        : {}),
     })
     .select("*").single();
 

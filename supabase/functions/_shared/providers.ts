@@ -30,17 +30,15 @@ export interface RouteCodes {
 }
 
 /** Providers that can serve this route, preferred first.
- *  SMSPool → SMSPVA as of 2026-07-20. The brief SMSPool-only period was
- *  reversed on measured delivery: over 30 days SMSPVA delivered 59% (29/49)
- *  vs SMSPool's 13% (2/16), at a LOWER average cost when it succeeded (13¢
- *  vs 20¢) — and SMSPool's catalog lacks ~134 services SMSPVA carries
- *  (PayPal, Revolut, Coinbase, Binance, Wise, Klarna…).
- *  virtualsms stays retired: its purchase endpoint 503s for every combo. */
-export function providerOrder(c: RouteCodes, prefer: Provider = "smspool"): Provider[] {
-  const can: Provider[] = [];
-  if (c.spService && c.spCountry) can.push("smspool");
-  if (c.smsService && c.smsCountry) can.push("smspva");
-  return prefer === "smspva" ? can.reverse() : can;
+ *  SMSPool-ONLY (owner decision 2026-07-20, reaffirmed after reviewing the
+ *  59%-vs-13% measured gap — that gap did not survive controls: on the only
+ *  3 combos both providers served, BOTH delivered zero, and 21 of 29 lifetime
+ *  deliveries were one service used by two users).
+ *  SMSPVA + virtualsms keep their adapters purely so historical orders can
+ *  still poll/cancel/refund. To re-enable one: restore it to this chain AND
+ *  un-hide its routes AND re-schedule its sync cron. */
+export function providerOrder(c: RouteCodes, _prefer: Provider = "smspool"): Provider[] {
+  return c.spService && c.spCountry ? ["smspool"] : [];
 }
 
 /** Live wholesale price (USD) at a provider, or null if unavailable. */
@@ -67,7 +65,11 @@ export interface Reservation {
   orderId?: string;   // provider's order/activation id
   number?: string;    // display-formatted phone number
   costUsd?: number;
+  /** Provider's own hold deadline (epoch seconds) when it reports one. */
+  expiresAt?: number;
   error?: string;
+  /** Documented provider failure class, so callers map to real user copy. */
+  errorType?: sp.SmspoolErrorType;
 }
 
 /** Reserve a number at a provider. maxPriceUsd caps the fill price where the
@@ -81,11 +83,21 @@ export async function reserve(
       // pool intentionally not forwarded — see sp.purchase(): auto beats our
       // priciest-pool inference. Kept in the signature for a manual override.
       const r = await sp.purchase(c.spCountry, c.spService, maxPriceUsd);
-      if (!r.ok) return { ok: false, error: r.error };
-      // Hold the number back until it leaves "activating" — a code requested
-      // during that window is never delivered (SMSPool FAQ).
-      if (r.orderId) await sp.waitUntilReady(r.orderId).catch(() => true);
-      return { ok: true, orderId: r.orderId, number: r.phoneNumber ?? "", costUsd: r.costUsd };
+      if (!r.ok) return { ok: false, error: r.error, errorType: r.errorType };
+      // A number still activating cannot receive a code (SMSPool FAQ), so a
+      // failed wait means release it and let the caller fall through rather
+      // than hand over a number that is guaranteed to fail.
+      if (r.orderId) {
+        const ready = await sp.waitUntilReady(r.orderId).catch(() => false);
+        if (!ready) {
+          await sp.cancel(r.orderId).catch(() => {});
+          return { ok: false, error: "number_never_activated" };
+        }
+      }
+      return {
+        ok: true, orderId: r.orderId, number: r.phoneNumber ?? "",
+        costUsd: r.costUsd, expiresAt: r.expiresAt,
+      };
     }
     if (p === "virtualsms" && c.vsService && c.vsCountry) {
       const r = await vs.buyNumber(c.vsService, c.vsCountry);

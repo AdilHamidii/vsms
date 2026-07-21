@@ -11,7 +11,7 @@
 
 import { handleCors, json } from "../_shared/cors.ts";
 import { admin } from "../_shared/supabaseAdmin.ts";
-import { getPricingBulk, getPrice, listServices, listCountries } from "../_shared/smspool.ts";
+import { getPricingBulk, listServices, listCountries } from "../_shared/smspool.ts";
 
 const CREDIT_DIVISOR = 0.10;      // 10x markup; keep in lockstep with sync-prices
 const MIN_CREDITS = 1;
@@ -19,9 +19,6 @@ const MAX_CREDITS = 999;
 const MAX_WHOLESALE_CENTS = 400;  // hide absurdly-priced routes
 const SMOOTH_ALPHA = 0.5;         // EWMA on wholesale cost
 const UPDATE_FLOOR = 500;         // safety: don't revert stale routes on a thin run
-const ENRICH_BATCH = 120;         // success_rate calls per run
-const SELF_REPORT_CAP = 90;       // max displayable UNVERIFIED success rate
-const ENRICH_PACE_MS = 350;
 
 // Priority services enriched first (by our service id). Known SMSPool ids.
 const SERVICE_OVERRIDES: Record<string, number> = {
@@ -38,7 +35,6 @@ function validateCronSecret(req: Request): boolean {
   const e = Deno.env.get("CRON_SECRET");
   return !!h && !!e && h === e;
 }
-const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 Deno.serve(async (req) => {
   const cors = handleCors(req); if (cors) return cors;
@@ -116,7 +112,7 @@ Deno.serve(async (req) => {
   }
 
   // ── Phase A: bulk price/availability.
-  const bulk = await getPricingBulk();
+  const bulk = await getPricingBulk(MAX_WHOLESALE_CENTS / 100);
   if (!Array.isArray(bulk) || bulk.length === 0) {
     return json({ error: "pricing_bulk_failed", got: JSON.stringify(bulk).slice(0, 200) }, { status: 502 });
   }
@@ -216,43 +212,20 @@ Deno.serve(async (req) => {
     reverted = count ?? 0;
   }
 
-  // ── Phase B: success_rate enrichment (bounded, resumable, popular-first).
-  const { data: spRoutes } = await sb.from("routes")
-    .select("service_id, country_id").eq("provider", "smspool").eq("status", "active");
-  const prio = (sid: string) => (sid in SERVICE_OVERRIDES ? 0 : 1);
-  const combos = (spRoutes ?? [])
-    .map((r) => ({ s: r.service_id, c: r.country_id }))
-    .sort((a, b) => prio(a.s) - prio(b.s));
-
-  const { data: cur } = await sb.from("app_config").select("value").eq("key", "smspool_sync").maybeSingle();
-  let cursor = (cur?.value as { cursor?: number })?.cursor ?? 0;
-  if (cursor >= combos.length) cursor = 0;
-
-  let enriched = 0;
-  for (let n = 0; n < ENRICH_BATCH && combos.length > 0; n++) {
-    const combo = combos[(cursor + n) % combos.length];
-    const spS = ourSvcToSp.get(combo.s);
-    const spC = ourCtyToSp.get(combo.c);
-    if (spS == null || spC == null) continue;
-    const p = await getPrice(spC, spS);
-    if (p.ok && p.successRate != null) {
-      // SMSPool's self-reported rate is marketing, not measurement: it claimed
-      // 100% for facebook/ch while that route delivered 0 of 9 real orders.
-      // Cap unverified claims so the app never promises near-certainty on a
-      // route we haven't actually seen work. Phase C overwrites this with our
-      // own observed rate as soon as there's enough real sample.
-      const claimed = Math.min(p.successRate, SELF_REPORT_CAP);
-      await sb.from("routes").update({ success_rate: claimed }).eq("service_id", combo.s).eq("country_id", combo.c);
-      enriched++;
-    }
-    await sleep(ENRICH_PACE_MS);
-  }
-  const nextCursor = combos.length ? (cursor + ENRICH_BATCH) % combos.length : 0;
-  await sb.from("app_config").upsert(
-    { key: "smspool_sync", value: { cursor: nextCursor, combos: combos.length, checked_at: runStart }, updated_at: runStart },
-    { onConflict: "key" },
-  );
-
+  // ── Phase B REMOVED (2026-07-21).
+  // This walked the catalog 120 combos/run calling /request/price to store
+  // SMSPool's self-reported success_rate. It was pure waste, twice over:
+  //   1. Phase C's first statement nulls success_rate for every smspool route,
+  //      so every value Phase B wrote was deleted minutes later. The cursor had
+  //      walked 3,720 combos and exactly 0 of them retained a rate.
+  //   2. The number was meaningless anyway. SMSPool documents no definition,
+  //      window or sample size for success_rate, and /request/price returns a
+  //      PER-POOL figure only when passed a `pool` — which this never did, so
+  //      the value described an unspecified pool. It reported 100% for
+  //      facebook/ch while that route went 0-for-9 on real orders.
+  // Net: ~2,880 API calls and ~42s of deliberate sleeping per day, for data we
+  // delete and would not display. Observed rates (Phase C) are the only ones
+  // we trust or show.
   // ── Phase C: override SMSPool's self-reported success_rate with what
   // actually happened on OUR orders, and auto-hide any route with proven
   // total failure. Runs LAST so it wins over phase A's stock-based status.
@@ -267,9 +240,9 @@ Deno.serve(async (req) => {
   const { data: visibilityChanged } = await sb.rpc("sync_service_visibility");
 
   return json({
-    routesUpdated, reverted, enriched,
+    routesUpdated, reverted,
     servicesMapped: svcMapUpserts.length, countriesMapped: ctyMapUpserts.length,
-    bulkRows: bulk.length, enrichCursor: nextCursor,
+    bulkRows: bulk.length,
     observedHidden: observedHidden ?? 0,
     visibilityChanged: visibilityChanged ?? 0,
   });
