@@ -20,6 +20,12 @@ final class PushManager: NSObject {
     }
 
     /// Prompts for permission (idempotent) and registers with APNs.
+    ///
+    /// Call this at a moment the user WANTS to be notified — the Waiting
+    /// screen, right after they've paid for a number. Prompting cold at
+    /// sign-in measured 41% opt-in: the user had no idea yet why we'd ping
+    /// them. iOS shows the dialog only while status is notDetermined, so
+    /// repeat calls are free.
     func requestAuthorizationAndRegister() async {
         let center = UNUserNotificationCenter.current()
         center.delegate = self
@@ -28,6 +34,20 @@ final class PushManager: NSObject {
         } catch {
             return
         }
+        UIApplication.shared.registerForRemoteNotifications()
+    }
+
+    /// Silently refreshes the APNs registration for users who already granted
+    /// permission — no dialog, ever. Runs at every sign-in so tokens stay
+    /// current without burning the one-shot permission prompt on a cold
+    /// moment; users still notDetermined keep that state until the Waiting
+    /// screen asks with context.
+    func registerIfAuthorized() async {
+        let center = UNUserNotificationCenter.current()
+        center.delegate = self
+        let settings = await center.notificationSettings()
+        guard settings.authorizationStatus == .authorized
+                || settings.authorizationStatus == .provisional else { return }
         UIApplication.shared.registerForRemoteNotifications()
     }
 

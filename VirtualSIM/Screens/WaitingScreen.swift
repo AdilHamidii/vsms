@@ -4,6 +4,7 @@ struct WaitingScreen: View {
     @Environment(\.theme) private var theme
     @Environment(AppState.self) private var state
     @Environment(APIClient.self) private var api
+    @Environment(PushManager.self) private var push
 
     let order: Order
     @State private var elapsed: Int = 0
@@ -36,6 +37,14 @@ struct WaitingScreen: View {
                 try? await Task.sleep(nanoseconds: 1_000_000_000)
                 elapsed = Int(Date().timeIntervalSince(start))
             }
+        }
+        .task {
+            // The one moment a notification has obvious value: a paid order
+            // is in flight and the user wants to background the app. Small
+            // delay so the dialog doesn't fight the cover animation. No-op
+            // unless permission is still notDetermined.
+            try? await Task.sleep(nanoseconds: 1_200_000_000)
+            await push.requestAuthorizationAndRegister()
         }
         .task {
             // Poll the server for the SMS every 4s while we're on this screen.

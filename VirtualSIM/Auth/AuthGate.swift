@@ -31,7 +31,10 @@ struct AuthGate: View {
             case .signedIn:
                 ContentView()
                     .task {
-                        await push.requestAuthorizationAndRegister()
+                        // Silent token refresh only — the permission DIALOG
+                        // waits for the Waiting screen, where the user has a
+                        // paid order in flight and an obvious reason to say yes.
+                        await push.registerIfAuthorized()
                     }
             }
         }
