@@ -1,13 +1,17 @@
 import SwiftUI
 
-// Single-screen onboarding. The hero is the product itself doing its one job:
-// a temporary number sitting on a card, a verification SMS typing in, and the
-// code landing highlighted in brand green — the same surfaces the user meets on
-// the Waiting/OTP screens. No feature carousel, no abstract icon badges.
+// Two-page onboarding. Page 1: the product itself doing its one job — a
+// temporary number sitting on a card, a verification SMS typing in, and the
+// code landing highlighted in brand green — the same surfaces the user meets
+// on the Waiting/OTP screens. Page 2: the welcome credit — every new account
+// starts with 1 free credit, and users convert better when they're told
+// before the sign-in ask. No abstract icon badges anywhere.
 struct OnboardingScreen: View {
     @Environment(\.theme) private var theme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     var onDone: () -> Void
+
+    @State private var page = 0
 
     var body: some View {
         ZStack {
@@ -15,15 +19,34 @@ struct OnboardingScreen: View {
             VStack(spacing: 0) {
                 header
                 Spacer(minLength: 16)
-                VStack(spacing: 30) {
-                    InboxDemo(reduceMotion: reduceMotion)
-                        .padding(.horizontal, 22)
-                    copyBlock
+                Group {
+                    if page == 0 {
+                        VStack(spacing: 30) {
+                            InboxDemo(reduceMotion: reduceMotion)
+                                .padding(.horizontal, 22)
+                            copyBlock
+                        }
+                        .transition(pageTransition)
+                    } else {
+                        VStack(spacing: 30) {
+                            GiftCard()
+                                .padding(.horizontal, 22)
+                            giftCopyBlock
+                        }
+                        .transition(pageTransition)
+                    }
                 }
                 Spacer(minLength: 16)
                 footer
             }
         }
+    }
+
+    private var pageTransition: AnyTransition {
+        reduceMotion
+            ? .opacity
+            : .asymmetric(insertion: .move(edge: .trailing).combined(with: .opacity),
+                          removal: .move(edge: .leading).combined(with: .opacity))
     }
 
     private var header: some View {
@@ -66,6 +89,25 @@ struct OnboardingScreen: View {
         .padding(.horizontal, 24)
     }
 
+    private var giftCopyBlock: some View {
+        VStack(spacing: 14) {
+            Text("Your first try is on us.")
+                .font(RFont.display(30, weight: .bold))
+                .tracking(-0.8)
+                .lineSpacing(2)
+                .multilineTextAlignment(.center)
+                .foregroundStyle(theme.text)
+            Text("Sign in and you'll find 1 free credit waiting — enough to get a number and see the code arrive before you spend anything.")
+                .font(RFont.text(15))
+                .lineSpacing(3)
+                .multilineTextAlignment(.center)
+                .foregroundStyle(theme.text2)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.horizontal, 14)
+        }
+        .padding(.horizontal, 24)
+    }
+
     private var footer: some View {
         VStack(spacing: 14) {
             HStack(spacing: 7) {
@@ -78,15 +120,87 @@ struct OnboardingScreen: View {
                     .multilineTextAlignment(.center)
                     .fixedSize(horizontal: false, vertical: true)
             }
-            PrimaryButton(label: "Get started", action: onDone)
-            Text("Sign in with Apple next — that's the only detail we ask for.")
-                .font(RFont.text(11.5))
-                .foregroundStyle(theme.text3)
-                .multilineTextAlignment(.center)
+            pageDots
+            if page == 0 {
+                PrimaryButton(label: "Continue", action: {
+                    withAnimation(reduceMotion ? nil : .spring(response: 0.45, dampingFraction: 0.85)) {
+                        page = 1
+                    }
+                })
+            } else {
+                PrimaryButton(label: "Get started", action: onDone)
+                Text("Sign in with Apple next — that's the only detail we ask for.")
+                    .font(RFont.text(11.5))
+                    .foregroundStyle(theme.text3)
+                    .multilineTextAlignment(.center)
+            }
         }
         .padding(.horizontal, 24)
         .padding(.bottom, 24)
         .padding(.top, 2)
+    }
+
+    private var pageDots: some View {
+        HStack(spacing: 6) {
+            ForEach(0..<2, id: \.self) { i in
+                Capsule()
+                    .fill(page == i ? theme.text : theme.sep)
+                    .frame(width: page == i ? 16 : 6, height: 6)
+            }
+        }
+        .animation(reduceMotion ? nil : .spring(response: 0.35, dampingFraction: 0.8), value: page)
+        .accessibilityHidden(true)
+    }
+}
+
+// MARK: - Welcome credit card
+
+private struct GiftCard: View {
+    @Environment(\.theme) private var theme
+
+    var body: some View {
+        Card {
+            VStack(alignment: .leading, spacing: 0) {
+                HStack {
+                    Text("WELCOME GIFT")
+                        .font(RFont.text(11, weight: .semibold))
+                        .tracking(0.6)
+                        .foregroundStyle(theme.text3)
+                    Spacer()
+                    Image(systemName: "gift.fill")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(theme.live)
+                }
+                HStack(spacing: 10) {
+                    CoinIcon(size: 22, color: theme.text)
+                    Text("+1 credit")
+                        .font(RFont.display(28, weight: .bold))
+                        .tracking(-0.6)
+                        .foregroundStyle(theme.text)
+                    Spacer(minLength: 0)
+                }
+                .padding(.top, 14)
+                Rectangle().fill(theme.sep).frame(height: 0.5)
+                    .padding(.vertical, 16)
+                VStack(alignment: .leading, spacing: 10) {
+                    giftRow(symbol: "bolt.fill", text: "Covers your first number")
+                    giftRow(symbol: "arrow.uturn.left", text: "No code? Refunded instantly.")
+                }
+            }
+            .padding(20)
+        }
+    }
+
+    private func giftRow(symbol: String, text: LocalizedStringKey) -> some View {
+        HStack(spacing: 9) {
+            Image(systemName: symbol)
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(theme.live)
+                .frame(width: 16)
+            Text(text)
+                .font(RFont.text(14))
+                .foregroundStyle(theme.text2)
+        }
     }
 }
 
