@@ -6,6 +6,7 @@ import { handleCors, json } from "../_shared/cors.ts";
 import { admin } from "../_shared/supabaseAdmin.ts";
 import { poll, type Provider } from "../_shared/providers.ts";
 import { getBalanceUsd } from "../_shared/smspool.ts";
+import { getBalance as getSmspvaBalance, isOk } from "../_shared/smspva.ts";
 import { sendPush } from "../_shared/apns.ts";
 
 // 5x the wholesale ceiling for a single order ($4), so the alert fires while
@@ -176,20 +177,45 @@ Deno.serve(async (req) => {
   // provider that actually fulfils orders, went unmonitored. A dry SMSPool
   // balance means 100% order failure (documented 422 BALANCE_ERROR) with no
   // alert anywhere, so point it at the provider we actually spend on.
-  try {
-    const bal = await getBalanceUsd();
-    if (bal != null) {
+  /** Record one provider's balance. Each call is independently guarded so an
+   *  outage at one provider can never suppress the other's reading — which is
+   *  precisely how SMSPVA would stay invisible on the day it matters. */
+  async function recordBalance(key: string, read: () => Promise<number | null>) {
+    try {
+      const bal = await read();
+      if (bal == null || !Number.isFinite(bal)) return;
       const low = bal < LOW_BALANCE_USD;
       await sb.from("app_config").upsert({
-        key: "smspool_health",
+        key,
         value: { balance_usd: bal, low, checked_at: new Date().toISOString() },
         updated_at: new Date().toISOString(),
       }, { onConflict: "key" });
-      if (low) console.error(`smspool balance LOW ($${bal}) — top up or every order fails`);
+      if (low) console.error(`${key} balance LOW ($${bal}) — top up or orders fail`);
+    } catch (e) {
+      console.error(`${key} balance check failed:`, e);
     }
-  } catch (e) {
-    console.error("smspool balance check failed:", e);
   }
+
+  await Promise.all([
+    // SMSPVA fulfils every SMS order as of 2026-07-20. Until now nothing read
+    // this at all: the account could empty and every order would fail with no
+    // alert anywhere.
+    recordBalance("smspva_health", async () => {
+      // SMSPVA wraps every response in {statusCode, data} — the balance is at
+      // r.data.balance, NOT r.balance. Reading the wrong level yields NaN and
+      // writes nothing at all, which looks identical to "provider is fine".
+      const r = await getSmspvaBalance();
+      if (!isOk(r)) {
+        console.error("smspva balance error:", JSON.stringify(r));
+        return null;
+      }
+      const n = Number(r.data?.balance);
+      return Number.isFinite(n) ? n : null;
+    }),
+    // SMSPool no longer serves SMS — it funds eSIMs only, so a low reading here
+    // means the eSIM product is at risk, not SMS.
+    recordBalance("smspool_health", getBalanceUsd),
+  ]);
 
   return json({ expired, polled, arrived, pushSent });
 });

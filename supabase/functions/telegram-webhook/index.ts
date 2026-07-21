@@ -61,14 +61,27 @@ Deno.serve(async (req) => {
       ? "⚠️ Couldn't read stats right now."
       : formatDigest(snap as Record<string, unknown>);
   } else if (cmd === "/balance") {
-    const { data: cfg } = await sb
-      .from("app_config").select("value").eq("key", "smspool_health").maybeSingle();
-    const v = cfg?.value as { balance_usd?: number; checked_at?: string } | null;
-    reply = v?.balance_usd == null
-      ? "⚠️ No balance reading yet."
-      : `💰 SMSPool: <b>$${v.balance_usd.toFixed(2)}</b>` +
-        (v.balance_usd < 20 ? "\n⚠️ Low — top up." : "") +
-        `\n<i>checked ${v.checked_at ?? "?"}</i>`;
+    // BOTH providers. Reporting only SMSPool here survived the 2026-07-20
+    // migration and became actively misleading: it alarmed about the provider
+    // that now only funds eSIMs, while the balance gating every SMS order
+    // (SMSPVA) was not shown at all.
+    const { data: rows } = await sb
+      .from("app_config").select("key, value")
+      .in("key", ["smspva_health", "smspool_health"]);
+
+    const read = (k: string) => {
+      const v = (rows ?? []).find((r) => r.key === k)?.value as
+        { balance_usd?: number; checked_at?: string } | null | undefined;
+      return v ?? null;
+    };
+    const pva = read("smspva_health"), pool = read("smspool_health");
+    const checked = pva?.checked_at ?? pool?.checked_at;
+
+    reply = [
+      balanceLine("SMSPVA", pva?.balance_usd),
+      balanceLine("SMSPool", pool?.balance_usd),
+      checked ? `\n<i>checked ${esc(checked)}</i>` : "",
+    ].filter(Boolean).join("\n");
   }
 
   await sendMessage(reply);

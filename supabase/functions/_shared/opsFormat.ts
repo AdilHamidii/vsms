@@ -4,12 +4,24 @@
 
 import { esc } from "./telegram.ts";
 
+interface ProviderRow {
+  provider?: string;
+  placed?: number;
+  received?: number;
+  failed?: number;
+  pct?: number | null;
+}
+
 interface Snapshot {
   window_hours?: number;
   signups?: number;
   purchases?: { count?: number; credits?: number };
-  orders?: { placed?: number; received?: number; failed?: number; pct?: number | null };
+  orders?: {
+    placed?: number; received?: number; failed?: number; pct?: number | null;
+    by_provider?: ProviderRow[];
+  };
   esims?: { count?: number; credits?: number };
+  smspva_usd?: number | null;
   smspool_usd?: number | null;
 }
 
@@ -21,6 +33,23 @@ const USD_PER_CREDIT = 0.45;
 /** Warn below ~5x the wholesale ceiling of a single order, matching the
  *  low-balance threshold poll-active-orders alerts on. */
 const LOW_BALANCE_USD = 20;
+
+/** What each provider currently pays for. Displayed next to the balance so a
+ *  low reading is actionable ("which product just died?") rather than an
+ *  anonymous number — the migration of 2026-07-21 swapped these roles and the
+ *  digest silently kept reporting the old one. */
+const ROLE: Record<string, string> = { smspva: "SMS", smspool: "eSIM" };
+
+export function balanceLine(name: string, usd: number | null | undefined): string {
+  const role = ROLE[name.toLowerCase()] ?? "";
+  const label = `${esc(name)}${role ? ` (${role})` : ""}`;
+  // A missing reading is not the same as a healthy one: if nothing has written
+  // a balance we say so, rather than omitting the line and implying all is well.
+  if (typeof usd !== "number") return `❔ ${label}: <i>no reading</i>`;
+  const low = usd < LOW_BALANCE_USD;
+  return `${low ? "⚠️" : "💰"} ${label}: <b>$${esc(usd.toFixed(2))}</b>` +
+         (low ? " — <b>top up</b>" : "");
+}
 
 export function formatDigest(raw: Record<string, unknown>): string {
   const s = raw as Snapshot;
@@ -46,6 +75,17 @@ export function formatDigest(raw: Record<string, unknown>): string {
     lines.push(`📱 Numbers: <b>${placed}</b> ordered`);
     lines.push(`   ✅ ${o.received ?? 0} delivered (${o.pct ?? 0}%)`);
     lines.push(`   ❌ ${o.failed ?? 0} failed`);
+
+    // Only worth the extra lines when providers actually differ — during and
+    // after a migration the blended rate averages a dead provider with a live
+    // one and describes neither.
+    const rows = (o.by_provider ?? []).filter((r) => (r.placed ?? 0) > 0);
+    if (rows.length > 1) {
+      for (const r of rows) {
+        lines.push(`   · ${esc(r.provider ?? "?")}: ` +
+                   `${r.received ?? 0}/${r.placed ?? 0} (${r.pct ?? 0}%)`);
+      }
+    }
   } else {
     lines.push(`📱 Numbers: none ordered`);
   }
@@ -53,12 +93,9 @@ export function formatDigest(raw: Record<string, unknown>): string {
   const e = s.esims ?? {};
   lines.push(`🌍 eSIMs: <b>${e.count ?? 0}</b>${(e.count ?? 0) > 0 ? ` · ${e.credits} credits` : ""}`);
 
-  if (typeof s.smspool_usd === "number") {
-    const low = s.smspool_usd < LOW_BALANCE_USD;
-    lines.push("");
-    lines.push(`${low ? "⚠️" : "💰"} SMSPool balance: <b>$${esc(s.smspool_usd.toFixed(2))}</b>` +
-               (low ? " — <b>top up</b>" : ""));
-  }
+  lines.push("");
+  lines.push(balanceLine("SMSPVA", s.smspva_usd));
+  lines.push(balanceLine("SMSPool", s.smspool_usd));
 
   return lines.join("\n");
 }
