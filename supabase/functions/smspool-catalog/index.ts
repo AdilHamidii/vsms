@@ -25,6 +25,16 @@ Deno.serve(async (req) => {
       sample: Array.isArray(rows) ? rows.slice(0, 3) : rows,
     });
   }
+  if (want === "esimplans") {
+    const cc = url.searchParams.get("cc") ?? "PL";
+    const resp = await fetch("https://api.smspool.net/esim/plans", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded", Accept: "application/json" },
+      body: new URLSearchParams({ key: Deno.env.get("SMSPOOL_API_KEY") ?? "", country: cc }),
+    });
+    const raw = await resp.text();
+    return json({ status: resp.status, raw: raw.slice(0, 1500) });
+  }
   if (want === "esim") {
     const tx = url.searchParams.get("tx") ?? "";
     const resp = await fetch("https://api.smspool.net/esim/profile", {
