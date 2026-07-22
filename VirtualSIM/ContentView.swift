@@ -13,7 +13,16 @@ struct ContentView: View {
     @Environment(\.scenePhase) private var scenePhase
 
     @State private var state = AppState()
+    /// Sheets presented from the TAB content (home / esim / orders / account).
     @State private var sheet: ActiveSheet?
+    /// Sheets presented from INSIDE the fullScreenCover (checkout, eSIM
+    /// checkout). Deliberately a separate binding: both `.sheet` modifiers
+    /// used to observe `$sheet`, so opening a picker from the checkout screen
+    /// made the covered content AND the root both try to present the same
+    /// sheet. SwiftUI does not define that — the picker flickered, opened
+    /// behind the cover, or refused to open, which is why changing service or
+    /// country on the confirm screen felt broken. One binding per presenter.
+    @State private var flowSheet: ActiveSheet?
 
     private var theme: Theme { state.isDark ? .dark : .light }
 
@@ -126,7 +135,7 @@ struct ContentView: View {
                         .environment(state)
                         .animation(.easeOut(duration: 0.25), value: state.lastError)
                 }
-                .sheet(item: $sheet) { which in
+                .sheet(item: $flowSheet) { which in
                     sheetContent(which)
                         .modifier(EnvBundle(theme: theme, state: state, api: api, push: push, session: session, iap: iap))
                         .presentationDetents([.large])
@@ -141,9 +150,9 @@ struct ContentView: View {
         switch stage {
         case .checkout:
             CheckoutScreen(
-                openServices: { sheet = .services },
-                openCountries: { sheet = .country },
-                openCredits: { sheet = .credits }
+                openServices: { flowSheet = .services },
+                openCountries: { flowSheet = .country },
+                openCredits: { flowSheet = .credits }
             )
         case .waiting:
             if let order = state.activeOrder {
@@ -154,7 +163,7 @@ struct ContentView: View {
                 OtpScreen(order: order)
             } else { emptyFlow }
         case .esimCheckout:
-            EsimCheckoutScreen(openCredits: { sheet = .credits })
+            EsimCheckoutScreen(openCredits: { flowSheet = .credits })
         case .esimDetail:
             if let order = state.activeEsimOrder {
                 EsimDetailScreen(order: order)
