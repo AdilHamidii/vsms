@@ -15,6 +15,12 @@ import { notifySafe } from "../_shared/telegram.ts";
 // by the time it tripped, the account could already be unable to fill.
 const LOW_BALANCE_USD = 20;
 
+// Escalation ladder. The original single edge-trigger fired once at $20 and
+// then NEVER AGAIN — both providers sat "low" for days while sliding toward
+// $0 (= 100% order failure) with no further page. Each threshold crossing now
+// pages once; recovery above a tier re-arms it automatically.
+const BALANCE_TIERS = [LOW_BALANCE_USD, 10, 5, 1];
+
 function validateCronSecret(req: Request): boolean {
   const header = req.headers.get("x-cron-secret");
   const expected = Deno.env.get("CRON_SECRET");
@@ -51,7 +57,16 @@ Deno.serve(async (req) => {
           d.environment as "sandbox" | "production",
         );
         if (r.ok) sent++;
-        else console.error("APNs status", r.status, r.body);
+        else {
+          console.error("APNs status", r.status, r.body);
+          // 410 Unregistered / 400 BadDeviceToken = the token is permanently
+          // dead (app deleted, token rotated). Prune it: dead tokens never
+          // heal, they only slow every future fan-out and — via winback's
+          // mark-on-success rule — permanently clog its candidate window.
+          if (r.status === 410 || (r.body ?? "").includes("BadDeviceToken")) {
+            await sb.from("push_devices").delete().eq("token", d.token);
+          }
+        }
       } catch (e) {
         console.error("APNs send failed:", e);
       }
@@ -60,6 +75,71 @@ Deno.serve(async (req) => {
   }
 
   let expired = 0, polled = 0, arrived = 0, pushSent = 0;
+
+  /** Record one provider's balance. Each call is independently guarded so an
+   *  outage at one provider can never suppress the other's reading — which is
+   *  precisely how SMSPVA would stay invisible on the day it matters.
+   *  Alerts once per BALANCE_TIERS threshold crossing (worsening only);
+   *  climbing back above a tier re-arms it. The 6-hourly digest carries the
+   *  standing status; this is the instant page. */
+  async function recordBalance(
+    key: string, label: string, read: () => Promise<number | null>,
+  ) {
+    try {
+      const bal = await read();
+      if (bal == null || !Number.isFinite(bal)) return;
+      const low = bal < LOW_BALANCE_USD;
+      // 0 = healthy, 1 = below $20 … 4 = below $1 (effectively empty).
+      const tier = BALANCE_TIERS.filter((t) => bal < t).length;
+
+      const { data: prev } = await sb
+        .from("app_config").select("value").eq("key", key).maybeSingle();
+      const prevVal = prev?.value as { low?: boolean; alert_tier?: number } | null;
+      // Older readings predate alert_tier; treat a legacy low=true as tier 1
+      // so redeploying doesn't re-page for the crossing that already paged.
+      const prevTier = prevVal?.alert_tier ?? (prevVal?.low ? 1 : 0);
+
+      await sb.from("app_config").upsert({
+        key,
+        value: { balance_usd: bal, low, alert_tier: tier, checked_at: new Date().toISOString() },
+        updated_at: new Date().toISOString(),
+      }, { onConflict: "key" });
+
+      if (tier > prevTier) {
+        console.error(`${key} balance $${bal} crossed below $${BALANCE_TIERS[tier - 1]}`);
+        await notifySafe(
+          tier >= BALANCE_TIERS.length
+            ? `🚨 <b>${label} balance EMPTY: $${bal.toFixed(2)}</b>\n` +
+              `Orders on this provider are failing NOW — top up immediately.`
+            : `⚠️ <b>${label} balance low: $${bal.toFixed(2)}</b>\n` +
+              `Crossed below $${BALANCE_TIERS[tier - 1]} — top up before orders start failing.`,
+        );
+      }
+    } catch (e) {
+      console.error(`${key} balance check failed:`, e);
+    }
+  }
+
+  // ── Balance monitoring runs FIRST, before any order loop. It doubles as the
+  //    watchdog's minutely heartbeat (run_watchdog checks smspva_health
+  //    freshness), so it must not sit behind work whose duration scales with
+  //    order volume — at the 150s worker kill it would silently stop, and a
+  //    frozen reading is indistinguishable from a healthy provider.
+  await Promise.all([
+    recordBalance("smspva_health", "SMSPVA (SMS)", async () => {
+      // SMSPVA wraps every response in {statusCode, data} — the balance is at
+      // r.data.balance, NOT r.balance. Reading the wrong level yields NaN and
+      // writes nothing at all, which looks identical to "provider is fine".
+      const r = await getSmspvaBalance();
+      if (!isOk(r)) {
+        console.error("smspva balance error:", JSON.stringify(r));
+        return null;
+      }
+      const n = Number(r.data?.balance);
+      return Number.isFinite(n) ? n : null;
+    }),
+    recordBalance("smspool_health", "SMSPool (eSIM)", getBalanceUsd),
+  ]);
 
   // ── Auto-expire overdue orders. Each expiry is an atomic claim (flip
   //    waiting -> expired only if still waiting) so two overlapping cron runs
@@ -70,7 +150,9 @@ Deno.serve(async (req) => {
     .from("orders")
     .select("id, user_id, cost_credits, service:service_id ( name )")
     .eq("status", "waiting")
-    .lt("expires_at", new Date().toISOString());
+    .lt("expires_at", new Date().toISOString())
+    .order("expires_at", { ascending: true })
+    .limit(200);   // cap the per-run batch; the minutely cadence drains any backlog
 
   for (const row of expiredCandidates ?? []) {
     try {
@@ -108,7 +190,12 @@ Deno.serve(async (req) => {
       service:service_id ( id, name )
     `)
     .eq("status", "waiting")
-    .not("smspva_id", "is", null);
+    .not("smspva_id", "is", null)
+    // Oldest first + hard cap: each row costs a provider round-trip, and the
+    // worker dies at ~150s wall clock. 50 sequential polls is already near
+    // that budget; anything beyond waits a minute for the next run.
+    .order("created_at", { ascending: true })
+    .limit(50);
 
   if (pErr) return json({ error: "list_failed", detail: pErr.message }, { status: 500 });
 
@@ -175,69 +262,6 @@ Deno.serve(async (req) => {
       );
     }
   }
-
-  // Low-balance guardrail. This used to watch VIRTUALSMS — a provider that was
-  // retired and isn't in providerOrder at all — while SMSPool, the only
-  // provider that actually fulfils orders, went unmonitored. A dry SMSPool
-  // balance means 100% order failure (documented 422 BALANCE_ERROR) with no
-  // alert anywhere, so point it at the provider we actually spend on.
-  /** Record one provider's balance. Each call is independently guarded so an
-   *  outage at one provider can never suppress the other's reading — which is
-   *  precisely how SMSPVA would stay invisible on the day it matters. */
-  async function recordBalance(
-    key: string, label: string, read: () => Promise<number | null>,
-  ) {
-    try {
-      const bal = await read();
-      if (bal == null || !Number.isFinite(bal)) return;
-      const low = bal < LOW_BALANCE_USD;
-
-      // Read the prior reading so we alert only on the healthy→low EDGE, not
-      // every minute while low (which would be 1440 pings/day of spam). The
-      // 6-hourly digest still carries the standing status; this is the instant
-      // page the digest cadence was too slow to be.
-      const { data: prev } = await sb
-        .from("app_config").select("value").eq("key", key).maybeSingle();
-      const wasLow = (prev?.value as { low?: boolean } | null)?.low === true;
-
-      await sb.from("app_config").upsert({
-        key,
-        value: { balance_usd: bal, low, checked_at: new Date().toISOString() },
-        updated_at: new Date().toISOString(),
-      }, { onConflict: "key" });
-
-      if (low && !wasLow) {
-        console.error(`${key} balance LOW ($${bal}) — top up or orders fail`);
-        await notifySafe(
-          `⚠️ <b>${label} balance low: $${bal.toFixed(2)}</b>\n` +
-          `Below the $${LOW_BALANCE_USD} floor — top up before orders start failing.`,
-        );
-      }
-    } catch (e) {
-      console.error(`${key} balance check failed:`, e);
-    }
-  }
-
-  await Promise.all([
-    // SMSPVA fulfils every SMS order as of 2026-07-20. Until now nothing read
-    // this at all: the account could empty and every order would fail with no
-    // alert anywhere.
-    recordBalance("smspva_health", "SMSPVA (SMS)", async () => {
-      // SMSPVA wraps every response in {statusCode, data} — the balance is at
-      // r.data.balance, NOT r.balance. Reading the wrong level yields NaN and
-      // writes nothing at all, which looks identical to "provider is fine".
-      const r = await getSmspvaBalance();
-      if (!isOk(r)) {
-        console.error("smspva balance error:", JSON.stringify(r));
-        return null;
-      }
-      const n = Number(r.data?.balance);
-      return Number.isFinite(n) ? n : null;
-    }),
-    // SMSPool no longer serves SMS — it funds eSIMs only, so a low reading here
-    // means the eSIM product is at risk, not SMS.
-    recordBalance("smspool_health", "SMSPool (eSIM)", getBalanceUsd),
-  ]);
 
   return json({ expired, polled, arrived, pushSent });
 });

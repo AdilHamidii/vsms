@@ -16,8 +16,13 @@ import { sendMessage, esc } from "../_shared/telegram.ts";
 import { formatDigest } from "../_shared/opsFormat.ts";
 
 const DEV_USER = "825688de-6117-4251-9f90-93b83b41b572";
-const SWEEP_WINDOW_MIN = 30;      // re-check recent history, not all of time
+// 24h, not 30 min: the claim rows make re-scans idempotent, so the only cost
+// of a wide window is three small indexed scans per minute — while a narrow
+// one PERMANENTLY dropped every signup alert whenever Telegram (or this
+// function) was down longer than the window.
+const SWEEP_WINDOW_MIN = 24 * 60;
 const DIGEST_EVERY_MS = 6 * 60 * 60 * 1000;
+const WATCHDOG_REALERT_MS = 6 * 60 * 60 * 1000;
 
 function validateCronSecret(req: Request): boolean {
   const header = req.headers.get("x-cron-secret");
@@ -38,6 +43,58 @@ Deno.serve(async (req) => {
   const sb = admin();
   const since = new Date(Date.now() - SWEEP_WINDOW_MIN * 60_000).toISOString();
   let sent = 0, failed = 0;
+
+  // ── Watchdog alerting. run_watchdog() (plain-SQL pg_cron, every 10 min —
+  //    survives even a dead edge/CRON_SECRET layer) writes its verdict to
+  //    app_config.'watchdog'; this minutely run is the transport that turns
+  //    that verdict into a page. Alerts when the failing set CHANGES or every
+  //    6h while broken; sends a one-shot all-clear on recovery. If THIS
+  //    function is dead the page can't go out — but then the digest below
+  //    also stops, which is the documented human-observable backstop.
+  try {
+    const { data: wdRow } = await sb
+      .from("app_config").select("value").eq("key", "watchdog").maybeSingle();
+    if (wdRow?.value) {
+      const w = wdRow.value as {
+        failing?: { check?: string; detail?: string }[];
+        last_alert_at?: string | null;
+        alerted?: string[] | null;
+      };
+      const failing = w.failing ?? [];
+      const names = failing.map((f) => f.check ?? "?").sort();
+      const alerted = (w.alerted ?? []).slice().sort();
+      const changed = JSON.stringify(names) !== JSON.stringify(alerted);
+      const due = !w.last_alert_at ||
+        Date.now() - new Date(w.last_alert_at).getTime() >= WATCHDOG_REALERT_MS;
+
+      if (failing.length > 0 && (changed || due)) {
+        const lines = failing.map((f) =>
+          ` • <b>${esc(f.check)}</b> — ${esc(f.detail ?? "")}`);
+        const r = await sendMessage(
+          `🚨 <b>Watchdog: ${failing.length} backend job${failing.length === 1 ? "" : "s"} unhealthy</b>\n` +
+          lines.join("\n") + `\n<i>runbook: docs/autopilot-runbook.md</i>`,
+        );
+        if (r.ok) {
+          sent++;
+          await sb.from("app_config").update({
+            value: { ...w, last_alert_at: new Date().toISOString(), alerted: names },
+          }).eq("key", "watchdog");
+        } else { failed++; console.error("watchdog alert send failed", r.status, r.body); }
+      } else if (failing.length === 0 && alerted.length > 0) {
+        const r = await sendMessage(
+          `✅ <b>Watchdog: all clear</b>\nrecovered: ${esc(alerted.join(", "))}`,
+        );
+        if (r.ok) {
+          sent++;
+          await sb.from("app_config").update({
+            value: { ...w, last_alert_at: null, alerted: [] },
+          }).eq("key", "watchdog");
+        } else { failed++; console.error("watchdog all-clear send failed", r.status, r.body); }
+      }
+    }
+  } catch (e) {
+    console.error("watchdog alerting failed (sweep continues):", e);
+  }
 
   /** Claim (kind, ref) and send. Returns true only if WE sent it. The claim is
    *  released again on send failure so the next run retries. */

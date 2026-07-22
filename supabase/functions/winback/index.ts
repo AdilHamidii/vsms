@@ -40,14 +40,36 @@ Deno.serve(async (req) => {
 
   let sent = 0, marked = 0, failed = 0;
 
+  /** Dead-token hygiene: 410 Unregistered / BadDeviceToken never heal. Left
+   *  in place they slow every fan-out AND — because we only mark a user
+   *  nudged when a device ACCEPTS — pin un-nudgeable users inside the
+   *  LIMIT-bounded candidate window forever, silently starving everyone
+   *  behind them. Prune the token; a user left with zero devices is marked
+   *  nudged below for the same reason. */
+  const pruneIfDead = async (token: string, status: number, body?: string) => {
+    if (status === 410 || (body ?? "").includes("BadDeviceToken")) {
+      await sb.from("push_devices").delete().eq("token", token);
+    }
+  };
+
   for (const c of (candidates ?? []) as { user_id: string }[]) {
     const { data: devices } = await sb
       .from("push_devices")
       .select("token, environment")
       .eq("user_id", c.user_id);
 
+    if (!devices || devices.length === 0) {
+      // No device can ever receive this nudge — mark it handled so the user
+      // stops occupying a slot in the candidate window.
+      await sb.from("profiles")
+        .update({ winback_sent_at: new Date().toISOString() })
+        .eq("user_id", c.user_id);
+      marked++;
+      continue;
+    }
+
     let anyOk = false;
-    for (const d of devices ?? []) {
+    for (const d of devices) {
       try {
         const r = await sendPush(d.token, {
           alertTitle: "Your free credit is waiting",
@@ -55,7 +77,10 @@ Deno.serve(async (req) => {
           customData: { winback: true },
         }, d.environment as "sandbox" | "production");
         if (r.ok) { anyOk = true; sent++; }
-        else { failed++; console.error("APNs status", r.status, r.body); }
+        else {
+          failed++; console.error("APNs status", r.status, r.body);
+          await pruneIfDead(d.token, r.status, r.body);
+        }
       } catch (e) {
         failed++; console.error("APNs send failed:", e);
       }
@@ -83,8 +108,16 @@ Deno.serve(async (req) => {
       .select("token, environment")
       .eq("user_id", c.user_id);
 
+    if (!devices || devices.length === 0) {
+      await sb.from("profiles")
+        .update({ stranded_nudge_sent_at: new Date().toISOString() })
+        .eq("user_id", c.user_id);
+      strandedMarked++;
+      continue;
+    }
+
     let anyOk = false;
-    for (const d of devices ?? []) {
+    for (const d of devices) {
       try {
         const r = await sendPush(d.token, {
           alertTitle: "Your credits are still here",
@@ -92,7 +125,10 @@ Deno.serve(async (req) => {
           customData: { winback: "stranded" },
         }, d.environment as "sandbox" | "production");
         if (r.ok) { anyOk = true; strandedSent++; }
-        else { failed++; console.error("APNs status", r.status, r.body); }
+        else {
+          failed++; console.error("APNs status", r.status, r.body);
+          await pruneIfDead(d.token, r.status, r.body);
+        }
       } catch (e) {
         failed++; console.error("APNs send failed:", e);
       }
@@ -105,6 +141,14 @@ Deno.serve(async (req) => {
       strandedMarked++;
     }
   }
+
+  // Heartbeat for the SQL watchdog (run_watchdog checks this key's
+  // updated_at; the app_config touch trigger maintains it). Written on every
+  // completed run — a silent 401 like the 9-day one now pages within a day.
+  await sb.from("app_config").upsert({
+    key: "winback_heartbeat",
+    value: { at: new Date().toISOString() },
+  }, { onConflict: "key" });
 
   return json({
     candidates: candidates?.length ?? 0, sent, marked,

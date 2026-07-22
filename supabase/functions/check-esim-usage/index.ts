@@ -45,6 +45,22 @@ Deno.serve(async (req) => {
     activated: profile.activated ?? false,
     updated_at: new Date().toISOString(),
   };
+  // Start the validity clock the first time we observe the eSIM activated.
+  // Before this, expires_at was NEVER set anywhere, so a lapsed 1-day plan
+  // showed "active" forever — a wrong claim the user acts on abroad.
+  if (profile.activated && !order.activated_at) {
+    patch.activated_at = new Date().toISOString();
+  }
+  if (profile.activated && !order.expires_at) {
+    const { data: plan } = await sb
+      .from("esim_plans").select("validity_days")
+      .eq("id", order.plan_id).maybeSingle();
+    if (plan?.validity_days) {
+      patch.expires_at = new Date(
+        Date.now() + (plan.validity_days as number) * 86_400_000,
+      ).toISOString();
+    }
+  }
   if (profile.dataTotalMb != null) patch.data_total_mb = profile.dataTotalMb;
   if (profile.dataUsedMb != null) patch.data_used_mb = profile.dataUsedMb;
   // Fill delivery fields only if we didn't already have them.

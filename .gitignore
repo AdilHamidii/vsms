@@ -19,3 +19,4 @@ supabase/.branches/
 .env
 .env.*
 !.env.example
+build/

@@ -1,6 +1,7 @@
 import { handleCors, json } from "../_shared/cors.ts";
 import { admin, callerUserId } from "../_shared/supabaseAdmin.ts";
 import { livePriceUsd, providerOrder, release, reserve, type RouteCodes } from "../_shared/providers.ts";
+import { notifySafe, esc } from "../_shared/telegram.ts";
 
 interface Body {
   service_id: string;
@@ -26,6 +27,72 @@ interface Body {
 // always clear, anything pricier than what we charged is capped or refused.
 const MIN_MARGIN = 3.0;
 const NET_USD_PER_CREDIT = 0.30;
+
+// ── Failure paging. A total SMS outage used to be indistinguishable from a
+//    quiet day: every failed order refunded politely, console.error'd, and no
+//    human ever heard. Two channels, both deduped through app_config state:
+//    • streak: N consecutive failed order attempts (any cause) pages at 5,
+//      then every 6h while it persists; any success resets it.
+//    • fault: AUTH_ERROR / BALANCE_ERROR means the provider ACCOUNT is dead
+//      (revoked key, empty balance) — that pages immediately, 6h dedupe.
+const FAIL_STREAK_ALERT_AT = 5;
+const REALERT_MS = 6 * 60 * 60 * 1000;
+type Admin = ReturnType<typeof admin>;
+
+async function bumpFailStreak(sb: Admin, lastError: string, routeDesc: string): Promise<void> {
+  try {
+    const { data } = await sb
+      .from("app_config").select("value").eq("key", "order_fail_streak").maybeSingle();
+    const v = (data?.value ?? {}) as { n?: number; last_alert_at?: string };
+    const n = (v.n ?? 0) + 1;
+    const due = !v.last_alert_at ||
+      Date.now() - new Date(v.last_alert_at).getTime() >= REALERT_MS;
+    const value: Record<string, unknown> = { n, last_alert_at: v.last_alert_at ?? null };
+    if (n >= FAIL_STREAK_ALERT_AT && due) {
+      await notifySafe(
+        `🚨 <b>${n} consecutive SMS order failures</b>\n` +
+        `latest: ${esc(lastError)} on ${esc(routeDesc)}\n` +
+        `Users are being charged and refunded with no numbers delivered.`,
+      );
+      value.last_alert_at = new Date().toISOString();
+    }
+    await sb.from("app_config").upsert({ key: "order_fail_streak", value }, { onConflict: "key" });
+  } catch (e) {
+    console.error("fail-streak tracking failed (ignored):", e);
+  }
+}
+
+async function resetFailStreak(sb: Admin): Promise<void> {
+  try {
+    const { data } = await sb
+      .from("app_config").select("value").eq("key", "order_fail_streak").maybeSingle();
+    if (((data?.value as { n?: number } | null)?.n ?? 0) > 0) {
+      await sb.from("app_config")
+        .upsert({ key: "order_fail_streak", value: { n: 0 } }, { onConflict: "key" });
+    }
+  } catch (e) {
+    console.error("fail-streak reset failed (ignored):", e);
+  }
+}
+
+async function alertProviderFault(sb: Admin, provider: string, errorType: string, detail: string): Promise<void> {
+  try {
+    const { data } = await sb
+      .from("app_config").select("value").eq("key", "provider_fault_alert").maybeSingle();
+    const last = (data?.value as { last_at?: string } | null)?.last_at;
+    if (last && Date.now() - new Date(last).getTime() < REALERT_MS) return;
+    await sb.from("app_config").upsert({
+      key: "provider_fault_alert",
+      value: { last_at: new Date().toISOString(), provider, error_type: errorType },
+    }, { onConflict: "key" });
+    await notifySafe(
+      `🚨 <b>${esc(provider)} account fault: ${esc(errorType)}</b>\n${esc(detail)}\n` +
+      `Every order on this provider will fail until this is fixed (key revoked or balance empty).`,
+    );
+  } catch (e) {
+    console.error("provider-fault alert failed (ignored):", e);
+  }
+}
 
 Deno.serve(async (req) => {
   const cors = handleCors(req); if (cors) return cors;
@@ -228,12 +295,18 @@ Deno.serve(async (req) => {
               : res.error === "number_never_activated" ? "no_numbers_available"
               : "no_numbers_available";
     if (res.errorType === "BALANCE_ERROR" || res.errorType === "AUTH_ERROR") {
-      console.error(`SMSPOOL ${res.errorType} — orders will keep failing until fixed: ${res.error}`);
+      console.error(`${p} ${res.errorType} — orders will keep failing until fixed: ${res.error}`);
+      try {
+        EdgeRuntime.waitUntil(alertProviderFault(sb, p, res.errorType, res.error ?? ""));
+      } catch { /* paging must never affect the order path */ }
     }
   }
 
   if (!reservation || !used) {
     await failOrder(lastError);
+    try {
+      EdgeRuntime.waitUntil(bumpFailStreak(sb, lastError, `${service.id}/${country.id} (${tier})`));
+    } catch { /* paging must never affect the order path */ }
     const status = lastError === "margin_too_low" ? 409 : 503;
     return json({ error: lastError }, { status });
   }
@@ -267,6 +340,12 @@ Deno.serve(async (req) => {
     .select("*");
 
   const order = rows && rows.length > 0 ? rows[0] : null;
+
+  if (order) {
+    try {
+      EdgeRuntime.waitUntil(resetFailStreak(sb));
+    } catch { /* paging must never affect the order path */ }
+  }
 
   if (insertErr || !order) {
     // Release the just-reserved number so we don't pay for an order we can't

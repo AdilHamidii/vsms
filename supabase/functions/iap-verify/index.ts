@@ -1,7 +1,7 @@
 import { handleCors, json } from "../_shared/cors.ts";
 import { admin, callerUserId } from "../_shared/supabaseAdmin.ts";
 import { verifyTransactionJWS, creditsForProduct, IapVerificationError } from "../_shared/iap.ts";
-import { notifySafe, esc } from "../_shared/telegram.ts";
+import { notifySafe, sendMessage, esc } from "../_shared/telegram.ts";
 
 interface Body { jws: string; }
 
@@ -22,9 +22,18 @@ async function alertPurchase(
 
     const pack = p.productId.split(".").pop();
     const sandbox = p.environment !== "Production" ? `\n<i>${esc(p.environment)}</i>` : "";
-    await notifySafe(
+    // sendMessage (not notifySafe): we need the outcome, because a claim we
+    // wrote for a send that then FAILED must be released — otherwise the
+    // sweep sees the claim, assumes it was sent, and the alert is lost
+    // forever (the exact opposite of what the safety-net comment promises).
+    const r = await sendMessage(
       `💳 <b>Credits purchased</b>\n${p.credits} credits (pack ${esc(pack)})${sandbox}`,
     );
+    if (!r.ok) {
+      console.error("purchase alert send failed, releasing claim", r.status, r.body);
+      await sb.from("telegram_events")
+        .delete().eq("kind", "purchase").eq("ref", String(p.receiptId));
+    }
   } catch (e) {
     console.error("alertPurchase failed (ignored):", e);
   }
@@ -78,12 +87,32 @@ Deno.serve(async (req) => {
   // simply do not credit the wallet.
   const isProduction = tx.environment === "Production";
 
+  const sb = admin();
+
   const credits = creditsForProduct(tx.productId);
   if (!credits) {
+    // A real, Apple-verified payment for a product this backend doesn't know —
+    // i.e. a pack was added in App Store Connect without updating
+    // PRODUCT_TO_CREDITS. The client never finishes the transaction, so
+    // StoreKit will keep retrying; without an alert every purchase of that
+    // pack is silently eaten until someone happens to read the logs. Claimed
+    // in telegram_events so the retries don't page every few minutes.
+    try {
+      const { data: claimed } = await sb
+        .from("telegram_events")
+        .insert({ kind: "iap_unknown", ref: String(tx.transactionId) })
+        .select("ref").maybeSingle();
+      if (claimed) {
+        await notifySafe(
+          `🚨 <b>IAP unknown product</b>\n${esc(tx.productId)} (env ${esc(tx.environment)})\n` +
+          `Add it to PRODUCT_TO_CREDITS — StoreKit keeps retrying, the buyer sees no credits.`,
+        );
+      }
+    } catch (e) {
+      console.error("unknown_product alert failed (ignored):", e);
+    }
     return json({ error: "unknown_product", product_id: tx.productId }, { status: 400 });
   }
-
-  const sb = admin();
 
   // Idempotent insert keyed on transaction_id.
   const { data: inserted, error: insertErr } = await sb
@@ -111,13 +140,36 @@ Deno.serve(async (req) => {
   }
 
   if (isProduction) {
-    await sb.rpc("wallet_credit", {
+    const { error: creditErr } = await sb.rpc("wallet_credit", {
       p_user: userId,
       p_amount: credits,
       p_reason: "purchase",
       p_order: null,
       p_receipt: inserted?.id ?? null,
     });
+    if (creditErr) {
+      // The receipt row exists but the wallet did NOT move. Returning ok here
+      // would make the client finish() the transaction — and the replay path
+      // above would answer already_credited forever after: the buyer's money
+      // would be permanently eaten by a transient DB error. Instead, delete
+      // the receipt so StoreKit's automatic redelivery retries the whole
+      // grant, fail the request, and page the owner either way.
+      console.error(`CRITICAL: wallet_credit failed after receipt persist user=${userId}`, creditErr);
+      const { error: delErr } = inserted?.id != null
+        ? await sb.from("iap_receipts").delete().eq("id", inserted.id)
+        : { error: { message: "receipt id unknown — delete skipped" } };
+      try {
+        EdgeRuntime.waitUntil(notifySafe(
+          `🚨 <b>IAP credit FAILED after payment</b>\n` +
+          `user ${esc(userId)} paid for ${credits} credits (${esc(tx.productId)})\n` +
+          `wallet_credit error: ${esc(creditErr.message)}\n` +
+          (delErr
+            ? `⚠️ receipt row could NOT be rolled back (${esc(delErr.message)}) — credit MANUALLY, StoreKit will not retry.`
+            : `receipt rolled back — StoreKit retries automatically; this resolves itself unless it repeats.`),
+        ));
+      } catch { /* alerting must never mask the response */ }
+      return json({ error: "credit_failed" }, { status: 500 });
+    }
   } else {
     console.warn(`iap: ${tx.environment} receipt persisted WITHOUT credit — user=${userId} product=${tx.productId}`);
   }

@@ -17,8 +17,12 @@
 
 import { handleCors, json } from "../_shared/cors.ts";
 import { admin } from "../_shared/supabaseAdmin.ts";
-import { sendMessage, ownerChatId } from "../_shared/telegram.ts";
-import { formatDigest } from "../_shared/opsFormat.ts";
+// esc and balanceLine are used by /balance below. They were referenced without
+// being imported for a while — esbuild bundles free identifiers without
+// complaint, so /balance THREW ReferenceError on every call in production
+// while every other command worked. Keep imports in lockstep with usage.
+import { sendMessage, ownerChatId, esc } from "../_shared/telegram.ts";
+import { formatDigest, balanceLine } from "../_shared/opsFormat.ts";
 
 const HELP = [
   "🤖 <b>vSMS ops</b>",
@@ -26,7 +30,7 @@ const HELP = [
   "/stats — last 6 hours",
   "/today — last 24 hours",
   "/week — last 7 days",
-  "/balance — SMSPool balance",
+  "/balance — provider balances + watchdog",
 ].join("\n");
 
 Deno.serve(async (req) => {
@@ -77,9 +81,19 @@ Deno.serve(async (req) => {
     const pva = read("smspva_health"), pool = read("smspool_health");
     const checked = pva?.checked_at ?? pool?.checked_at;
 
+    // Surface the watchdog verdict here too — /balance is the owner's "is
+    // everything alive" reflex, so it should answer for the jobs as well.
+    const { data: wd } = await sb
+      .from("app_config").select("value").eq("key", "watchdog").maybeSingle();
+    const failing = ((wd?.value as { failing?: { check?: string }[] } | null)
+      ?.failing ?? []).map((f) => f.check ?? "?");
+
     reply = [
       balanceLine("SMSPVA", pva?.balance_usd),
       balanceLine("SMSPool", pool?.balance_usd),
+      failing.length > 0
+        ? `🚨 watchdog: ${esc(failing.join(", "))}`
+        : "🟢 watchdog: all jobs healthy",
       checked ? `\n<i>checked ${esc(checked)}</i>` : "",
     ].filter(Boolean).join("\n");
   }
