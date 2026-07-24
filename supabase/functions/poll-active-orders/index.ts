@@ -4,7 +4,7 @@
 
 import { handleCors, json } from "../_shared/cors.ts";
 import { admin } from "../_shared/supabaseAdmin.ts";
-import { markSuccess, poll, type Provider } from "../_shared/providers.ts";
+import { markDead, markSuccess, poll, type Provider } from "../_shared/providers.ts";
 import { getBalanceUsd } from "../_shared/smspool.ts";
 import { getBalance as getSmspvaBalance, isOk } from "../_shared/smspva.ts";
 import { sendPush } from "../_shared/apns.ts";
@@ -148,7 +148,7 @@ Deno.serve(async (req) => {
   //    try/catch keeps one bad row from aborting the batch.
   const { data: expiredCandidates } = await sb
     .from("orders")
-    .select("id, user_id, cost_credits, service:service_id ( name )")
+    .select("id, user_id, cost_credits, provider, smspva_id, service:service_id ( name )")
     .eq("status", "waiting")
     .lt("expires_at", new Date().toISOString())
     .order("expires_at", { ascending: true })
@@ -169,6 +169,15 @@ Deno.serve(async (req) => {
         p_user: row.user_id, p_amount: row.cost_credits, p_reason: "refund", p_order: row.id,
       });
       expired++;
+
+      // Ban + close at the provider. Before this, an expired order was never
+      // told to SMSPVA at all: their side kept the request id live for ~10
+      // minutes and re-issued the same dead number to the next order (their
+      // docs explicitly say to ban when no SMS arrived). Best-effort — the
+      // refund above already happened and must never depend on this.
+      if (row.smspva_id) {
+        await markDead((row.provider ?? "smspva") as Provider, row.smspva_id);
+      }
 
       const svc = row.service as { name: string } | null;
       pushSent += await notify(
@@ -226,7 +235,16 @@ Deno.serve(async (req) => {
         .select("id");
 
       if (uErr) { console.error("update failed for order", o.id, uErr); continue; }
-      if (!claimed || claimed.length === 0) continue; // already handled
+      if (!claimed || claimed.length === 0) {
+        // Same loss class check-order already logs: the code exists at the
+        // provider but something (cancel/expiry) closed the order first.
+        // This cron path sees far more traffic than manual "Check now" taps,
+        // so without this line the true rate of discarded codes is invisible.
+        console.warn(
+          `poll: code arrived for ${o.id} AFTER it was closed — refund stands, code discarded`,
+        );
+        continue;
+      }
 
       // Tell SMSPVA the activation succeeded — best-effort karma hygiene.
       await markSuccess((o.provider ?? "smspva") as Provider, o.smspva_id);

@@ -209,7 +209,14 @@ function classifySmspvaFault(raw: string): sp.SmspoolErrorType | undefined {
   if (/BALANCE|FUND|MONEY|DEPOSIT|PAYMENT/.test(t)) return "BALANCE_ERROR";
   if (/APIKEY|API_KEY|AUTH|TOKEN|FORBID|DENIED/.test(t)) return "AUTH_ERROR";
   if (/LIMIT|FREQUENT|TOO_MANY|FLOOD|THROTTL/.test(t)) return "RATE_LIMITED";
-  if (/STOCK|NO_NUMBER|NUMBERS|AVAIL|EMPTY|SOLD/.test(t)) return "OUT_OF_STOCK";
+  // From SMSPVA's official OpenAPI schema (smspva.com/json/schema.php):
+  // PRICE_FETCH_FAIL(501) is a transient price-lookup failure — route it to
+  // the margin path, not "no numbers". SERVER_BUSY(503) is "server overload,
+  // try later" — a retryable hiccup, NOT a stockout; classifying it as
+  // OUT_OF_STOCK told users to abandon a route that was fine seconds later.
+  if (/PRICE_FETCH|PRICE_NOT/.test(t)) return "PRICE_NOT_FOUND";
+  if (/SERVER_BUSY|OVERLOAD/.test(t)) return "RATE_LIMITED";
+  if (/STOCK|NO_NUMBER|NUMBERS|AVAIL|EMPTY|SOLD|NUMBER_NOT_FOUND/.test(t)) return "OUT_OF_STOCK";
   // Deliberately undefined: create-order then uses its existing default. We do
   // NOT invent a classification we cannot justify — but we do make it visible.
   console.error(`smspva: unclassified error type "${raw}" — add it to classifySmspvaFault`);
@@ -223,6 +230,22 @@ function classifySmspvaFault(raw: string): sp.SmspoolErrorType | undefined {
 export async function markSuccess(p: Provider, orderId: string): Promise<void> {
   if (p !== "smspva") return;
   try { await smsBlock(orderId); } catch { /* hygiene only */ }
+}
+
+/** Tell the provider an activation FAILED (ran its whole window with no SMS)
+ *  and close it. SMSPVA's own docs instruct exactly this: "If you haven't
+ *  received an SMS within 580 seconds, make sure to ban the number" — an
+ *  unbanned request id is retained for ~10 minutes and the same dead number
+ *  is allocated again (measured live 2026-07-24: 9 retry orders drew only 6
+ *  distinct numbers). Ban and cancel carry the identical karma cost
+ *  (-0.0125 each, smspva.com/info.html), so this is free hygiene that stops
+ *  dead numbers cycling back into our own orders. Ban first, then cancel to
+ *  reclaim the wholesale refund; both best-effort — the user's credit refund
+ *  has already happened by the time this runs and must never depend on it. */
+export async function markDead(p: Provider, orderId: string): Promise<void> {
+  if (p !== "smspva") { await release(p, orderId); return; }
+  try { await smsBlock(orderId); } catch { /* hygiene only */ }
+  try { await smsCancel(orderId); } catch { /* already closed by the ban is fine */ }
 }
 
 export interface PollResult {

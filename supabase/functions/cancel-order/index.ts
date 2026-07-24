@@ -1,6 +1,6 @@
 import { handleCors, json } from "../_shared/cors.ts";
 import { admin, callerUserId } from "../_shared/supabaseAdmin.ts";
-import { release, type Provider } from "../_shared/providers.ts";
+import { markSuccess, poll, release, type Provider } from "../_shared/providers.ts";
 
 interface Body { order_id: string; }
 
@@ -27,6 +27,38 @@ Deno.serve(async (req) => {
   if (oErr || !order) return json({ error: "order_not_found" }, { status: 404 });
   if (order.status !== "waiting") {
     return json({ error: "not_cancelable", current_status: order.status }, { status: 409 });
+  }
+
+  // Last-chance poll before releasing the number: median delivery (53s) and
+  // median cancel (58s) sit five seconds apart, so cancels routinely race a
+  // code that is ALREADY at the provider. One extra round-trip turns
+  // "cancel" into "cancel unless the code just arrived" — the user gets the
+  // thing they paid for instead of a refund, and we dodge SMSPVA's harshest
+  // karma penalty (-0.5 for an SMS that arrived but was never fetched).
+  // Best-effort: any poll failure falls through to the normal cancel.
+  if (order.smspva_id) {
+    try {
+      const last = await poll((order.provider ?? "smspva") as Provider, order.smspva_id);
+      if (last.state === "received" && last.code) {
+        const { data: got } = await sb
+          .from("orders")
+          .update({
+            status: "received",
+            otp: last.code,
+            raw_message: last.fullText ?? null,
+            arrived_at: new Date().toISOString(),
+            closed_at: new Date().toISOString(),
+          })
+          .eq("id", order.id)
+          .eq("status", "waiting")
+          .select("*");
+        if (got && got.length > 0) {
+          await markSuccess((order.provider ?? "smspva") as Provider, order.smspva_id);
+          console.warn(`cancel-order: code was in flight for ${order.id} — delivered instead of canceled`);
+          return json({ order: got[0], arrived: true });
+        }
+      }
+    } catch { /* fall through to the normal cancel */ }
   }
 
   // Atomically claim the cancel: flip waiting -> canceled ONLY if it's still

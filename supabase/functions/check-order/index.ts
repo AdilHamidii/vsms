@@ -1,6 +1,6 @@
 import { handleCors, json } from "../_shared/cors.ts";
 import { admin, callerUserId } from "../_shared/supabaseAdmin.ts";
-import { markSuccess, poll, type Provider } from "../_shared/providers.ts";
+import { markDead, markSuccess, poll, type Provider } from "../_shared/providers.ts";
 
 interface Body { order_id: string; }
 
@@ -32,6 +32,12 @@ Deno.serve(async (req) => {
 
   if (new Date(order.expires_at) <= new Date()) {
     await sb.rpc("expire_order", { p_order: order.id });
+    // expire_order is plain SQL and cannot talk to the provider — ban + close
+    // the dead number here so SMSPVA doesn't re-issue it (their docs require
+    // the ban; the request id is otherwise retained ~10 min). Best-effort.
+    if (order.smspva_id) {
+      await markDead((order.provider ?? "smspva") as Provider, order.smspva_id);
+    }
     const { data: updated } = await sb.from("orders").select("*").eq("id", order.id).single();
     return json({ order: updated });
   }

@@ -531,6 +531,14 @@ final class AppState {
             if let idx = self.orders.firstIndex(where: { $0.id == updated.id }) {
                 self.orders[idx] = updated
             }
+            // The backend does a last-chance poll before canceling: if the
+            // code was already in flight, the "cancel" comes back as a
+            // delivered order. Show the code — it's what they paid for.
+            if updated.status == .received {
+                activeOrder = updated
+                flow = .otp
+                return
+            }
             await refreshWallet(using: wallet)
             // Refund confirmed — offer a steer instead of a dead end (72 of
             // the last 122 orders were re-orders; the demand doesn't vanish
