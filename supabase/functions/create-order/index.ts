@@ -408,15 +408,21 @@ Deno.serve(async (req) => {
       // Honour the provider's own hold window when it tells us one. The DB
       // default is a flat 8 minutes, but SMSPool's window is pool-dependent
       // (their docs show 1200s) — expiring first meant refunding and
-      // abandoning a number we had already paid to hold. Never EXTEND past the
-      // default though: every code we have ever received arrived within 337s,
+      // abandoning a number we had already paid to hold. Never EXTEND past 8
+      // minutes though: every code we have ever received arrived within 337s,
       // so a longer wait only leaves the user staring at a dead number.
-      ...(reservation.expiresAt
-        ? { expires_at: new Date(Math.min(
-            reservation.expiresAt * 1000,
-            Date.now() + 8 * 60 * 1000,
-          )).toISOString() }
-        : {}),
+      //
+      // Always written, not just when the provider reports a deadline: the DB
+      // default stamps expires_at at INSERT, which is before the provider
+      // loop runs (margin checks, an operator-rotation price lookup that can
+      // block up to 10s, and up to two duplicate-number redraws). That time
+      // came out of the user's live-number window even though they had no
+      // number yet. Measuring from the moment the number actually exists is
+      // what the 8 minutes was always meant to be.
+      expires_at: new Date(Math.min(
+        reservation.expiresAt != null ? reservation.expiresAt * 1000 : Number.MAX_SAFE_INTEGER,
+        Date.now() + 8 * 60 * 1000,
+      )).toISOString(),
     })
     .eq("id", orderId)
     .eq("status", "waiting")

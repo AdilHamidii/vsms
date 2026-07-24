@@ -244,8 +244,23 @@ export async function markSuccess(p: Provider, orderId: string): Promise<void> {
  *  has already happened by the time this runs and must never depend on it. */
 export async function markDead(p: Provider, orderId: string): Promise<void> {
   if (p !== "smspva") { await release(p, orderId); return; }
-  try { await smsBlock(orderId); } catch { /* hygiene only */ }
-  try { await smsCancel(orderId); } catch { /* already closed by the ban is fine */ }
+  // Log both outcomes explicitly: these calls return SMSPVA's error ENVELOPE
+  // rather than throwing, so a silent try/catch would hide whether the ban
+  // registered and whether the follow-up cancel still reclaims the wholesale
+  // cost (undocumented — the ban may consume the request id). This line is
+  // the only evidence available for that interaction.
+  let banOk = false, cancelOk = false, detail = "";
+  try {
+    const b = await smsBlock(orderId);
+    banOk = isOk(b);
+    if (!banOk) detail += `ban=${(b as { error?: { type?: string } }).error?.type ?? "?"} `;
+  } catch (e) { detail += `ban_threw=${e} `; }
+  try {
+    const c = await smsCancel(orderId);
+    cancelOk = isOk(c);
+    if (!cancelOk) detail += `cancel=${(c as { error?: { type?: string } }).error?.type ?? "?"}`;
+  } catch (e) { detail += `cancel_threw=${e}`; }
+  console.log(`markDead order=${orderId} ban=${banOk} cancel=${cancelOk} ${detail}`);
 }
 
 export interface PollResult {
