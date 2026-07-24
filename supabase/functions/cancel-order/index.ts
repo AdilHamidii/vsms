@@ -74,6 +74,13 @@ Deno.serve(async (req) => {
   if (uErr) return json({ error: "update_failed", detail: uErr.message }, { status: 500 });
   if (!claimed || claimed.length === 0) {
     const { data: current } = await sb.from("orders").select("*").eq("id", order.id).single();
+    // Lost the flip because the code landed between our poll above and here
+    // (the minutely cron can claim it too). Hand the code over rather than
+    // erroring: the user asked to cancel, but what they actually wanted was
+    // the code, and they have already paid for this one.
+    if (current?.status === "received") {
+      return json({ order: current, arrived: true });
+    }
     return json({ error: "not_cancelable", current_status: current?.status }, { status: 409 });
   }
 
