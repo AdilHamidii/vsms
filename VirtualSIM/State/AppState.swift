@@ -5,8 +5,18 @@ enum AppTab: String, Hashable, CaseIterable {
 }
 
 enum FlowStage: String, Hashable, Identifiable {
-    case checkout, waiting, otp, esimCheckout, esimDetail
+    case checkout, waiting, otp, recovery, esimCheckout, esimDetail
     var id: String { rawValue }
+}
+
+/// What the post-failure recovery card needs to know. Stored on AppState
+/// (FlowStage is raw-value-backed, so cases can't carry payloads — same
+/// pattern as checkoutService/checkoutCountry).
+struct RecoveryContext {
+    enum Reason { case expired, canceled }
+    let service: Service
+    let failedCountry: Country
+    let reason: Reason
 }
 
 private enum PrefKey {
@@ -43,6 +53,9 @@ final class AppState {
     var maintenance: MaintenanceStatus = .off
 
     var flow: FlowStage?
+    /// Context for the `.recovery` flow stage; set wherever an order ends
+    /// without a code, cleared by retry/dismiss.
+    var recovery: RecoveryContext?
 
     // eSIM product line
     var esimPlans: [EsimPlan] = []
@@ -495,8 +508,13 @@ final class AppState {
                 flow = .otp
             case .expired:
                 await refreshWallet(using: wallet)
-                lastError = "Number expired before a code arrived. Credits refunded."
-                flow = nil
+                // Not a dead-end banner: the user still wants their code.
+                // Swap the cover to the recovery card (refund reassurance +
+                // measured-best retry) instead of dumping them on Home.
+                recovery = RecoveryContext(service: current.service,
+                                           failedCountry: current.country,
+                                           reason: .expired)
+                flow = .recovery
                 activeOrder = nil
             default: break
             }
@@ -514,12 +532,22 @@ final class AppState {
                 self.orders[idx] = updated
             }
             await refreshWallet(using: wallet)
+            // Refund confirmed — offer a steer instead of a dead end (72 of
+            // the last 122 orders were re-orders; the demand doesn't vanish
+            // with the number).
+            recovery = RecoveryContext(service: order.service,
+                                       failedCountry: order.country,
+                                       reason: .canceled)
+            flow = .recovery
         } catch let apiErr as APIError {
+            // Cancel FAILED: the refund reassurance would be a lie here, so
+            // keep the old banner-and-home behavior.
             lastError = apiErr.userMessage
+            flow = nil
         } catch {
             lastError = "Couldn't cancel that order. Please try again."
+            flow = nil
         }
-        flow = nil
         activeOrder = nil
     }
 
@@ -578,12 +606,16 @@ final class AppState {
             flow = .waiting               // stay put; only the number changes
             await refreshWallet(using: wallet)
         } catch let apiErr as APIError {
+            // The old number is already released and refunded — recover, don't
+            // dead-end. The banner still explains why this attempt failed.
             lastError = apiErr.userMessage
-            flow = nil
+            recovery = RecoveryContext(service: svc, failedCountry: next, reason: .canceled)
+            flow = .recovery
             activeOrder = nil
         } catch {
             lastError = "Couldn't get another number. Please try again."
-            flow = nil
+            recovery = RecoveryContext(service: svc, failedCountry: next, reason: .canceled)
+            flow = .recovery
             activeOrder = nil
         }
     }
@@ -592,6 +624,38 @@ final class AppState {
         flow = nil
         activeOrder = nil
         tab = .orders
+    }
+
+    /// Best country for `service` by MEASURED evidence only — the sole basis
+    /// on which the recovery card may state a rate as fact. nil when nothing
+    /// measured ≥ 40% is bookable (below that, "delivers best" is technically
+    /// honest but useless advice). Highest rate wins; ties go to the cheaper.
+    func bestMeasuredCountry(for service: Service) -> (country: Country, rate: Int)? {
+        let candidates = countries.compactMap { c -> (country: Country, rate: Int, price: Int)? in
+            guard let info = rateInfo(for: service, country: c), info.isMeasured,
+                  info.rate >= 40, let price = cost(for: service, country: c) else { return nil }
+            return (c, info.rate, price)
+        }
+        guard let best = candidates.max(by: { ($0.rate, -$0.price) < ($1.rate, -$1.price) })
+        else { return nil }
+        return (best.country, best.rate)
+    }
+
+    /// Retry from the recovery card. Lands on Checkout (not straight into an
+    /// order) so price/balance are confirmed the normal way; the backend's
+    /// retry steering makes the new attempt draw a fresh number on a rotated
+    /// carrier. Steers to the measured-best country when one exists, else the
+    /// same route.
+    func retryFromRecovery() {
+        guard let r = recovery else { return }
+        let suggested = bestMeasuredCountry(for: r.service)?.country ?? r.failedCountry
+        recovery = nil
+        startCheckout(service: r.service, country: suggested)
+    }
+
+    func dismissRecovery() {
+        recovery = nil
+        flow = nil
     }
 
     func buyAgain(_ order: Order) {

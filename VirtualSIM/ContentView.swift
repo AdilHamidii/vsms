@@ -162,6 +162,10 @@ struct ContentView: View {
             if let order = state.activeOrder {
                 OtpScreen(order: order)
             } else { emptyFlow }
+        case .recovery:
+            if let ctx = state.recovery {
+                RecoveryScreen(context: ctx)
+            } else { emptyFlow }
         case .esimCheckout:
             EsimCheckoutScreen(openCredits: { flowSheet = .credits })
         case .esimDetail:
