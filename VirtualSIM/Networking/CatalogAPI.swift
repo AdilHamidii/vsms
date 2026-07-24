@@ -7,6 +7,7 @@ struct Route: Codable, Hashable {
     let status: String
     let lastCostCents: Int?
     let successRate: Int?    // 0-100, provider self-reported; nil = no badge
+    let rateSource: String?  // "measured" | "seeded"; only measured may be stated as fact
     let premiumCredits: Int? // real-SIM tier price; nil = no premium option
 }
 

@@ -157,6 +157,15 @@ final class AppState {
         return route.successRate
     }
 
+    /// Rate plus provenance. `isMeasured` is true only when the backend marked
+    /// the rate `measured` — the only case the UI may state as fact; anything
+    /// else is a seeded estimate and must read as one.
+    func rateInfo(for service: Service, country: Country) -> (rate: Int, isMeasured: Bool)? {
+        guard let route = routeIndex["\(service.id)|\(country.id)"],
+              route.status == "active", let rate = route.successRate else { return nil }
+        return (rate, route.rateSource == "measured")
+    }
+
     /// The country to land on when the user picks `service`. Ranks by
     /// evidence, but NEVER silently swaps a working selection:
     ///  1. A country we've measured delivering wins — real steering.

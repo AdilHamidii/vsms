@@ -288,14 +288,17 @@ struct WaitingScreen: View {
     // paid, promising ~91% on clusters that actually measure ~9% delivered.
     // Inventing a comforting number at the moment of maximum anxiety is how you
     // turn one failed order into a refund request and a 1-star review.
+    // Gated further 2026-07-24: seeded (conversion-prior) route rates also
+    // read as fact in this past-tense sentence, so only rate_source='measured'
+    // may render here. The compact DeliveryNotice above covers the rest.
     @ViewBuilder
     private var metric: some View {
-        if let rate = state.successRate(for: order.service, country: order.country) {
+        if let info = state.rateInfo(for: order.service, country: order.country), info.isMeasured {
             HStack(spacing: 8) {
                 Image(systemName: RIcon.spark)
                     .font(.system(size: 13, weight: .medium))
                     .foregroundStyle(theme.text3)
-                Text("\(rate)% of \(order.service.name) codes in \(order.country.name) have arrived.")
+                Text("\(info.rate)% of \(order.service.name) codes in \(order.country.name) have arrived.")
                     .font(RFont.text(12))
                     .tracking(-0.1)
                     .foregroundStyle(theme.text3)

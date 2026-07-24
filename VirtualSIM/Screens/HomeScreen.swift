@@ -73,8 +73,8 @@ struct HomeScreen: View {
         state.cost(for: state.lastService, country: state.lastCountry)
     }
 
-    private var routeSuccess: Int? {
-        state.successRate(for: state.lastService, country: state.lastCountry)
+    private var routeRate: (rate: Int, isMeasured: Bool)? {
+        state.rateInfo(for: state.lastService, country: state.lastCountry)
     }
 
     /// A user who has never placed an order — show them a "start here" framing
@@ -176,9 +176,10 @@ struct HomeScreen: View {
                             Spacer()
                             Metric(label: "No code", value: "Refunded", accent: theme.live)
                             Spacer()
-                            if let routeSuccess {
-                                Metric(label: "Success", value: "\(routeSuccess)%",
-                                       accent: routeSuccess >= 70 ? theme.live : theme.warn)
+                            if let routeRate {
+                                Metric(label: "Success",
+                                       value: routeRate.isMeasured ? "\(routeRate.rate)%" : "~\(routeRate.rate)%",
+                                       accent: routeRate.rate >= 70 ? theme.live : theme.warn)
                             } else {
                                 Metric(label: "Held for", value: "8 min")
                             }

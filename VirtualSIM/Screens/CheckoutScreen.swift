@@ -138,12 +138,17 @@ struct CheckoutScreen: View {
                         ReceiptValue(primary: "Real carrier number",
                                      secondaryText: "Best delivery — refunded if it fails")
                     })
-                } else if state.showMetrics, let rate = state.successRate(for: service, country: country) {
+                } else if state.showMetrics, let rate = state.rateInfo(for: service, country: country) {
                     ReceiptRow(label: "Delivery", leading: {
                         ReceiptIconBox(symbol: RIcon.shield)
                     }, trailing: {
-                        ReceiptValue(primary: "\(rate)% delivered",
-                                     secondaryText: rate >= 70 ? "Reliable route" : "Lower-success — refunded if it fails")
+                        if rate.isMeasured {
+                            ReceiptValue(primary: "\(rate.rate)% delivered",
+                                         secondaryText: rate.rate >= 70 ? "Reliable route" : "Lower-success — refunded if it fails")
+                        } else {
+                            ReceiptValue(primary: "~\(rate.rate)% estimated",
+                                         secondaryText: "Based on provider stats — refunded if it fails")
+                        }
                     })
                 }
                 ReceiptRow(label: "Cost", last: true, leading: {
