@@ -1,6 +1,7 @@
 import { handleCors, json } from "../_shared/cors.ts";
 import { admin, callerUserId } from "../_shared/supabaseAdmin.ts";
 import { livePriceUsd, providerOrder, release, reserve, type RouteCodes } from "../_shared/providers.ts";
+import { getCountryPrices, isOk } from "../_shared/smspva.ts";
 import { notifySafe, esc } from "../_shared/telegram.ts";
 
 interface Body {
@@ -265,6 +266,46 @@ Deno.serve(async (req) => {
       ? route.smspva_operator as string
       : null;
 
+  // ── Operator rotation. If the pin we'd use is one this user just failed
+  // on, pick a different real carrier from the live per-operator price map
+  // (getCountryPrices → po). The alternate must be untried, non-Donor (the
+  // anonymized VoIP pools strict services reject), and inside the same
+  // margin ceiling as any other fill. Fallbacks: standard → unpinned (at
+  // least a different pool than the one that just failed), premium → keep
+  // the route pin (the buyer paid for THAT real-SIM pool; never downgrade).
+  let smspvaPin: string | null = tier === "premium"
+    ? route.smspva_operator as string
+    : standardCarrier;
+  let rotatedPinUsd: number | null = null;
+  if (
+    smspvaPin != null && triedOperators.has(smspvaPin) &&
+    country.smspva_code && service.smspva_code
+  ) {
+    try {
+      const pr = await getCountryPrices(country.smspva_code as string);
+      const row = isOk(pr)
+        ? pr.data.find((x) => x.s === service.smspva_code)
+        : null;
+      const alt = Object.entries(row?.po ?? {})
+        .map(([op, usd]) => ({ op, usd: parseFloat(usd) }))
+        .filter(({ op, usd }) =>
+          !triedOperators.has(op) &&
+          !op.toLowerCase().startsWith("donor") &&
+          Number.isFinite(usd) && usd <= maxCostUsd)
+        .sort((a, b) => a.usd - b.usd)[0] ?? null;
+      if (alt) {
+        console.warn(`operator rotation: ${smspvaPin} already failed this user — pinning ${alt.op} svc=${service.id} cty=${country.id}`);
+        smspvaPin = alt.op;
+        rotatedPinUsd = alt.usd;
+      } else if (tier !== "premium") {
+        console.warn(`operator rotation: ${smspvaPin} already failed this user, no eligible alternate — unpinned svc=${service.id} cty=${country.id}`);
+        smspvaPin = null;
+      }
+    } catch (e) {
+      console.warn("operator rotation lookup failed (ignored):", e);
+    }
+  }
+
   for (const p of providers) {
     // Premium margins are checked against the pinned operator's own price —
     // livePriceUsd returns the country/service BASE price, usually the
@@ -276,10 +317,10 @@ Deno.serve(async (req) => {
     // the cached operator price and the live base price — a broad live price
     // rise is caught immediately, the carrier premium is still respected.
     let liveCost: number | null;
-    if (tier === "premium" && route.smspva_operator_cents != null) {
-      const cachedOp = (route.smspva_operator_cents as number) / 100;
+    if (tier === "premium" && (rotatedPinUsd != null || route.smspva_operator_cents != null)) {
+      const opUsd = rotatedPinUsd ?? (route.smspva_operator_cents as number) / 100;
       const liveBase = p === "smspva" ? await livePriceUsd(p, codes) : null;
-      liveCost = liveBase != null ? Math.max(cachedOp, liveBase) : cachedOp;
+      liveCost = liveBase != null ? Math.max(opUsd, liveBase) : opUsd;
     } else {
       liveCost = await livePriceUsd(p, codes);
     }
@@ -294,9 +335,9 @@ Deno.serve(async (req) => {
     }
     // Pin per provider: smspva rides the real-SIM carrier (mandatory for
     // premium, opportunistic for standard); smspool keeps its pool pin.
-    const pin = p === "smspva"
-      ? (tier === "premium" ? route.smspva_operator as string : standardCarrier)
-      : route.smspool_pool;
+    // smspvaPin already encodes the tier rule plus any rotation away from a
+    // pool this user just failed on.
+    const pin = p === "smspva" ? smspvaPin : route.smspool_pool;
     // Fresh-number guarantee: SMSPVA re-issues a just-canceled number to the
     // same buyer. If the fill matches a number this user already drew for
     // this service in the last hour, release it and draw again — at most 3
