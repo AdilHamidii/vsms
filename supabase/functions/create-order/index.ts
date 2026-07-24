@@ -164,6 +164,32 @@ Deno.serve(async (req) => {
     dial: country.dial_code,
   };
 
+  // ── Retry steering context. A retry is the one moment we KNOW the previous
+  // number/pool failed this user — use that knowledge instead of re-selling it.
+  // Measured 2026-07-24: one user's 9 Betano attempts drew only 6 distinct
+  // numbers, every attempt pinned to the same carrier. Best-effort: on any
+  // error both sets stay empty and behavior is exactly today's.
+  const recentNumbers = new Set<string>();
+  const triedOperators = new Set<string>();
+  try {
+    const { data: recent } = await sb
+      .from("orders")
+      .select("smspva_number, smspool_pool, country_id, provider, status, closed_at")
+      .eq("user_id", userId)
+      .eq("service_id", service.id)
+      .gte("created_at", new Date(Date.now() - 60 * 60 * 1000).toISOString());
+    for (const r of recent ?? []) {
+      if (r.smspva_number) recentNumbers.add(r.smspva_number as string);
+      if (
+        r.provider === "smspva" && r.smspool_pool && r.status === "canceled" &&
+        r.country_id === country.id && r.closed_at &&
+        Date.now() - new Date(r.closed_at as string).getTime() <= 15 * 60 * 1000
+      ) triedOperators.add(r.smspool_pool as string);
+    }
+  } catch (e) {
+    console.warn("retry-context read failed (ignored):", e);
+  }
+
   // virtualsms is always tried first where it has a code (real-SIM quality);
   // SMSPVA is the fallback. route.provider only reflects the display-price
   // source, not the fulfilment preference.
@@ -271,7 +297,23 @@ Deno.serve(async (req) => {
     const pin = p === "smspva"
       ? (tier === "premium" ? route.smspva_operator as string : standardCarrier)
       : route.smspool_pool;
-    const res = await reserve(p, codes, maxCostUsd, pin, tier === "premium");
+    // Fresh-number guarantee: SMSPVA re-issues a just-canceled number to the
+    // same buyer. If the fill matches a number this user already drew for
+    // this service in the last hour, release it and draw again — at most 3
+    // draws. A still-duplicate final draw is kept: a repeat number beats no
+    // number. release() never throws (logged internally), and only a
+    // SUCCESSFUL duplicate fill re-enters the loop — reserve errors take the
+    // existing error path unchanged.
+    let res = await reserve(p, codes, maxCostUsd, pin, tier === "premium");
+    for (
+      let redraw = 0;
+      redraw < 2 && res.ok && res.number && recentNumbers.has(res.number);
+      redraw++
+    ) {
+      console.warn(`duplicate number re-issued (${res.number}) — redrawing svc=${service.id} cty=${country.id}`);
+      if (res.orderId) await release(p, res.orderId);
+      res = await reserve(p, codes, maxCostUsd, pin, tier === "premium");
+    }
     if (res.ok) {
       if (res.costUsd != null && res.costUsd > maxCostUsd + 0.001) {
         console.warn(`actual_cost_over_ceiling provider=${p} svc=${service.id} cty=${country.id} credits=${cost} paidUsd=${res.costUsd} maxUsd=${maxCostUsd}`);
