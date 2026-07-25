@@ -18,8 +18,21 @@ struct HomeScreen: View {
                     .padding(.horizontal, 20)
                     .padding(.top, 6)
 
-                if let bonus = state.dailyCreditBanner {
-                    dailyCreditBanner(bonus)
+                if let purchased = state.creditPurchaseBanner {
+                    creditBanner(
+                        title: String(localized: "+\(purchased) credits added"),
+                        sub: String(localized: "Your purchase is confirmed."),
+                        dismiss: { state.creditPurchaseBanner = nil })
+                        .padding(.horizontal, 16)
+                        .padding(.top, 14)
+                        .transition(.move(edge: .top).combined(with: .opacity))
+                } else if let bonus = state.dailyCreditBanner {
+                    creditBanner(
+                        title: String(localized: "+\(bonus.credits) credit added"),
+                        sub: bonus.streak >= 2
+                            ? String(localized: "\(bonus.streak) days in a row — come back tomorrow for another.")
+                            : String(localized: "Come back tomorrow for another."),
+                        dismiss: { state.dailyCreditBanner = nil })
                         .padding(.horizontal, 16)
                         .padding(.top, 14)
                         .transition(.move(edge: .top).combined(with: .opacity))
@@ -49,25 +62,25 @@ struct HomeScreen: View {
         .scrollIndicators(.hidden)
     }
 
-    /// Confirms today's free credit actually landed. Without a visible
-    /// acknowledgement the grant is indistinguishable from nothing happening,
-    /// which is the whole point of a daily reason to return.
-    private func dailyCreditBanner(_ bonus: (credits: Int, streak: Int)) -> some View {
+    /// Confirms credits actually landed — from the daily grant or a purchase.
+    /// Without a visible acknowledgement, a successful buy looks exactly like a
+    /// failed one, and a silent daily grant defeats the point of a daily reason
+    /// to return.
+    private func creditBanner(title: String, sub: String,
+                              dismiss: @escaping () -> Void) -> some View {
         HStack(spacing: 10) {
             CoinIcon(size: 18, color: theme.live)
             VStack(alignment: .leading, spacing: 1) {
-                Text("+\(bonus.credits) credit added")
+                Text(title)
                     .font(RFont.text(14, weight: .semibold))
                     .foregroundStyle(theme.text)
-                Text(bonus.streak >= 2
-                     ? String(localized: "\(bonus.streak) days in a row — come back tomorrow for another.")
-                     : String(localized: "Come back tomorrow for another."))
+                Text(sub)
                     .font(RFont.text(12))
                     .foregroundStyle(theme.text2)
             }
             Spacer(minLength: 0)
             Button {
-                withAnimation(.easeOut(duration: 0.2)) { state.dailyCreditBanner = nil }
+                withAnimation(.easeOut(duration: 0.2)) { dismiss() }
             } label: {
                 Image(systemName: RIcon.close)
                     .font(.system(size: 11, weight: .semibold))

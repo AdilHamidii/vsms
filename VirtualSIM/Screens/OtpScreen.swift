@@ -125,6 +125,23 @@ struct OtpScreen: View {
                                 .padding(.vertical, 10)
                         }
                         .buttonStyle(.plain)
+
+                        // The invite lived only in a card in the 4th tab, and
+                        // produced exactly ZERO referrals across 146 users —
+                        // a placement failure, not a demand failure. This is
+                        // the one moment a user is demonstrably happy.
+                        if let code = state.profile?.referralCode {
+                            ShareLink(item: inviteMessage(code)) {
+                                HStack(spacing: 6) {
+                                    Image(systemName: "square.and.arrow.up")
+                                        .font(.system(size: 12, weight: .semibold))
+                                    Text("Invite a friend — they get 2 credits")
+                                        .font(RFont.text(13, weight: .medium))
+                                }
+                                .foregroundStyle(theme.text3)
+                                .padding(.vertical, 6)
+                            }
+                        }
                     }
                     .padding(.top, 24)
                 }
@@ -163,6 +180,11 @@ struct OtpScreen: View {
         }
         .padding(.horizontal, 16)
         .padding(.top, 14)
+    }
+
+    /// Kept identical to AccountScreen's copy so both share links read the same.
+    private func inviteMessage(_ code: String) -> String {
+        String(localized: "Get a private temporary number for verification codes on vSMS — my invite code \(code) gives you 2 free credits: https://apps.apple.com/app/id6774768570")
     }
 
     private var hasRawMessage: Bool {

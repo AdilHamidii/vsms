@@ -184,7 +184,10 @@ Deno.serve(async (req) => {
         row.user_id,
         "No code arrived",
         `Your ${svc?.name ?? "verification"} number expired — ${row.cost_credits} credits refunded.`,
-        { event: "expired" },
+        // orderId matters: "No code arrived" is the most-delivered push in
+        // the product, and without a reference the tap landed on Home —
+        // bypassing RecoveryScreen, the refund receipt and the steer.
+        { event: "expired", orderId: row.id },
       );
     } catch (e) {
       console.error("expire failed for order", row.id, e);
@@ -276,7 +279,7 @@ Deno.serve(async (req) => {
         o.user_id,
         "No code arrived",
         `Your ${svc?.name ?? "verification"} number closed — ${o.cost_credits} credits refunded.`,
-        { event: "expired" },
+        { event: "expired", orderId: o.id },
       );
     }
   }

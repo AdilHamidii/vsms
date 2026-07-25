@@ -23,7 +23,33 @@ final class IAPStore {
 
     func attach(api: APIClient) {
         self.apiClient = api
+        // Sweep transactions that arrived BEFORE the API client existed.
+        // `Transaction.updates` starts listening in init(), but attach() runs
+        // later from AuthGate — so an update landing in that window hit
+        // `guard let api = apiClient` and was dropped for the whole launch.
+        Task { await restorePurchases() }
     }
+
+    /// Re-verify every unfinished transaction.
+    ///
+    /// Consumables don't need StoreKit "restore", but a purchase whose
+    /// verification failed had NO user-triggerable recovery at all: the
+    /// backend paged the owner and the user's only route was email. This is
+    /// both the automatic sweep and the manual Account button.
+    /// Returns the number of transactions successfully credited.
+    @discardableResult
+    func restorePurchases() async -> Int {
+        guard apiClient != nil else { return 0 }
+        isRestoring = true
+        defer { isRestoring = false }
+        var credited = 0
+        for await result in Transaction.unfinished {
+            if await handle(result) { credited += 1 }
+        }
+        return credited
+    }
+
+    private(set) var isRestoring = false
 
     func loadProducts() async {
         if isLoadingProducts { return }

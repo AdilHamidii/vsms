@@ -35,6 +35,10 @@ struct AuthGate: View {
                         // waits for the Waiting screen, where the user has a
                         // paid order in flight and an obvious reason to say yes.
                         await push.registerIfAuthorized()
+                        // Quiet provisional registration so users who never
+                        // reach the Waiting screen are still reachable by the
+                        // daily-credit and winback nudges. No dialog is shown.
+                        await push.registerProvisionalIfUndetermined()
                     }
             }
         }

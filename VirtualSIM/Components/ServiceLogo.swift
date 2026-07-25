@@ -8,6 +8,16 @@ struct ServiceLogo: View {
     @State private var sourceIndex = 0
 
     var body: some View {
+        content
+            // Reset the remote-source cursor when the service changes. Without
+            // this, @State survives at a stable view position — so once one
+            // service exhausted both sources, the NEXT service rendered at that
+            // slot (e.g. the Home hero) inherited the exhausted cursor and fell
+            // back to an SF Symbol even though its own logo was fine.
+            .id(service.id)
+    }
+
+    private var content: some View {
         ZStack {
             RoundedRectangle(cornerRadius: radius, style: .continuous)
                 .fill(service.tint)
