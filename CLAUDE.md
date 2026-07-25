@@ -269,8 +269,17 @@ codes ever delivered arrived inside that same window. Migration
 `refresh_arrival_timing()`. Percentiles resolve **service → global → NULL**, never
 per-route: only 2 of 18,492 routes have ≥8 deliveries, and `routes` ships to every
 phone with `select=*`, so 18k mostly-NULL columns to serve two routes is a bad
-trade. `eta_seconds` is never consulted again; with no measurement the UI says
-something structural and true instead of a number.
+trade.
+
+**The client half of this was never built — `eta_seconds` IS still consulted.**
+Verified 2026-07-25: `Service.swift` has no `arrival_*` fields at all, and the
+seed value still renders in **three** places — `CheckoutScreen` ("~28 sec"),
+`HomeScreen` ("Typical wait ~28s") and `WaitingScreen` ("Usually arrives in
+28s"). So the measured p50/p90 sit in Postgres and reach nothing, while the app
+keeps promising a wait it cannot keep (seed 22–35s vs measured ~53s median,
+p90 ~139s). Wiring it up means adding the columns to the Swift `Service` model
++ `CatalogAPI` select and replacing those three call sites — until then, treat
+any "typical wait" number in the UI as **seed data being shown as fact**.
 
 `20260724120100_blunt_delivery_warnings.sql` adds `services.observed_orders` (ALL
 outcomes — a superset of `observed_attempts`, which counts only conclusive ones)
@@ -279,6 +288,65 @@ to reassure on weak evidence**: a service that has never once delivered could
 previously sit under the sample gate and display nothing at all, and a bare
 `success_rate` couldn't distinguish 1-of-3 noise from 2-of-40 disaster. The
 client requires `success_sample >= 5` before a rate may interrupt a purchase.
+
+### Order-state honesty (client) — the reconcile invariant
+
+**`check-order` is NOT the authority on whether an order ended.** It polls the
+live SMS provider and returns HTTP 502 `provider_unreachable` whenever that
+throws, so the one moment you most need an answer (provider is sick) is exactly
+when it can't give one. `pollActiveOrder` used to `catch { /* transient */ }`
+and keep waiting — so with a flaky provider the 60s cron would expire AND refund
+an order while the screen sat on a frozen "Waiting / 00:00" indefinitely. The
+user has been made whole and has no idea; this is the state that generates
+refund requests and 1-star reviews.
+
+The invariant now, in `AppState` (2026-07-25):
+- **`OrdersAPI.fetch(orderId:)`** reads the order row straight from PostgREST.
+  No provider in the path — the cron has already written `expired`/`canceled`
+  plus the refund. This is the authority. Anything asking "did it end?" uses it.
+- **`pollActiveOrder`** falls back to that read after 2 consecutive check
+  failures, or immediately once past `expiresAt` + grace.
+- **`checkNow`** (the "Check now" button) ALWAYS falls back — an explicit tap
+  must never dead-end on a swallowed error.
+- **`WaitingScreen`** independently reconciles every 3s once past expiry, and
+  renders "Closing…" instead of a stopped `00:00`. Never show a dead countdown
+  as a live one.
+- **One `apply()`** handles every terminal status. `canceled` used to fall into
+  `default: break` and strand the UI even on a *successful* poll — never write a
+  status switch here without covering all cases.
+- `reconcileActiveOrder` swallows its own failure **on purpose**: if we truly
+  can't reach the DB we assert nothing, because inventing a terminal state is
+  its own lie.
+- **Reroll and cancel hold `isPlacingOrder`** while they mutate the row.
+  Without it the background reconcile reads the intermediate `canceled` and
+  bounces the user to recovery mid-reroll.
+
+Refunds must be **visible twice**: at the moment (`RecoveryContext.refundedCredits`
+→ "+N credits refunded" on the recovery card) and **durably** (`Order.isRefunded`
+→ "+N cr refunded" on the history row). "Expired" with no money line reads as
+"I paid and got nothing" even though the refund landed. Both terminal paths
+refund unconditionally server-side, so status alone is a sound signal.
+
+**The ✕ on the waiting screen destroys a paid order.** It looks like "back" but
+calls `cancel-order`, which does a last-chance provider poll and can discard a
+code seconds from arriving. It requires an explicit confirmation naming the
+refund; don't "simplify" that away.
+
+### Badge confidence — demote fast, promote slow
+
+`success_rate` starts as SMSPVA's own per-country grade (`sync-smspva-conversions`:
+3→90, 2→70, 1→40) with `rate_source='seeded'` — a vendor number about a route we
+may never have sold. `refresh_route_observed_success` is **asymmetric** since
+`20260725120000`: promoting still needs `p_min_sample` (3) conclusive attempts,
+but a route with **zero** codes loses its seeded rate at **2**. Hiding still
+requires the full 3, so a 0-of-2 route goes honest without leaving the shelf, and
+a single unlucky miss changes nothing. Verified live: leboncoin/pt went seeded-90
+→ measured-0 (sample 2, still active); betano/bg (0/7) hidden; facebook/dk (4/5)
+untouched at 80.
+
+Client side, **colour carries confidence, not magnitude** (`SuccessBadge`): a
+seeded rate renders muted whatever it says, green/amber/red are reserved for
+measured. A tilde is not a warning — nobody reads a tilde.
 
 ## Non-obvious gotchas (real bugs we've hit, do not re-introduce)
 
@@ -291,6 +359,12 @@ client requires `success_sample >= 5` before a rate may interrupt a purchase.
 - **Charge and order row must be written together.** `create-order` used to charge and only insert the row after a provider reservation succeeded, so every failure left a spend+refund pointing at nothing: **258 spends vs 126 orders — 51% of paid attempts invisible**, and the real failure rate unmeasurable. `begin_order()` now does dedupe + insert + charge in one transaction under a per-user advisory lock (the old dedupe `SELECT`ed ~120 lines before the `INSERT`, with a multi-second provider call between, so two concurrent requests both passed it and both charged). A stranded row self-heals: the poller skips it for polling (`smspva_id is not null`) but the expiry sweep still closes and refunds it.
 - **Never write a status transition without an atomic claim.** Every `orders` status write is `.eq("status","waiting")` + row-count check. `check-order`'s `received` branch was the one exception and could overwrite a terminal state the expiry cron had already set — handing a user a working code they'd *already been refunded for*.
 - **`apply_migration` (MCP) mints its own version number and does NOT write a repo file.** Three migrations performing an entire provider cutover existed only in the live DB; a fresh `supabase db push` would have come up SMSPool-primary with the wrong crons scheduled. After any `apply_migration`, immediately write `supabase/migrations/<live-version>_<name>.sql` with the same SQL. Recover forgotten ones from `supabase_migrations.schema_migrations.statements`.
+- **`supabase db push` is BROKEN and cannot be used (verified 2026-07-25).** It aborts with *"Remote migration versions not found in local migrations directory"* listing **43** remote versions (20260716183819 … 20260721125706) that have no local file — the accumulated debt of the `apply_migration` gotcha above. **Do NOT run the `supabase migration repair --status reverted <43 versions>` the CLI suggests**: those migrations really are applied, and marking them reverted invites a later push to re-run them. To ship one migration today: write the file, apply it with `supabase db query --linked --file <path>`, then record it yourself:
+  ```sql
+  insert into supabase_migrations.schema_migrations (version, name)
+  values ('<version>','<name>') on conflict (version) do nothing;
+  ```
+  (Note `db query` parses a leading `--` SQL comment as a CLI flag — always use `--file`, never inline SQL that starts with a comment.) Properly repairing the 43 is a separate, careful job: back-fill each missing file from `schema_migrations.statements` rather than reverting anything.
 - **Clients get `UPDATE` on `profiles.display_name` ONLY.** RLS is row-level and cannot restrict columns, so a table-wide UPDATE grant let any user PATCH their own `referred_by` / `referral_rewarded_at` — pointing the referral at themselves and nulling the payout flag to farm 5 credits per purchase forever. The `SECURITY DEFINER` guards *read* those columns to decide, so writable inputs made them decorative.
 - **Both provider balances are monitored**, written every minute by `poll-active-orders` into `app_config.smspva_health` / `smspool_health`, and reported by the bot labelled with what they fund. A missing reading renders as "no reading", never omitted — an absent line reads as healthy, which is exactly the failure that hid SMSPVA having no monitoring at all while it served 100% of SMS.
 - **PostgREST `max_rows` is now `60000`** (`alter role authenticator set pgrst.db_max_rows`). The catalog is ~18.5k routes and moved 6,962 → 16,320 → 18,492 in 36h purely from provider changes. Crossing the cap makes PostgREST **truncate silently** — HTTP 206, no error, the app just gets fewer routes and every missing one renders "Unavailable" or keeps a stale price. That is indistinguishable from "the prices are wrong" from the phone. Keep large headroom; it is nearly free.
@@ -308,31 +382,34 @@ client requires `success_sample >= 5` before a rate may interrupt a purchase.
 - **Never present seed data as measured fact.** `Service.successRate` is seed data (86–99% across all 268 services, avg 91%) and `Service.swift` says so explicitly. Show only `AppState.successRate(for:country:)` / `deliveryOdds` / `DeliveryNotice`, which are gated on real observed samples, and show **nothing** when there's no measurement. `WaitingScreen` was the last violator — it promised ~91% right after payment on clusters that actually measure ~9%. Same rule for eSIM coverage: the parser returns `null` rather than guess, because a wrong coverage claim is worse than none since the user acts on it.
 - **Review prompt must stay incentive-free (App Store 5.6.4).** `OtpScreen` calls Apple's native `@Environment(\.requestReview)` (needs `import StoreKit`) on code delivery, gated by `AppState.shouldRequestReview(forOrderId:)` — fires only from the 2nd successful code onward, at most once per app version, de-duped per order. **Never** tie credits/rewards to leaving a review, and **never** build a custom review UI that deep-links to the App Store page — both are rejectable. A no-strings welcome/bonus credit is fine as long as it isn't conditioned on a review.
 
-- **`xcodebuild` can refuse to build while the code is perfectly fine.** Symptom:
-  `Unable to find a destination matching the provided destination specifier` with
-  `iOS 26.5 is not installed. Please download and install the platform from
-  Xcode > Settings > Components` — listed against *device* destinations, including
-  `Any iOS Device`. This is NOT a code problem and NOT a signing problem:
-  - `xcodebuild -showsdks` lists iOS 26.5, and BOTH SDKs are on disk
-    (`iPhoneOS26.5.sdk`, `iPhoneSimulator26.5.sdk`).
-  - But `xcrun simctl runtime list` shows only **iOS 27.0** installed; the 26.x
-    runtimes appear under `Unavailable:` — stale references left behind when
-    Xcode updated. Xcode will not offer a simulator destination whose runtime is
-    NEWER than its SDK, so with SDK 26.5 + runtime 27.0 there are no eligible
-    simulator destinations at all.
-  - It cannot be repaired by re-downloading 26.5. Verified live:
-    `xcodebuild -downloadPlatform iOS` → `No matching downloadable found`, and
-    `xcodebuild -downloadPlatform iOS -buildVersion 26.5` →
-    **`iOS 26.5 is not available for download`**. Apple has stopped shipping it,
-    so the Components GUI cannot supply it either.
-  - The real fix is therefore to **install an Xcode whose SDK matches the
-    installed runtime** (iOS 27.0 is already on disk, 7.8 GB, `Ready`), not to
-    chase the 26.5 runtime. Until then this Mac can type-check but not archive.
-  To verify code WITHOUT fixing any of this, use the `swiftc -typecheck` command
-  at the top of this file — the project has zero SwiftPM dependencies, so it
-  type-checks all 73 sources against the simulator SDK and needs no runtime.
-  Archiving still needs the platform installed, so this blocks shipping a build
-  even though it does not block verifying one.
+- **Simulator builds WORK again (re-verified 2026-07-25) — the old "iOS 26.5 is
+  not installed" note below is obsolete.** `xcrun simctl list runtimes` now shows
+  **both** iOS 26.5 (23F77) and 27.0, so the SDK (26.5) and a runtime finally
+  match and there are eligible destinations. This is confirmed, not assumed:
+  ```bash
+  xcodebuild -project VirtualSIM.xcodeproj -scheme VirtualSIM \
+    -configuration Debug -sdk iphonesimulator \
+    -destination 'platform=iOS Simulator,name=iPhone 17 Pro,OS=26.5' build
+  # => ** BUILD SUCCEEDED **
+  ```
+  Prefer a real build over `swiftc -typecheck` when you can afford it — it
+  catches resource/Info.plist/asset problems type-checking cannot. *Historical
+  cause, kept because it will recur on the next Xcode update:* Xcode will not
+  offer a simulator destination whose runtime is NEWER than its SDK, so when
+  only runtime 27.0 was installed against SDK 26.5 there were **no** eligible
+  destinations, and `-downloadPlatform iOS -buildVersion 26.5` answered
+  `iOS 26.5 is not available for download`. If that returns, the fix is to match
+  SDK to an installed runtime (install the newer Xcode), not to chase the old
+  runtime. **Archiving for the App Store is still gated separately** by the
+  beta-macOS `BuildMachineOSBuild` patch under "Release prep".
+- **A git worktree cannot build or type-check until you copy `Secrets.swift` in.**
+  `VirtualSIM/Networking/Secrets.swift` is gitignored, so a fresh worktree lacks
+  it and both `swiftc -typecheck` and `xcodebuild` fail with `cannot find
+  'Secrets' in scope` — which looks like your edit broke the build and is not.
+  `cp /Users/adyl/Desktop/VirtualSIM/VirtualSIM/Networking/Secrets.swift
+  VirtualSIM/Networking/Secrets.swift` first; it stays ignored, so it will not be
+  committed. (This is also why `find VirtualSIM -name '*.swift' | wc -l` reads 73
+  in a working checkout but 72 in a bare worktree.)
 
 ## Provider switch checklist
 
@@ -349,6 +426,21 @@ SMS provider again, walk this list:
 
 ## Current state (2026-07-25)
 
+- **Retention/trust fixes shipped to `main` 2026-07-25 (iOS: NOT yet in a build).**
+  The waiting screen no longer strands a user on "Waiting / 00:00" after the
+  server expired + refunded (reconcile invariant above); the ✕ needs an explicit
+  confirmation before destroying a paid order; refunds are visible both in the
+  moment and durably in history; seeded badges are demoted at 2 zero-code
+  attempts and never render in measured-green. Server side of Bug 4 is **live**
+  (migration `20260725120000`, applied + verified). **The client fixes reach
+  users only in the next App Store build** — nothing above is in front of a user
+  until then. Verified by `BUILD SUCCEEDED` + `swiftc -typecheck` exit 0; the
+  three failure states (502 provider, airplane mode, expiry while foregrounded)
+  were reasoned through and covered in code but **not runtime-injected** — that
+  needs an authenticated session and a live paid order.
+- **Known-not-fixed, found during that work**: measured arrival timing still
+  never reaches the client (see the Pricing/arrival section) — three screens
+  still quote seed `eta_seconds` as fact.
 - **Margins raised today: SMS 3× → 6×, eSIM 3× → 4×.** Deployed and verified live —
   16,303 active routes repriced avg 10.4 → 20.5 credits (max 81), 1,081 eSIM plans
   44.4 → 59.0. `under-margin` and ratchet-violation counts are **0** on both. The
@@ -377,7 +469,7 @@ SMS provider again, walk this list:
   SQL watchdog + Telegram paging, fail-streak pager, provider AUTH/BALANCE pager,
   iap-verify no longer eats a payment on `wallet_credit` failure, 24h sweep
   window, dead APNs pruning, winback heartbeat, `job_run_details` 7-day retention,
-  migration bookkeeping reconciled (**`db push` is safe**). `docs/autopilot-runbook.md`
+  migration bookkeeping (**but `db push` is broken again — see the gotcha**). `docs/autopilot-runbook.md`
   is the owner's operations reference.
 - Known-open, none blocking: watchdog can't see a delivery-rate collapse; no guard
   against tapping "Install eSIM" twice with a single-use LPA; `pollActiveOrder`
