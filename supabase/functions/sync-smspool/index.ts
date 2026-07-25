@@ -42,6 +42,21 @@ Deno.serve(async (req) => {
   if (!validateCronSecret(req)) return json({ error: "unauthorized" }, { status: 401 });
 
   const sb = admin();
+
+  // HARD GATE. This writes provider:'smspool' on every mapped combo and hides
+  // any smspool route it did not touch. All 18,492 routes are smspva today,
+  // and sync-prices SKIPS smspool-owned rows — so one CRON_SECRET curl would
+  // re-home thousands of routes to a provider providerOrder() never uses and
+  // freeze their prices permanently. Item #2 of the provider-switch checklist,
+  // previously reachable by a single curl.
+  {
+    const { data: activeProvider } = await sb.rpc("active_sms_provider");
+    if (activeProvider !== "smspool") {
+      return json({ error: "not_active_provider",
+        detail: `active SMS provider is ${activeProvider}; refusing to re-home routes` },
+        { status: 409 });
+    }
+  }
   const runStart = new Date().toISOString();
 
   // ── Our catalog

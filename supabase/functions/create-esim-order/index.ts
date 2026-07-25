@@ -78,18 +78,61 @@ Deno.serve(async (req) => {
     return json({ error: "margin_too_low" }, { status: 409 });
   }
 
-  const { data: spent, error: spendErr } = await sb.rpc("wallet_spend", {
-    p_user: userId, p_amount: cost, p_reason: "spend",
+  // Dedupe + charge in ONE transaction under a per-user advisory lock, the
+  // same shape begin_order uses for SMS. This function used to call
+  // wallet_spend and only insert the row ~20 lines later, after a provider
+  // round-trip — so a double-tap bought two eSIMs and charged twice, and a
+  // worker death in that window charged with no order row, no refund and no
+  // trace. That is exactly the failure that produced "258 spends vs 126
+  // orders" on the SMS side.
+  const { data: begun, error: beginErr } = await sb.rpc("begin_esim_order", {
+    p_user: userId, p_plan: plan.id, p_credits: cost,
   });
-  if (spendErr) return json({ error: "spend_failed", detail: spendErr.message }, { status: 500 });
-  if (spent === false) return json({ error: "insufficient_credits", needed: cost }, { status: 402 });
+  if (beginErr) {
+    return json({ error: "spend_failed", detail: beginErr.message }, { status: 500 });
+  }
+  const beginRes = begun as { status?: string; order_id?: string } | null;
+  if (beginRes?.status === "insufficient") {
+    return json({ error: "insufficient_credits", needed: cost }, { status: 402 });
+  }
+  if (beginRes?.status === "duplicate") {
+    // An identical purchase is already in flight for this user+plan.
+    return json({ error: "duplicate_request" }, { status: 409 });
+  }
+  const orderId = beginRes?.order_id;
+  if (!orderId) {
+    return json({ error: "spend_failed" }, { status: 500 });
+  }
 
-  const refund = () => sb.rpc("wallet_credit", { p_user: userId, p_amount: cost, p_reason: "refund" });
+  /** Close the reserved row and return the credits, claim-gated so a
+   *  concurrent closer cannot cause a double refund (the create-order bug). */
+  const failEsim = async (reason: string) => {
+    const { data: claimed } = await sb
+      .from("esim_orders")
+      .update({ status: "canceled", updated_at: new Date().toISOString() })
+      .eq("id", orderId)
+      .eq("status", "provisioning")
+      .select("id");
+    if (!claimed || claimed.length === 0) return;
+    await sb.rpc("wallet_credit", {
+      p_user: userId, p_amount: cost, p_reason: "refund",
+    });
+    console.warn(`create-esim-order failed plan=${plan.id} reason=${reason} order=${orderId}`);
+  };
 
   const buy = await esimPurchase(plan.id);
   if (!buy.ok || !buy.transactionId) {
-    await refund();
-    return json({ error: buy.error ?? "esim_purchase_failed" }, { status: 503 });
+    await failEsim(buy.errorType ?? "purchase_failed");
+    // Classify, don't echo. buy.error is SMSPool's own prose, which matches no
+    // case in APIError and fell through to "Something went wrong on our side"
+    // — blaming our infrastructure for SMSPool being out of stock, the exact
+    // bug the provider_unreachable rename fixed for SMS.
+    const code = buy.errorType === "OUT_OF_STOCK"
+      ? "esim_out_of_stock"
+      : buy.errorType === "AUTH_ERROR" || buy.errorType === "BALANCE_ERROR"
+      ? "provider_unreachable"
+      : "esim_purchase_failed";
+    return json({ error: code }, { status: 503 });
   }
 
   // Fetch the QR/activation profile (best-effort; a provisioning eSIM can be
