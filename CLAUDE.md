@@ -53,22 +53,28 @@ supabase functions deploy create-order check-order cancel-order register-push ia
 # sent, invisible because pg_net purges response history within hours.
 supabase functions deploy poll-active-orders sync-prices sync-smspool sync-esim-plans \
   sync-smspva-operators sync-smspva-conversions winback telegram-notify telegram-webhook \
-  smspool-catalog --no-verify-jwt
+  smspool-catalog daily-credit --no-verify-jwt
+# daily-credit (cron relay-daily-credit, 11 16 * * *) sends the "claim your free
+# credit" push. It is cron-gated, so it MUST stay in this --no-verify-jwt group.
+# sync-virtualsms still exists on disk but virtualsms is RETIRED — do not deploy
+# or schedule it; it is kept only so historical orders remain inspectable.
 # smspool-catalog is an operator-only read-only dump of SMSPool's service/country
 # ids (for mapping unmatched catalog entries); CRON_SECRET-gated like the syncs.
-# NOTE: supabase/functions/list-orders/ is an EMPTY leftover directory, untracked
-# and not deployed — don't add it to a deploy list.
+# (The old `list-orders/` leftover directory is GONE as of 2026-07-25 — the two
+# lists above plus sync-virtualsms now account for every directory on disk.)
 
 # Query the remote DB
 supabase db query --linked "select count(*) from public.routes;"
 
 # Trigger any cron-gated function WITHOUT handling the secret yourself. pg_net
 # calls it server-side and private_cron_secret() never leaves the database.
-# Live pg_cron schedule (12 jobs, all active — verified 2026-07-25):
+# Live pg_cron schedule (14 jobs, all active — re-verified 2026-07-25 16:50Z):
 #   relay-poll-active-orders  * * * * *     relay-telegram-notify  * * * * *
 #   watchdog                  */10 * * * *  relay-sync-prices      17 * * * *
 #   relay-sync-smspva-conversions 49 * * * *  relay-sync-esim-plans 0 2 * * *
-#   relay-sync-smspva-operators (fans 6 slots)  relay-winback      0 15 * * *
+#   relay-sync-smspva-operators 30,32,34,36,38,40 4 * * *  (6 chunked slots)
+#   relay-winback             0 15 * * *    relay-daily-credit     11 16 * * *
+#   expire-esim-orders        */15 * * * *
 #   relay-smspva-operators-maint-up 29 4  / -down 43 4  (maintenance screen)
 #   purge-job-run-details 7 3 * * *       telegram-events-prune 30 4 * * *
 # relay-sync-smspool is UNSCHEDULED (SMSPool serves eSIMs only).
@@ -233,7 +239,17 @@ A plain `0.5*new + 0.5*prev` averages a rise against yesterday's cheaper price a
 
 **eSIM** plans (`sync-esim-plans`) are priced **separately** at 4× wholesale (raised 3× → 4× on 2026-07-25) — `ESIM_MARGIN = 4`, `CREDIT_VALUE_USD = 0.48`, `retail_credits = ceil(usd * 4 / 0.48)` — NOT via `CREDIT_DIVISOR`, so the two product lines never collide. Inverted, the order-time ceiling in `create-esim-order` is `credits * 0.12`: SMSPool's `/esim/purchase` accepts no price cap and its response reports **no cost at all**, so the function takes a fresh `/esim/plans` quote, blocks above the ceiling, and writes that real number into `actual_cost_cents`. It fails **closed** on a bad price and **open** on a failed lookup — an unreachable SMSPool must not make eSIMs unbuyable. (Before this, `actual_cost_cents` echoed the cached catalog price, so margin analysis over it was circular and could never reveal drift.)
 
-**Credit packs** (`Models/CreditPack.swift` + `Products.storekit` + `_shared/iap.ts` `PRODUCT_TO_CREDITS`): 5/$2.99, 12/$5.99 (MOST POPULAR), 30/$12.99, 60/$22.99, 150/$49.99 (BEST VALUE) — a strictly improving per-credit ladder (each pack beats stacking smaller ones). The per-credit label is computed **live** from the StoreKit price in `IAPStore.perCredit`, so it never drifts; production prices must be set to match in App Store Connect.
+**Credit packs** (`Models/CreditPack.swift` + `Products.storekit` + `_shared/iap.ts` `PRODUCT_TO_CREDITS`): 5/$2.99, 12/$5.99 (MOST POPULAR), 30/$12.99, 60/**$24.99**, 150/**$59.99** (BEST VALUE) — a strictly improving per-credit ladder (each pack beats stacking smaller ones): $0.598 → $0.499 → $0.433 → $0.417 → $0.400. The per-credit label is computed **live** from the StoreKit price in `IAPStore.perCredit`, so it never drifts; production prices must be set to match in App Store Connect.
+
+**The 60 and 150 packs are the LIVE ASC prices, read back from the API on
+2026-07-25 — this file previously claimed $22.99/$49.99, which was never what
+the store would have billed.** Only the first three packs (`credits.5/12/30`)
+are `APPROVED`; `credits.60` and `credits.150` have **never** been approved, so
+the two best-value tiers are not purchasable in production no matter what
+`CreditPack.swift` defines — StoreKit only returns approved products. Check
+`state` on `/v1/apps/6774768570/inAppPurchasesV2` before assuming the ladder the
+code defines is the ladder a user sees. (Product-level `state` is unreliable for
+*submittability* — see Release prep — but `APPROVED` vs not is trustworthy.)
 
 ### Retry steering (create-order)
 
@@ -468,6 +484,18 @@ measured. A tilde is not a warning — nobody reads a tilde.
   VirtualSIM/Networking/Secrets.swift` first; it stays ignored, so it will not be
   committed. (This is also why `find VirtualSIM -name '*.swift' | wc -l` reads 73
   in a working checkout but 72 in a bare worktree.)
+- **A git worktree is also not linked to Supabase.** `supabase/.temp/` is
+  gitignored, so `supabase db query --linked` in a worktree dies with
+  *"Cannot find project ref. Have you run supabase link?"* — which looks like a
+  broken CLI or expired auth and is neither. Copy the link state in:
+  `cp -R /Users/adyl/Desktop/VirtualSIM/supabase/.temp supabase/.temp`. It stays
+  ignored. Do **not** re-run `supabase link` in a worktree.
+- **Merging a worktree branch into `main` usually needs a real merge, not a
+  fast-forward.** `main`'s tip is typically one of the `Merge: …` commits from a
+  previous round, so a branch cut from the pre-merge tip has genuinely diverged
+  and `git merge --ff-only` aborts with *"Not possible to fast-forward"*. That is
+  not a sign the branch is broken — check with
+  `git merge-base --is-ancestor main <branch>` and then merge with `--no-ff`.
 
 ## Provider switch checklist
 
@@ -484,31 +512,36 @@ SMS provider again, walk this list:
 
 ## Current state (2026-07-25)
 
-- **Retention/trust fixes shipped to `main` 2026-07-25 (iOS: NOT yet in a build).**
-  The waiting screen no longer strands a user on "Waiting / 00:00" after the
-  server expired + refunded (reconcile invariant above); the ✕ needs an explicit
-  confirmation before destroying a paid order; refunds are visible both in the
-  moment and durably in history; seeded badges are demoted at 2 zero-code
-  attempts and never render in measured-green. Server side of Bug 4 is **live**
-  (migration `20260725120000`, applied + verified). **The client fixes reach
-  users only in the next App Store build** — nothing above is in front of a user
-  until then. Verified by `BUILD SUCCEEDED` + `swiftc -typecheck` exit 0; the
-  three failure states (502 provider, airplane mode, expiry while foregrounded)
-  were reasoned through and covered in code but **not runtime-injected** — that
-  needs an authenticated session and a live paid order.
-- **Known-not-fixed, found during that work**: measured arrival timing still
-  never reaches the client (see the Pricing/arrival section) — three screens
-  still quote seed `eta_seconds` as fact.
+- **Retention/trust fixes are in build 18, submitted 2026-07-25 — still NOT in
+  front of users.** The waiting screen no longer strands a user on
+  "Waiting / 00:00" after the server expired + refunded (reconcile invariant
+  above); the ✕ needs an explicit confirmation before destroying a paid order;
+  refunds are visible both in the moment and durably in history; seeded badges
+  are demoted at 2 zero-code attempts and never render in measured-green. Server
+  side of Bug 4 is **live** (migration `20260725120000`, applied + verified).
+  **Everything client-side reaches users only when 1.5 is APPROVED** — 1.4 is
+  what the install base runs today. Verified by `BUILD SUCCEEDED` +
+  `swiftc -typecheck` exit 0; the three failure states (502 provider, airplane
+  mode, expiry while foregrounded) were reasoned through and covered in code but
+  **not runtime-injected** — that needs an authenticated session and a live paid
+  order.
 - **Margins raised today: SMS 3× → 6×, eSIM 3× → 4×.** Deployed and verified live —
   16,303 active routes repriced avg 10.4 → 20.5 credits (max 81), 1,081 eSIM plans
   44.4 → 59.0. `under-margin` and ratchet-violation counts are **0** on both. The
   premium-tier backfill above was required as part of this; don't repeat a divisor
   change without it.
-- **Codebase**: `MARKETING_VERSION 1.5`, `CURRENT_PROJECT_VERSION 16`, iOS min
-  **18.0**, 73 Swift sources (type-check clean, warnings only), 66 migrations.
-  *Store-side state is UNVERIFIED here* — the ASC issuer id isn't on this machine
-  (`NO_ISSUER_ID`), so confirm version/IAP status in ASC before assuming. Last
-  known-good was 1.4 live with 1.5 in review; commit `a9b92c0` shipped build 16 as 1.5.
+- **Codebase**: `MARKETING_VERSION 1.5`, `CURRENT_PROJECT_VERSION 18`, iOS min
+  **18.0**, 73 Swift sources (type-check clean, warnings only), 76 migrations.
+- **Store state, verified against the ASC API 2026-07-25 16:43Z** (not inferred):
+  **1.5 / build 18 `WAITING_FOR_REVIEW`**, releases `AFTER_APPROVAL`;
+  **1.4 `READY_FOR_SALE`** and is what users run. Two IOS review submissions are
+  in flight — `46c9be95` (the version) and `3cf3b471` (the `credits.60` IAP).
+  Build 17 was submitted and then **cancelled**: it was archived from `02e9c4a`
+  and predates the stale-checkout-draft pricing fix, so it shipped the bug where
+  the pickers priced the last checked-out service.
+  ⚠️ **`credits.150` is stuck at IAP-version state `DEVELOPER_REJECTED`** — the
+  residue of cancelling its submission — and the public API **cannot** resubmit
+  it (see Release prep). It needs the ASC web UI.
 - **SMS: SMSPVA $8.65** (alert tier 2, low). **eSIM: SMSPool $1.90** (alert tier 3,
   **critically low — top up or eSIM purchases start failing**). Balance pages
   escalate at $20/$10/$5/$1 crossings.
@@ -522,7 +555,8 @@ SMS provider again, walk this list:
   freshness and HTTP errors, **not delivery rate**, so a 0%-delivery day does not
   page. That blind spot is open.
 - **Catalog**: 18,492 routes (16,303 active / 2,189 hidden), 1,081 active eSIM
-  plans, 268 services, 69 countries. 12 pg_cron jobs, all active.
+  plans, 268 services, 69 countries. 14 pg_cron jobs, all active. (All nine
+  figures re-verified against the live DB 2026-07-25 16:50Z.)
 - Autopilot hardening (2026-07-22, migration `20260722050000`) remains in force:
   SQL watchdog + Telegram paging, fail-streak pager, provider AUTH/BALANCE pager,
   iap-verify no longer eats a payment on `wallet_credit` failure, 24h sweep
@@ -545,9 +579,15 @@ SMS provider again, walk this list:
     Migration `20260725130000` revokes the column grants but is **NOT APPLIED**:
     Postgres needs SELECT on every column to answer `select=*`, so applying it
     before the new build is adopted would make the catalog fail to load and
-    every price render "Unavailable" for users on 1.4/1.5. Apply it once the
-    build with the explicit-column `CatalogAPI` is out and adopted, then
-    re-check with the curl in that file's header.
+    every price render "Unavailable" for users on 1.4/1.5. The explicit-column
+    `CatalogAPI` ships in **build 18**, which is only *submitted* — 1.4 is still
+    what the install base runs, so this stays unapplied until 1.5 is approved
+    **and** adopted. Then re-check with the curl in that file's header.
+  - ⚠️ **OPEN: `credits.150` cannot be resubmitted from the API** — IAP version
+    is `DEVELOPER_REJECTED` after its submission was cancelled. Needs the ASC
+    web UI (Monetization → In-App Purchases → 150 Credits → Submit for Review).
+    `credits.60` is already `WAITING_FOR_REVIEW`. Until both are approved the
+    two best-value packs do not exist for users. See Release prep.
   - ⚠️ **OPEN: Supabase project is on the FREE plan (no backups).** Owner
     action — recommend Pro.
 
@@ -576,6 +616,15 @@ Never display raw API errors. AppState's catch blocks call `APIError.userMessage
 
 vSMS is a single-target app, so only one `Info.plist` needs patching. The real fixes are building on stable macOS or Xcode Cloud; patch is the interim path while on the beta.
 
-**Submitting is fully headless via the App Store Connect API** (no Xcode Organizer) — see the `app-store-submission-asc` memory for the exact working pipeline: `xcodebuild archive` with `-allowProvisioningUpdates -authenticationKeyPath/-authenticationKeyID/-authenticationKeyIssuerID` (auto-provisions the Distribution cert; the Mac only has an *Apple Development* cert locally, which is fine) → patch `BuildMachineOSBuild` (above) → `xcodebuild -exportArchive` → `xcrun altool --upload-app` → ASC REST API (`POST /v1/appStoreVersions`, attach build, set `whatsNew`, `reviewSubmissions` submit). ASC API key lives at `~/.appstoreconnect/private_keys/AuthKey_R5ZVLBTUR6.p8`; app id `6774768570`. Store state: the repo is at **`MARKETING_VERSION 1.5` / `CURRENT_PROJECT_VERSION 16`** (build 16 shipped as 1.5 in `a9b92c0`, which also lowered the iOS floor to 18.0); the next build is **17** (bump `CURRENT_PROJECT_VERSION`, and `MARKETING_VERSION` too if the version changes, in `project.pbxproj`). **Verify the live store state in ASC before submitting** — this machine has the `.p8` but no issuer id, so the API check returns `NO_ISSUER_ID` and the notes here can drift. Historical: 1.3 (build 12) released; 1.4 (build 13) submitted 2026-07-19. Submission gotcha: only one review submission can be in flight per platform — standalone IAP submissions (created via ASC UI) block the version submission with an opaque 409 "not in valid state"; cancel them first, submit the version, then resubmit IAPs via `POST /v1/inAppPurchaseSubmissions` (IAPs can NOT be added as `reviewSubmissionItems` through the public API).
+**Submitting is fully headless via the App Store Connect API** (no Xcode Organizer) — see the `app-store-submission-asc` memory for the exact working pipeline: `xcodebuild archive` with `-allowProvisioningUpdates -authenticationKeyPath/-authenticationKeyID/-authenticationKeyIssuerID` (auto-provisions the Distribution cert; the Mac only has an *Apple Development* cert locally, which is fine) → patch `BuildMachineOSBuild` (above) → `xcodebuild -exportArchive` → `xcrun altool --upload-app` → ASC REST API (`POST /v1/appStoreVersions`, attach build, set `whatsNew`, `reviewSubmissions` submit). ASC API key lives at `~/.appstoreconnect/private_keys/AuthKey_R5ZVLBTUR6.p8` (key id `R5ZVLBTUR6`); app id `6774768570`. **The issuer id IS available: `4644ed13-4d98-489e-a94b-687f63946f46`** — an earlier note here claimed the machine had no issuer id and that API checks return `NO_ISSUER_ID`. That was wrong, and it cost real time: every "verify in ASC first" instruction was being skipped as impossible when the whole REST pipeline in fact works headlessly. The repo is at **`MARKETING_VERSION 1.5` / `CURRENT_PROJECT_VERSION 18`**; the next build is **19** (bump `CURRENT_PROJECT_VERSION`, and `MARKETING_VERSION` too if the version changes, in `project.pbxproj`). **Always verify live store state via the API before submitting** — the notes here drift within hours. Historical: 1.3 (build 12) released; 1.4 (build 13) submitted 2026-07-19; build 16 shipped as 1.5 in `a9b92c0` (which lowered the iOS floor to 18.0); build 17 submitted then cancelled 2026-07-25; build 18 submitted 2026-07-25.
+
+**Finding a just-uploaded build:** use `GET /v1/builds?filter[app]=<id>&filter[version]=<n>`. The version→build *relationship* endpoint reports nothing useful while the build is still processing, which reads as "stuck" and invites a pointless re-upload. Ingestion takes ~2 min before the build is even visible, then `processingState` goes `PROCESSING` → `VALID`.
+
+**In-app purchases are a separate review track from the app version, and the public API can only do half of it.** Verified 2026-07-25 by direct experiment, replacing an earlier guess in this file:
+- IAPs **cannot** ride along with the app version. `POST /v1/reviewSubmissionItems` with an `inAppPurchaseV2` relationship returns `ENTITY_ERROR.RELATIONSHIP.UNKNOWN` — *"'inAppPurchaseV2' is not a relationship on the resource 'reviewSubmissionItems'"*. Do not cancel a version submission planning to bundle them; it cannot work, and you lose your place in the queue for nothing.
+- The **product-level `state` lies about submittability.** During the 2026-07-25 diagnosis `credits.60` and `credits.150` *both* read `READY_TO_SUBMIT` while being in completely different situations — one already queued for review, the other developer-rejected and unrecoverable. The truth is on the version: `GET /v2/inAppPurchases/<id>/versions`. Always read that before acting on the product state.
+- `POST /v1/inAppPurchaseSubmissions` fails with 409 *"has no pending version for submission"* in **two opposite** cases — the version is already `READY_FOR_REVIEW`/`WAITING_FOR_REVIEW` (nothing to submit), or it is `DEVELOPER_REJECTED` (nothing submittable). Read the version state before believing the error means "incomplete metadata".
+- An ASC-UI-created review submission can sit at `state: READY_FOR_REVIEW` with **`submittedDate: null`** — staged but never actually sent, so the IAP waits forever. Fix is `PATCH /v1/reviewSubmissions/<id> {"attributes":{"submitted":true}}`; its `platform` resolves from null to IOS on submit. This is how `credits.60` finally entered review, and it did **not** disturb the in-flight version submission (two IOS submissions coexisted fine, contradicting the "one in flight per platform" rule as previously written here).
+- **Cancelling an IAP submission is close to a one-way door.** It leaves the IAP version at `DEVELOPER_REJECTED`, and nothing in the public API moves it back: editing `reviewNote` (a product-level field) does not dirty a version, and even a localization write leaves it at version 1. Recovering it requires the ASC **web UI**. Prefer leaving an IAP submission alone over cancelling it.
 
 `docs/submission-checklist.md` is the source of truth for App Store submission steps. `docs/app-store-listing.md` has all metadata copy + nutrition labels pre-filled. Legal docs (`privacy-policy.md`, `terms.md`, `refund-policy.md`, `help.md`) are written to be pasted into Notion as public pages — URLs then go into `VirtualSIM/LegalLinks.swift`.
