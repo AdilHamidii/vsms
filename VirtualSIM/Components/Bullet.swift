@@ -10,7 +10,7 @@ struct Bullet: View {
                 .fill(theme.text3)
                 .frame(width: 4, height: 4)
                 .padding(.top, 8)
-            Text(text)
+            Text(LocalizedStringKey(text))
                 .font(RFont.text(13))
                 .tracking(-0.1)
                 .foregroundStyle(theme.text2)

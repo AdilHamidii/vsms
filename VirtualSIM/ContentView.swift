@@ -93,6 +93,8 @@ struct ContentView: View {
             await state.refreshWallet(using: WalletAPI(client: api))
             await state.refreshProfile(using: ProfileAPI(client: api))
             await state.loadOrders(using: OrdersAPI(client: api))
+            // Today's free credit. Idempotent per UTC day server-side.
+            await state.claimDailyCredit(using: WalletAPI(client: api))
             // Cold launch only: hand back an order that was mid-flight when
             // the app was killed, instead of stranding a paid wait.
             state.resumeInFlightOrder()
@@ -109,6 +111,10 @@ struct ContentView: View {
                     await state.loadCatalog(using: CatalogAPI(client: api))
                     await state.refreshWallet(using: WalletAPI(client: api))
                     await state.loadOrders(using: OrdersAPI(client: api))
+                    // A user who leaves the app open overnight, or taps the
+                    // daily push, crosses the UTC boundary without a cold
+                    // launch — so the claim has to run on foreground too.
+                    await state.claimDailyCredit(using: WalletAPI(client: api))
                 }
             }
         }
@@ -199,6 +205,15 @@ struct ContentView: View {
                 if state.flow == .checkout {
                     state.checkoutService = picked
                     if let best { state.checkoutCountry = best }
+                    // Real SIM is a per-ROUTE choice. Left set across a route
+                    // change it stranded checkout: the tier chips vanish when
+                    // the new route has no premium price, the Cost row silently
+                    // shows the STANDARD price, the receipt still claims "Real
+                    // carrier", and Get number then fails with "Real-SIM
+                    // numbers just sold out here. Try Standard" — with no
+                    // Standard chip on screen to tap. The only escape was
+                    // backing out of checkout entirely.
+                    state.checkoutPremium = false
                 } else {
                     state.lastService = picked
                     if let best { state.lastCountry = best }
@@ -206,8 +221,10 @@ struct ContentView: View {
             })
         case .country:
             CountrySheet(onPick: { picked in
-                if state.flow == .checkout { state.checkoutCountry = picked }
-                else { state.lastCountry = picked }
+                if state.flow == .checkout {
+                    state.checkoutCountry = picked
+                    state.checkoutPremium = false   // see note above
+                } else { state.lastCountry = picked }
             })
         case .credits:
             CreditsSheet(balance: state.balance, needed: state.creditsShortfall, onPurchased: {

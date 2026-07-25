@@ -32,7 +32,7 @@ struct ReceiptRow<Leading: View, Trailing: View>: View {
         VStack(spacing: 0) {
             HStack(spacing: 12) {
                 leading
-                Text(label)
+                Text(LocalizedStringKey(label))
                     .font(RFont.text(13))
                     .tracking(-0.1)
                     .foregroundStyle(theme.text2)

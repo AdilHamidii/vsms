@@ -137,7 +137,7 @@ struct CreditsSheet: View {
                 .font(.system(size: 13, weight: .medium))
                 .foregroundStyle(theme.text2)
                 .padding(.top, 1)
-            Text("Credits never expire. Failed SMS auto-refund within 2 minutes.")
+            Text("Credits never expire. No code in 8 minutes → refunded automatically.")
                 .font(RFont.text(12))
                 .foregroundStyle(theme.text2)
                 .lineSpacing(2)

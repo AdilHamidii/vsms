@@ -4,7 +4,6 @@ struct HomeScreen: View {
     @Environment(\.theme) private var theme
     @Environment(AppState.self) private var state
 
-    var showMetrics: Bool = true
     var openServices: () -> Void = {}
     var openCountries: () -> Void = {}
     var openCredits: () -> Void = {}
@@ -18,6 +17,13 @@ struct HomeScreen: View {
                 header
                     .padding(.horizontal, 20)
                     .padding(.top, 6)
+
+                if let bonus = state.dailyCreditBanner {
+                    dailyCreditBanner(bonus)
+                        .padding(.horizontal, 16)
+                        .padding(.top, 14)
+                        .transition(.move(edge: .top).combined(with: .opacity))
+                }
 
                 heroSection
                     .padding(.horizontal, 16)
@@ -41,6 +47,39 @@ struct HomeScreen: View {
             .padding(.bottom, 140)
         }
         .scrollIndicators(.hidden)
+    }
+
+    /// Confirms today's free credit actually landed. Without a visible
+    /// acknowledgement the grant is indistinguishable from nothing happening,
+    /// which is the whole point of a daily reason to return.
+    private func dailyCreditBanner(_ bonus: (credits: Int, streak: Int)) -> some View {
+        HStack(spacing: 10) {
+            CoinIcon(size: 18, color: theme.live)
+            VStack(alignment: .leading, spacing: 1) {
+                Text("+\(bonus.credits) credit added")
+                    .font(RFont.text(14, weight: .semibold))
+                    .foregroundStyle(theme.text)
+                Text(bonus.streak >= 2
+                     ? String(localized: "\(bonus.streak) days in a row — come back tomorrow for another.")
+                     : String(localized: "Come back tomorrow for another."))
+                    .font(RFont.text(12))
+                    .foregroundStyle(theme.text2)
+            }
+            Spacer(minLength: 0)
+            Button {
+                withAnimation(.easeOut(duration: 0.2)) { state.dailyCreditBanner = nil }
+            } label: {
+                Image(systemName: RIcon.close)
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(theme.text3)
+                    .frame(width: 28, height: 28)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Dismiss")
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .background(theme.liveSoft, in: .rect(cornerRadius: 14))
     }
 
     private var header: some View {
@@ -166,7 +205,7 @@ struct HomeScreen: View {
                             }
                         }
                     }
-                    if showMetrics {
+                    if state.showMetrics {
                         Rectangle()
                             .fill(theme.sep)
                             .frame(height: 0.5)
@@ -241,7 +280,7 @@ struct HomeScreen: View {
             Image(systemName: RIcon.shield)
                 .font(.system(size: 13, weight: .medium))
                 .foregroundStyle(theme.text3)
-            Text("Failed SMS auto-refund within 2 minutes.")
+            Text("No code in 8 minutes → refunded automatically.")
                 .font(RFont.text(12))
                 .tracking(-0.1)
                 .foregroundStyle(theme.text3)

@@ -144,17 +144,19 @@ struct OtpScreen: View {
                     Image(systemName: RIcon.inbox)
                         .font(.system(size: 13, weight: .medium))
                         .foregroundStyle(theme.text2)
-                    Text("RAW MESSAGE")
+                    // Only claim "RAW MESSAGE" when it really is one.
+                    Text(hasRawMessage ? "RAW MESSAGE" : "CODE RECEIVED")
                         .font(RFont.text(12, weight: .medium))
                         .tracking(0.2)
                         .foregroundStyle(theme.text2)
                     Spacer()
-                    Text("just now")
+                    Text(arrivedAgo)
                         .font(RFont.text(11))
                         .foregroundStyle(theme.text3)
                 }
                 Text(rawMessageAttributed)
                     .lineSpacing(2)
+                    .textSelection(.enabled)
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 14)
@@ -163,24 +165,45 @@ struct OtpScreen: View {
         .padding(.top, 14)
     }
 
+    private var hasRawMessage: Bool {
+        !(order.server.rawMessage?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "").isEmpty
+    }
+
+    /// When the code actually landed, not a hardcoded "just now" — this card
+    /// is also reached from order history, where "just now" was simply false.
+    private var arrivedAgo: String {
+        guard let at = order.server.arrivedAt else { return "" }
+        let f = RelativeDateTimeFormatter()
+        f.unitsStyle = .abbreviated
+        return f.localizedString(for: at, relativeTo: Date())
+    }
+
+    /// The REAL SMS body when we have it.
+    ///
+    /// This used to compose "[Service] Your verification code is NNNN. Do not
+    /// share it." from the code alone and label it RAW MESSAGE — inventing the
+    /// text and presenting it as the message we received. `orders.raw_message`
+    /// holds the genuine body (written by check-order) and was decoded into
+    /// ServerOrder but read by nothing, so anyone whose SMS carried a link,
+    /// extra instructions, or a differently-formatted code never saw it.
+    /// Falls back to showing just the code, clearly labelled, rather than
+    /// fabricating a sentence around it.
     private var rawMessageAttributed: AttributedString {
-        var prefix = AttributedString("[\(order.service.name)] ")
-        prefix.font = RFont.mono(13)
-        prefix.foregroundColor = theme.text2
-
-        var middle = AttributedString("Your verification code is ")
-        middle.font = RFont.text(14)
-        middle.foregroundColor = theme.text
-
+        if let raw = order.server.rawMessage?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !raw.isEmpty {
+            var body = AttributedString(raw)
+            body.font = RFont.text(14)
+            body.foregroundColor = theme.text
+            // Highlight the code inside the real message so it stays scannable.
+            if let r = body.range(of: otpValue) {
+                body[r].font = RFont.mono(14, weight: .semibold)
+            }
+            return body
+        }
         var code = AttributedString(otpValue)
         code.font = RFont.mono(14, weight: .semibold)
         code.foregroundColor = theme.text
-
-        var suffix = AttributedString(". Do not share it.")
-        suffix.font = RFont.text(14)
-        suffix.foregroundColor = theme.text
-
-        return prefix + middle + code + suffix
+        return code
     }
 
     private func copy() {

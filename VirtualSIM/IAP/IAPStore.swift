@@ -96,6 +96,10 @@ final class IAPStore {
         }
     }
 
+    /// Credits granted by the most recent accepted purchase, so the UI can
+    /// confirm "+N credits" instead of silently closing the sheet.
+    private(set) var lastGrantedCredits: Int?
+
     /// Server-verify the signed transaction. Returns true if accepted.
     private func handle(_ result: VerificationResult<Transaction>) async -> Bool {
         guard let api = apiClient else { return false }
@@ -106,6 +110,21 @@ final class IAPStore {
                 let resp = try await IAPAPI(client: api).verify(jws: jws)
                 if resp.ok {
                     await tx.finish()
+                    // `ok` alone is NOT success. iap-verify deliberately
+                    // returns ok:true with credits:0 / balanceChanged:false for
+                    // Sandbox and Xcode receipts, so StoreKit stops
+                    // redelivering them — they are genuine Apple-signed
+                    // transactions that cost $0. Checking only `ok` meant every
+                    // TestFlight tester "bought" a pack, the sheet closed as a
+                    // success, the balance never moved, and nothing said why.
+                    lastGrantedCredits = resp.credits
+                    // alreadyCredited is a genuine success: StoreKit redelivers
+                    // a receipt we already granted, so the balance legitimately
+                    // does not move again.
+                    if resp.balanceChanged != true && resp.alreadyCredited != true {
+                        lastError = "That purchase was made in a test environment, so no credits were added."
+                        return false
+                    }
                     return true
                 }
                 lastError = "We couldn't confirm your purchase. Please try again."
