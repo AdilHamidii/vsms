@@ -3,6 +3,7 @@ import SwiftUI
 struct HomeScreen: View {
     @Environment(\.theme) private var theme
     @Environment(AppState.self) private var state
+    @Environment(APIClient.self) private var api
 
     var openServices: () -> Void = {}
     var openCountries: () -> Void = {}
@@ -18,6 +19,15 @@ struct HomeScreen: View {
                     .padding(.horizontal, 20)
                     .padding(.top, 6)
 
+                // Today's credit, claimed by an explicit tap. Sits above the
+                // hero so it's the first thing a returning user sees.
+                if let daily = state.dailyCredit, daily.available {
+                    dailyClaimCard(daily)
+                        .padding(.horizontal, 16)
+                        .padding(.top, 14)
+                        .transition(.move(edge: .top).combined(with: .opacity))
+                }
+
                 if let purchased = state.creditPurchaseBanner {
                     creditBanner(
                         title: String(localized: "+\(purchased) credits added"),
@@ -28,10 +38,10 @@ struct HomeScreen: View {
                         .transition(.move(edge: .top).combined(with: .opacity))
                 } else if let bonus = state.dailyCreditBanner {
                     creditBanner(
-                        title: String(localized: "+\(bonus.credits) credit added"),
-                        sub: bonus.streak >= 2
-                            ? String(localized: "\(bonus.streak) days in a row — come back tomorrow for another.")
-                            : String(localized: "Come back tomorrow for another."),
+                        title: String(localized: "+\(bonus.credits) credits added"),
+                        // Name tomorrow's amount when it's bigger — the whole
+                        // point of the ladder is having a next tier to reach.
+                        sub: dailyBonusSub(bonus),
                         dismiss: { state.dailyCreditBanner = nil })
                         .padding(.horizontal, 16)
                         .padding(.top, 14)
@@ -60,6 +70,63 @@ struct HomeScreen: View {
             .padding(.bottom, 140)
         }
         .scrollIndicators(.hidden)
+    }
+
+    private func claimDaily() async {
+        await state.claimDailyCredit(using: WalletAPI(client: api))
+        withAnimation(.easeOut(duration: 0.25)) { }
+    }
+
+    /// The daily claim. A button, not an automatic grant — collecting is the
+    /// habit, and a balance that changes on its own is invisible.
+    private func dailyClaimCard(_ daily: DailyCreditStatus) -> some View {
+        HStack(spacing: 12) {
+            CoinIcon(size: 20, color: theme.live)
+            VStack(alignment: .leading, spacing: 1) {
+                Text("\(daily.credits ?? 1) free credits today")
+                    .font(RFont.text(14, weight: .semibold))
+                    .foregroundStyle(theme.text)
+                Text((daily.streak ?? 0) >= 1
+                     ? String(localized: "Day \((daily.streak ?? 0) + 1) of your streak")
+                     : String(localized: "Come back daily — it pays more each day"))
+                    .font(RFont.text(12))
+                    .foregroundStyle(theme.text2)
+            }
+            Spacer(minLength: 0)
+            Button {
+                Task { await claimDaily() }
+            } label: {
+                Group {
+                    if state.isClaimingDaily {
+                        ProgressView().tint(theme.onInk)
+                    } else {
+                        Text("Claim")
+                            .font(RFont.display(14, weight: .semibold))
+                            .tracking(-0.2)
+                    }
+                }
+                .foregroundStyle(theme.onInk)
+                .frame(width: 78, height: 38)
+                .background(theme.ink, in: .rect(cornerRadius: 12))
+            }
+            .buttonStyle(PressScaleStyle())
+            .disabled(state.isClaimingDaily)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
+        .background(theme.liveSoft, in: .rect(cornerRadius: 14))
+    }
+
+    /// Streak line for the daily grant. Only promises a bigger tomorrow when
+    /// the server says the next tier really is larger.
+    private func dailyBonusSub(_ bonus: (credits: Int, streak: Int, next: Int?)) -> String {
+        if let next = bonus.next, next > bonus.credits {
+            return String(localized: "Day \(bonus.streak) — come back tomorrow for +\(next).")
+        }
+        if bonus.streak >= 2 {
+            return String(localized: "\(bonus.streak) days in a row — come back tomorrow for +\(bonus.next ?? bonus.credits).")
+        }
+        return String(localized: "Come back daily — the streak pays more each day.")
     }
 
     /// Confirms credits actually landed — from the daily grant or a purchase.
