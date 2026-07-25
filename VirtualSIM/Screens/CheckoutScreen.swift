@@ -109,16 +109,21 @@ struct CheckoutScreen: View {
                     }, trailing: {
                         HStack(spacing: 6) {
                             TierChip(title: "Standard",
+                                     price: standardCost,
                                      selected: !state.checkoutPremium) {
                                 state.checkoutPremium = false
                             }
                             TierChip(title: "Real SIM",
+                                     price: premiumCost,
                                      selected: state.checkoutPremium) {
                                 state.checkoutPremium = true
                             }
                         }
                     })
-                    .accessibilityHint(Text("Real SIM costs \(premiumCost) credits and has the best delivery rate"))
+                    // No delivery-rate claim here: every order ever placed has
+                    // been standard tier, so there is no measured evidence that
+                    // Real SIM delivers better. State what it actually buys.
+                    .accessibilityHint(Text("Real SIM costs \(premiumCost) credits instead of \(standardCost ?? premiumCost). It uses a named mobile carrier instead of any available number, and refunds instead of substituting one if that carrier is unavailable."))
                 }
                 // Only render the wait row when it's MEASURED. With no sample
                 // there is nothing honest to put here, and the refund promise
@@ -265,21 +270,36 @@ private struct CoinIconBox: View {
 }
 
 /// One option of the Standard / Real SIM tier toggle.
+///
+/// Each chip carries its OWN price. Real SIM costs 20% more than standard, and
+/// a tier picker that hides the difference until the Cost row updates makes the
+/// user discover the surcharge after choosing. Showing both numbers side by
+/// side also keeps the copy honest for free — the uplift is whatever the two
+/// figures say, so nothing drifts if PREMIUM_MULTIPLIER changes server-side.
 private struct TierChip: View {
     @Environment(\.theme) private var theme
     let title: LocalizedStringKey
+    var price: Int? = nil
     let selected: Bool
     let action: () -> Void
 
     var body: some View {
         Button(action: action) {
-            Text(title)
-                .font(RFont.text(13, weight: .semibold))
-                .tracking(-0.2)
-                .foregroundStyle(selected ? theme.bg : theme.text)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 7)
-                .background(selected ? theme.text : theme.chipBg, in: .capsule)
+            VStack(spacing: 0) {
+                Text(title)
+                    .font(RFont.text(13, weight: .semibold))
+                    .tracking(-0.2)
+                if let price {
+                    Text("\(price) cr")
+                        .font(RFont.text(11, weight: .medium))
+                        .opacity(0.7)
+                }
+            }
+            .foregroundStyle(selected ? theme.bg : theme.text)
+            .padding(.horizontal, 12)
+            .padding(.vertical, price == nil ? 7 : 5)
+            .background(selected ? theme.text : theme.chipBg,
+                        in: .rect(cornerRadius: 12))
         }
         .buttonStyle(.plain)
         .accessibilityAddTraits(selected ? .isSelected : [])
