@@ -396,6 +396,22 @@ final class AppState {
     /// Cleared by the UI once acknowledged.
     var dailyCreditBanner: (credits: Int, streak: Int)?
 
+    /// When the catalog was last successfully loaded.
+    ///
+    /// The routes payload is ~3 MB / 18.5k rows and took 4.2s measured against
+    /// production, decoded on the main actor. It was refetched on EVERY
+    /// foreground — so every app switch, share sheet and trip to Settings
+    /// during an eSIM install cost 3 MB of the user's data plan and a visible
+    /// hitch. Prices move hourly at most (sync-prices runs at :17), so a
+    /// 10-minute floor loses nothing.
+    @ObservationIgnored
+    private var lastCatalogLoad: Date?
+
+    /// Credits from a just-completed purchase. The app had NO purchase
+    /// confirmation anywhere — no receipt, no toast, no "+N credits" — so a
+    /// successful buy was visually identical to a failed one.
+    var creditPurchaseBanner: Int?
+
     /// Claim the daily credit. Safe to call on every launch and foreground —
     /// the RPC is advisory-locked and idempotent per UTC day, so extra calls
     /// return `granted: false` and change nothing.
@@ -419,9 +435,16 @@ final class AppState {
         if let m = try? await api.current() { maintenance = m }
     }
 
-    func loadCatalog(using api: CatalogAPI) async {
+    /// `minInterval` skips the fetch when the catalog is already fresh enough.
+    /// Cold launch passes 0 (always load); the foreground path passes 600.
+    func loadCatalog(using api: CatalogAPI, minInterval: TimeInterval = 0) async {
+        if minInterval > 0, let last = lastCatalogLoad,
+           Date().timeIntervalSince(last) < minInterval {
+            return
+        }
         do {
             let catalog = try await api.fetch()
+            lastCatalogLoad = Date()
             services = catalog.services
             countries = catalog.countries
             routes = catalog.routes

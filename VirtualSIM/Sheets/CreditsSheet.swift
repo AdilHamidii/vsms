@@ -8,7 +8,7 @@ struct CreditsSheet: View {
     /// Credit shortfall for what the user was trying to buy (0 = no context).
     /// Used to preselect the smallest pack that unblocks them.
     var needed: Int = 0
-    var onPurchased: () -> Void
+    var onPurchased: () async -> Void
 
     @State private var selected: String = "md"
     @State private var purchasing = false
@@ -153,10 +153,15 @@ struct CreditsSheet: View {
         purchasing = true
         defer { purchasing = false }
         let success = await iap.purchase(pack)
-        if success {
-            onPurchased()
-            dismiss()
-        }
+        guard success else { return }
+        // AWAIT the wallet refresh before dismissing. This used to be
+        // fire-and-forget, racing the dismissal: the CTA could still read
+        // "Buy credits — need N more" against a balance that had already been
+        // credited, and because refreshWallet swallows every error a failed
+        // refresh left the user paid-but-unchanged with no message at all —
+        // which reads as "charged and got nothing".
+        await onPurchased()
+        dismiss()
     }
 }
 

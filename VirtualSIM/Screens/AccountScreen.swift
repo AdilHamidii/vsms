@@ -5,6 +5,7 @@ struct AccountScreen: View {
     @Environment(AppState.self) private var state
     @Environment(Session.self) private var session
     @Environment(APIClient.self) private var api
+    @Environment(IAPStore.self) private var iap
 
     var openCredits: () -> Void
 
@@ -15,6 +16,7 @@ struct AccountScreen: View {
     @State private var redeeming = false
     @State private var redeemMsg: String?
     @State private var codeCopied = false
+    @State private var restoreMsg: String?
 
     var body: some View {
         @Bindable var state = state
@@ -372,6 +374,21 @@ struct AccountScreen: View {
                 VStack(spacing: 0) {
                     SettingRow(label: "Help center", icon: "questionmark.circle",
                                onTap: { open(LegalLinks.help) })
+                    // The only user-triggerable recovery for a purchase whose
+                    // verification failed. Before this the backend paged the
+                    // owner and the user's sole route was email.
+                    SettingRow(label: "Restore purchases",
+                               icon: "arrow.clockwise",
+                               trailingText: restoreMsg,
+                               onTap: {
+                                   Task {
+                                       let n = await iap.restorePurchases()
+                                       await state.refreshWallet(using: WalletAPI(client: api))
+                                       restoreMsg = n > 0
+                                           ? String(localized: "+\(n) restored")
+                                           : String(localized: "Nothing to restore")
+                                   }
+                               })
                     SettingRow(label: "Contact support", icon: "envelope",
                                onTap: { openMail() })
                     SettingRow(label: "Sign out", isLast: true, isDanger: true,

@@ -30,7 +30,36 @@ final class PushManager: NSObject {
         let center = UNUserNotificationCenter.current()
         center.delegate = self
         do {
-            try await center.requestAuthorization(options: [.alert, .badge, .sound])
+            // HONOUR the result. iOS hands out a device token even when alert
+            // authorization was DENIED, and APNs then returns 200 for a push
+            // nobody can see — so a denied device used to register, look
+            // healthy, and silently burn the once-per-user winback nudge.
+            let granted = try await center.requestAuthorization(options: [.alert, .badge, .sound])
+            guard granted else { return }
+        } catch {
+            return
+        }
+        UIApplication.shared.registerForRemoteNotifications()
+    }
+
+    /// Provisional authorization: delivers quietly to Notification Center with
+    /// NO dialog and no opt-in cost, and can be upgraded later.
+    ///
+    /// Needed because the full prompt now lives only on the Waiting screen —
+    /// a screen 114 of 146 users have never reached. Without this, a signup
+    /// that never orders can never acquire a token, and `winback_candidates`
+    /// requires one, so the cohort the winback exists for became permanently
+    /// unreachable. Provisional keeps the contextual prompt intact while making
+    /// every signup addressable.
+    func registerProvisionalIfUndetermined() async {
+        let center = UNUserNotificationCenter.current()
+        center.delegate = self
+        let settings = await center.notificationSettings()
+        guard settings.authorizationStatus == .notDetermined else { return }
+        do {
+            let granted = try await center.requestAuthorization(
+                options: [.alert, .badge, .sound, .provisional])
+            guard granted else { return }
         } catch {
             return
         }

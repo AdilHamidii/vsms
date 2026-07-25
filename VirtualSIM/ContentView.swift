@@ -108,7 +108,10 @@ struct ContentView: View {
                     // Re-fetch catalog too so server-side sync-prices runs
                     // show up without an app reinstall / force-quit.
                     await state.refreshMaintenance(using: MaintenanceAPI(client: api))
-                    await state.loadCatalog(using: CatalogAPI(client: api))
+                    // Throttled: the routes payload is ~3 MB and prices move
+                    // hourly at most, so refetching on every foreground burned
+                    // the user's data plan for nothing.
+                    await state.loadCatalog(using: CatalogAPI(client: api), minInterval: 600)
                     await state.refreshWallet(using: WalletAPI(client: api))
                     await state.loadOrders(using: OrdersAPI(client: api))
                     // A user who leaves the app open overnight, or taps the
@@ -123,9 +126,27 @@ struct ContentView: View {
             push.pendingOrderId = nil
             Task {
                 await state.loadOrders(using: OrdersAPI(client: api))
-                if let order = state.orders.first(where: { $0.id == orderId }) {
+                guard let order = state.orders.first(where: { $0.id == orderId }) else { return }
+                switch order.status {
+                case .received:
                     state.activeOrder = order
                     state.flow = .otp
+                case .expired, .canceled, .refunded:
+                    // "No code arrived" is the app's most-delivered push. It
+                    // used to dump the user on Home — so the single highest
+                    // volume re-entry path bypassed the refund receipt and the
+                    // measured-best-country steer that exist for exactly this
+                    // moment.
+                    state.recovery = RecoveryContext(
+                        service: order.service,
+                        failedCountry: order.country,
+                        reason: order.status == .canceled ? .canceled : .expired,
+                        refundedCredits: order.costCredits)
+                    state.activeOrder = nil
+                    state.flow = .recovery
+                case .waiting:
+                    state.activeOrder = order
+                    state.flow = .waiting
                 }
             }
         }
@@ -228,7 +249,12 @@ struct ContentView: View {
             })
         case .credits:
             CreditsSheet(balance: state.balance, needed: state.creditsShortfall, onPurchased: {
-                Task { await state.refreshWallet(using: WalletAPI(client: api)) }
+                // Awaited before the sheet dismisses, so the balance the user
+                // returns to is the balance they just paid for.
+                await state.refreshWallet(using: WalletAPI(client: api))
+                if let n = iap.lastGrantedCredits, n > 0 {
+                    state.creditPurchaseBanner = n
+                }
             })
         }
     }
