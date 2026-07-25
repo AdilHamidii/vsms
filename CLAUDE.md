@@ -271,23 +271,35 @@ per-route: only 2 of 18,492 routes have ≥8 deliveries, and `routes` ships to e
 phone with `select=*`, so 18k mostly-NULL columns to serve two routes is a bad
 trade.
 
-**The client half of this was never built — `eta_seconds` IS still consulted.**
-Verified 2026-07-25: `Service.swift` has no `arrival_*` fields at all, and the
-seed value still renders in **three** places — `CheckoutScreen` ("~28 sec"),
-`HomeScreen` ("Typical wait ~28s") and `WaitingScreen` ("Usually arrives in
-28s"). So the measured p50/p90 sit in Postgres and reach nothing, while the app
-keeps promising a wait it cannot keep (seed 22–35s vs measured ~53s median,
-p90 ~139s). Wiring it up means adding the columns to the Swift `Service` model
-+ `CatalogAPI` select and replacing those three call sites — until then, treat
-any "typical wait" number in the UI as **seed data being shown as fact**.
+**Wired up end-to-end on 2026-07-25** — and doing so exposed that neither half
+had ever worked:
+- The migration's own header said it was "called from sync-prices' hourly
+  maintenance list". It was not in that list. The p50/p90 had been written once
+  by hand and then froze.
+- Adding it revealed `refresh_arrival_timing` could never have run via RPC at
+  all: `maintenance.arrivalTiming` returned **`error: UPDATE requires a WHERE
+  clause`**, because the statement stamping the global band onto every service
+  had no `WHERE`. Fixed in `20260725150000` with `where id is not null`.
+- `Service.swift` had no `arrival_*` fields, so three screens still quoted the
+  seed as fact. They now use `typicalWaitShort` / `typicalWaitSentence`, which
+  return **nil rather than a guess** — Home shows "—", Checkout hides the row,
+  Waiting says "Your code appears here the moment it arrives."
+`typicalWaitSentence` phrases by `arrival_scope`: a **global** band must never
+be worded as this service's own record. Live values: p50 47–52s, p90 ≤144s,
+hold_pct 86 (267 services on the global band, 1 with its own).
 
 `20260724120100_blunt_delivery_warnings.sql` adds `services.observed_orders` (ALL
 outcomes — a superset of `observed_attempts`, which counts only conclusive ones)
 and `routes.success_sample`. Both exist **only to warn on strong evidence, never
 to reassure on weak evidence**: a service that has never once delivered could
 previously sit under the sample gate and display nothing at all, and a bare
-`success_rate` couldn't distinguish 1-of-3 noise from 2-of-40 disaster. The
-client requires `success_sample >= 5` before a rate may interrupt a purchase.
+`success_rate` couldn't distinguish 1-of-3 noise from 2-of-40 disaster.
+`success_sample` reached the Swift `Route` model only on 2026-07-25 — before
+that the column existed server-side and the client never selected it, so any
+claim that the client "requires `success_sample >= 5`" was false. It now does
+carry it, and below 5 the UI states the sample instead of a bare percentage
+("0% of 2 tries", not "0% delivered") — which matters because the asymmetric
+gate writes `measured 0%` off just two attempts.
 
 ### Order-state honesty (client) — the reconcile invariant
 
@@ -332,6 +344,20 @@ calls `cancel-order`, which does a last-chance provider poll and can discard a
 code seconds from arriving. It requires an explicit confirmation naming the
 refund; don't "simplify" that away.
 
+**`resumeInFlightOrder()` runs on COLD LAUNCH ONLY.** Force-quitting during a
+wait used to strand a paid order — screen gone, nothing polling, only a history
+row. It restores the newest `waiting` order that has a number, and ignores rows
+more than 10 minutes past expiry so old ones aren't resurrected. Never call it
+from a `scenePhase` change: a backgrounded app still holds `flow` in memory, so
+it would yank the user out of whatever they had navigated to.
+
+**An eSIM LPA is single-use.** Once iOS consumes the profile the same QR/URL
+fails with an opaque Apple error that looks like we sold a broken eSIM, so the
+second and later taps of "Install eSIM" confirm first. It *warns* rather than
+blocks — a first attempt that died before the profile was consumed must still
+be retryable — and the flag is persisted in `UserDefaults`, because the user
+leaves for Settings mid-install and returns to a freshly-built view.
+
 ### Badge confidence — demote fast, promote slow
 
 `success_rate` starts as SMSPVA's own per-country grade (`sync-smspva-conversions`:
@@ -359,6 +385,17 @@ measured. A tilde is not a warning — nobody reads a tilde.
 - **Charge and order row must be written together.** `create-order` used to charge and only insert the row after a provider reservation succeeded, so every failure left a spend+refund pointing at nothing: **258 spends vs 126 orders — 51% of paid attempts invisible**, and the real failure rate unmeasurable. `begin_order()` now does dedupe + insert + charge in one transaction under a per-user advisory lock (the old dedupe `SELECT`ed ~120 lines before the `INSERT`, with a multi-second provider call between, so two concurrent requests both passed it and both charged). A stranded row self-heals: the poller skips it for polling (`smspva_id is not null`) but the expiry sweep still closes and refunds it.
 - **Never write a status transition without an atomic claim.** Every `orders` status write is `.eq("status","waiting")` + row-count check. `check-order`'s `received` branch was the one exception and could overwrite a terminal state the expiry cron had already set — handing a user a working code they'd *already been refunded for*.
 - **`apply_migration` (MCP) mints its own version number and does NOT write a repo file.** Three migrations performing an entire provider cutover existed only in the live DB; a fresh `supabase db push` would have come up SMSPool-primary with the wrong crons scheduled. After any `apply_migration`, immediately write `supabase/migrations/<live-version>_<name>.sql` with the same SQL. Recover forgotten ones from `supabase_migrations.schema_migrations.statements`.
+- **An unqualified `UPDATE` inside a SECURITY DEFINER function fails when called
+  over RPC — `UPDATE requires a WHERE clause`.** Supabase's safeupdate guard
+  applies to the roles edge functions call through, so a function that is fine
+  in the SQL editor throws the moment `sb.rpc()` invokes it. This hid for a day
+  inside `refresh_arrival_timing`, whose "stamp the global band on every row"
+  UPDATE had no WHERE — the function looked healthy because nothing ever called
+  it. Add a semantically-empty predicate (`where id is not null`) to any
+  deliberate table-wide UPDATE, and check `maintenance.*` in the `sync-prices`
+  response for `"error: ..."` strings after adding a maintenance job — each one
+  is wrapped in try/catch, so a broken job returns 200 with the error nested in
+  the body rather than failing the run.
 - **`supabase db push` is BROKEN and cannot be used (verified 2026-07-25).** It aborts with *"Remote migration versions not found in local migrations directory"* listing **43** remote versions (20260716183819 … 20260721125706) that have no local file — the accumulated debt of the `apply_migration` gotcha above. **Do NOT run the `supabase migration repair --status reverted <43 versions>` the CLI suggests**: those migrations really are applied, and marking them reverted invites a later push to re-run them. To ship one migration today: write the file, apply it with `supabase db query --linked --file <path>`, then record it yourself:
   ```sql
   insert into supabase_migrations.schema_migrations (version, name)
@@ -471,12 +508,27 @@ SMS provider again, walk this list:
   window, dead APNs pruning, winback heartbeat, `job_run_details` 7-day retention,
   migration bookkeeping (**but `db push` is broken again — see the gotcha**). `docs/autopilot-runbook.md`
   is the owner's operations reference.
-- Known-open, none blocking: watchdog can't see a delivery-rate collapse; no guard
-  against tapping "Install eSIM" twice with a single-use LPA; `pollActiveOrder`
-  swallows every error so "Check now" can look dead during a provider hiccup; an
-  in-flight order isn't auto-resumed after the app is killed; `routes` cost columns
-  are readable unauthenticated (competitor-visible margin book); Supabase project
-  is on the FREE plan (**no backups** — recommend Pro).
+- **Known-open list cleared 2026-07-25** — every item below is now fixed except
+  the two marked OPEN:
+  - ✅ watchdog delivery-rate blindness → `20260725140000`. Replayed against the
+    2026-07-24 outage: 10 conclusive / 0 delivered → **would have paged**.
+  - ✅ double-tap "Install eSIM" burning a single-use LPA → confirm-on-repeat,
+    persisted across the trip to Settings.
+  - ✅ `pollActiveOrder` swallowing errors → the reconcile invariant above.
+  - ✅ in-flight order not resumed after app kill → `resumeInFlightOrder()`.
+  - ✅ measured arrival timing never reaching the client → wired + the
+    safeupdate bug fixed.
+  - ⚠️ **OPEN (deliberately staged): `routes` cost columns readable
+    unauthenticated.** The client half shipped (explicit column list, and
+    `lastCostCents` deleted from the model — it was decoded and never read).
+    Migration `20260725130000` revokes the column grants but is **NOT APPLIED**:
+    Postgres needs SELECT on every column to answer `select=*`, so applying it
+    before the new build is adopted would make the catalog fail to load and
+    every price render "Unavailable" for users on 1.4/1.5. Apply it once the
+    build with the explicit-column `CatalogAPI` is out and adopted, then
+    re-check with the curl in that file's header.
+  - ⚠️ **OPEN: Supabase project is on the FREE plan (no backups).** Owner
+    action — recommend Pro.
 
 ## Error UX rule
 
