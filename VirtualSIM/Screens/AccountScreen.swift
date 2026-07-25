@@ -355,7 +355,7 @@ struct AccountScreen: View {
                     )
                     SettingRow(label: "Auto-refund",
                                icon: RIcon.shield,
-                               trailingText: "20 min",
+                               trailingText: "8 min",
                                isLast: true)
                 }
             }

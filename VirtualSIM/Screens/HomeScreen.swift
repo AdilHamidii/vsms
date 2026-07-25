@@ -4,7 +4,6 @@ struct HomeScreen: View {
     @Environment(\.theme) private var theme
     @Environment(AppState.self) private var state
 
-    var showMetrics: Bool = true
     var openServices: () -> Void = {}
     var openCountries: () -> Void = {}
     var openCredits: () -> Void = {}
@@ -206,7 +205,7 @@ struct HomeScreen: View {
                             }
                         }
                     }
-                    if showMetrics {
+                    if state.showMetrics {
                         Rectangle()
                             .fill(theme.sep)
                             .frame(height: 0.5)
@@ -281,7 +280,7 @@ struct HomeScreen: View {
             Image(systemName: RIcon.shield)
                 .font(.system(size: 13, weight: .medium))
                 .foregroundStyle(theme.text3)
-            Text("Failed SMS auto-refund within 2 minutes.")
+            Text("No code in 8 minutes → refunded automatically.")
                 .font(RFont.text(12))
                 .tracking(-0.1)
                 .foregroundStyle(theme.text3)

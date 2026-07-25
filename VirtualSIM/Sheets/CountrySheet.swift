@@ -134,10 +134,10 @@ private struct CountryRow: View {
                             .lineLimit(1)
                         HStack(spacing: 8) {
                             MonoText(country.dialCode, size: 12, color: theme.text2)
-                            Text("·").foregroundStyle(theme.text3)
-                            Text("usually ~\(country.avgSeconds)s")
-                                .font(RFont.text(12))
-                                .foregroundStyle(theme.text2)
+                            // countries.avg_seconds is seed data too — drop
+                            // the claim rather than dress it up. The measured
+                            // band lives on Service, not Country.
+
                         }
                     }
                     Spacer(minLength: 0)

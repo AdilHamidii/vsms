@@ -144,10 +144,15 @@ private struct ServiceRow: View {
                         Text(service.category)
                             .font(RFont.text(12))
                             .foregroundStyle(theme.text2)
-                        Text("·").foregroundStyle(theme.text3)
-                        Text("~\(service.etaSeconds)s typical")
-                            .font(RFont.text(12))
-                            .foregroundStyle(theme.text2)
+                        // MEASURED arrival only — the seed etaSeconds was the
+                        // last surface still stating it as fact. Nothing shows
+                        // when there is no measurement.
+                        if let wait = service.typicalWaitShort {
+                            Text("·").foregroundStyle(theme.text3)
+                            Text("\(wait) typical")
+                                .font(RFont.text(12))
+                                .foregroundStyle(theme.text2)
+                        }
                         if let rate {
                             Text("·").foregroundStyle(theme.text3)
                             SuccessBadge(rate: rate.rate, measured: rate.isMeasured, sample: rate.sample, compact: true)
