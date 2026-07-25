@@ -8,29 +8,43 @@ struct ReceiptRow<Leading: View, Trailing: View>: View {
     @ViewBuilder var leading: Leading
     @ViewBuilder var trailing: Trailing
 
+    /// A row is only a Button when it actually navigates somewhere.
+    ///
+    /// It used to ALWAYS be a Button with `.disabled(onTap == nil)`, which broke
+    /// the checkout tier picker outright: `.disabled(true)` propagates down the
+    /// whole subtree, so the "Number type" row (no onTap, but with Standard /
+    /// Real SIM buttons in its trailing) rendered greyed out AND swallowed every
+    /// tap — the premium tier was unselectable in shipped builds. Wrapping
+    /// interactive content in a disabled Button is also a nested-Button
+    /// conflict even without the dimming, so the fix is to not wrap at all
+    /// rather than to drop the `.disabled`. Same lesson `SettingRow` already
+    /// carries; don't reintroduce it here.
     var body: some View {
-        Button {
-            onTap?()
-        } label: {
-            VStack(spacing: 0) {
-                HStack(spacing: 12) {
-                    leading
-                    Text(label)
-                        .font(RFont.text(13))
-                        .tracking(-0.1)
-                        .foregroundStyle(theme.text2)
-                    Spacer(minLength: 0)
-                    trailing
-                }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 14)
-                if !last {
-                    Rectangle().fill(theme.sep).frame(height: 0.5)
-                }
+        if let onTap {
+            Button(action: onTap) { content }
+                .buttonStyle(.plain)
+        } else {
+            content
+        }
+    }
+
+    private var content: some View {
+        VStack(spacing: 0) {
+            HStack(spacing: 12) {
+                leading
+                Text(label)
+                    .font(RFont.text(13))
+                    .tracking(-0.1)
+                    .foregroundStyle(theme.text2)
+                Spacer(minLength: 0)
+                trailing
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 14)
+            if !last {
+                Rectangle().fill(theme.sep).frame(height: 0.5)
             }
         }
-        .buttonStyle(.plain)
-        .disabled(onTap == nil)
     }
 }
 
