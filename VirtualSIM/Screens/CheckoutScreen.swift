@@ -120,11 +120,14 @@ struct CheckoutScreen: View {
                     })
                     .accessibilityHint(Text("Real SIM costs \(premiumCost) credits and has the best delivery rate"))
                 }
-                if state.showMetrics {
+                // Only render the wait row when it's MEASURED. With no sample
+                // there is nothing honest to put here, and the refund promise
+                // below carries the row's real value anyway.
+                if state.showMetrics, let wait = service.typicalWaitShort {
                     ReceiptRow(label: "Expected", leading: {
                         ReceiptIconBox(symbol: RIcon.clock)
                     }, trailing: {
-                        ReceiptValue(primary: "~\(service.etaSeconds) sec",
+                        ReceiptValue(primary: wait,
                                      secondaryText: "Only charged if a code arrives")
                     })
                 }
@@ -143,7 +146,13 @@ struct CheckoutScreen: View {
                         ReceiptIconBox(symbol: RIcon.shield)
                     }, trailing: {
                         if rate.isMeasured {
-                            ReceiptValue(primary: "\(rate.rate)% delivered",
+                            // State the sample on thin evidence. After the
+                            // asymmetric demotion gate a route can be
+                            // "measured 0%" off just 2 attempts — true, but
+                            // "0% delivered" alone implies a settled fact.
+                            ReceiptValue(primary: (rate.sample.map { $0 < 5 } ?? false)
+                                            ? "\(rate.rate)% of \(rate.sample ?? 0) tries"
+                                            : "\(rate.rate)% delivered",
                                          secondaryText: rate.rate >= 70 ? "Reliable route" : "Lower-success — refunded if it fails")
                         } else {
                             ReceiptValue(primary: "~\(rate.rate)% estimated",

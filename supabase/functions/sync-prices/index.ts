@@ -321,6 +321,14 @@ Deno.serve(async (req) => {
       ["visibilityChanged", "sync_service_visibility"],
       ["serviceEvidence", "refresh_service_delivery"],
       ["reranked", "apply_measured_service_ranking"],
+      // Measured arrival percentiles. Migration 20260724120000 documented
+      // itself as "called from sync-prices' hourly maintenance list" but was
+      // never actually added here — so the p50/p90 were written once by hand
+      // and then froze. Staleness is worse than absence for this one: the
+      // function wipes every row it owns before rewriting, so a stale run
+      // degrades to "say nothing" rather than to numbers about a provider we
+      // no longer use.
+      ["arrivalTiming", "refresh_arrival_timing"],
     ] as const
   ) {
     try {

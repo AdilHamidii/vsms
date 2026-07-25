@@ -115,7 +115,7 @@ private struct CountryRow: View {
     @Environment(\.theme) private var theme
     let country: Country
     let price: Int?
-    let rate: (rate: Int, isMeasured: Bool)?
+    let rate: (rate: Int, isMeasured: Bool, sample: Int?)?
     let balance: Int
     let isLast: Bool
     let onTap: () -> Void
@@ -157,7 +157,7 @@ private struct CountryRow: View {
                                 .foregroundStyle(theme.text3)
                         }
                         if let rate {
-                            SuccessBadge(rate: rate.rate, measured: rate.isMeasured, compact: true)
+                            SuccessBadge(rate: rate.rate, measured: rate.isMeasured, sample: rate.sample, compact: true)
                         }
                     }
                 }

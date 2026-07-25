@@ -36,6 +36,9 @@ private enum PrefKey {
     static let successfulCodes  = "review.successfulCodes"
     static let lastCountedOrder = "review.lastCountedOrder"
     static let lastPromptVer    = "review.lastPromptVersion"
+
+    /// eSIM order ids whose install flow has been opened at least once.
+    static let esimInstallsStarted = "esim.installsStarted"
 }
 
 @Observable
@@ -82,6 +85,30 @@ final class AppState {
     /// True while a create-order call is in flight — guards against double-tap
     /// double-charge and lets the checkout CTA show an in-progress state.
     var isPlacingOrder = false
+
+    /// eSIM order ids whose install flow has already been opened.
+    ///
+    /// An LPA activation code is SINGLE-USE: once iOS consumes the profile the
+    /// same QR/URL fails, and Apple's error says nothing about why — it just
+    /// looks like we sold a broken eSIM. Persisted (not view state) because
+    /// the user leaves the app for Settings during install and comes back to a
+    /// freshly-built screen. This WARNS rather than blocks: if the first
+    /// attempt died before the profile was consumed, they must still be able
+    /// to retry.
+    private(set) var esimInstallsStarted: Set<String> = {
+        Set(UserDefaults.standard.stringArray(forKey: PrefKey.esimInstallsStarted) ?? [])
+    }()
+
+    func hasStartedEsimInstall(_ orderId: String) -> Bool {
+        esimInstallsStarted.contains(orderId)
+    }
+
+    func markEsimInstallStarted(_ orderId: String) {
+        guard !esimInstallsStarted.contains(orderId) else { return }
+        esimInstallsStarted.insert(orderId)
+        UserDefaults.standard.set(Array(esimInstallsStarted),
+                                  forKey: PrefKey.esimInstallsStarted)
+    }
     /// Consecutive failures of the provider-dependent `check-order` poll.
     /// Two in a row means stop trusting it and reconcile against the order row
     /// instead — see `pollActiveOrder`.
@@ -185,10 +212,16 @@ final class AppState {
     /// Rate plus provenance. `isMeasured` is true only when the backend marked
     /// the rate `measured` — the only case the UI may state as fact; anything
     /// else is a seeded estimate and must read as one.
-    func rateInfo(for service: Service, country: Country) -> (rate: Int, isMeasured: Bool)? {
+    /// `sample` is how many conclusive orders back a MEASURED rate. It matters
+    /// because the demotion gate is asymmetric (migration 20260725120000): a
+    /// route with zero codes becomes `measured 0%` at just 2 attempts, so
+    /// "0% delivered" is now routinely a 2-sample claim. True, but it should
+    /// not wear the confidence of a 40-sample one — SuccessBadge shows the
+    /// sample instead of a bare percentage below `thinSample`.
+    func rateInfo(for service: Service, country: Country) -> (rate: Int, isMeasured: Bool, sample: Int?)? {
         guard let route = routeIndex["\(service.id)|\(country.id)"],
               route.status == "active", let rate = route.successRate else { return nil }
-        return (rate, route.rateSource == "measured")
+        return (rate, route.rateSource == "measured", route.successSample)
     }
 
     /// The country to land on when the user picks `service`. Ranks by
@@ -452,6 +485,33 @@ final class AppState {
         } catch {
             // keep current
         }
+    }
+
+    /// Put the user back on the waiting screen for an order that was still in
+    /// flight when the app was killed.
+    ///
+    /// Without this, force-quitting during a wait stranded a PAID order: the
+    /// screen was gone, nothing polled it, and the only trace was a row in
+    /// history. The server still resolves and refunds it either way, but the
+    /// user had no way to receive the code they'd paid for.
+    ///
+    /// Cold launch only — a backgrounded app keeps `flow` in memory, so this
+    /// must never run on scenePhase changes or it would yank someone out of
+    /// whatever they navigated to.
+    func resumeInFlightOrder() {
+        guard flow == nil, activeOrder == nil else { return }
+        // Newest first (list() orders by created_at desc). Skip pre-reservation
+        // rows with no number yet — there's nothing to show and the expiry
+        // sweep closes them.
+        guard let live = orders.first(where: {
+            $0.status == .waiting && $0.server.smspvaNumber != nil
+        }) else { return }
+        // Don't resurrect an ancient row. Inside this window the order is
+        // either genuinely live or about to be closed+refunded by the cron —
+        // and resuming shows that outcome honestly instead of hiding it.
+        guard live.expiresAt > Date().addingTimeInterval(-600) else { return }
+        activeOrder = live
+        flow = .waiting
     }
 
     /// Build a UI Order from a server row using the loaded catalog.

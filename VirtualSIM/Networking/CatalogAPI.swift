@@ -5,10 +5,16 @@ struct Route: Codable, Hashable {
     let countryId: String
     let retailCredits: Int?
     let status: String
-    let lastCostCents: Int?
-    let successRate: Int?    // 0-100, provider self-reported; nil = no badge
+    let successRate: Int?    // 0-100; nil = no badge
     let rateSource: String?  // "measured" | "seeded"; only measured may be stated as fact
+    let successSample: Int?  // conclusive orders behind successRate; nil = seeded
     let premiumCredits: Int? // real-SIM tier price; nil = no premium option
+
+    // `lastCostCents` was decoded here and never read by a single call site —
+    // it only ever served to publish our wholesale cost. See the explicit
+    // column list in fetch(): the catalog is fetched UNAUTHENTICATED, so every
+    // column named there is world-readable to anyone with the publishable key.
+    // Never add a cost/margin column to this struct or that query.
 }
 
 struct Catalog: Codable {
@@ -41,10 +47,17 @@ struct CatalogAPI {
         // non-active status. Every other (service, country) pair just uses
         // service.cost and is considered active — no need to ship 13,000+
         // rows that all say the same thing as the service.
+        // EXPLICIT column list, never `*`. This request is unauthenticated, so
+        // `select=*` published the whole margin book — last_cost_cents,
+        // smoothed_cost_cents, smspva_operator_cents — to anyone holding the
+        // publishable key (which ships in the app). The server also revokes
+        // column privileges on those (migration 20260725130000); this list is
+        // the half that stops us asking for them in the first place.
         async let rtsTask: [Route] = client.request(
             .get, path: "rest/v1/routes",
             query: [
-                URLQueryItem(name: "select", value: "*"),
+                URLQueryItem(name: "select",
+                             value: "service_id,country_id,retail_credits,status,success_rate,rate_source,success_sample,premium_credits"),
                 URLQueryItem(name: "or", value: "(retail_credits.not.is.null,status.neq.active,success_rate.not.is.null)"),
             ],
             authenticated: false

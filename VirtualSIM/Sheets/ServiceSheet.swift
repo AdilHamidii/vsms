@@ -126,7 +126,7 @@ private struct ServiceRow: View {
     /// Real synced route price for the currently-selected country, or nil when
     /// the (service, country) pair has no confirmed price (unavailable to book).
     let price: Int?
-    let rate: (rate: Int, isMeasured: Bool)?
+    let rate: (rate: Int, isMeasured: Bool, sample: Int?)?
     let balance: Int
     let onTap: () -> Void
 
@@ -150,7 +150,7 @@ private struct ServiceRow: View {
                             .foregroundStyle(theme.text2)
                         if let rate {
                             Text("·").foregroundStyle(theme.text3)
-                            SuccessBadge(rate: rate.rate, measured: rate.isMeasured, compact: true)
+                            SuccessBadge(rate: rate.rate, measured: rate.isMeasured, sample: rate.sample, compact: true)
                         }
                     }
                 }

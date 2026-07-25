@@ -8,6 +8,8 @@ struct EsimDetailScreen: View {
 
     let order: EsimOrder
     @State private var copied = false
+    @State private var showReinstallConfirm = false
+    @State private var pendingLpa: String?
 
     /// Prefer the live copy in state (usage updates flow in there).
     private var live: EsimOrder { state.activeEsimOrder ?? order }
@@ -37,6 +39,18 @@ struct EsimDetailScreen: View {
                 try? await Task.sleep(nanoseconds: 8_000_000_000)
                 await state.refreshEsimUsage(using: EsimOrdersAPI(client: api))
             }
+        }
+        .confirmationDialog(
+            "Install this eSIM again?",
+            isPresented: $showReinstallConfirm,
+            titleVisibility: .visible
+        ) {
+            Button("Install again") {
+                if let lpa = pendingLpa { installDirect(lpa) }
+            }
+            Button("Cancel", role: .cancel) { pendingLpa = nil }
+        } message: {
+            Text("This eSIM can only be installed once. If it's already on your device, check Settings → Cellular instead — installing again will fail.")
         }
     }
 
@@ -82,8 +96,20 @@ struct EsimDetailScreen: View {
                 .frame(width: 200, height: 200)
                 .padding(14).background(Color.white, in: .rect(cornerRadius: 16))
                 if #available(iOS 17.4, *) {
-                    Button { installDirect(lpa) } label: {
-                        Text("Install eSIM").font(RFont.display(16, weight: .semibold))
+                    // Second and later taps confirm first — the activation
+                    // profile is single-use, so re-running a successful
+                    // install just yields an opaque Apple failure.
+                    Button {
+                        if state.hasStartedEsimInstall(live.id) {
+                            pendingLpa = lpa
+                            showReinstallConfirm = true
+                        } else {
+                            installDirect(lpa)
+                        }
+                    } label: {
+                        Text(state.hasStartedEsimInstall(live.id)
+                             ? "Install again" : "Install eSIM")
+                            .font(RFont.display(16, weight: .semibold))
                             .foregroundStyle(theme.onInk).frame(maxWidth: .infinity).frame(height: 50)
                             .background(theme.ink, in: .rect(cornerRadius: 14))
                     }.buttonStyle(.plain)
@@ -193,6 +219,7 @@ struct EsimDetailScreen: View {
     }
 
     private func installDirect(_ lpa: String) {
+        state.markEsimInstallStarted(live.id)
         let encoded = lpa.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? lpa
         if let url = URL(string: "https://esimsetup.apple.com/esim_qrcode_provisioning?carddata=\(encoded)") {
             UIApplication.shared.open(url)
