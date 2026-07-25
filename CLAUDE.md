@@ -52,15 +52,26 @@ supabase functions deploy create-order check-order cancel-order register-push ia
 # until 2026-07-21 and silently 401'd on every daily run — zero nudges ever
 # sent, invisible because pg_net purges response history within hours.
 supabase functions deploy poll-active-orders sync-prices sync-smspool sync-esim-plans \
-  sync-smspva-operators sync-smspva-conversions winback telegram-notify telegram-webhook --no-verify-jwt
+  sync-smspva-operators sync-smspva-conversions winback telegram-notify telegram-webhook \
+  smspool-catalog --no-verify-jwt
+# smspool-catalog is an operator-only read-only dump of SMSPool's service/country
+# ids (for mapping unmatched catalog entries); CRON_SECRET-gated like the syncs.
+# NOTE: supabase/functions/list-orders/ is an EMPTY leftover directory, untracked
+# and not deployed — don't add it to a deploy list.
 
 # Query the remote DB
 supabase db query --linked "select count(*) from public.routes;"
 
 # Trigger any cron-gated function WITHOUT handling the secret yourself. pg_net
 # calls it server-side and private_cron_secret() never leaves the database.
-# (relay-sync-prices runs hourly at :17; relay-poll-active-orders every minute;
-#  relay-sync-esim-plans daily 02:00 UTC; relay-sync-smspool is UNSCHEDULED.)
+# Live pg_cron schedule (12 jobs, all active — verified 2026-07-25):
+#   relay-poll-active-orders  * * * * *     relay-telegram-notify  * * * * *
+#   watchdog                  */10 * * * *  relay-sync-prices      17 * * * *
+#   relay-sync-smspva-conversions 49 * * * *  relay-sync-esim-plans 0 2 * * *
+#   relay-sync-smspva-operators (fans 6 slots)  relay-winback      0 15 * * *
+#   relay-smspva-operators-maint-up 29 4  / -down 43 4  (maintenance screen)
+#   purge-job-run-details 7 3 * * *       telegram-events-prune 30 4 * * *
+# relay-sync-smspool is UNSCHEDULED (SMSPool serves eSIMs only).
 supabase db query --linked "
   select net.http_post(
     url := 'https://enugzltysdmjzavisloy.supabase.co/functions/v1/sync-prices',
@@ -70,7 +81,7 @@ supabase db query --linked "
 ```
 
 There is no test suite. Verify iOS with the `swiftc -typecheck` command above
-(exit 0 = all 72 sources compile). Verify backend changes by re-deploying, then
+(exit 0 = all 73 sources compile). Verify backend changes by re-deploying, then
 **checking the resulting DB state** — not by assuming the deploy worked. Several
 bugs this session looked identical to success until a row was queried: an
 SMSPVA balance read that silently wrote nothing, and maintenance jobs that ran
@@ -84,7 +95,7 @@ instead — different auth path, unaffected.
 ## Architecture
 
 ```
-iOS (SwiftUI, iOS 26.2 target)            Supabase
+iOS (SwiftUI, iOS 18.0 min target)        Supabase
 ─────────────────────────────             ──────────────────────────────────────────
 AuthGate                                  Postgres tables: profiles, wallets,
   ↓ Sign in with Apple (native)             wallet_transactions, services, countries,
@@ -103,7 +114,14 @@ Providers — _shared/providers.ts:           poll-active-orders (cron, every 1 
 APNs ←── token-auth (.p8) HTTP/2            telegram-webhook (public, 2-gate)
 Telegram ←── ops alerts + 6h digest         redeem-referral / winback
                                             register-push / iap-verify / delete-account
+                                            sync-smspva-operators (nightly, chunked)
+                                            sync-smspva-conversions (hourly :49)
+                                            smspool-catalog (operator-only dump)
 ```
+
+**iOS minimum is 18.0**, lowered from 26.2 in `a9b92c0` (shipped as 1.5 build 16)
+— the 26.2 floor excluded almost every device in the install base. Anything
+guarded by an `if #available(iOS 26, *)` must keep a working 18.0 path.
 
 ### iOS source layout
 
@@ -131,13 +149,19 @@ VirtualSIM/
   Screens/                       Home, Checkout, Waiting (+ WaitingAnimations),
                                  OTP (fires native review prompt on code
                                  delivery), Orders, Account, + eSIM flow
-                                 (EsimStore, EsimCheckout, EsimDetail = QR + usage)
+                                 (EsimStore, EsimCheckout, EsimDetail = QR + usage),
+                                 Recovery (post-failure: retry on a fresh number /
+                                 switch country / refund explainer — see the
+                                 retry-steering note below), Maintenance (shown
+                                 during the nightly operator-sync window)
   Sheets/                        ServiceSheet (search + categories + per-route
                                  price), CountrySheet (sort + per-route price),
                                  CreditsSheet (StoreKit 2)
   Components/                    Theme primitives + ServiceLogo / FlagImage /
                                  FlagCircle — bundle-first via BundledImageStore,
-                                 network cascade (DuckDuckGo/FaviconV2, flagcdn) as fallback
+                                 network cascade (DuckDuckGo/FaviconV2, flagcdn) as
+                                 fallback; SuccessBadge renders MEASURED delivery
+                                 odds only (grey/amber/red), never seed rates
   Push/, IAP/, Onboarding/, DesignSystem/  Self-explanatory
   Localizable.xcstrings          String Catalog: en source + de/es/fr/it/ja/pt-BR
   Products.storekit              Local IAP test config (enable via scheme)
@@ -175,6 +199,32 @@ returns a silent 200 on every rejection so it isn't an oracle.
 
 `sync-prices` formula: `credits = max(1, ceil(price / 0.05))` — 1 credit per started 5¢ of wholesale (`CREDIT_DIVISOR = 0.05`, same in `sync-smspool` **and `sync-smspva-operators`**, which prices the premium tier; tune it for global margin adjustment). Order-time enforcement matches: `create-order` has `MIN_MARGIN = 6.0` / `NET_USD_PER_CREDIT = 0.30`, so the max we pay a provider is `credits × $0.05`, enforced on the actual charged cost with cancel-and-fallback. The two are algebraically identical (`credits*0.30/6.0 == credits*0.05`) — keep them in lockstep; raising one alone either blocks honest routes or leaks margin. **SMS markup went 3× → 6× on 2026-07-25** (divisor 0.10 → 0.05); retail is recomputed from `smoothed_cost_cents` every run, so the whole catalog reprices on the next `sync-prices`.
 
+**Changing `CREDIT_DIVISOR` silently breaks the PREMIUM tier until you backfill
+`routes.premium_credits`.** This bit us on the 3× → 6× change (2026-07-25).
+`retail_credits` is rewritten wholesale by `sync-prices` on the next hourly run,
+but `premium_credits` is written **only** by `sync-smspva-operators`, which is
+cursor-chunked at 12 countries/run across a nightly window — so it keeps
+old-divisor values for *days*. Meanwhile `create-order` computes its ceiling as
+`premium_credits * NET / MIN_MARGIN`, which just halved. Result: **15,702 of
+16,303 premium routes would have been refused at checkout** with `margin_too_low`
+— honestly-priced routes, rejected, invisible unless you query for it. After any
+divisor change, backfill immediately (this exact statement repairs it, and
+mirrors `toCredits()` + the never-cheaper-than-standard floor):
+
+```sql
+update public.routes
+set premium_credits = greatest(retail_credits,
+      greatest(1, least(999, ceil(smspva_operator_cents/100.0/<NEW_DIVISOR>))))
+where premium_credits is not null and smspva_operator_cents is not null
+  and retail_credits is not null;
+```
+Then assert `count(*) where premium_credits * <NEW_DIVISOR> < smspva_operator_cents/100.0` is **0**.
+
+Note the ceiling is *margin-invariant* by design: credits scale up exactly as the
+multiplier scales down, so `maxCostUsd` stays ≈ wholesale at any margin. That is
+the whole reason the two constants must move together — and why only the derived
+columns need a backfill.
+
 **The cost smoothing is a RATCHET, not a symmetric EWMA.** A cost RISE applies immediately; only falls are smoothed:
 ```ts
 const smoothed = prev == null || cents > prev ? cents : Math.round(A*cents + (1-A)*prev);
@@ -184,6 +234,51 @@ A plain `0.5*new + 0.5*prev` averages a rise against yesterday's cheaper price a
 **eSIM** plans (`sync-esim-plans`) are priced **separately** at 4× wholesale (raised 3× → 4× on 2026-07-25) — `ESIM_MARGIN = 4`, `CREDIT_VALUE_USD = 0.48`, `retail_credits = ceil(usd * 4 / 0.48)` — NOT via `CREDIT_DIVISOR`, so the two product lines never collide. Inverted, the order-time ceiling in `create-esim-order` is `credits * 0.12`: SMSPool's `/esim/purchase` accepts no price cap and its response reports **no cost at all**, so the function takes a fresh `/esim/plans` quote, blocks above the ceiling, and writes that real number into `actual_cost_cents`. It fails **closed** on a bad price and **open** on a failed lookup — an unreachable SMSPool must not make eSIMs unbuyable. (Before this, `actual_cost_cents` echoed the cached catalog price, so margin analysis over it was circular and could never reveal drift.)
 
 **Credit packs** (`Models/CreditPack.swift` + `Products.storekit` + `_shared/iap.ts` `PRODUCT_TO_CREDITS`): 5/$2.99, 12/$5.99 (MOST POPULAR), 30/$12.99, 60/$22.99, 150/$49.99 (BEST VALUE) — a strictly improving per-credit ladder (each pack beats stacking smaller ones). The per-credit label is computed **live** from the StoreKit price in `IAPStore.perCredit`, so it never drifts; production prices must be set to match in App Store Connect.
+
+### Retry steering (create-order)
+
+A retry after a failure must not hand back the same dead pool. Two mechanisms,
+both in `create-order`:
+
+- **Fresh-number guarantee** (`157748c`): numbers this user already burned on
+  this service are excluded from the reservation, so a retry is never the same
+  number.
+- **Operator rotation** (`fbfe8c9`): if the carrier we'd pin is one the user
+  just failed on, pick the cheapest *untried, non-`Donor*`* real carrier from
+  the live per-operator price map (`getCountryPrices` → `po`) that still fits
+  `maxCostUsd`. Fallbacks are asymmetric on purpose — **standard** drops to
+  unpinned (at least a different pool than the one that just failed);
+  **premium** keeps the route pin, because the buyer paid for *that* real-SIM
+  pool and must never be silently downgraded. The lookup is wrapped in
+  try/catch and ignored on failure: rotation is an optimization, never a
+  reason to fail an order.
+
+Standard orders also pin the route's real carrier whenever it fits the ceiling —
+probed 2026-07-21, the carrier costs the same or *less* than a random fill,
+because "random" usually means a `Donor*` VoIP pool that strict services reject.
+
+### Measured arrival timing + evidence-gated warnings
+
+`services.eta_seconds` is seed data (22–35s, DB default 30, never recomputed) and
+the app used to render it as fact in four places. Measured median arrival is
+**~53s** with p90 ~139s, so the app promised a wait it could not keep and users
+cancelled at a median of 63s believing the code was overdue — while 86% of all
+codes ever delivered arrived inside that same window. Migration
+`20260724120000_measured_arrival_timing.sql` adds
+`arrival_p50_seconds/p90/sample/scope/hold_pct` on `services`, filled by
+`refresh_arrival_timing()`. Percentiles resolve **service → global → NULL**, never
+per-route: only 2 of 18,492 routes have ≥8 deliveries, and `routes` ships to every
+phone with `select=*`, so 18k mostly-NULL columns to serve two routes is a bad
+trade. `eta_seconds` is never consulted again; with no measurement the UI says
+something structural and true instead of a number.
+
+`20260724120100_blunt_delivery_warnings.sql` adds `services.observed_orders` (ALL
+outcomes — a superset of `observed_attempts`, which counts only conclusive ones)
+and `routes.success_sample`. Both exist **only to warn on strong evidence, never
+to reassure on weak evidence**: a service that has never once delivered could
+previously sit under the sample gate and display nothing at all, and a bare
+`success_rate` couldn't distinguish 1-of-3 noise from 2-of-40 disaster. The
+client requires `success_sample >= 5` before a rate may interrupt a purchase.
 
 ## Non-obvious gotchas (real bugs we've hit, do not re-introduce)
 
@@ -235,7 +330,7 @@ A plain `0.5*new + 0.5*prev` averages a rise against yesterday's cheaper price a
     chase the 26.5 runtime. Until then this Mac can type-check but not archive.
   To verify code WITHOUT fixing any of this, use the `swiftc -typecheck` command
   at the top of this file — the project has zero SwiftPM dependencies, so it
-  type-checks all 72 sources against the simulator SDK and needs no runtime.
+  type-checks all 73 sources against the simulator SDK and needs no runtime.
   Archiving still needs the platform installed, so this blocks shipping a build
   even though it does not block verifying one.
 
@@ -252,13 +347,44 @@ SMS provider again, walk this list:
 6. **Point balance monitoring at it** (`app_config.<provider>_health` + the `ROLE` map in `_shared/opsFormat.ts`).
 7. **Verify with data, not the deploy log** — per-provider delivery is in `ops_snapshot`'s `by_provider`. A single blended rate averages a dead provider with a live one and describes neither (it read 10% while the live provider was at 43%).
 
-## Current state (2026-07-22)
+## Current state (2026-07-25)
 
-- **1.5 (build 14) is WAITING_FOR_REVIEW, releaseType AFTER_APPROVAL** (auto-releases). 1.4 is live. IAPs: 5/12/30 approved, 150cr in review, **60cr still READY_TO_SUBMIT — owner must submit it in the ASC UI**.
-- **SMS: SMSPVA** ($11.26, low). **eSIM: SMSPool** ($3.10, ~50% of plans unbuyable). Balance pages now escalate at $20/$10/$5/$1 crossings, not just once.
-- **Autopilot hardening shipped 2026-07-22** (audit → migration `20260722050000` + 7 function redeploys): SQL watchdog + Telegram paging, order fail-streak pager, provider AUTH/BALANCE fault pager, iap-verify no longer eats a payment on `wallet_credit` failure (deletes receipt → StoreKit retries → pages), `/balance` fixed (was ReferenceError in prod), sweep window 30min→24h, dead APNs tokens pruned, winback heartbeat + no-device unclogging, `check-esim-usage` now sets `expires_at`, `job_run_details` 7-day retention, migration bookkeeping reconciled (**`db push` is safe again**), stale balances render "no reading" in the digest.
-- **E2E-validated live 2026-07-22**: full order path (charge → SMSPVA reserve → cancel → single refund → ledger reconciles) with a disposable user; watchdog page + all-clear proven with an injected failure. `docs/autopilot-runbook.md` is the owner's operations reference.
-- Known-open, none blocking: no guard against tapping "Install eSIM" twice with a single-use LPA; `pollActiveOrder` swallows every error so "Check now" can look dead during a provider hiccup; an in-flight order isn't auto-resumed after the app is killed; `routes` cost columns are readable unauthenticated (competitor-visible margin book — fix couples to an app change); Supabase project is on the FREE plan (**no backups** — recommend Pro).
+- **Margins raised today: SMS 3× → 6×, eSIM 3× → 4×.** Deployed and verified live —
+  16,303 active routes repriced avg 10.4 → 20.5 credits (max 81), 1,081 eSIM plans
+  44.4 → 59.0. `under-margin` and ratchet-violation counts are **0** on both. The
+  premium-tier backfill above was required as part of this; don't repeat a divisor
+  change without it.
+- **Codebase**: `MARKETING_VERSION 1.5`, `CURRENT_PROJECT_VERSION 16`, iOS min
+  **18.0**, 73 Swift sources (type-check clean, warnings only), 66 migrations.
+  *Store-side state is UNVERIFIED here* — the ASC issuer id isn't on this machine
+  (`NO_ISSUER_ID`), so confirm version/IAP status in ASC before assuming. Last
+  known-good was 1.4 live with 1.5 in review; commit `a9b92c0` shipped build 16 as 1.5.
+- **SMS: SMSPVA $8.65** (alert tier 2, low). **eSIM: SMSPool $1.90** (alert tier 3,
+  **critically low — top up or eSIM purchases start failing**). Balance pages
+  escalate at $20/$10/$5/$1 crossings.
+- **Delivery reality**: 151 lifetime SMS orders / 39 delivered (~26%). Last 7d
+  SMSPVA 9/33 (27%); the SMSPool 4/50 (8%) rows are legacy SMS from before the
+  cutover — SMSPool is eSIM-only now. **In the 24h to 2026-07-25 every SMS order
+  failed: 12 orders, 3 users, 0 codes, all refunded (net credits 0).** Causes were
+  route-level, not platform: Betano/BG went 0/7 measured and **auto-hid itself**
+  (gambling operators block resale numbers service-side), plus an unproven
+  Colombia cluster. Watchdog is clean (`failing: []`) — note it tracks job
+  freshness and HTTP errors, **not delivery rate**, so a 0%-delivery day does not
+  page. That blind spot is open.
+- **Catalog**: 18,492 routes (16,303 active / 2,189 hidden), 1,081 active eSIM
+  plans, 268 services, 69 countries. 12 pg_cron jobs, all active.
+- Autopilot hardening (2026-07-22, migration `20260722050000`) remains in force:
+  SQL watchdog + Telegram paging, fail-streak pager, provider AUTH/BALANCE pager,
+  iap-verify no longer eats a payment on `wallet_credit` failure, 24h sweep
+  window, dead APNs pruning, winback heartbeat, `job_run_details` 7-day retention,
+  migration bookkeeping reconciled (**`db push` is safe**). `docs/autopilot-runbook.md`
+  is the owner's operations reference.
+- Known-open, none blocking: watchdog can't see a delivery-rate collapse; no guard
+  against tapping "Install eSIM" twice with a single-use LPA; `pollActiveOrder`
+  swallows every error so "Check now" can look dead during a provider hiccup; an
+  in-flight order isn't auto-resumed after the app is killed; `routes` cost columns
+  are readable unauthenticated (competitor-visible margin book); Supabase project
+  is on the FREE plan (**no backups** — recommend Pro).
 
 ## Error UX rule
 
@@ -285,6 +411,6 @@ Never display raw API errors. AppState's catch blocks call `APIError.userMessage
 
 vSMS is a single-target app, so only one `Info.plist` needs patching. The real fixes are building on stable macOS or Xcode Cloud; patch is the interim path while on the beta.
 
-**Submitting is fully headless via the App Store Connect API** (no Xcode Organizer) — see the `app-store-submission-asc` memory for the exact working pipeline: `xcodebuild archive` with `-allowProvisioningUpdates -authenticationKeyPath/-authenticationKeyID/-authenticationKeyIssuerID` (auto-provisions the Distribution cert; the Mac only has an *Apple Development* cert locally, which is fine) → patch `BuildMachineOSBuild` (above) → `xcodebuild -exportArchive` → `xcrun altool --upload-app` → ASC REST API (`POST /v1/appStoreVersions`, attach build, set `whatsNew`, `reviewSubmissions` submit). ASC API key lives at `~/.appstoreconnect/private_keys/AuthKey_R5ZVLBTUR6.p8`; app id `6774768570`. Store state: **1.3 (build 12)** approved & released; **1.4 (build 13)** submitted 2026-07-19, WAITING_FOR_REVIEW (release type MANUAL — release it after approval) — the next build is **1.5 (build 14)** (bump `MARKETING_VERSION` + `CURRENT_PROJECT_VERSION` in `project.pbxproj`). Submission gotcha: only one review submission can be in flight per platform — standalone IAP submissions (created via ASC UI) block the version submission with an opaque 409 "not in valid state"; cancel them first, submit the version, then resubmit IAPs via `POST /v1/inAppPurchaseSubmissions` (IAPs can NOT be added as `reviewSubmissionItems` through the public API).
+**Submitting is fully headless via the App Store Connect API** (no Xcode Organizer) — see the `app-store-submission-asc` memory for the exact working pipeline: `xcodebuild archive` with `-allowProvisioningUpdates -authenticationKeyPath/-authenticationKeyID/-authenticationKeyIssuerID` (auto-provisions the Distribution cert; the Mac only has an *Apple Development* cert locally, which is fine) → patch `BuildMachineOSBuild` (above) → `xcodebuild -exportArchive` → `xcrun altool --upload-app` → ASC REST API (`POST /v1/appStoreVersions`, attach build, set `whatsNew`, `reviewSubmissions` submit). ASC API key lives at `~/.appstoreconnect/private_keys/AuthKey_R5ZVLBTUR6.p8`; app id `6774768570`. Store state: the repo is at **`MARKETING_VERSION 1.5` / `CURRENT_PROJECT_VERSION 16`** (build 16 shipped as 1.5 in `a9b92c0`, which also lowered the iOS floor to 18.0); the next build is **17** (bump `CURRENT_PROJECT_VERSION`, and `MARKETING_VERSION` too if the version changes, in `project.pbxproj`). **Verify the live store state in ASC before submitting** — this machine has the `.p8` but no issuer id, so the API check returns `NO_ISSUER_ID` and the notes here can drift. Historical: 1.3 (build 12) released; 1.4 (build 13) submitted 2026-07-19. Submission gotcha: only one review submission can be in flight per platform — standalone IAP submissions (created via ASC UI) block the version submission with an opaque 409 "not in valid state"; cancel them first, submit the version, then resubmit IAPs via `POST /v1/inAppPurchaseSubmissions` (IAPs can NOT be added as `reviewSubmissionItems` through the public API).
 
 `docs/submission-checklist.md` is the source of truth for App Store submission steps. `docs/app-store-listing.md` has all metadata copy + nutrition labels pre-filled. Legal docs (`privacy-policy.md`, `terms.md`, `refund-policy.md`, `help.md`) are written to be pasted into Notion as public pages — URLs then go into `VirtualSIM/LegalLinks.swift`.
