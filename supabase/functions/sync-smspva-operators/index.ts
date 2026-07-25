@@ -36,6 +36,20 @@ const MIN_CREDITS = 1;
 const MAX_CREDITS = 999;
 const MAX_WHOLESALE_CENTS = 400;
 
+// Real-SIM (premium) sells at a 20% uplift over standard.
+//
+// Until 2026-07-25 premium was only floored at the standard price and the
+// pinned carrier costs the same as a random fill on essentially every route,
+// so `premium_credits == retail_credits` on ALL 16,303 active routes — the
+// tier was strictly better (named carrier, fail-fast, never silently
+// downgraded to a Donor* VoIP pool) at exactly the same price, which made
+// Standard the irrational choice and the picker read as broken.
+//
+// The uplift is a FLOOR, not a replacement: if the carrier genuinely costs
+// more than 1.2x the base price, `toCredits(bestCents)` still wins, because
+// that is the number the order-time margin ceiling has to clear.
+const PREMIUM_MULTIPLIER = 1.20;
+
 const COUNTRIES_PER_RUN = 12;   // ~12 x 4s ≈ 55s, safely under the 150s kill
 const CALL_SPACING_MS = 4000;   // SMSPVA: "interval of 4 to 5 seconds"
 const CURSOR_KEY = "smspva_operator_sync";
@@ -160,9 +174,11 @@ Deno.serve(async (req) => {
       for (const svcId of svcIds) {
         const key = `${svcId}|${country.id}`;
         if (!routeRetail.has(key)) continue;
-        // Premium is never cheaper than standard: equal wholesale still buys
-        // the real-SIM pin + fail-fast guarantee.
-        const floor = routeRetail.get(key) ?? MIN_CREDITS;
+        // Premium is never cheaper than standard, and now carries a real
+        // uplift for the real-SIM pin + fail-fast guarantee.
+        const standard = routeRetail.get(key) ?? MIN_CREDITS;
+        const floor = Math.min(MAX_CREDITS,
+                               Math.ceil(standard * PREMIUM_MULTIPLIER));
         picks.push({
           service_id: svcId,
           country_id: country.id,
