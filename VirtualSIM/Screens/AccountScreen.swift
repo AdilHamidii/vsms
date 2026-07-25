@@ -245,6 +245,34 @@ struct AccountScreen: View {
         !redeeming && inviteCode.trimmingCharacters(in: .whitespaces).count >= 4
     }
 
+    /// Direct swatches rather than a Menu: for colour, showing the options is
+    /// the whole point, and each is rendered in the exact tone it will take on
+    /// the current light/dark surface.
+    private func accentSwatches(state: AppState) -> some View {
+        HStack(spacing: 7) {
+            ForEach(AccentColor.allCases) { option in
+                let isOn = state.accent == option
+                Button {
+                    withAnimation(.easeOut(duration: 0.18)) { state.accent = option }
+                } label: {
+                    Circle()
+                        .fill(option.swatch(isDark: theme.isDark))
+                        .frame(width: 22, height: 22)
+                        .overlay(
+                            Circle()
+                                .stroke(theme.text, lineWidth: isOn ? 2 : 0)
+                                .padding(-3)
+                        )
+                        .contentShape(.circle)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(option.label)
+                .accessibilityAddTraits(isOn ? [.isSelected] : [])
+            }
+        }
+        .padding(.trailing, 2)
+    }
+
     private func preferences(state: AppState) -> some View {
         @Bindable var state = state
         return VStack(alignment: .leading, spacing: 0) {
@@ -259,6 +287,11 @@ struct AccountScreen: View {
                             Toggle("", isOn: $state.isDark)
                                 .labelsHidden().tint(theme.ink)
                         }
+                    )
+                    SettingRow(
+                        label: "Accent",
+                        icon: "paintpalette.fill",
+                        trailing: { accentSwatches(state: state) }
                     )
                     SettingRow(
                         label: "Waiting animation",

@@ -38,7 +38,8 @@ struct AuthGate: View {
                     }
             }
         }
-        .environment(\.theme, colorScheme == .dark ? .dark : .light)
+        // Pre-sign-in: no AppState yet, so the default accent is correct here.
+        .environment(\.theme, colorScheme == .dark ? .dark() : .light())
         .environment(api)
         .environment(session)
         .environment(push)
