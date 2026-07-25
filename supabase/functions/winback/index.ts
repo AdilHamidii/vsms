@@ -52,7 +52,7 @@ Deno.serve(async (req) => {
     }
   };
 
-  for (const c of (candidates ?? []) as { user_id: string }[]) {
+  for (const c of (candidates ?? []) as { user_id: string; kind?: string }[]) {
     const { data: devices } = await sb
       .from("push_devices")
       .select("token, environment")
@@ -71,7 +71,16 @@ Deno.serve(async (req) => {
     let anyOk = false;
     for (const d of devices) {
       try {
-        const r = await sendPush(d.token, {
+        // Honest copy per cohort. winback_candidates was broadened to
+        // include "ordered but never received a code" while the copy stayed
+        // "your first one's on us" — so 8 of the 34 users ever nudged were
+        // told their first number was free AFTER paying for failures.
+        const triedFailed = c.kind === "tried_failed";
+        const r = await sendPush(d.token, triedFailed ? {
+          alertTitle: "Your credits are still here",
+          alertBody: "Every number that fails is refunded. Pick a country we've measured delivering.",
+          customData: { winback: true },
+        } : {
           alertTitle: "Your free credit is waiting",
           alertBody: "Grab a verification number in seconds — your first one's on us.",
           customData: { winback: true },
@@ -97,7 +106,18 @@ Deno.serve(async (req) => {
   }
 
   // ── Cohort 2: stranded credits (delivery-gated, see header) ──────────────
-  const { data: stranded, error: sErr } = await sb.rpc("stranded_credit_candidates", { p_limit: 100 });
+  // SECOND gate, on the USER-EXPERIENCED rate. stranded_credit_candidates is
+  // gated on recent_sms_delivery_rate(), which counts only CONCLUSIVE orders —
+  // excluding 13 of the last 15 cancels, so it read 50% on a window where real
+  // users got 19%. That left the gate open and armed "delivery just got a big
+  // upgrade" for the very users we had already burned.
+  const { data: userRate } = await sb.rpc("recent_user_delivery_rate", { p_window: "48 hours" });
+  const experienced = Number(userRate ?? 0);
+  const claimSafe = experienced >= 25;
+  if (!claimSafe) console.warn(`winback: suppressing stranded cohort — user-experienced delivery ${experienced}% < 25%`);
+  const { data: stranded, error: sErr } = claimSafe
+    ? await sb.rpc("stranded_credit_candidates", { p_limit: 100 })
+    : { data: [] as { user_id: string; balance: number }[], error: null };
   if (sErr) console.error("stranded_credit_candidates failed:", sErr.message);
 
   let strandedSent = 0, strandedMarked = 0;
