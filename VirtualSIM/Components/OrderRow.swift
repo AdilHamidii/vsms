@@ -28,6 +28,19 @@ struct OrderRow: View {
                                 Text("·").foregroundStyle(theme.text3)
                                 MonoText(otp, size: 12, weight: .semibold, color: theme.text)
                             }
+                            // Every terminal-without-a-code status is refunded
+                            // server-side (poll-active-orders expiry and
+                            // cancel-order both wallet_credit the full cost
+                            // before writing the status). History showed only
+                            // "Expired", which reads as "I paid and got
+                            // nothing" — the refund has to still be visible
+                            // later, not just in the moment it happened.
+                            if order.isRefunded {
+                                Text("·").foregroundStyle(theme.text3)
+                                Text("+\(order.costCredits) cr refunded")
+                                    .font(RFont.text(12, weight: .medium))
+                                    .foregroundStyle(theme.live)
+                            }
                         }
                     }
                     Spacer(minLength: 0)

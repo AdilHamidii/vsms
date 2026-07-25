@@ -9,9 +9,17 @@ struct WaitingScreen: View {
     let order: Order
     @State private var elapsed: Int = 0
     @State private var copied = false
+    @State private var showCancelConfirm = false
 
     private var reservation: Int { max(60, Int(order.expiresAt.timeIntervalSince(order.createdAt))) }
     private var remaining: Int { max(0, Int(order.expiresAt.timeIntervalSinceNow)) }
+
+    /// The reservation window is over but the server hasn't confirmed the
+    /// outcome yet. The old UI just sat on a frozen "00:00" here — which,
+    /// while the provider was flaky, could persist forever even though the
+    /// 60s cron had already expired the order AND refunded it. Never present
+    /// a dead countdown as if it were still a countdown.
+    private var isFinalizing: Bool { remaining == 0 }
 
     var body: some View {
         ZStack {
@@ -55,6 +63,38 @@ struct WaitingScreen: View {
                 await state.pollActiveOrder(using: ordersAPI, wallet: walletAPI)
             }
         }
+        .task {
+            // Reconcile-on-timeout. Once the window has closed, the provider
+            // poll is no longer the authority on whether this order is over —
+            // the order row is, and the cron writes the terminal status +
+            // refund there within ~60s. Keep asking until the UI leaves
+            // `.waiting`, so a failing provider can no longer strand the user
+            // on a screen that says "Waiting" about an order that ended.
+            let ordersAPI = OrdersAPI(client: api)
+            let walletAPI = WalletAPI(client: api)
+            while !Task.isCancelled, state.flow == .waiting {
+                try? await Task.sleep(nanoseconds: 3_000_000_000)
+                guard state.flow == .waiting, state.isPastExpiry(order) else { continue }
+                await state.reconcileActiveOrder(using: ordersAPI, wallet: walletAPI)
+            }
+        }
+        .confirmationDialog(
+            "Cancel this order?",
+            isPresented: $showCancelConfirm,
+            titleVisibility: .visible
+        ) {
+            Button("Cancel order & refund \(order.costCredits) credits", role: .destructive) {
+                Task {
+                    await state.cancelWaiting(
+                        using: OrdersAPI(client: api),
+                        wallet: WalletAPI(client: api)
+                    )
+                }
+            }
+            Button("Keep waiting", role: .cancel) { }
+        } message: {
+            Text("Your \(order.costCredits) credits go back to your balance. If a code is already on its way, you'll lose it.")
+        }
     }
 
     private var topBar: some View {
@@ -66,13 +106,13 @@ struct WaitingScreen: View {
                 .tracking(-0.3)
                 .foregroundStyle(theme.text)
             Spacer()
+            // This used to fire cancelWaiting() straight away. It reads as
+            // "close/back", but it cancelled a PAID, in-flight order — and
+            // cancel-order does a last-chance provider poll, so it could throw
+            // away a code that was seconds from landing. Destroying something
+            // the user paid for now takes an explicit confirmation.
             Button {
-                Task {
-                    await state.cancelWaiting(
-                        using: OrdersAPI(client: api),
-                        wallet: WalletAPI(client: api)
-                    )
-                }
+                showCancelConfirm = true
             } label: {
                 Image(systemName: RIcon.close)
                     .font(.system(size: 14, weight: .semibold))
@@ -81,6 +121,7 @@ struct WaitingScreen: View {
                     .background(theme.chipBg, in: .circle)
             }
             .buttonStyle(.plain)
+            .accessibilityLabel("Cancel order")
         }
         .padding(.horizontal, 16)
         .padding(.bottom, 8)
@@ -135,8 +176,11 @@ struct WaitingScreen: View {
                     .buttonStyle(.plain)
 
                     Button {
+                        // checkNow, not pollActiveOrder: an explicit tap must
+                        // always resolve to truth, falling back to the order
+                        // row when the provider check fails.
                         Task {
-                            await state.pollActiveOrder(
+                            await state.checkNow(
                                 using: OrdersAPI(client: api),
                                 wallet: WalletAPI(client: api)
                             )
@@ -223,14 +267,20 @@ struct WaitingScreen: View {
                 VStack(spacing: 18) {
                     WaitingAnimationView(kind: state.waitingAnimation)
                     VStack(spacing: 4) {
-                        Text("Waiting for \(order.service.name) code…")
+                        Text(isFinalizing
+                             ? String(localized: "Time's up — confirming with the network…")
+                             : String(localized: "Waiting for \(order.service.name) code…"))
                             .font(RFont.display(17, weight: .semibold))
                             .tracking(-0.3)
                             .foregroundStyle(theme.text)
-                        Text("Usually arrives in \(order.service.etaSeconds)s.")
+                            .multilineTextAlignment(.center)
+                        Text(isFinalizing
+                             ? String(localized: "If no code arrived, your \(order.costCredits) credits are refunded automatically.")
+                             : String(localized: "Usually arrives in \(order.service.etaSeconds)s."))
                             .font(RFont.text(13))
                             .tracking(-0.1)
                             .foregroundStyle(theme.text2)
+                            .multilineTextAlignment(.center)
                     }
                 }
                 .padding(.vertical, 6)
@@ -241,7 +291,12 @@ struct WaitingScreen: View {
                 HStack(spacing: 0) {
                     timerCell(label: "ELAPSED", seconds: elapsed)
                     Rectangle().fill(theme.sep).frame(width: 0.5)
-                    timerCell(label: "EXPIRES IN", seconds: remaining)
+                    if isFinalizing {
+                        // Never render a stopped clock as a running one.
+                        labelCell(label: "EXPIRES IN", text: "Closing…")
+                    } else {
+                        timerCell(label: "EXPIRES IN", seconds: remaining)
+                    }
                 }
                 .padding(.top, 16)
             }
@@ -259,6 +314,21 @@ struct WaitingScreen: View {
                 .tracking(0.2)
                 .foregroundStyle(theme.text2)
             MonoText(formatMMSS(seconds), size: 20, weight: .medium, color: theme.text)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 12)
+    }
+
+    /// Same cell, non-numeric — used once the countdown has no meaning left.
+    private func labelCell(label: String, text: String) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(label)
+                .font(RFont.text(11, weight: .medium))
+                .tracking(0.2)
+                .foregroundStyle(theme.text2)
+            Text(text)
+                .font(RFont.text(17, weight: .medium))
+                .foregroundStyle(theme.text2)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, 12)

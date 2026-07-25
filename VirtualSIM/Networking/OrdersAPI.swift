@@ -44,6 +44,30 @@ struct OrdersAPI {
         return env.order
     }
 
+    /// Authoritative read of one order row straight from PostgREST.
+    ///
+    /// Deliberately NOT `check-order`: that edge function polls the live SMS
+    /// provider and returns HTTP 502 `provider_unreachable` whenever the
+    /// provider throws, so it is exactly the wrong thing to ask "did my order
+    /// already end?". The cron (`poll-active-orders`, every 60s) has by then
+    /// written `expired`/`canceled` and issued the refund; this row read sees
+    /// that truth with no provider in the path. RLS scopes it to the caller.
+    func fetch(orderId: String) async throws -> ServerOrder {
+        let rows: [ServerOrder] = try await client.request(
+            .get,
+            path: "rest/v1/orders",
+            query: [
+                URLQueryItem(name: "id",     value: "eq.\(orderId)"),
+                URLQueryItem(name: "select", value: "*"),
+                URLQueryItem(name: "limit",  value: "1"),
+            ]
+        )
+        guard let row = rows.first else {
+            throw APIError.http(status: 404, body: "{\"error\":\"order_not_found\"}")
+        }
+        return row
+    }
+
     func check(orderId: String) async throws -> ServerOrder {
         struct Body: Encodable { let order_id: String }
         let env: OrderEnvelope = try await client.request(
