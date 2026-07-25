@@ -9,8 +9,11 @@ struct CheckoutScreen: View {
     var openCountries: () -> Void
     var openCredits: () -> Void
 
-    private var service: Service { state.checkoutService ?? state.lastService }
-    private var country: Country { state.checkoutCountry ?? state.lastCountry }
+    // Identical to the draft here (this screen only exists inside `.checkout`),
+    // but routed through the one accessor so the raw `?? last…` shape — the one
+    // that mispriced both pickers — has no remaining foothold to be copied from.
+    private var service: Service { state.configuringService }
+    private var country: Country { state.configuringCountry }
     private var standardCost: Int? { state.cost(for: service, country: country) }
     private var premiumCost: Int? { state.premiumCost(for: service, country: country) }
     /// Price of the tier currently selected. Premium is only selectable when

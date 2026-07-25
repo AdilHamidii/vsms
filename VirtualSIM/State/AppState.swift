@@ -63,7 +63,20 @@ final class AppState {
     var profile: Profile?
     var maintenance: MaintenanceStatus = .off
 
-    var flow: FlowStage?
+    /// Clearing the checkout draft here is load-bearing — see
+    /// `configuringService`. `flow` is assigned from a dozen call sites
+    /// (`state.flow = nil` in CheckoutScreen, OtpScreen, EsimDetail, plus the
+    /// terminal paths in this file); resetting the draft at each of them would
+    /// be one forgotten line away from bringing the stale-price bug back, so it
+    /// happens once, centrally, on every transition out of `.checkout`.
+    var flow: FlowStage? {
+        didSet {
+            guard flow != .checkout else { return }
+            checkoutService = nil
+            checkoutCountry = nil
+            checkoutPremium = false
+        }
+    }
     /// Context for the `.recovery` flow stage; set wherever an order ends
     /// without a code, cleared by retry/dismiss.
     var recovery: RecoveryContext?
@@ -91,10 +104,34 @@ final class AppState {
     /// pickers also reset the flag (ContentView), but this makes it impossible
     /// for a catalog refresh under an open checkout to strand the user.
     var effectiveCheckoutPremium: Bool {
-        guard checkoutPremium,
-              let svc = checkoutService ?? Optional(lastService),
-              let cty = checkoutCountry ?? Optional(lastCountry) else { return false }
-        return premiumCost(for: svc, country: cty) != nil
+        guard checkoutPremium else { return false }
+        return premiumCost(for: configuringService, country: configuringCountry) != nil
+    }
+
+    /// The (service, country) pair the user is currently looking at a price
+    /// for: the checkout draft while the checkout flow is open, otherwise
+    /// Home's selection.
+    ///
+    /// The draft is only meaningful INSIDE `.checkout`. It used to outlive its
+    /// flow — `startCheckout` wrote it and nothing ever cleared it — while
+    /// every picker read `checkoutService ?? lastService` with no flow check.
+    /// So after one visit to checkout (tapping "order again" on a history row
+    /// is enough), the sheets opened from Home quoted the LAST CHECKED-OUT
+    /// service: Home read "Deliveroo · Kyrgyzstan · 4 cr" while the country
+    /// sheet opened from that same screen priced every row for Leboncoin and
+    /// showed Kyrgyzstan at 60 cr. Availability and the "Best success" ranking
+    /// were computed for the wrong service too, so a country could read
+    /// "Unavailable" while being perfectly bookable for the selected service.
+    ///
+    /// Reading the draft outside `.checkout` is therefore always a bug. These
+    /// two accessors are the single definition of what the user is
+    /// configuring — prefer them to `checkoutService ?? lastService` at the
+    /// call site, which is the shape that hid the mismatch.
+    var configuringService: Service {
+        flow == .checkout ? (checkoutService ?? lastService) : lastService
+    }
+    var configuringCountry: Country {
+        flow == .checkout ? (checkoutCountry ?? lastCountry) : lastCountry
     }
     var activeOrder: Order?
     /// True while a create-order call is in flight — guards against double-tap
@@ -303,8 +340,8 @@ final class AppState {
         if flow == .esimCheckout, let plan = checkoutEsimPlan, let c = plan.retailCredits {
             return max(0, c - balance)
         }
-        let svc = checkoutService ?? lastService
-        let cty = checkoutCountry ?? lastCountry
+        let svc = configuringService
+        let cty = configuringCountry
         // Respect the tier being configured: a premium pick must preselect a
         // pack that covers the premium price, not the standard one.
         let selected = flow == .checkout && checkoutPremium
