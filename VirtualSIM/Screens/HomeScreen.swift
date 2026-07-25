@@ -73,7 +73,7 @@ struct HomeScreen: View {
         state.cost(for: state.lastService, country: state.lastCountry)
     }
 
-    private var routeRate: (rate: Int, isMeasured: Bool)? {
+    private var routeRate: (rate: Int, isMeasured: Bool, sample: Int?)? {
         state.rateInfo(for: state.lastService, country: state.lastCountry)
     }
 
@@ -172,14 +172,22 @@ struct HomeScreen: View {
                             .frame(height: 0.5)
                             .padding(.top, 16)
                         HStack(spacing: 8) {
-                            Metric(label: "Typical wait", value: "~\(state.lastService.etaSeconds)s")
+                            // Measured p50, or "—" when we have no sample.
+                            // Never the seed etaSeconds.
+                            Metric(label: "Typical wait",
+                                   value: state.lastService.typicalWaitShort ?? "—")
                             Spacer()
                             Metric(label: "No code", value: "Refunded", accent: theme.live)
                             Spacer()
                             if let routeRate {
+                                // Same rule as SuccessBadge: colour signals
+                                // CONFIDENCE. A seeded rate is a provider
+                                // guess and stays muted however good it looks.
                                 Metric(label: "Success",
                                        value: routeRate.isMeasured ? "\(routeRate.rate)%" : "~\(routeRate.rate)%",
-                                       accent: routeRate.rate >= 70 ? theme.live : theme.warn)
+                                       accent: routeRate.isMeasured
+                                           ? (routeRate.rate >= 70 ? theme.live : theme.warn)
+                                           : theme.text3)
                             } else {
                                 Metric(label: "Held for", value: "8 min")
                             }

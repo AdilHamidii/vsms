@@ -16,7 +16,13 @@ struct SuccessBadge: View {
     @Environment(\.theme) private var theme
     let rate: Int
     var measured: Bool = false   // conservative default: estimate
+    var sample: Int? = nil       // conclusive orders behind a measured rate
     var compact: Bool = false
+
+    /// Below this, state the sample instead of a bare percentage. A route that
+    /// has gone 0-of-2 is genuinely measured, but "0% delivered" implies a
+    /// settled fact; "0% of 2 tries" is the same truth without the swagger.
+    private static let thinSample = 5
 
     private var color: Color {
         guard measured else { return theme.text3 }
@@ -24,8 +30,13 @@ struct SuccessBadge: View {
     }
 
     private var label: String {
-        if measured { return compact ? "\(rate)%" : String(localized: "\(rate)% delivered") }
-        return compact ? "~\(rate)% est." : String(localized: "~\(rate)% estimate")
+        guard measured else {
+            return compact ? "~\(rate)% est." : String(localized: "~\(rate)% estimate")
+        }
+        if let sample, sample < Self.thinSample {
+            return compact ? "\(rate)% · \(sample)" : String(localized: "\(rate)% of \(sample) tries")
+        }
+        return compact ? "\(rate)%" : String(localized: "\(rate)% delivered")
     }
 
     var body: some View {

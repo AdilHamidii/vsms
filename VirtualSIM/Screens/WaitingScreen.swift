@@ -274,9 +274,14 @@ struct WaitingScreen: View {
                             .tracking(-0.3)
                             .foregroundStyle(theme.text)
                             .multilineTextAlignment(.center)
+                        // MEASURED arrival only. This used to quote the seed
+                        // `etaSeconds` (~28s) against a measured ~53s median —
+                        // promising a deadline we miss, right after payment,
+                        // which is what makes people cancel at 63s.
                         Text(isFinalizing
                              ? String(localized: "If no code arrived, your \(order.costCredits) credits are refunded automatically.")
-                             : String(localized: "Usually arrives in \(order.service.etaSeconds)s."))
+                             : (order.service.typicalWaitSentence
+                                ?? String(localized: "Your code appears here the moment it arrives.")))
                             .font(RFont.text(13))
                             .tracking(-0.1)
                             .foregroundStyle(theme.text2)

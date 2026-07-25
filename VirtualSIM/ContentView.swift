@@ -91,6 +91,9 @@ struct ContentView: View {
             await state.refreshWallet(using: WalletAPI(client: api))
             await state.refreshProfile(using: ProfileAPI(client: api))
             await state.loadOrders(using: OrdersAPI(client: api))
+            // Cold launch only: hand back an order that was mid-flight when
+            // the app was killed, instead of stranding a paid wait.
+            state.resumeInFlightOrder()
             state.applyStartupSelection()
             await state.loadEsimCatalog(using: EsimPlansAPI(client: api))
             await state.loadEsimOrders(using: EsimOrdersAPI(client: api))

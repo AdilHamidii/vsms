@@ -20,7 +20,38 @@ struct Service: Identifiable, Hashable, Codable {
     var observedCodes: Int?
     var observedAttempts: Int?
 
+    /// MEASURED arrival timing, written by `refresh_arrival_timing()`.
+    /// `etaSeconds` above is seed data (22–35s across all 268 services, DB
+    /// default 30, never recomputed) and measured median is ~53s — quoting the
+    /// seed made the app promise a wait it could not keep, and users cancelled
+    /// at a median of 63s believing the code was overdue. Use these instead;
+    /// they are nil when the sample is too thin to say anything honest.
+    var arrivalP50Seconds: Int?
+    var arrivalP90Seconds: Int?
+    var arrivalSample: Int?
+    /// "service" (this service's own orders) or "global" (all services).
+    /// The UI MUST NOT phrase a global band as service-specific.
+    var arrivalScope: String?
+    var arrivalHoldPct: Int?
+
     var tint: Color { Color(hexString: tintHex) }
+
+    /// Short measured wait for a metric chip ("~52s"), or nil with no measurement.
+    /// Never falls back to `etaSeconds` — a comforting invented number at the
+    /// moment of spending is exactly the thing we removed.
+    var typicalWaitShort: String? {
+        arrivalP50Seconds.map { String(localized: "~\($0)s") }
+    }
+
+    /// Full sentence for the waiting screen. Phrasing follows `arrivalScope`
+    /// so a global band is never presented as this service's own record.
+    var typicalWaitSentence: String? {
+        guard let p50 = arrivalP50Seconds else { return nil }
+        if arrivalScope == "service" {
+            return String(localized: "Usually arrives in about \(p50)s.")
+        }
+        return String(localized: "Codes usually arrive in about \(p50)s.")
+    }
 
     /// How confident we are that this service delivers, from our own orders.
     ///
