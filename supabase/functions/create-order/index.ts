@@ -231,12 +231,31 @@ Deno.serve(async (req) => {
    *  ledger reconciles and the attempt stays visible as a closed order rather
    *  than disappearing. */
   const failOrder = async (reason: string) => {
-    const { error: cErr } = await sb
+    // CLAIM-GATED. This refund used to be unconditional, which minted credits:
+    // begin_order commits the `waiting` row and charges BEFORE the provider
+    // loop runs, and that row is readable over PostgREST immediately. A user
+    // could cancel-order it mid-loop (refund #1), then this function would lose
+    // the flip and refund again (#2) — repeatable, +cost credits per round.
+    // The `order_persist_failed` path was worse than a race: reaching it MEANS
+    // something else already flipped the row, and every such path refunds.
+    // Every other terminal writer (cancel-order, poll-active-orders,
+    // check-order) already gates on the row count; this was the only hole.
+    const { data: claimed, error: cErr } = await sb
       .from("orders")
       .update({ status: "canceled", closed_at: new Date().toISOString() })
       .eq("id", orderId)
-      .eq("status", "waiting");
-    if (cErr) console.error("failOrder: could not close order", orderId, cErr);
+      .eq("status", "waiting")
+      .select("id");
+    if (cErr) {
+      console.error("failOrder: could not close order", orderId, cErr);
+      return;
+    }
+    if (!claimed || claimed.length === 0) {
+      // Someone else already closed and refunded this order. Refunding here
+      // would be a second credit for one charge.
+      console.warn(`failOrder: lost the claim for ${orderId} (reason=${reason}) — refund already issued elsewhere, skipping`);
+      return;
+    }
     await sb.rpc("wallet_credit", {
       p_user: userId, p_amount: cost, p_reason: "refund", p_order: orderId,
     });
