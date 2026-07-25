@@ -394,7 +394,7 @@ final class AppState {
 
     /// Banner shown when today's free credit has just been granted.
     /// Cleared by the UI once acknowledged.
-    var dailyCreditBanner: (credits: Int, streak: Int)?
+    var dailyCreditBanner: (credits: Int, streak: Int, next: Int?)?
 
     /// When the catalog was last successfully loaded.
     ///
@@ -412,18 +412,39 @@ final class AppState {
     /// successful buy was visually identical to a failed one.
     var creditPurchaseBanner: Int?
 
-    /// Claim the daily credit. Safe to call on every launch and foreground —
-    /// the RPC is advisory-locked and idempotent per UTC day, so extra calls
-    /// return `granted: false` and change nothing.
+    /// Today's unclaimed credit, if any — drives the Home claim button.
+    /// Nil until the status call returns.
+    var dailyCredit: DailyCreditStatus?
+
+    /// True while a claim is in flight, so the button can't be double-tapped.
+    var isClaimingDaily = false
+
+    /// Refresh whether today's credit is still available. Side-effect free:
+    /// the credit is granted only by an explicit tap, because a grant the user
+    /// never chose is invisible — the habit we want is "open the app and
+    /// collect", not "the balance quietly changed".
+    func refreshDailyCredit(using api: WalletAPI) async {
+        dailyCredit = try? await api.dailyCreditStatus()
+    }
+
+    /// Claim today's credit. Advisory-locked server-side, so a double-tap
+    /// cannot pay twice.
     func claimDailyCredit(using api: WalletAPI) async {
+        guard !isClaimingDaily else { return }
+        isClaimingDaily = true
+        defer { isClaimingDaily = false }
         do {
             let r = try await api.claimDailyCredit()
             if r.granted {
                 if let b = r.balance { balance = b }
-                dailyCreditBanner = (credits: r.credits ?? 1, streak: r.streak ?? 1)
+                dailyCreditBanner = (credits: r.credits ?? 1,
+                                     streak: r.streak ?? 1,
+                                     next: r.nextCredits)
             }
+            // Re-read either way: on a lost race the button must disappear.
+            await refreshDailyCredit(using: api)
         } catch {
-            // Never block launch on the bonus. The next foreground retries.
+            lastError = "Couldn't claim today's credit. Please try again."
         }
     }
 
