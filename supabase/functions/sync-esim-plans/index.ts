@@ -1,5 +1,5 @@
 // SMSPool eSIM catalog sync. Iterates our countries, pulls each country's data
-// plan tiers (/esim/plans?country=CC), and upserts esim_plans priced at 3x
+// plan tiers (/esim/plans?country=CC), and upserts esim_plans priced at 4x
 // wholesale — a SEPARATE routine from the OTP CREDIT_DIVISOR so the two markups
 // never collide. Cron-gated.
 
@@ -7,7 +7,7 @@ import { handleCors, json } from "../_shared/cors.ts";
 import { admin } from "../_shared/supabaseAdmin.ts";
 import { esimPlans } from "../_shared/smspool.ts";
 
-const ESIM_MARGIN = 3;            // sell at 3x wholesale
+const ESIM_MARGIN = 4;            // sell at 4x wholesale
 const CREDIT_VALUE_USD = 0.48;    // blended pack $/credit
 const PACE_MS = 250;
 

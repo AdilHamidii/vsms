@@ -4,11 +4,12 @@
 // either be invoked manually (one-shot from terminal) or scheduled via
 // pg_cron alongside poll-active-orders.
 //
-// Pricing formula (per the user spec — 15 EUR -> 100 cr anchor):
-//   credits = max(1, ceil(cost / 0.15))
-//   So:    0.05 -> 1cr,  0.50 -> 4cr,  1.00 -> 7cr,
-//          5.00 -> 34cr, 10.00 -> 67cr, 15.00 -> 100cr
-// Tune CREDIT_DIVISOR below if margins need adjusting.
+// Pricing formula (6x markup):
+//   credits = max(1, ceil(cost / 0.05))
+//   So:    0.05 -> 1cr,  0.50 -> 10cr,  1.00 -> 20cr,
+//          2.00 -> 40cr, 3.00 -> 60cr,  4.00 -> 80cr
+// Tune CREDIT_DIVISOR below if margins need adjusting — and move
+// create-order's MIN_MARGIN with it (see the lockstep note there).
 //
 // IMPORTANT (money-critical): multiple catalog services can legitimately share
 // one smspva_code (e.g. apple-id + apple-music both map to SMSPVA's "Apple"
@@ -22,10 +23,13 @@ import { handleCors, json } from "../_shared/cors.ts";
 import { admin } from "../_shared/supabaseAdmin.ts";
 import { getAllPrices, isOk } from "../_shared/smspva.ts";
 
-// 5× retail markup: credits = ceil(cost / 0.10). A credit sells for ~$0.50
-// (blended pack), so this collects ~5× wholesale → ~65% net after Apple's 15%
-// Small-Business fee. Keep in lockstep with sync-virtualsms.
-const CREDIT_DIVISOR = 0.10;
+// 6× retail markup: credits = ceil(cost / 0.05). Valued at the conservative
+// NET_USD_PER_CREDIT ($0.30) used by create-order's order-time ceiling, this
+// collects 6× wholesale. Keep in lockstep with sync-smspool,
+// sync-smspva-operators and create-order's MIN_MARGIN — the order-time ceiling
+// (credits * NET / MIN_MARGIN) must equal this divisor exactly, or honest
+// routes get refused at checkout / margin leaks.
+const CREDIT_DIVISOR = 0.05;
 const MIN_CREDITS = 1;
 const MAX_CREDITS = 999;
 
