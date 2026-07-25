@@ -31,7 +31,7 @@ import { admin } from "../_shared/supabaseAdmin.ts";
 import { getCountryPrices, isOk } from "../_shared/smspva.ts";
 
 // Keep in lockstep with sync-prices: same divisor, same wholesale ceiling.
-const CREDIT_DIVISOR = 0.10;
+const CREDIT_DIVISOR = 0.05;
 const MIN_CREDITS = 1;
 const MAX_CREDITS = 999;
 const MAX_WHOLESALE_CENTS = 400;

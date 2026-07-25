@@ -13,7 +13,7 @@ import { handleCors, json } from "../_shared/cors.ts";
 import { admin } from "../_shared/supabaseAdmin.ts";
 import { allStock, listServices, listCountries, validPools, poolSuccessRate } from "../_shared/smspool.ts";
 
-const CREDIT_DIVISOR = 0.10;      // 10x markup; keep in lockstep with sync-prices
+const CREDIT_DIVISOR = 0.05;      // 6x markup; keep in lockstep with sync-prices
 const MIN_CREDITS = 1;
 const MAX_CREDITS = 999;
 const MAX_WHOLESALE_CENTS = 400;  // hide absurdly-priced routes

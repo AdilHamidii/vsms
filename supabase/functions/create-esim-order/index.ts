@@ -11,8 +11,10 @@ interface Body { plan_id: string; }
 
 // Mirrors sync-esim-plans: retail_credits = ceil(usd * ESIM_MARGIN / CREDIT_VALUE_USD).
 // Inverted, the most we may pay for a plan sold at N credits is
-// N * CREDIT_VALUE_USD / ESIM_MARGIN = N * 0.16.
-const ESIM_MARGIN = 3;
+// N * CREDIT_VALUE_USD / ESIM_MARGIN = N * 0.12.
+// Keep ESIM_MARGIN in lockstep with sync-esim-plans or the ceiling stops
+// matching what we actually charged.
+const ESIM_MARGIN = 4;
 const CREDIT_VALUE_USD = 0.48;
 const MAX_COST_PER_CREDIT_USD = CREDIT_VALUE_USD / ESIM_MARGIN;
 

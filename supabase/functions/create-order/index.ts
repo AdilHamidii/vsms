@@ -19,14 +19,15 @@ interface Body {
 // a price spike, and we skip a provider (falling back) rather than overpay.
 //
 // NET_USD_PER_CREDIT: conservative net revenue per credit — the largest pack
-// (30 cr / $12.99 ≈ $0.433) after Apple's cut. With the 5× retail model
-// (credits = ceil(cost/0.10)) this clears comfortably.
-// 3× floor: the credits charged must be worth at least 3× the wholesale cost,
+// (30 cr / $12.99 ≈ $0.433) after Apple's cut. With the 6× retail model
+// (credits = ceil(cost/0.05)) this clears comfortably.
+// 6× floor: the credits charged must be worth at least 6× the wholesale cost,
 // valued at the most conservative pack. This makes the order-time ceiling
-// (credits * NET / MIN_MARGIN = credits * $0.10) exactly the sync formula's
-// implied cost line (credits = ceil(cost / 0.10)) — honestly-priced routes
+// (credits * NET / MIN_MARGIN = credits * $0.05) exactly the sync formula's
+// implied cost line (credits = ceil(cost / 0.05)) — honestly-priced routes
 // always clear, anything pricier than what we charged is capped or refused.
-const MIN_MARGIN = 3.0;
+// Raising one without the other either blocks honest routes or leaks margin.
+const MIN_MARGIN = 6.0;
 const NET_USD_PER_CREDIT = 0.30;
 
 // ── Failure paging. A total SMS outage used to be indistinguishable from a
