@@ -6,11 +6,19 @@ struct OrderRow: View {
     var isLast: Bool = false
     var onTap: (() -> Void)? = nil
 
+    /// Same rule as ReceiptRow: only a Button when it navigates. `.disabled`
+    /// on a non-tappable row just greys perfectly readable history.
     var body: some View {
-        Button {
-            onTap?()
-        } label: {
-            VStack(spacing: 0) {
+        if let onTap {
+            Button(action: onTap) { content }
+                .buttonStyle(.plain)
+        } else {
+            content
+        }
+    }
+
+    private var content: some View {
+        VStack(spacing: 0) {
                 HStack(spacing: 12) {
                     ServiceLogo(service: order.service, size: 36, radius: 10)
                     VStack(alignment: .leading, spacing: 2) {
@@ -59,9 +67,6 @@ struct OrderRow: View {
                         .frame(height: 0.5)
                         .padding(.leading, 62)
                 }
-            }
         }
-        .buttonStyle(.plain)
-        .disabled(onTap == nil)
     }
 }
