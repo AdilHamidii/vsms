@@ -138,7 +138,7 @@ struct SignInScreen: View {
                     .foregroundStyle(theme.live)
                     .frame(width: 22, height: 22)
                     .background(theme.liveSoft, in: .circle)
-                Text(text)
+                Text(LocalizedStringKey(text))
                     .font(RFont.text(14))
                     .foregroundStyle(theme.text)
                     .fixedSize(horizontal: false, vertical: true)

@@ -18,7 +18,7 @@ struct PickerCard<Icon: View>: View {
                         .foregroundStyle(theme.text2)
                 }
                 HStack(spacing: 6) {
-                    Text(value)
+                    Text(LocalizedStringKey(value))
                         .font(RFont.display(15, weight: .semibold))
                         .tracking(-0.2)
                         .foregroundStyle(theme.text)

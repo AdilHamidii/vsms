@@ -22,7 +22,7 @@ struct SettingRow<Trailing: View>: View {
                             .frame(width: 28, height: 28)
                             .background(theme.chipBg, in: .rect(cornerRadius: 8))
                     }
-                    Text(label)
+                    Text(LocalizedStringKey(label))
                         .font(RFont.text(15))
                         .tracking(-0.2)
                         .foregroundStyle(isDanger ? theme.fail : theme.text)
@@ -68,7 +68,7 @@ struct TrailingText: View {
 
     var body: some View {
         if let text {
-            Text(text)
+            Text(LocalizedStringKey(text))
                 .font(RFont.text(14))
                 .foregroundStyle(theme.text2)
         }

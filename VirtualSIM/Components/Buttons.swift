@@ -1,14 +1,40 @@
 import SwiftUI
 
+/// Press feedback that does NOT eat the scroll gesture.
+///
+/// PrimaryButton used to drive its scale with
+/// `.simultaneousGesture(DragGesture(minimumDistance: 0))`. That gesture claims
+/// the touch, so an enclosing ScrollView never receives it — putting a thumb on
+/// the big CTA and swiping did nothing at all. Measured A/B in the simulator
+/// with identical 150pt drags: plain button scrolled 243 → 593, the
+/// simultaneousGesture one 243 → 243. It hit the Home hero, the credits sheet
+/// and the OTP screen — i.e. the three biggest buttons in the app.
+/// `ButtonStyle.configuration.isPressed` gives the same visual for free, and it
+/// also can't get stuck: the old `pressed` flag was never reset if the gesture
+/// was interrupted.
+struct PressScaleStyle: ButtonStyle {
+    var scale: CGFloat = 0.985
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? scale : 1.0)
+            .animation(.easeOut(duration: 0.12), value: configuration.isPressed)
+    }
+}
+
 struct PrimaryButton: View {
     @Environment(\.theme) private var theme
+    /// Kept as `String` (not LocalizedStringKey) because callers such as
+    /// RecoveryScreen pass an already-localized `String(localized:)` value with
+    /// a country name interpolated in. `Text(LocalizedStringKey(label))` gets
+    /// the best of both: a literal like "Get number" resolves against the
+    /// catalog, while an already-translated string misses the lookup and
+    /// renders verbatim. Before this the app shipped six translations that
+    /// never reached any button.
     let label: String
     var sub: String? = nil
     var icon: String? = nil
     var disabled: Bool = false
     let action: () -> Void
-
-    @State private var pressed = false
 
     var body: some View {
         Button(action: { if !disabled { action() } }) {
@@ -17,7 +43,7 @@ struct PrimaryButton: View {
                     Image(systemName: icon)
                         .font(.system(size: 17, weight: .semibold))
                 }
-                Text(label)
+                Text(LocalizedStringKey(label))
                     .font(RFont.display(17, weight: .semibold))
                     .tracking(-0.3)
                 if let sub {
@@ -25,7 +51,7 @@ struct PrimaryButton: View {
                         .fill(Color.white.opacity(disabled ? 0 : 0.2))
                         .frame(width: 1, height: 18)
                         .padding(.leading, 4)
-                    Text(sub)
+                    Text(LocalizedStringKey(sub))
                         .font(RFont.mono(15, weight: .medium))
                         .opacity(0.9)
                 }
@@ -34,16 +60,9 @@ struct PrimaryButton: View {
             .frame(maxWidth: .infinity)
             .frame(height: 56)
             .background(disabled ? theme.chipBg : theme.ink, in: .rect(cornerRadius: 18))
-            .scaleEffect(pressed ? 0.985 : 1.0)
-            .animation(.easeOut(duration: 0.12), value: pressed)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(PressScaleStyle())
         .disabled(disabled)
-        .simultaneousGesture(
-            DragGesture(minimumDistance: 0)
-                .onChanged { _ in pressed = true }
-                .onEnded   { _ in pressed = false }
-        )
     }
 }
 

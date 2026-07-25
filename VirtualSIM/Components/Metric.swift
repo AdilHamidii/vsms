@@ -12,7 +12,7 @@ struct Metric: View {
                 .font(RFont.text(11, weight: .medium))
                 .tracking(0.2)
                 .foregroundStyle(theme.text2)
-            Text(value)
+            Text(LocalizedStringKey(value))
                 .font(RFont.display(16, weight: .semibold))
                 .tracking(-0.3)
                 .foregroundStyle(accent ?? theme.text)

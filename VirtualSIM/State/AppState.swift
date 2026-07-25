@@ -82,6 +82,20 @@ final class AppState {
     /// Reset on every startCheckout so the pricier tier is always an explicit
     /// choice, never a sticky default.
     var checkoutPremium = false
+
+    /// Premium is only real when the CURRENT route actually carries a premium
+    /// price. Reading `checkoutPremium` directly let a stale selection survive
+    /// a route change and send `tier: "premium"` to a route with no premium
+    /// tier, which the backend rejects with `premium_unavailable` — a dead end,
+    /// because the Standard chip is hidden in exactly that situation. The
+    /// pickers also reset the flag (ContentView), but this makes it impossible
+    /// for a catalog refresh under an open checkout to strand the user.
+    var effectiveCheckoutPremium: Bool {
+        guard checkoutPremium,
+              let svc = checkoutService ?? Optional(lastService),
+              let cty = checkoutCountry ?? Optional(lastCountry) else { return false }
+        return premiumCost(for: svc, country: cty) != nil
+    }
     var activeOrder: Order?
     /// True while a create-order call is in flight — guards against double-tap
     /// double-charge and lets the checkout CTA show an in-progress state.
@@ -378,6 +392,25 @@ final class AppState {
         catch { /* keep current */ }
     }
 
+    /// Banner shown when today's free credit has just been granted.
+    /// Cleared by the UI once acknowledged.
+    var dailyCreditBanner: (credits: Int, streak: Int)?
+
+    /// Claim the daily credit. Safe to call on every launch and foreground —
+    /// the RPC is advisory-locked and idempotent per UTC day, so extra calls
+    /// return `granted: false` and change nothing.
+    func claimDailyCredit(using api: WalletAPI) async {
+        do {
+            let r = try await api.claimDailyCredit()
+            if r.granted {
+                if let b = r.balance { balance = b }
+                dailyCreditBanner = (credits: r.credits ?? 1, streak: r.streak ?? 1)
+            }
+        } catch {
+            // Never block launch on the bonus. The next foreground retries.
+        }
+    }
+
     func refreshProfile(using api: ProfileAPI) async {
         profile = try? await api.currentProfile()
     }
@@ -558,7 +591,7 @@ final class AppState {
         defer { isPlacingOrder = false }
         do {
             let server = try await orders.create(serviceId: svc.id, countryId: cty.id,
-                                                 premium: checkoutPremium)
+                                                 premium: effectiveCheckoutPremium)
             let order = resolve(server)
             lastService = svc
             lastCountry = cty
@@ -749,11 +782,19 @@ final class AppState {
                 && cost(for: svc, country: $0) != nil
                 && (cost(for: svc, country: $0) ?? .max) <= balance + order.costCredits
             }
-            // Prefer a route we've measured delivering; otherwise avoid the
-            // cheapest pool for the same reason bestCountry(for:) does.
-            next = alternatives.max {
-                (successRate(for: svc, country: $0) ?? -1, cost(for: svc, country: $0) ?? 0)
-                < (successRate(for: svc, country: $1) ?? -1, cost(for: svc, country: $1) ?? 0)
+            // Prefer a route we've MEASURED delivering; break ties on the
+            // CHEAPEST, not the priciest.
+            //
+            // This used to sort by (rate, cost) descending. With no measured
+            // rate — the normal case — every candidate tied at -1 and the max
+            // picked the most expensive country the balance could cover, so
+            // tapping "rejected it" could silently charge 40cr for Thailand
+            // seconds after the sheet quoted 3cr for the Netherlands. That is
+            // the exact "priciest wins" heuristic already deleted from
+            // bestCountry(for:) and CountrySheet; rerollNumber was missed.
+            next = alternatives.min {
+                (-(successRate(for: svc, country: $0) ?? -1), cost(for: svc, country: $0) ?? .max)
+                < (-(successRate(for: svc, country: $1) ?? -1), cost(for: svc, country: $1) ?? .max)
             } ?? order.country
         }
 
@@ -771,7 +812,12 @@ final class AppState {
         await refreshWallet(using: wallet)
 
         do {
-            let server = try await orders.create(serviceId: svc.id, countryId: next.id)
+            // Carry the tier across. A reroll used to always create a STANDARD
+            // order, silently downgrading a buyer who had paid the Real-SIM
+            // uplift to a random Donor* pool number — the exact "never silently
+            // downgrade premium" rule the backend enforces, broken on the client.
+            let server = try await orders.create(serviceId: svc.id, countryId: next.id,
+                                                 premium: order.server.tier == "premium")
             let fresh = resolve(server)
             lastService = svc
             lastCountry = next
