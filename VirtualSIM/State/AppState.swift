@@ -28,6 +28,7 @@ struct RecoveryContext {
 
 private enum PrefKey {
     static let isDark           = "pref.isDark"
+    static let accent           = "pref.accent"
     static let waitingAnimation = "pref.waitingAnimation"
     static let otpAnimation     = "pref.otpAnimation"
     static let showMetrics      = "pref.showMetrics"
@@ -121,6 +122,11 @@ final class AppState {
     var isDark: Bool {
         didSet { UserDefaults.standard.set(isDark, forKey: PrefKey.isDark) }
     }
+    /// Brand colour. Affects `ink`/`inkSoft`/`glow` only — semantic
+    /// success/warn/fail colours are fixed. See `AccentColor`.
+    var accent: AccentColor {
+        didSet { UserDefaults.standard.set(accent.rawValue, forKey: PrefKey.accent) }
+    }
     var waitingAnimation: WaitingAnimation {
         didSet { UserDefaults.standard.set(waitingAnimation.rawValue, forKey: PrefKey.waitingAnimation) }
     }
@@ -137,6 +143,9 @@ final class AppState {
 
         let defaults = UserDefaults.standard
         self.isDark = defaults.bool(forKey: PrefKey.isDark)
+        self.accent = AccentColor(
+            rawValue: defaults.string(forKey: PrefKey.accent) ?? ""
+        ) ?? .green
         self.waitingAnimation = WaitingAnimation(
             rawValue: defaults.string(forKey: PrefKey.waitingAnimation) ?? ""
         ) ?? .pulse

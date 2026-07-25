@@ -24,7 +24,9 @@ struct ContentView: View {
     /// country on the confirm screen felt broken. One binding per presenter.
     @State private var flowSheet: ActiveSheet?
 
-    private var theme: Theme { state.isDark ? .dark : .light }
+    private var theme: Theme {
+        state.isDark ? .dark(state.accent) : .light(state.accent)
+    }
 
     var body: some View {
         @Bindable var state = state
