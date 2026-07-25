@@ -17,6 +17,13 @@ struct RecoveryContext {
     let service: Service
     let failedCountry: Country
     let reason: Reason
+    /// Credits put back on the wallet for the order that just ended. The
+    /// backend refunds on BOTH terminal paths (`poll-active-orders` expiry and
+    /// `cancel-order`), so any order reaching this card was refunded — but the
+    /// card used to assert that in fixed copy with no amount. Showing the real
+    /// number is the difference between "trust me" and a receipt. nil only if
+    /// we somehow reached recovery without the order row.
+    var refundedCredits: Int? = nil
 }
 
 private enum PrefKey {
@@ -75,6 +82,11 @@ final class AppState {
     /// True while a create-order call is in flight — guards against double-tap
     /// double-charge and lets the checkout CTA show an in-progress state.
     var isPlacingOrder = false
+    /// Consecutive failures of the provider-dependent `check-order` poll.
+    /// Two in a row means stop trusting it and reconcile against the order row
+    /// instead — see `pollActiveOrder`.
+    @ObservationIgnored
+    private var pollFailureStreak = 0
 
     /// Latest error string for UI banners. Phase F wires real banner UI.
     var lastError: String?
@@ -493,38 +505,122 @@ final class AppState {
     }
 
     /// One-shot check for the active order. Called repeatedly from the
-    /// Waiting screen's polling task and once from the "Skip wait" button.
+    /// Waiting screen's polling task and once from the "Check now" button.
+    ///
+    /// `check-order` polls the live SMS provider, so it 502s
+    /// (`provider_unreachable`) whenever the provider is flaky. This used to
+    /// `catch { /* transient */ }` and keep waiting — which meant that while
+    /// the provider was down, the 60s cron could expire AND refund the order
+    /// while the screen sat on "Waiting / 00:00" forever. That is the single
+    /// worst state in the app: the user has been made whole and has no idea.
+    /// Now a failed check falls back to the authoritative row read (see
+    /// `reconcileActiveOrder`) once it's plausible the order actually ended.
     func pollActiveOrder(using orders: OrdersAPI, wallet: WalletAPI) async {
-        guard let current = activeOrder else { return }
+        // A reroll deliberately cancels the current order before creating its
+        // replacement. Reading the row in that window sees `canceled` and
+        // would bounce the user to the recovery card mid-reroll — while a new
+        // order they just paid for is being created behind it.
+        guard let current = activeOrder, !isPlacingOrder else { return }
         do {
             let server = try await orders.check(orderId: current.id)
-            let updated = resolve(server)
-            activeOrder = updated
-            if let idx = self.orders.firstIndex(where: { $0.id == updated.id }) {
-                self.orders[idx] = updated
-            }
-            switch server.status {
-            case .received:
-                flow = .otp
-            case .expired:
-                await refreshWallet(using: wallet)
-                // Not a dead-end banner: the user still wants their code.
-                // Swap the cover to the recovery card (refund reassurance +
-                // measured-best retry) instead of dumping them on Home.
-                recovery = RecoveryContext(service: current.service,
-                                           failedCountry: current.country,
-                                           reason: .expired)
-                flow = .recovery
-                activeOrder = nil
-            default: break
-            }
+            pollFailureStreak = 0
+            await apply(server: server, for: current, wallet: wallet)
         } catch {
-            // Transient — keep polling.
+            pollFailureStreak += 1
+            // A single blip mid-wait is genuinely transient — keep waiting.
+            // But once the provider has failed us twice, or the reservation
+            // window is up, stop trusting the provider-dependent path and go
+            // ask the database what actually happened.
+            if pollFailureStreak >= 2 || isPastExpiry(current) {
+                await reconcileActiveOrder(using: orders, wallet: wallet)
+            }
         }
+    }
+
+    /// The "Check now" button. Unlike the background poll it must NEVER
+    /// dead-end: if the provider-dependent check fails for any reason, fall
+    /// straight through to the authoritative row read. A user who taps this is
+    /// explicitly asking "what is actually going on?" and deserves an answer,
+    /// not a silently swallowed 502.
+    func checkNow(using orders: OrdersAPI, wallet: WalletAPI) async {
+        guard let current = activeOrder, !isPlacingOrder else { return }
+        do {
+            let server = try await orders.check(orderId: current.id)
+            pollFailureStreak = 0
+            await apply(server: server, for: current, wallet: wallet)
+        } catch {
+            await reconcileActiveOrder(using: orders, wallet: wallet)
+        }
+    }
+
+    /// Resolve the active order against the ORDER ROW, not the provider.
+    ///
+    /// This is the recovery path for every way the provider-dependent poll can
+    /// fail: 502s, airplane mode, an order the cron expired while we were
+    /// backgrounded. It never throws to the caller — if even this read fails
+    /// (truly offline) we stay put and try again, because inventing a terminal
+    /// state we haven't confirmed would be its own lie.
+    func reconcileActiveOrder(using orders: OrdersAPI, wallet: WalletAPI) async {
+        guard let current = activeOrder, !isPlacingOrder else { return }
+        do {
+            let server = try await orders.fetch(orderId: current.id)
+            pollFailureStreak = 0
+            await apply(server: server, for: current, wallet: wallet)
+        } catch {
+            // Still unreachable. WaitingScreen keeps the honest "confirming"
+            // state and calls us again; nothing is asserted.
+        }
+    }
+
+    /// Single place where a server order row moves the UI. Terminal statuses
+    /// all leave the waiting screen and surface the refund.
+    private func apply(server: ServerOrder, for current: Order, wallet: WalletAPI) async {
+        let updated = resolve(server)
+        if let idx = self.orders.firstIndex(where: { $0.id == updated.id }) {
+            self.orders[idx] = updated
+        } else {
+            self.orders.insert(updated, at: 0)
+        }
+
+        switch server.status {
+        case .received:
+            activeOrder = updated
+            flow = .otp
+        case .expired, .canceled, .refunded:
+            // All three are terminal AND refunded: `poll-active-orders` and
+            // `cancel-order` both `wallet_credit` the full cost before writing
+            // the status. (`refunded` is never written by the backend today —
+            // handled so a future status can't silently strand the UI again,
+            // which is exactly what `default: break` did for `canceled`.)
+            await refreshWallet(using: wallet)
+            recovery = RecoveryContext(
+                service: current.service,
+                failedCountry: current.country,
+                reason: server.status == .canceled ? .canceled : .expired,
+                refundedCredits: updated.costCredits
+            )
+            flow = .recovery
+            activeOrder = nil
+        case .waiting:
+            // Still genuinely in flight — keep the live row (the number may
+            // have only just been assigned) and stay on the waiting screen.
+            activeOrder = updated
+        }
+    }
+
+    /// True once the reservation window has elapsed (plus a grace period, so
+    /// we don't race the cron that closes the order — it runs every 60s).
+    func isPastExpiry(_ order: Order, grace: TimeInterval = 5) -> Bool {
+        Date() >= order.expiresAt.addingTimeInterval(grace)
     }
 
     func cancelWaiting(using orders: OrdersAPI, wallet: WalletAPI) async {
         guard let order = activeOrder else { flow = nil; return }
+        // Same guard as reroll: while the cancel is in flight the background
+        // poll/reconcile must not read the row and claim the outcome first
+        // (it would land on "No code arrived" instead of "Number released").
+        isPlacingOrder = true
+        defer { isPlacingOrder = false }
         do {
             let server = try await orders.cancel(orderId: order.id)
             let updated = resolve(server)
@@ -545,7 +641,8 @@ final class AppState {
             // with the number).
             recovery = RecoveryContext(service: order.service,
                                        failedCountry: order.country,
-                                       reason: .canceled)
+                                       reason: .canceled,
+                                       refundedCredits: updated.costCredits)
             flow = .recovery
         } catch let apiErr as APIError {
             // Cancel FAILED: the refund reassurance would be a lie here, so
@@ -617,12 +714,14 @@ final class AppState {
             // The old number is already released and refunded — recover, don't
             // dead-end. The banner still explains why this attempt failed.
             lastError = apiErr.userMessage
-            recovery = RecoveryContext(service: svc, failedCountry: next, reason: .canceled)
+            recovery = RecoveryContext(service: svc, failedCountry: next, reason: .canceled,
+                                       refundedCredits: order.costCredits)
             flow = .recovery
             activeOrder = nil
         } catch {
             lastError = "Couldn't get another number. Please try again."
-            recovery = RecoveryContext(service: svc, failedCountry: next, reason: .canceled)
+            recovery = RecoveryContext(service: svc, failedCountry: next, reason: .canceled,
+                                       refundedCredits: order.costCredits)
             flow = .recovery
             activeOrder = nil
         }

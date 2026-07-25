@@ -72,6 +72,23 @@ struct RecoveryScreen: View {
                     .padding(.top, 6)
                     .padding(.horizontal, 24)
 
+                // A receipt, not a reassurance. The sentence above is the same
+                // claim the app always made; this is the number that makes it
+                // checkable against the balance the user can see.
+                if let credits = context.refundedCredits {
+                    HStack(spacing: 6) {
+                        Image(systemName: RIcon.check)
+                            .font(.system(size: 12, weight: .bold))
+                        Text("+\(credits) credits refunded")
+                            .font(RFont.text(13, weight: .semibold))
+                    }
+                    .foregroundStyle(theme.live)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 7)
+                    .background(theme.liveSoft, in: .capsule)
+                    .padding(.top, 12)
+                }
+
                 if let suggestion {
                     HStack(spacing: 8) {
                         FlagCircle(country: suggestion.country, size: 24)
