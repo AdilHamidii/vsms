@@ -31,11 +31,11 @@ struct CountrySheet: View {
     // deliver for this service instead of the cheapest/first one.
     @State private var sort: CountrySort = .bestSuccess
 
-    /// The service the user is currently configuring. While in checkout we
-    /// use the draft service; otherwise the Home "Last used".
-    private var currentService: Service {
-        state.checkoutService ?? state.lastService
-    }
+    /// The service the user is currently configuring. Must go through
+    /// `configuringService` — reading `checkoutService ?? lastService` here is
+    /// what priced this whole sheet for the last checked-out service while
+    /// Home showed a different one.
+    private var currentService: Service { state.configuringService }
 
     private var sorted: [Country] {
         var list = state.availableCountries

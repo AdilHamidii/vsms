@@ -407,6 +407,27 @@ measured. A tilde is not a warning — nobody reads a tilde.
 - **PostgREST `max_rows` is now `60000`** (`alter role authenticator set pgrst.db_max_rows`). The catalog is ~18.5k routes and moved 6,962 → 16,320 → 18,492 in 36h purely from provider changes. Crossing the cap makes PostgREST **truncate silently** — HTTP 206, no error, the app just gets fewer routes and every missing one renders "Unavailable" or keeps a stale price. That is indistinguishable from "the prices are wrong" from the phone. Keep large headroom; it is nearly free.
 - **CatalogAPI fetches only routes where `retail_credits IS NOT NULL OR status != 'active'`**. After sync-prices, all routes have a price → query effectively returns everything. The filter exists so a fresh project without sync data doesn't pull empty rows.
 - **Cover/sheet content does NOT inherit `@Observable` env objects from the presenter.** Always wrap sheet/cover content with the `EnvBundle` modifier in `ContentView`.
+- **The checkout draft must never be read outside the checkout flow — use
+  `AppState.configuringService` / `configuringCountry`, never
+  `checkoutService ?? lastService`.** `startCheckout` wrote the draft and
+  nothing cleared it, while every picker read it with no `flow` check. So after
+  a single visit to checkout — tapping "order again" on a history row is
+  enough — the sheets opened from **Home** priced everything for the *last
+  checked-out* service: Home read "Deliveroo · Kyrgyzstan · **4 cr**" while the
+  country sheet opened from that same screen priced every row for Leboncoin and
+  showed Kyrgyzstan at **60 cr** (2026-07-25, reproduced from screenshots and
+  confirmed against `routes` — Leboncoin was the *unique* service in the catalog
+  matching the sheet's exact price vector). It was never just cosmetic: the same
+  wrong service drove **availability** (countries rendering "Unavailable" that
+  were bookable for the selected service), the default **"Best success"**
+  ranking — so the steering steered on the wrong service — and
+  `creditsShortfall`, which preselected a credit pack sized for the stale route.
+  Fixed on both sides: reads go through the two accessors, and `flow`'s `didSet`
+  clears the draft on every transition out of `.checkout` (centrally, because
+  `flow` is assigned from a dozen sites and `fullScreenCover(item:)` also writes
+  `nil` on interactive dismiss). The general rule: **when a write path branches
+  on `flow` but the matching read path doesn't, the two disagree the moment the
+  flow ends.**
 - **`tint_hex`, not `tint`** — Service column is `tint_hex` (snake) → `tintHex` (Swift). Same casing rule for every Service/Country/Route field. Don't reintroduce shorter names.
 - **Cron-secret auth reads from `Deno.env.get("CRON_SECRET")`**, not from `vault.decrypted_secrets`. The vault schema isn't reachable through PostgREST — the function would silently fail. Both `poll-active-orders` and `sync-prices` rely on the env var being mirrored to the vault entry. **CRON_SECRET therefore lives in TWO stores** (edge secrets + vault `cron_secret`, read by `private_cron_secret()`); rotating one without the other 401s every relayed function at once — including telegram-notify, i.e. the alert channel. The watchdog's `relay-http` check catches the 401s within ~25 min, but rotate both together.
 - **The watchdog is plain SQL — keep it that way.** `run_watchdog()` (pg_cron `*/10`, migration `20260722050000`) checks job freshness (poller heartbeat, `routes`/`esim_plans.last_checked_at`, digest stamp, sync cursors via `app_config.updated_at` — maintained by the `app_config_touch` trigger, so cursor upserts don't need to set it) plus any non-2xx row in `net._http_response`, and writes its verdict to `app_config.'watchdog'`. `telegram-notify` (minutely) turns that into pages (6h re-alert, ✅ on recovery); `/balance` shows the verdict too. It deliberately uses **no edge function, no CRON_SECRET, no HTTP** so it still evaluates when the whole edge/secret layer is broken. If you add a scheduled job, give it a freshness signal and a check here. Residual blind spot: telegram-notify's own death = digest silence >7h (documented in `docs/autopilot-runbook.md`).

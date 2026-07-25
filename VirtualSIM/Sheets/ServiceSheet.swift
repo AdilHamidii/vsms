@@ -10,13 +10,12 @@ struct ServiceSheet: View {
     @State private var category: String = "All"
     @State private var affordableOnly = false
 
-    /// The country the user is currently configuring. While in checkout we use
-    /// the draft country; otherwise the Home "Last used". Prices shown per
-    /// service are the REAL synced route price for this country (mirrors
-    /// CountrySheet, which fixes the service and varies the country).
-    private var currentCountry: Country {
-        state.checkoutCountry ?? state.lastCountry
-    }
+    /// The country the user is currently configuring. Prices shown per service
+    /// are the REAL synced route price for this country (mirrors CountrySheet,
+    /// which fixes the service and varies the country). Goes through
+    /// `configuringCountry` for the same reason CountrySheet does — the raw
+    /// `checkoutCountry ?? lastCountry` priced the list for a stale draft.
+    private var currentCountry: Country { state.configuringCountry }
 
     private var filtered: [Service] {
         let q = query.trimmingCharacters(in: .whitespaces).lowercased()

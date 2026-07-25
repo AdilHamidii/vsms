@@ -222,7 +222,7 @@ struct ContentView: View {
                 // current selection — the sheet priced every row for it, and a
                 // silent swap made the buy button contradict the tapped row.
                 let best = state.bestCountry(for: picked,
-                                             keeping: state.checkoutCountry ?? state.lastCountry)
+                                             keeping: state.configuringCountry)
                 if state.flow == .checkout {
                     state.checkoutService = picked
                     if let best { state.checkoutCountry = best }
