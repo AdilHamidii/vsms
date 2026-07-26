@@ -239,13 +239,28 @@ signup bonus could reach from **971 routes to 24** (−97.5%, of 16,303 active),
 and the 24 survivors are the cheapest, worst inventory: measured over the
 following 30 days, the 1-credit band delivered **10.9%** against **42.1%** for
 the 2–5 band. Result was a 0%-conversion funnel — 11 signups, 2 orders, 0 codes,
-0 purchases in the 24h to 2026-07-26. Fixed by raising the grant to **5 credits**
-(migration `20260726130000`), the smallest amount that reaches the 42.1% band.
-After ANY divisor change, re-check every fixed grant: `handle_new_user()`
+0 purchases in the 24h to 2026-07-26. Fixed by raising the grant to **3 credits**
+(migration `20260726140000`, after `20260726130000` briefly set 5).
+
+**The cliff is between 1 and 2 credits, not further up** — this is the number to
+reason from, measured per exact price over the 30d to 2026-07-26:
+
+| grant | routes reachable | % catalog | delivery at that price |
+|---|---|---|---|
+| 1 cr | 24 | 0.15% | **10.9%** (46 orders) |
+| 2 cr | 971 | 5.96% | 40.0% (15 orders) |
+| **3 cr** | **1,636** | **10.03%** | **39.3% (28 orders)** ← current |
+| 4 cr | 2,401 | 14.73% | 53.8% (13 orders) |
+| 5 cr | 2,851 | 17.49% | — (1 order, noise) |
+
+Delivery roughly **quadruples** from 1 → 2 credits and is then flat through 3;
+3 carries the largest order sample in the 2–5 range, so it is the best-evidenced
+point. Going past 3 buys catalog breadth, not measured delivery. Delivery is
+also **not** monotonic in price overall (the 6–15 band measured 20.7%, 16+ measured
+0%), so "grant more" is never the lever — landing users above the 1-credit floor
+is. After ANY divisor change, re-check every fixed grant: `handle_new_user()`
 (signup), `claim_daily_credit()` (the 1/2/3 daily ladder), and `redeem_referral`
-(2 to the joiner, 5 to the referrer). Note delivery is **not** monotonic in price
-— the 6–15 band measured 20.7% and 16+ measured 0% — so "grant more" is not the
-lever; landing users in the 2–5 band is.
+(2 to the joiner, 5 to the referrer).
 
 **The cost smoothing is a RATCHET, not a symmetric EWMA.** A cost RISE applies immediately; only falls are smoothed:
 ```ts
