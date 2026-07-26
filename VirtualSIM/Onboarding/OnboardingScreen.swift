@@ -3,9 +3,13 @@ import SwiftUI
 // Two-page onboarding. Page 1: the product itself doing its one job — a
 // temporary number sitting on a card, a verification SMS typing in, and the
 // code landing highlighted in brand green — the same surfaces the user meets
-// on the Waiting/OTP screens. Page 2: the welcome credit — every new account
-// starts with 1 free credit, and users convert better when they're told
+// on the Waiting/OTP screens. Page 2: the welcome credits — every new account
+// starts with 5 free credits, and users convert better when they're told
 // before the sign-in ask. No abstract icon badges anywhere.
+//
+// The amount here MUST match `handle_new_user()` (migration
+// 20260726130000_signup_bonus_5cr.sql). It is stated to the user before they
+// sign in, so a stale number here is a promise the server doesn't keep.
 struct OnboardingScreen: View {
     @Environment(\.theme) private var theme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -97,7 +101,7 @@ struct OnboardingScreen: View {
                 .lineSpacing(2)
                 .multilineTextAlignment(.center)
                 .foregroundStyle(theme.text)
-            Text("Sign in and you'll find 1 free credit waiting — enough to get a number and see the code arrive before you spend anything.")
+            Text("Sign in and you'll find 5 free credits waiting — enough to get a number and see the code arrive before you spend anything.")
                 .font(RFont.text(15))
                 .lineSpacing(3)
                 .multilineTextAlignment(.center)
@@ -173,7 +177,7 @@ private struct GiftCard: View {
                 }
                 HStack(spacing: 10) {
                     CoinIcon(size: 22, color: theme.text)
-                    Text("+1 credit")
+                    Text("+5 credits")
                         .font(RFont.display(28, weight: .bold))
                         .tracking(-0.6)
                         .foregroundStyle(theme.text)
