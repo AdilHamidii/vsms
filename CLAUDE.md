@@ -231,6 +231,22 @@ multiplier scales down, so `maxCostUsd` stays ≈ wholesale at any margin. That 
 the whole reason the two constants must move together — and why only the derived
 columns need a backfill.
 
+**Changing `CREDIT_DIVISOR` also silently devalues every FIXED credit grant.**
+The premium backfill above is not the only casualty — anything denominated in a
+flat number of credits buys proportionally less the moment prices double, and
+nothing recomputes it. The 3× → 6× change on 2026-07-25 cut what the 1-credit
+signup bonus could reach from **971 routes to 24** (−97.5%, of 16,303 active),
+and the 24 survivors are the cheapest, worst inventory: measured over the
+following 30 days, the 1-credit band delivered **10.9%** against **42.1%** for
+the 2–5 band. Result was a 0%-conversion funnel — 11 signups, 2 orders, 0 codes,
+0 purchases in the 24h to 2026-07-26. Fixed by raising the grant to **5 credits**
+(migration `20260726130000`), the smallest amount that reaches the 42.1% band.
+After ANY divisor change, re-check every fixed grant: `handle_new_user()`
+(signup), `claim_daily_credit()` (the 1/2/3 daily ladder), and `redeem_referral`
+(2 to the joiner, 5 to the referrer). Note delivery is **not** monotonic in price
+— the 6–15 band measured 20.7% and 16+ measured 0% — so "grant more" is not the
+lever; landing users in the 2–5 band is.
+
 **The cost smoothing is a RATCHET, not a symmetric EWMA.** A cost RISE applies immediately; only falls are smoothed:
 ```ts
 const smoothed = prev == null || cents > prev ? cents : Math.round(A*cents + (1-A)*prev);

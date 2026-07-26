@@ -197,7 +197,7 @@ struct HomeScreen: View {
     }
 
     /// A user who has never placed an order — show them a "start here" framing
-    /// and, when their free credit covers the default, say so.
+    /// and, when their free credits cover the default, say so.
     private var isFirstRun: Bool { state.orders.isEmpty }
 
     /// The hero's primary action. Mirrors CheckoutScreen: a real "Buy credits"
@@ -234,7 +234,7 @@ struct HomeScreen: View {
     private var freeCreditHint: some View {
         HStack(spacing: 8) {
             CoinIcon(size: 15, color: theme.live)
-            Text("Your free credit covers this — first number's on us.")
+            Text("Your free credits cover this — first number's on us.")
                 .font(RFont.text(12, weight: .medium))
                 .tracking(-0.1)
                 .foregroundStyle(theme.text2)
