@@ -242,12 +242,46 @@ cannot double-grant.
 
 `telegram-notify` (cron, every minute) sweeps new signups / credit purchases /
 eSIM purchases and emits a 6-hourly digest; `telegram-webhook` answers `/stats`,
-`/today`, `/week`, `/balance`. Exactly-once is a claim row in `telegram_events`
+`/today`, `/week`, `/balance`, `/revenue`. Exactly-once is a claim row in `telegram_events`
 (`kind`,`ref` PK) written *before* sending, so the instant path in `iap-verify`
 and the sweep can never double-send. Secrets: `TELEGRAM_BOT_TOKEN`,
 `TELEGRAM_CHAT_ID`, `TELEGRAM_WEBHOOK_SECRET`. The webhook is public and gated
 twice — matching `X-Telegram-Bot-Api-Secret-Token` **and** owner chat id — and
 returns a silent 200 on every rejection so it isn't an oracle.
+
+**`/revenue [24h|7d|30d|90d|all]`** (default `all`, alias `/profit`) reports gross
+→ Apple's cut → wholesale → profit, via `revenue_snapshot(interval)` +
+`formatRevenue` in `_shared/opsFormat.ts`.
+
+**It does NOT use a hardcoded price table, and must not be "simplified" into
+one.** `iap_receipts` stores no price, so the obvious implementation is a
+product→USD map next to `PRODUCT_TO_CREDITS`. That is wrong: the store charges
+by **storefront**, and ours is not one price — `credits.12` bills **$4.99 in the
+USA but €5.99 in France**, `credits.30` **$11.99 vs €12.99**. Sales so far span
+USA/FRA/ESP/SVK/BGR in two currencies, so a USD ladder would overstate US
+revenue ~17% and misprice every EUR sale. Instead `jws_payload()` base64url-
+decodes the Apple JWS we already persist in `raw_jws`, which carries signed
+`price` (**milliunits** — 4990 = 4.99), `currency` and `storefront`. It is the
+amount actually billed and it self-corrects when ASC prices change.
+
+Three deliberate honesty properties, all load-bearing:
+- **Mixed currencies are never silently totalled.** The function returns
+  per-currency subtotals; the formatter converts with a hand-set `FX_TO_USD`,
+  **prints the rate**, and lists any currency missing from the map as
+  unconverted rather than folding it in at 1.0.
+- **`APPLE_COMMISSION = 0.15`** assumes the Small Business Program. If vSMS is
+  not enrolled it is 0.30 — worth ~$24 of the profit line. The rate is printed
+  next to the figure so it can't be read without its assumption.
+- **Profit is flagged an upper bound** whenever orders held a number but have no
+  `actual_cost_cents` (48 of them, all before 2026-07-13 when cost recording
+  started). Orders that never got a number are correctly excluded — nothing was
+  reserved, so nothing was paid.
+
+`environment = 'Production'` is filtered and the dev account is excluded from
+revenue but its **provider spend is subtracted on its own line** ($4.01 lifetime)
+— real cash out, not a cost of serving customers. Note `ops_snapshot`'s `buys`
+does **not** filter environment, so the digest counts the one Sandbox receipt
+(12 credits, $0 paid) as a purchase; `revenue_snapshot` does not repeat that.
 
 ### Pricing model
 
@@ -323,6 +357,17 @@ A plain `0.5*new + 0.5*prev` averages a rise against yesterday's cheaper price a
 **eSIM** plans (`sync-esim-plans`) are priced **separately** at 4× wholesale (raised 3× → 4× on 2026-07-25) — `ESIM_MARGIN = 4`, `CREDIT_VALUE_USD = 0.48`, `retail_credits = ceil(usd * 4 / 0.48)` — NOT via `CREDIT_DIVISOR`, so the two product lines never collide. Inverted, the order-time ceiling in `create-esim-order` is `credits * 0.12`: SMSPool's `/esim/purchase` accepts no price cap and its response reports **no cost at all**, so the function takes a fresh `/esim/plans` quote, blocks above the ceiling, and writes that real number into `actual_cost_cents`. It fails **closed** on a bad price and **open** on a failed lookup — an unreachable SMSPool must not make eSIMs unbuyable. (Before this, `actual_cost_cents` echoed the cached catalog price, so margin analysis over it was circular and could never reveal drift.)
 
 **Credit packs** (`Models/CreditPack.swift` + `Products.storekit` + `_shared/iap.ts` `PRODUCT_TO_CREDITS`): 5/$2.99, 12/$5.99 (MOST POPULAR), 30/$12.99, 60/**$24.99**, 150/**$59.99** (BEST VALUE) — a strictly improving per-credit ladder (each pack beats stacking smaller ones): $0.598 → $0.499 → $0.433 → $0.417 → $0.400. The per-credit label is computed **live** from the StoreKit price in `IAPStore.perCredit`, so it never drifts; production prices must be set to match in App Store Connect.
+
+**Those figures are the EUR tier, not what a US buyer pays** — measured
+2026-07-27 from the signed `price`/`currency` in every stored Apple receipt
+(`raw_jws`), i.e. amounts actually billed, not a guess. The US storefront bills
+**$2.99 / $4.99 / $11.99** for the 5/12/30 packs while EUR territories bill
+**€2.99 / €5.99 / €12.99** (normal Apple tier mapping — EUR prices carry VAT).
+So the real US per-credit ladder is **$0.598 → $0.416 → $0.400**, not
+$0.598 → $0.499 → $0.433. Still strictly improving, but the 12-pack is a much
+better deal in the US than this file implied, and any margin arithmetic done
+off the $5.99/$12.99 numbers is ~17% optimistic for US sales. Confirm against
+`/v1/apps/6774768570/inAppPurchasesV2` price points before acting on either set.
 
 **The 60 and 150 packs are the LIVE ASC prices, read back from the API on
 2026-07-25 — this file previously claimed $22.99/$49.99, which was never what
