@@ -561,7 +561,12 @@ final class AppState {
         var byCode: [String: (name: String, minCr: Int)] = [:]
         for p in esimPlans {
             let code = p.countryCode ?? "??"
-            let cr = p.retailCredits ?? Int.max
+            // SKIP unpriced plans rather than folding in Int.max. `?? Int.max`
+            // meant a country whose plans were all unpriced surfaced its minimum
+            // verbatim as "from 9223372036854775807 cr". It also disagreed with
+            // esimPlans(forCountry:), which uses `?? 0` for the same field — the
+            // two functions took opposite views of a missing price.
+            guard let cr = p.retailCredits else { continue }
             if let ex = byCode[code] { if cr < ex.minCr { byCode[code] = (ex.name, cr) } }
             else { byCode[code] = (p.name, cr) }
         }

@@ -21,13 +21,30 @@ struct EsimDetailScreen: View {
                 VStack(alignment: .leading, spacing: 0) {
                     topBar
                     header
-                    if let lpa = live.activationCode, !lpa.isEmpty {
-                        qrCard(lpa)
-                        manualCard
-                    } else {
-                        provisioningCard
+                    // Branch on STATUS first, not on activationCode.
+                    //
+                    // This used to fall through to `provisioningCard` whenever
+                    // there was no LPA — so a FAILED, REFUNDED or EXPIRED eSIM
+                    // showed a spinner and "This usually takes a few seconds."
+                    // forever, with the real state visible only as 13pt grey
+                    // text in the header. Those are documented real states: the
+                    // double-insert bug left orphan rows exactly like this.
+                    switch live.status {
+                    case .failed, .refunded:
+                        terminalCard
+                    case .expired, .depleted:
+                        terminalCard
+                    default:
+                        if let lpa = live.activationCode, !lpa.isEmpty {
+                            qrCard(lpa)
+                            manualCard
+                        } else {
+                            provisioningCard
+                        }
                     }
-                    if live.dataTotalMb != nil { usageCard }
+                    if live.dataTotalMb != nil, live.status != .failed, live.status != .refunded {
+                        usageCard
+                    }
                 }
                 .padding(.top, 6).padding(.bottom, 60)
             }
@@ -35,7 +52,10 @@ struct EsimDetailScreen: View {
         }
         .task {
             await state.refreshEsimUsage(using: EsimOrdersAPI(client: api))
-            while !Task.isCancelled, state.flow == .esimDetail {
+            // Terminal orders can't change, so don't keep hitting SMSPool for
+            // them — this loop calls a provider-backed edge function every 8s
+            // for as long as the screen is open.
+            while !Task.isCancelled, state.flow == .esimDetail, live.status.keepsPolling {
                 try? await Task.sleep(nanoseconds: 8_000_000_000)
                 await state.refreshEsimUsage(using: EsimOrdersAPI(client: api))
             }
@@ -160,6 +180,58 @@ struct EsimDetailScreen: View {
             .padding(16)
         }
         .padding(.horizontal, 16).padding(.top, 12)
+    }
+
+    /// Terminal states get a real card naming the outcome AND the refund.
+    ///
+    /// The SMS side has enforced "refunds must be visible twice" since the
+    /// reconcile work — in the moment (recovery card) and durably (history row).
+    /// The eSIM flow had no counterpart at all: a refunded eSIM showed a
+    /// spinner. `EsimOrder` has carried `costCredits` the whole time.
+    private var terminalCard: some View {
+        Card {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(spacing: 8) {
+                    Image(systemName: live.status == .failed || live.status == .refunded
+                          ? "arrow.uturn.left.circle.fill" : "clock.badge.xmark")
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundStyle(live.status == .failed || live.status == .refunded
+                                         ? theme.live : theme.text2)
+                    Text(live.status.label)
+                        .font(RFont.display(16, weight: .semibold))
+                        .foregroundStyle(theme.text)
+                }
+                Text(terminalExplanation)
+                    .font(RFont.text(13))
+                    .lineSpacing(2)
+                    .foregroundStyle(theme.text2)
+                    .fixedSize(horizontal: false, vertical: true)
+                if live.status == .failed || live.status == .refunded {
+                    HStack(spacing: 6) {
+                        CoinIcon(size: 14, color: theme.live)
+                        Text("+\(order.server.costCredits) credits refunded")
+                            .font(RFont.text(13, weight: .semibold))
+                            .foregroundStyle(theme.live)
+                    }
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .padding(.horizontal, 16)
+        .padding(.top, 12)
+    }
+
+    private var terminalExplanation: String {
+        switch live.status {
+        case .failed, .refunded:
+            return String(localized: "This eSIM couldn't be provisioned, so your credits went straight back to your balance.")
+        case .expired:
+            return String(localized: "This plan's validity period has ended. Buy another to get back online.")
+        case .depleted:
+            return String(localized: "All the data on this plan has been used.")
+        default:
+            return ""
+        }
     }
 
     private var provisioningCard: some View {

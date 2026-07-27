@@ -280,6 +280,91 @@ Deno.serve(async (req) => {
     }
   }
 
+  // NOTE ON ORDERING: this runs BEFORE the main polling loop, not after.
+  //
+  // It was last, behind up to 200 expiry claims and 50 sequential provider
+  // polls inside a ~150s worker budget — so it was the first thing dropped
+  // under load, which is exactly when held numbers cost the most. Since
+  // cancel-order stopped releasing synchronously, this sweep is the ONLY thing
+  // that ever hands back a cancelled number; if it doesn't run, the number is
+  // never released and late_watch_until stays set. Cheap anyway: it touches at
+  // most 50 rows and usually zero.
+  // ── Late-code rescue.
+  //
+  // Cancels land at a median of 57s; codes arrive at a median of 58s, 45% of
+  // them after 60s. cancel-order no longer releases the number — it stamps
+  // late_watch_until — so a code that shows up after the user gave up is still
+  // ours to hand over. The refund already stands and the status stays
+  // 'canceled': we give the code away. Owner decision 2026-07-27.
+  //
+  // The push carries NO orderId on purpose. Shipped PushManager routes on
+  // orderId, and deep-linking into a canceled order would land the user on the
+  // recovery/refund screen instead of their code. Without it the tap just opens
+  // the app, and the code is in the notification body where they can read it.
+  let rescued = 0, lateReleased = 0;
+  const nowIso = new Date().toISOString();
+  const { data: lateWatch, error: lateErr } = await sb
+    .from("orders")
+    .select("id, user_id, cost_credits, provider, smspva_id, late_watch_until, service:service_id ( name )")
+    .not("late_watch_until", "is", null)
+    .is("otp", null)
+    .eq("status", "canceled")
+    .order("late_watch_until", { ascending: true })
+    .limit(50);
+  if (lateErr) console.error("poll: late-watch select failed", lateErr);
+
+  for (const o of lateWatch ?? []) {
+    try {
+      if (!o.smspva_id) {
+        await sb.from("orders").update({ late_watch_until: null }).eq("id", o.id);
+        continue;
+      }
+      // Window closed with no code — reclaim what we can and stop watching.
+      // Date comparison, not string. PostgREST renders timestamptz as
+      // "+00:00" while JS toISOString() ends in "Z", so a lexical compare is
+      // only accidentally correct while the DB session is UTC — and inverts
+      // silently if that ever changes, leaving every watched number unreleased.
+      if (new Date(o.late_watch_until as string).getTime() <= Date.now()) {
+        await markDead((o.provider ?? "smspva") as Provider, o.smspva_id);
+        await sb.from("orders").update({ late_watch_until: null }).eq("id", o.id);
+        lateReleased++;
+        continue;
+      }
+
+      const res = await poll((o.provider ?? "smspva") as Provider, o.smspva_id);
+      if (res.state !== "received" || !res.code) continue;
+
+      // Write the code onto the canceled row. `otp is not null` is what the
+      // delivery-evidence functions now count as a code, so a rescue correctly
+      // credits the route with having delivered.
+      const { data: got } = await sb
+        .from("orders")
+        .update({
+          otp: res.code,
+          raw_message: res.fullText ?? null,
+          arrived_at: new Date().toISOString(),
+          late_watch_until: null,
+        })
+        .eq("id", o.id)
+        .is("otp", null)
+        .select("id");
+      if (!got || got.length === 0) continue;   // another run got there first
+
+      await markSuccess((o.provider ?? "smspva") as Provider, o.smspva_id);
+      rescued++;
+      const svc = o.service as { name: string } | null;
+      pushSent += await notify(
+        o.user_id,
+        `Your ${svc?.name ?? "verification"} code arrived after all`,
+        `${res.code} — your ${o.cost_credits} credits were already refunded, so this one's on us.`,
+        { event: "late_code", otp: res.code },
+      );
+    } catch (e) {
+      console.error("late-watch failed for order", o.id, e);
+    }
+  }
+
+
   // ── Poll the still-waiting orders for their SMS.
   const { data: pending, error: pErr } = await sb
     .from("orders")
@@ -375,81 +460,6 @@ Deno.serve(async (req) => {
         `Your ${svc?.name ?? "verification"} number closed — ${o.cost_credits} credits refunded.`,
         { event: "expired", orderId: o.id },
       );
-    }
-  }
-
-  // ── Late-code rescue.
-  //
-  // Cancels land at a median of 57s; codes arrive at a median of 58s, 45% of
-  // them after 60s. cancel-order no longer releases the number — it stamps
-  // late_watch_until — so a code that shows up after the user gave up is still
-  // ours to hand over. The refund already stands and the status stays
-  // 'canceled': we give the code away. Owner decision 2026-07-27.
-  //
-  // The push carries NO orderId on purpose. Shipped PushManager routes on
-  // orderId, and deep-linking into a canceled order would land the user on the
-  // recovery/refund screen instead of their code. Without it the tap just opens
-  // the app, and the code is in the notification body where they can read it.
-  let rescued = 0, lateReleased = 0;
-  const nowIso = new Date().toISOString();
-  const { data: lateWatch, error: lateErr } = await sb
-    .from("orders")
-    .select("id, user_id, cost_credits, provider, smspva_id, late_watch_until, service:service_id ( name )")
-    .not("late_watch_until", "is", null)
-    .is("otp", null)
-    .eq("status", "canceled")
-    .order("late_watch_until", { ascending: true })
-    .limit(50);
-  if (lateErr) console.error("poll: late-watch select failed", lateErr);
-
-  for (const o of lateWatch ?? []) {
-    try {
-      if (!o.smspva_id) {
-        await sb.from("orders").update({ late_watch_until: null }).eq("id", o.id);
-        continue;
-      }
-      // Window closed with no code — reclaim what we can and stop watching.
-      // Date comparison, not string. PostgREST renders timestamptz as
-      // "+00:00" while JS toISOString() ends in "Z", so a lexical compare is
-      // only accidentally correct while the DB session is UTC — and inverts
-      // silently if that ever changes, leaving every watched number unreleased.
-      if (new Date(o.late_watch_until as string).getTime() <= Date.now()) {
-        await markDead((o.provider ?? "smspva") as Provider, o.smspva_id);
-        await sb.from("orders").update({ late_watch_until: null }).eq("id", o.id);
-        lateReleased++;
-        continue;
-      }
-
-      const res = await poll((o.provider ?? "smspva") as Provider, o.smspva_id);
-      if (res.state !== "received" || !res.code) continue;
-
-      // Write the code onto the canceled row. `otp is not null` is what the
-      // delivery-evidence functions now count as a code, so a rescue correctly
-      // credits the route with having delivered.
-      const { data: got } = await sb
-        .from("orders")
-        .update({
-          otp: res.code,
-          raw_message: res.fullText ?? null,
-          arrived_at: new Date().toISOString(),
-          late_watch_until: null,
-        })
-        .eq("id", o.id)
-        .is("otp", null)
-        .select("id");
-      if (!got || got.length === 0) continue;   // another run got there first
-
-      await markSuccess((o.provider ?? "smspva") as Provider, o.smspva_id);
-      rescued++;
-      const svc = o.service as { name: string } | null;
-      pushSent += await notify(
-        o.user_id,
-        `Your ${svc?.name ?? "verification"} code arrived after all`,
-        `${res.code} — your ${o.cost_credits} credits were already refunded, so this one's on us.`,
-        { event: "late_code", otp: res.code },
-      );
-    } catch (e) {
-      console.error("late-watch failed for order", o.id, e);
     }
   }
 

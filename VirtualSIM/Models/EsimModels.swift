@@ -3,6 +3,15 @@ import Foundation
 enum EsimStatus: String, Codable, Hashable {
     case provisioning, installed, active, depleted, expired, refunded, failed
 
+    /// Whether this state can still change — i.e. whether it is worth spending
+    /// a provider round-trip on. Terminal states never move again.
+    var keepsPolling: Bool {
+        switch self {
+        case .provisioning, .installed, .active: true
+        case .depleted, .expired, .refunded, .failed: false
+        }
+    }
+
     var label: String {
         switch self {
         case .provisioning: "Preparing"
@@ -32,7 +41,7 @@ struct EsimPlan: Codable, Hashable, Identifiable {
 
     var dataLabel: String {
         guard let mb = dataMb else { return "—" }
-        return mb >= 1000 ? "\(mb / 1000) GB" : "\(mb) MB"
+        return EsimFormat.data(mb)
     }
     var validityLabel: String {
         guard let d = validityDays else { return "—" }
@@ -93,7 +102,23 @@ struct EsimOrder: Identifiable, Hashable {
     }
     var dataRemainingLabel: String {
         guard let total = dataTotalMb else { return "—" }
-        let rem = max(0, total - dataUsedMb)
-        return rem >= 1000 ? String(format: "%.1f GB left", Double(rem) / 1000) : "\(rem) MB left"
+        return "\(EsimFormat.data(max(0, total - dataUsedMb))) left"
+    }
+}
+
+
+/// One MB→GB formatter for the whole eSIM flow.
+///
+/// There were two, and they disagreed: the store truncated (`1500 MB` → "1 GB")
+/// while the detail screen used one decimal ("1.5 GB left"), so the same plan
+/// advertised a different size depending on which screen you were looking at.
+/// Trailing ".0" is dropped so a clean 2 GB plan doesn't read "2.0 GB".
+enum EsimFormat {
+    static func data(_ mb: Int) -> String {
+        guard mb >= 1000 else { return "\(mb) MB" }
+        let gb = Double(mb) / 1000
+        return gb == gb.rounded()
+            ? "\(Int(gb)) GB"
+            : String(format: "%.1f GB", gb)
     }
 }
