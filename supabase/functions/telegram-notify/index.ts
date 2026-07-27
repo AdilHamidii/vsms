@@ -59,8 +59,26 @@ Deno.serve(async (req) => {
         failing?: { check?: string; detail?: string }[];
         last_alert_at?: string | null;
         alerted?: string[] | null;
+        checked_at?: string | null;
       };
-      const failing = w.failing ?? [];
+      const failing = [...(w.failing ?? [])];
+
+      // THE WATCHDOG'S OWN DEATH WAS INVISIBLE. run_watchdog() stamps
+      // checked_at every 10 minutes and nothing ever read it — so if the pg_cron
+      // job were unscheduled, or the function raised, the last stored verdict
+      // (today: `failing: []`) would persist forever and every channel would
+      // report perfect health indefinitely. That is strictly worse than the
+      // documented telegram-notify blind spot, which at least shows up as digest
+      // silence. A stale verdict is now itself a failing check.
+      const wdAgeMs = w.checked_at ? Date.now() - new Date(w.checked_at).getTime() : Infinity;
+      if (wdAgeMs > 30 * 60 * 1000) {
+        failing.push({
+          check: "watchdog_stale",
+          detail: w.checked_at
+            ? `last ran ${Math.round(wdAgeMs / 60000)} min ago — the watchdog itself is not running`
+            : "never recorded a run — the watchdog itself is not running",
+        });
+      }
       const names = failing.map((f) => f.check ?? "?").sort();
       const alerted = (w.alerted ?? []).slice().sort();
       const changed = JSON.stringify(names) !== JSON.stringify(alerted);

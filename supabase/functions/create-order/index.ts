@@ -1,6 +1,6 @@
 import { handleCors, json } from "../_shared/cors.ts";
 import { admin, callerUserId } from "../_shared/supabaseAdmin.ts";
-import { livePriceUsd, providerOrder, release, reserve, type RouteCodes } from "../_shared/providers.ts";
+import { livePriceUsd, markDead, providerOrder, release, reserve, type RouteCodes } from "../_shared/providers.ts";
 import { getCountryPrices, isOk } from "../_shared/smspva.ts";
 import { notifySafe, esc } from "../_shared/telegram.ts";
 
@@ -202,7 +202,11 @@ Deno.serve(async (req) => {
     for (const r of recent ?? []) {
       if (r.smspva_number) recentNumbers.add(r.smspva_number as string);
       if (
-        r.provider === "smspva" && r.smspool_pool && r.status === "canceled" &&
+        // 'expired' counts too: an order that held the full window with no SMS
+        // is the STRONGEST evidence that carrier is dead, and rotation was
+        // ignoring it entirely — only user-cancels populated this set.
+        r.provider === "smspva" && r.smspool_pool &&
+        (r.status === "canceled" || r.status === "expired") &&
         r.country_id === country.id && r.closed_at &&
         Date.now() - new Date(r.closed_at as string).getTime() <= 15 * 60 * 1000
       ) triedOperators.add(r.smspool_pool as string);
@@ -403,7 +407,14 @@ Deno.serve(async (req) => {
       redraw++
     ) {
       console.warn(`duplicate number re-issued (${res.number}) — redrawing svc=${service.id} cty=${country.id}`);
-      if (res.orderId) await release(p, res.orderId);
+      // markDead, not release. A plain cancelorder leaves the request id alive
+      // at SMSPVA for ~10 minutes and the SAME number gets re-allocated — so
+      // discarding a duplicate with release() fought retention using the exact
+      // mechanism that causes it. Measured: 13.9% of paid orders drew a
+      // re-issued number, and those delivered 21.4% against 36.8% for a first
+      // issuance. markDead bans first, then cancels, so the wholesale refund is
+      // still attempted.
+      if (res.orderId) await markDead(p, res.orderId);
       res = await reserve(p, codes, maxCostUsd, pin, tier === "premium");
     }
     if (res.ok) {
