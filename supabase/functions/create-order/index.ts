@@ -30,6 +30,15 @@ interface Body {
 const MIN_MARGIN = 6.0;
 const NET_USD_PER_CREDIT = 0.30;
 
+// Absolute slack added to the order-time ceiling so a trivial provider price
+// tick doesn't take a route offline between hourly sync-prices runs. Flat, not
+// proportional, on purpose: the exposure is bounded at $0.10 per order at any
+// price point, while a percentage would grow precisely where it costs most.
+// Worst case it trades margin on the cheapest routes (a 2-credit route worth
+// $0.60 of revenue may now pay up to $0.20, i.e. 3× rather than 6×) to stop
+// losing the order outright — a refunded order earns nothing and burns trust.
+const CEILING_HEADROOM_USD = 0.10;
+
 // ── Failure paging. A total SMS outage used to be indistinguishable from a
 //    quiet day: every failed order refunded politely, console.error'd, and no
 //    human ever heard. Two channels, both deduped through app_config state:
@@ -273,7 +282,19 @@ Deno.serve(async (req) => {
   // to the provider as a purchase-time cap AND enforced on the actual charged
   // cost — the live quote is per cheapest pool and does not bind the fill
   // price (seen live: wechat/kg quoted 6¢, uncapped purchase filled at 79¢).
-  const maxCostUsd = (cost * NET_USD_PER_CREDIT) / MIN_MARGIN;
+  //
+  // + CEILING_HEADROOM_USD, because without it this ceiling has ZERO tolerance
+  // on most of the catalog. sync-prices sets retail = ceil(cost / 0.05) and
+  // this computes cost * 0.05, so whenever wholesale lands on an exact 5¢
+  // boundary the cap equals the cost to the cent — measured 2026-07-27:
+  // 12,507 of 16,303 active routes (76.7%) sat at exactly zero headroom. A
+  // one-cent rise at SMSPVA then made `liveCost > maxCostUsd` true and every
+  // order on that route was refused with margin_too_low, charged, and instantly
+  // refunded until the next hourly sync-prices repriced it. That is what
+  // produced 11 of 22 orders in 24h closing in <1s with no number, and it also
+  // fed the auto-hide (see 20260727120000) which removed TikTok/Netherlands
+  // from the catalog on 8 orders that never got a number.
+  const maxCostUsd = (cost * NET_USD_PER_CREDIT) / MIN_MARGIN + CEILING_HEADROOM_USD;
 
   // Standard orders pin the route's real-SIM carrier too, whenever it fits
   // the margin ceiling. Probed 2026-07-21: on all 16,320 active routes the
