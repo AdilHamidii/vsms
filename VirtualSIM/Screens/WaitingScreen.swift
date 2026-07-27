@@ -97,6 +97,18 @@ struct WaitingScreen: View {
         }
     }
 
+    /// Minimum hold before a paid order can be destroyed. Mirrors
+    /// MIN_HOLD_SECONDS in cancel-order — the server refuses early cancels, so
+    /// leaving these enabled would only produce an error banner.
+    private static let minHoldSeconds = 120
+
+    /// Seconds left before cancel/reroll unlock, or nil once they're free.
+    /// Driven by `elapsed`, which already ticks once per second.
+    private var holdRemaining: Int? {
+        let left = Self.minHoldSeconds - elapsed
+        return left > 0 ? left : nil
+    }
+
     private var topBar: some View {
         HStack {
             Color.clear.frame(width: 36, height: 36)
@@ -111,17 +123,32 @@ struct WaitingScreen: View {
             // cancel-order does a last-chance provider poll, so it could throw
             // away a code that was seconds from landing. Destroying something
             // the user paid for now takes an explicit confirmation.
+            // Locked for the first 120s — see `holdRemaining`. Shows the
+            // countdown in place of the ✕ so the wait reads as deliberate
+            // rather than as a broken button.
             Button {
                 showCancelConfirm = true
             } label: {
-                Image(systemName: RIcon.close)
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(theme.text2)
-                    .frame(width: 36, height: 36)
-                    .background(theme.chipBg, in: .circle)
+                Group {
+                    if let left = holdRemaining {
+                        Text("\(left)s")
+                            .font(RFont.text(12, weight: .semibold))
+                            .monospacedDigit()
+                            .foregroundStyle(theme.text3)
+                    } else {
+                        Image(systemName: RIcon.close)
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundStyle(theme.text2)
+                    }
+                }
+                .frame(width: 36, height: 36)
+                .background(theme.chipBg, in: .circle)
             }
             .buttonStyle(.plain)
-            .accessibilityLabel("Cancel order")
+            .disabled(holdRemaining != nil)
+            .accessibilityLabel(holdRemaining == nil
+                ? Text("Cancel order")
+                : Text("Cancel available in \(holdRemaining ?? 0) seconds"))
         }
         .padding(.horizontal, 16)
         .padding(.bottom, 8)
@@ -232,6 +259,8 @@ struct WaitingScreen: View {
         }
     }
 
+    // Reroll releases the number exactly like a cancel, so it is held for the
+    // same 120s. Without this the button would just surface a server error.
     private func rerollButton(title: String, icon: String,
                               differentCountry: Bool) -> some View {
         Button {
@@ -257,8 +286,8 @@ struct WaitingScreen: View {
             .background(theme.chipBg, in: .rect(cornerRadius: 12))
         }
         .buttonStyle(.plain)
-        .disabled(state.isPlacingOrder)
-        .opacity(state.isPlacingOrder ? 0.5 : 1)
+        .disabled(state.isPlacingOrder || holdRemaining != nil)
+        .opacity(state.isPlacingOrder || holdRemaining != nil ? 0.5 : 1)
     }
 
     private var waitingCard: some View {

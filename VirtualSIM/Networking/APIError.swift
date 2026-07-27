@@ -56,6 +56,12 @@ enum APIError: Error, LocalizedError {
                     return "We couldn't find that order anymore."
                 case "not_cancelable":
                     return "This order can't be canceled."
+                // The 120s minimum hold. Codes arrive at a median of 58s, so a
+                // cancel in the first two minutes is usually impatience rather
+                // than a dead number — and it destroys a code that is often
+                // already on its way.
+                case "cancel_too_early":
+                    return "Hang on — most codes arrive within two minutes. You can cancel shortly."
                 case "verification_failed":
                     return "We couldn't verify that purchase. Please try again."
                 case "unknown_product":

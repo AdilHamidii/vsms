@@ -77,11 +77,18 @@ struct OrdersAPI {
         return env.order
     }
 
+    /// Destroys a paid, in-flight order and refunds it.
+    ///
+    /// `enforce_min_hold` opts this client in to the server's 120s minimum
+    /// hold. It is a flag rather than server-default because shipped 1.4
+    /// ignores a failed cancel and creates the replacement order anyway —
+    /// enforcing for everyone would double-charge those users. We send it
+    /// because `rerollNumber` and `cancelWaiting` both abort on failure.
     func cancel(orderId: String) async throws -> ServerOrder {
-        struct Body: Encodable { let order_id: String }
+        struct Body: Encodable { let order_id: String; let enforce_min_hold: Bool }
         let env: OrderEnvelope = try await client.request(
             .post, path: "functions/v1/cancel-order",
-            body: Body(order_id: orderId)
+            body: Body(order_id: orderId, enforce_min_hold: true)
         )
         return env.order
     }
