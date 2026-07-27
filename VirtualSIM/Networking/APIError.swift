@@ -62,6 +62,19 @@ enum APIError: Error, LocalizedError {
                 // already on its way.
                 case "cancel_too_early":
                     return "Hang on — most codes arrive within three minutes. You can cancel shortly."
+                // eSIM codes. Unmapped, every one of these fell through to the
+                // 5xx fallback and blamed our infrastructure for SMSPool being
+                // out of stock or out of balance.
+                case "esim_out_of_stock":
+                    return "That eSIM plan just sold out. Try another plan or country."
+                case "esim_purchase_failed":
+                    return "That eSIM couldn't be purchased right now. Please try again."
+                case "plan_unavailable":
+                    return "That eSIM plan isn't available anymore."
+                case "duplicate_request":
+                    return "That purchase is already going through — give it a moment."
+                case "spend_failed", "refund_failed":
+                    return "We couldn't complete that. Your credits are unchanged — please try again."
                 case "verification_failed":
                     return "We couldn't verify that purchase. Please try again."
                 case "unknown_product":

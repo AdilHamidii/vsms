@@ -10,16 +10,35 @@ import { getBalance as getSmspvaBalance, isOk } from "../_shared/smspva.ts";
 import { sendPush } from "../_shared/apns.ts";
 import { notifySafe } from "../_shared/telegram.ts";
 
-// 5x the wholesale ceiling for a single order ($4), so the alert fires while
-// there is still room to act. $2 was below the cost of one expensive number:
-// by the time it tripped, the account could already be unable to fill.
-const LOW_BALANCE_USD = 20;
+// The most a single order can cost us, in dollars — MUST track
+// MAX_WHOLESALE_CENTS in sync-prices (750 as of 2026-07-27).
+//
+// This ladder used to be a hard-coded [20, 10, 5, 1] justified as "5x the
+// wholesale ceiling for a single order ($4)". When the ceiling moved to $7.50
+// the ladder did not, so at the live SMSPVA balance of $3.55 the monitor read
+// tier 3 ("low") while ~1,500 routes — every WhatsApp route among them — could
+// not be funded AT ALL. A user ordering one was guaranteed a BALANCE_ERROR,
+// charged and refunded. Deriving the tiers keeps that honest through the next
+// ceiling change.
+const MAX_ORDER_COST_USD = 7.5;
+
+// 5x the priciest single order, so the first page still leaves room to act.
+const LOW_BALANCE_USD = MAX_ORDER_COST_USD * 5;
 
 // Escalation ladder. The original single edge-trigger fired once at $20 and
 // then NEVER AGAIN — both providers sat "low" for days while sliding toward
 // $0 (= 100% order failure) with no further page. Each threshold crossing now
 // pages once; recovery above a tier re-arms it automatically.
-const BALANCE_TIERS = [LOW_BALANCE_USD, 10, 5, 1];
+//
+// The last rung is the ceiling itself: below it we cannot fill the most
+// expensive route in the catalog, which is a real outage for that inventory
+// even though the balance is not zero.
+const BALANCE_TIERS = [
+  LOW_BALANCE_USD,               // 37.50
+  MAX_ORDER_COST_USD * 3,        // 22.50
+  MAX_ORDER_COST_USD * 1.5,      // 11.25
+  MAX_ORDER_COST_USD,            //  7.50
+];
 
 function validateCronSecret(req: Request): boolean {
   const header = req.headers.get("x-cron-secret");
@@ -99,22 +118,43 @@ Deno.serve(async (req) => {
       // so redeploying doesn't re-page for the crossing that already paged.
       const prevTier = prevVal?.alert_tier ?? (prevVal?.low ? 1 : 0);
 
-      await sb.from("app_config").upsert({
-        key,
-        value: { balance_usd: bal, low, alert_tier: tier, checked_at: new Date().toISOString() },
-        updated_at: new Date().toISOString(),
-      }, { onConflict: "key" });
-
+      // Send FIRST, then stamp the tier — and only stamp the escalation if the
+      // send actually landed.
+      //
+      // This used to upsert `alert_tier` before calling notifySafe, which
+      // swallows failures. One timed-out Telegram send therefore recorded the
+      // crossing as already-alerted: the next run saw tier == prevTier and
+      // stayed silent. On the bottom rung that is permanent, because there is
+      // no lower tier left to cross — the "balance EMPTY" page would never fire
+      // again. telegram-notify's claimAndSend already gets this right; these
+      // three sites did not.
+      let alerted = true;
       if (tier > prevTier) {
         console.error(`${key} balance $${bal} crossed below $${BALANCE_TIERS[tier - 1]}`);
-        await notifySafe(
+        alerted = await notifySafe(
           tier >= BALANCE_TIERS.length
             ? `🚨 <b>${label} balance EMPTY: $${bal.toFixed(2)}</b>\n` +
               `Orders on this provider are failing NOW — top up immediately.`
             : `⚠️ <b>${label} balance low: $${bal.toFixed(2)}</b>\n` +
               `Crossed below $${BALANCE_TIERS[tier - 1]} — top up before orders start failing.`,
         );
+        if (!alerted) {
+          console.error(`${key} balance page FAILED to send — not recording tier ${tier}, will retry next run`);
+        }
       }
+
+      await sb.from("app_config").upsert({
+        key,
+        value: {
+          balance_usd: bal,
+          low,
+          // Hold the previous tier when the page didn't get out, so the
+          // crossing is re-attempted rather than silently consumed.
+          alert_tier: alerted ? tier : prevTier,
+          checked_at: new Date().toISOString(),
+        },
+        updated_at: new Date().toISOString(),
+      }, { onConflict: "key" });
     } catch (e) {
       console.error(`${key} balance check failed:`, e);
     }
