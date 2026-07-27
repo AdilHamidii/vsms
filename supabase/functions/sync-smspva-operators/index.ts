@@ -31,10 +31,23 @@ import { admin } from "../_shared/supabaseAdmin.ts";
 import { getCountryPrices, isOk } from "../_shared/smspva.ts";
 
 // Keep in lockstep with sync-prices: same divisor, same wholesale ceiling.
+//
+// This is not decorative. On 2026-07-27 sync-prices' ceiling was raised
+// 400 -> 750 (tied to the largest credit pack) and this copy was left at 400.
+// Within one sync the two disagreed and **1,432 routes in the newly-opened
+// $4.00-$7.50 band lost their carrier pin AND their premium_credits** — that
+// was 100% of all active SMSPVA routes missing either. The affected set was
+// the worst possible one: nearly every WhatsApp route the ceiling change had
+// just made visible. Nothing detected it — this function returns 200 and
+// counts `routesPinned` only over what it did pin, so pinning fewer routes
+// looks identical to a healthy run.
+//
+// If you change one ceiling, change all three (sync-prices, here,
+// sync-smspool) in the same commit.
 const CREDIT_DIVISOR = 0.05;
 const MIN_CREDITS = 1;
 const MAX_CREDITS = 999;
-const MAX_WHOLESALE_CENTS = 400;
+const MAX_WHOLESALE_CENTS = 750;
 
 // Real-SIM (premium) sells at a 20% uplift over standard.
 //
