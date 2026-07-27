@@ -146,13 +146,19 @@ Deno.serve(async (req) => {
   //    can't both refund/notify the same order — the loser matches 0 rows and
   //    skips. Refund + "no code" push happen only for the winner. Per-order
   //    try/catch keeps one bad row from aborting the batch.
-  const { data: expiredCandidates } = await sb
+  const { data: expiredCandidates, error: expCandErr } = await sb
     .from("orders")
     .select("id, user_id, cost_credits, provider, smspva_id, service:service_id ( name )")
     .eq("status", "waiting")
     .lt("expires_at", new Date().toISOString())
     .order("expires_at", { ascending: true })
     .limit(200);   // cap the per-run batch; the minutely cadence drains any backlog
+  // If this select fails, zero orders expire and zero refunds are issued — and
+  // the run still returns 200 {expired: 0}, which is indistinguishable from a
+  // quiet minute. Surface it.
+  if (expCandErr) {
+    console.error("poll: expiry candidate select FAILED — no orders will be expired this run", expCandErr);
+  }
 
   for (const row of expiredCandidates ?? []) {
     try {
@@ -165,9 +171,18 @@ Deno.serve(async (req) => {
       if (cErr) { console.error("expire claim failed for order", row.id, cErr); continue; }
       if (!claimed || claimed.length === 0) continue; // another run handled it
 
-      await sb.rpc("wallet_credit", {
+      // supabase-js RETURNS errors, it does not throw, and wallet_credit raises
+      // on a non-positive amount or a missing wallet row. Discarding this meant
+      // the claim committed, the money never moved, `expired++` still counted
+      // it, and we pushed "N credits refunded" to a user who wasn't.
+      const { error: refundErr } = await sb.rpc("wallet_credit", {
         p_user: row.user_id, p_amount: row.cost_credits, p_reason: "refund", p_order: row.id,
       });
+      if (refundErr) {
+        console.error(`poll: REFUND FAILED order=${row.id} user=${row.user_id} ` +
+                      `credits=${row.cost_credits}: ${refundErr.message}`);
+        continue;   // no count, and above all no "you were refunded" push
+      }
       expired++;
 
       // Ban + close at the provider. Before this, an expired order was never
@@ -253,10 +268,12 @@ Deno.serve(async (req) => {
       await markSuccess((o.provider ?? "smspva") as Provider, o.smspva_id);
 
       arrived++;
-      const service = o.service as { name: string };
+      // Optional-chained: a null embed here used to throw out of the whole
+      // handler, aborting every remaining order in the batch.
+      const service = o.service as { name: string } | null;
       pushSent += await notify(
         o.user_id,
-        `${service.name} code arrived`,
+        `${service?.name ?? "Verification"} code arrived`,
         `Your code is ${result.code}`,
         { orderId: o.id, otp: result.code },
       );
@@ -270,9 +287,15 @@ Deno.serve(async (req) => {
         .eq("status", "waiting")
         .select("id");
       if (!claimed || claimed.length === 0) continue;
-      await sb.rpc("wallet_credit", {
+      // Check the refund result — see the note on the expiry sweep above.
+      const { error: rErr } = await sb.rpc("wallet_credit", {
         p_user: o.user_id, p_amount: o.cost_credits, p_reason: "refund", p_order: o.id,
       });
+      if (rErr) {
+        console.error(`poll: REFUND FAILED (provider-close) order=${o.id} ` +
+                      `user=${o.user_id} credits=${o.cost_credits}: ${rErr.message}`);
+        continue;   // don't count it, and don't tell the user they were refunded
+      }
       expired++;
       const svc = o.service as { name: string } | null;
       pushSent += await notify(
@@ -284,5 +307,74 @@ Deno.serve(async (req) => {
     }
   }
 
-  return json({ expired, polled, arrived, pushSent });
+  // ── Late-code rescue.
+  //
+  // Cancels land at a median of 57s; codes arrive at a median of 58s, 45% of
+  // them after 60s. cancel-order no longer releases the number — it stamps
+  // late_watch_until — so a code that shows up after the user gave up is still
+  // ours to hand over. The refund already stands and the status stays
+  // 'canceled': we give the code away. Owner decision 2026-07-27.
+  //
+  // The push carries NO orderId on purpose. Shipped PushManager routes on
+  // orderId, and deep-linking into a canceled order would land the user on the
+  // recovery/refund screen instead of their code. Without it the tap just opens
+  // the app, and the code is in the notification body where they can read it.
+  let rescued = 0, lateReleased = 0;
+  const nowIso = new Date().toISOString();
+  const { data: lateWatch, error: lateErr } = await sb
+    .from("orders")
+    .select("id, user_id, cost_credits, provider, smspva_id, late_watch_until, service:service_id ( name )")
+    .not("late_watch_until", "is", null)
+    .is("otp", null)
+    .limit(50);
+  if (lateErr) console.error("poll: late-watch select failed", lateErr);
+
+  for (const o of lateWatch ?? []) {
+    try {
+      if (!o.smspva_id) {
+        await sb.from("orders").update({ late_watch_until: null }).eq("id", o.id);
+        continue;
+      }
+      // Window closed with no code — reclaim what we can and stop watching.
+      if ((o.late_watch_until as string) <= nowIso) {
+        await markDead((o.provider ?? "smspva") as Provider, o.smspva_id);
+        await sb.from("orders").update({ late_watch_until: null }).eq("id", o.id);
+        lateReleased++;
+        continue;
+      }
+
+      const res = await poll((o.provider ?? "smspva") as Provider, o.smspva_id);
+      if (res.state !== "received" || !res.code) continue;
+
+      // Write the code onto the canceled row. `otp is not null` is what the
+      // delivery-evidence functions now count as a code, so a rescue correctly
+      // credits the route with having delivered.
+      const { data: got } = await sb
+        .from("orders")
+        .update({
+          otp: res.code,
+          raw_message: res.fullText ?? null,
+          arrived_at: new Date().toISOString(),
+          late_watch_until: null,
+        })
+        .eq("id", o.id)
+        .is("otp", null)
+        .select("id");
+      if (!got || got.length === 0) continue;   // another run got there first
+
+      await markSuccess((o.provider ?? "smspva") as Provider, o.smspva_id);
+      rescued++;
+      const svc = o.service as { name: string } | null;
+      pushSent += await notify(
+        o.user_id,
+        `Your ${svc?.name ?? "verification"} code arrived after all`,
+        `${res.code} — your ${o.cost_credits} credits were already refunded, so this one's on us.`,
+        { event: "late_code", otp: res.code },
+      );
+    } catch (e) {
+      console.error("late-watch failed for order", o.id, e);
+    }
+  }
+
+  return json({ expired, polled, arrived, pushSent, rescued, lateReleased });
 });

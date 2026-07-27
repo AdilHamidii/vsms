@@ -100,7 +100,7 @@ struct WaitingScreen: View {
     /// Minimum hold before a paid order can be destroyed. Mirrors
     /// MIN_HOLD_SECONDS in cancel-order — the server refuses early cancels, so
     /// leaving these enabled would only produce an error banner.
-    private static let minHoldSeconds = 120
+    private static let minHoldSeconds = 180
 
     /// Seconds left before cancel/reroll unlock, or nil once they're free.
     /// Driven by `elapsed`, which already ticks once per second.
@@ -123,7 +123,7 @@ struct WaitingScreen: View {
             // cancel-order does a last-chance provider poll, so it could throw
             // away a code that was seconds from landing. Destroying something
             // the user paid for now takes an explicit confirmation.
-            // Locked for the first 120s — see `holdRemaining`. Shows the
+            // Locked for the first 180s — see `holdRemaining`. Shows the
             // countdown in place of the ✕ so the wait reads as deliberate
             // rather than as a broken button.
             Button {
