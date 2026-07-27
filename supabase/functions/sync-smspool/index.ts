@@ -16,7 +16,11 @@ import { allStock, listServices, listCountries, validPools, poolSuccessRate } fr
 const CREDIT_DIVISOR = 0.05;      // 6x markup; keep in lockstep with sync-prices
 const MIN_CREDITS = 1;
 const MAX_CREDITS = 999;
-const MAX_WHOLESALE_CENTS = 400;  // hide absurdly-priced routes
+// Keep in lockstep with sync-prices and sync-smspva-operators (750 as of
+// 2026-07-27). This copy was missed on that change — dormant today because the
+// function is unscheduled, but any manual run would re-hide the entire
+// $4.00-$7.50 band, i.e. exactly the WhatsApp routes the change unhid.
+const MAX_WHOLESALE_CENTS = 750;  // hide absurdly-priced routes
 const POOL_PROBE_LIMIT = 60;      // combos to pool-probe per run
 const SMOOTH_ALPHA = 0.5;         // EWMA on wholesale cost
 const UPDATE_FLOOR = 500;         // safety: don't revert stale routes on a thin run

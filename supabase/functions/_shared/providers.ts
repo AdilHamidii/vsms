@@ -249,17 +249,32 @@ export async function markDead(p: Provider, orderId: string): Promise<void> {
   // registered and whether the follow-up cancel still reclaims the wholesale
   // cost (undocumented — the ban may consume the request id). This line is
   // the only evidence available for that interaction.
+  // CANCEL FIRST, then ban. This order is deliberate and was reversed on
+  // 2026-07-27.
+  //
+  // `cancelorder` is what reclaims the wholesale cost; `blocknumber` is
+  // hygiene. Banning first risked consuming the request id (undocumented — the
+  // comment above has always said so), which would forfeit the refund on every
+  // call. That became material the moment cancel-order stopped calling
+  // release() and routed all reclamation through here: measured $38.14 of
+  // wholesale sat in cancels over 30 days, against ~$146 of net revenue in the
+  // same period.
+  //
+  // The trade is explicit: if cancelling frees the number before the ban
+  // registers, it can be re-issued — but the client's fresh-number guarantee
+  // already filters numbers this user recently burned, whereas a forfeited
+  // refund is certain, unrecoverable cash.
   let banOk = false, cancelOk = false, detail = "";
-  try {
-    const b = await smsBlock(orderId);
-    banOk = isOk(b);
-    if (!banOk) detail += `ban=${(b as { error?: { type?: string } }).error?.type ?? "?"} `;
-  } catch (e) { detail += `ban_threw=${e} `; }
   try {
     const c = await smsCancel(orderId);
     cancelOk = isOk(c);
-    if (!cancelOk) detail += `cancel=${(c as { error?: { type?: string } }).error?.type ?? "?"}`;
-  } catch (e) { detail += `cancel_threw=${e}`; }
+    if (!cancelOk) detail += `cancel=${(c as { error?: { type?: string } }).error?.type ?? "?"} `;
+  } catch (e) { detail += `cancel_threw=${e} `; }
+  try {
+    const b = await smsBlock(orderId);
+    banOk = isOk(b);
+    if (!banOk) detail += `ban=${(b as { error?: { type?: string } }).error?.type ?? "?"}`;
+  } catch (e) { detail += `ban_threw=${e}`; }
   console.log(`markDead order=${orderId} ban=${banOk} cancel=${cancelOk} ${detail}`);
 }
 

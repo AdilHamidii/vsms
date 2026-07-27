@@ -20,7 +20,14 @@ Deno.serve(async (req) => {
 
   const { data: order, error: oErr } = await sb
     .from("orders")
-    .select("id, user_id, status, otp, provider, smspva_id, smspva_number, expires_at")
+    // select("*"), not a column list. The terminal-status branch below returns
+    // THIS row to the client, and ServerOrder requires service_id, country_id,
+    // cost_credits and created_at — none of which were selected, so decoding
+    // threw. pollActiveOrder counts that as a poll failure and needs two
+    // consecutive before falling back to the authoritative fetch(), so at a 4s
+    // cadence the user sat ~8s on "Waiting" for an order that had already ended
+    // and refunded — the reconcile invariant re-entering by a different door.
+    .select("*")
     .eq("id", body.order_id)
     .eq("user_id", userId)
     .single();

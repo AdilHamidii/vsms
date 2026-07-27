@@ -125,8 +125,14 @@ Deno.serve(async (req) => {
   const balUsd = Number((health?.value as { balance_usd?: number } | null)?.balance_usd ?? 0);
   const { data: wd } = await sb
     .from("app_config").select("value").eq("key", "watchdog").maybeSingle();
-  const failing = ((wd?.value as { failing?: unknown[] } | null)?.failing ?? []).length;
-  const claimSafe = balUsd >= 7.5 && failing === 0;
+  const wdVal = wd?.value as { failing?: unknown[]; checked_at?: string } | null;
+  const failing = (wdVal?.failing ?? []).length;
+  // A dead watchdog reports `failing: []` forever, so an un-aged verdict would
+  // wave the cohort through during an outage — the very thing this gate exists
+  // to prevent. telegram-notify and /balance both age it; so must this.
+  const wdFresh = !!wdVal?.checked_at &&
+    Date.now() - new Date(wdVal.checked_at).getTime() <= 30 * 60 * 1000;
+  const claimSafe = balUsd >= 7.5 && failing === 0 && wdFresh;
   if (!claimSafe) {
     console.warn(`winback: suppressing stranded cohort — provider balance $${balUsd}, watchdog failing=${failing}`);
   }
