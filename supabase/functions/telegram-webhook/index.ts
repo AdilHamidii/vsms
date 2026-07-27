@@ -78,19 +78,36 @@ Deno.serve(async (req) => {
         { balance_usd?: number; checked_at?: string } | null | undefined;
       return v ?? null;
     };
-    const pva = read("smspva_health"), pool = read("smspool_health");
-    const checked = pva?.checked_at ?? pool?.checked_at;
+    // Null out a stale reading instead of printing it as current.
+    // ops_snapshot was fixed for exactly this in 20260722050000 — "a dead poller
+    // produced confidently WRONG 'all is well' digests" — but /balance was not,
+    // and it is the owner's is-everything-alive reflex. A bold "$3.55" with a
+    // small timestamp underneath is read as now.
+    const FRESH_MS = 10 * 60 * 1000;
+    const fresh = (v: { checked_at?: string } | null) =>
+      !!v?.checked_at && Date.now() - new Date(v.checked_at).getTime() <= FRESH_MS;
+    const pvaRaw = read("smspva_health"), poolRaw = read("smspool_health");
+    const pva = fresh(pvaRaw) ? pvaRaw : null;
+    const pool = fresh(poolRaw) ? poolRaw : null;
+    const checked = pvaRaw?.checked_at ?? poolRaw?.checked_at;
+    const stalePoller = (pvaRaw || poolRaw) && !pva && !pool;
 
     // Surface the watchdog verdict here too — /balance is the owner's "is
     // everything alive" reflex, so it should answer for the jobs as well.
     const { data: wd } = await sb
       .from("app_config").select("value").eq("key", "watchdog").maybeSingle();
-    const failing = ((wd?.value as { failing?: { check?: string }[] } | null)
-      ?.failing ?? []).map((f) => f.check ?? "?");
+    const wdVal = wd?.value as
+      { failing?: { check?: string }[]; checked_at?: string } | null;
+    const failing = (wdVal?.failing ?? []).map((f) => f.check ?? "?");
+    // Same staleness logic as telegram-notify: a frozen verdict is not health.
+    const wdAgeMs = wdVal?.checked_at
+      ? Date.now() - new Date(wdVal.checked_at).getTime() : Infinity;
+    if (wdAgeMs > 30 * 60 * 1000) failing.push("watchdog_stale");
 
     reply = [
       balanceLine("SMSPVA", pva?.balance_usd),
       balanceLine("SMSPool", pool?.balance_usd),
+      stalePoller ? "⚠️ balance readings are STALE — the poller may be dead" : "",
       failing.length > 0
         ? `🚨 watchdog: ${esc(failing.join(", "))}`
         : "🟢 watchdog: all jobs healthy",

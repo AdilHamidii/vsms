@@ -67,7 +67,7 @@ Deno.serve(async (req) => {
       .from("push_devices")
       .select("token, environment, bundle_id")
       .eq("user_id", userId);
-    let sent = 0;
+    let sent = 0, hardFail = 0;
     for (const d of devices ?? []) {
       try {
         const r = await sendPush(
@@ -77,6 +77,11 @@ Deno.serve(async (req) => {
         );
         if (r.ok) sent++;
         else {
+          // A dead token is NOT an APNs fault — only count transport/auth
+          // failures toward push_health, or pruning normal churn would look
+          // like an outage.
+          const deadToken = r.status === 410 || (r.body ?? "").includes("BadDeviceToken");
+          if (!deadToken) hardFail++;
           console.error("APNs status", r.status, r.body);
           // 410 Unregistered / 400 BadDeviceToken = the token is permanently
           // dead (app deleted, token rotated). Prune it: dead tokens never
@@ -87,7 +92,33 @@ Deno.serve(async (req) => {
           }
         }
       } catch (e) {
+        hardFail++;
         console.error("APNs send failed:", e);
+      }
+    }
+
+    // APNs health. Nothing anywhere counted push failures, so an expired .p8 or
+    // a drifted topic would kill EVERY push in the product — "your code
+    // arrived" included — while this function kept returning 200 {pushSent: 0}.
+    // run_watchdog pages at 10 consecutive failures; any success resets it.
+    if (sent > 0 || hardFail > 0) {
+      try {
+        const { data: ph } = await sb
+          .from("app_config").select("value").eq("key", "push_health").maybeSingle();
+        const prevFails = Number((ph?.value as { consecutive_failures?: number } | null)
+          ?.consecutive_failures ?? 0);
+        await sb.from("app_config").upsert({
+          key: "push_health",
+          value: {
+            consecutive_failures: sent > 0 ? 0 : prevFails + hardFail,
+            last_success_at: sent > 0
+              ? new Date().toISOString()
+              : (ph?.value as { last_success_at?: string } | null)?.last_success_at ?? null,
+            checked_at: new Date().toISOString(),
+          },
+        }, { onConflict: "key" });
+      } catch (e) {
+        console.error("push_health update failed (ignored):", e);
       }
     }
     return sent;

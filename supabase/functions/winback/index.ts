@@ -61,9 +61,7 @@ Deno.serve(async (req) => {
     if (!devices || devices.length === 0) {
       // No device can ever receive this nudge — mark it handled so the user
       // stops occupying a slot in the candidate window.
-      await sb.from("profiles")
-        .update({ winback_sent_at: new Date().toISOString() })
-        .eq("user_id", c.user_id);
+      await sb.rpc("bump_winback_sent", { p_user: c.user_id });
       marked++;
       continue;
     }
@@ -98,9 +96,9 @@ Deno.serve(async (req) => {
     // Mark sent only when a device accepted it — if every device failed
     // (transient), leave winback_sent_at null so the next daily run retries.
     if (anyOk) {
-      await sb.from("profiles")
-        .update({ winback_sent_at: new Date().toISOString() })
-        .eq("user_id", c.user_id);
+      // Counter, not just a timestamp: winback_candidates now allows up to 3
+      // sends 14 days apart, so the recurrence has to be counted.
+      await sb.rpc("bump_winback_sent", { p_user: c.user_id });
       marked++;
     }
   }
@@ -111,10 +109,27 @@ Deno.serve(async (req) => {
   // excluding 13 of the last 15 cancels, so it read 50% on a window where real
   // users got 19%. That left the gate open and armed "delivery just got a big
   // upgrade" for the very users we had already burned.
-  const { data: userRate } = await sb.rpc("recent_user_delivery_rate", { p_window: "48 hours" });
-  const experienced = Number(userRate ?? 0);
-  const claimSafe = experienced >= 25;
-  if (!claimSafe) console.warn(`winback: suppressing stranded cohort — user-experienced delivery ${experienced}% < 25%`);
+  // The old gate was `recent_user_delivery_rate('48h') >= 25`. It existed to
+  // justify the words "delivery just got a big upgrade" — but it counts every
+  // impatient cancel as a delivery failure, and 68% of orders are cancelled at a
+  // median of 57s, so it sits structurally in the 13-25% band no matter how well
+  // the provider performs. Live reading when audited: 13, against the sibling
+  // gate's 60 on the same window. It could essentially never open, and has sent
+  // nothing since it shipped.
+  //
+  // The fix is to stop making the unprovable claim (see copy below) rather than
+  // to keep a metric that can't open. What remains is a LIVENESS check: only
+  // invite someone back if we can actually serve them.
+  const { data: health } = await sb
+    .from("app_config").select("value").eq("key", "smspva_health").maybeSingle();
+  const balUsd = Number((health?.value as { balance_usd?: number } | null)?.balance_usd ?? 0);
+  const { data: wd } = await sb
+    .from("app_config").select("value").eq("key", "watchdog").maybeSingle();
+  const failing = ((wd?.value as { failing?: unknown[] } | null)?.failing ?? []).length;
+  const claimSafe = balUsd >= 7.5 && failing === 0;
+  if (!claimSafe) {
+    console.warn(`winback: suppressing stranded cohort — provider balance $${balUsd}, watchdog failing=${failing}`);
+  }
   const { data: stranded, error: sErr } = claimSafe
     ? await sb.rpc("stranded_credit_candidates", { p_limit: 100 })
     : { data: [] as { user_id: string; balance: number }[], error: null };
@@ -141,7 +156,10 @@ Deno.serve(async (req) => {
       try {
         const r = await sendPush(d.token, {
           alertTitle: "Your credits are still here",
-          alertBody: `${c.balance} credit${c.balance === 1 ? "" : "s"} in your wallet — and SMS delivery just got a big upgrade. Try another number in seconds.`,
+          // No "delivery just got a big upgrade" — that was an unprovable claim
+          // aimed at users we had already burned, and it forced the un-openable
+          // gate above. What's left is true unconditionally.
+          alertBody: `${c.balance} credit${c.balance === 1 ? "" : "s"} in your wallet. Every number that fails is refunded automatically.`,
           customData: { winback: "stranded" },
         }, d.environment as "sandbox" | "production");
         if (r.ok) { anyOk = true; strandedSent++; }
@@ -162,6 +180,51 @@ Deno.serve(async (req) => {
     }
   }
 
+  // ── Cohort 3: REORDER — users who actually succeeded ────────────────────
+  //
+  // These were excluded from every nudge in the product by construction:
+  // winback_candidates skips anyone with a delivered order, and
+  // stranded_credit_candidates requires the last order to have FAILED. Yet this
+  // is the only cohort with proven fit — 12 of 13 users who ever received a code
+  // went on to purchase, and users with 2+ codes average 14.8 lifetime orders
+  // against 2.1 for those with none.
+  //
+  // No delivery gate here on purpose: we are not making a claim about how well
+  // the product works, we are telling someone their own credits are sitting
+  // unspent. That is true regardless.
+  let reorderSent = 0, reorderMarked = 0;
+  const { data: reorder, error: rErr } = await sb.rpc("reorder_candidates", { p_limit: 100 });
+  if (rErr) console.error("reorder_candidates failed:", rErr.message);
+
+  for (const c of (reorder ?? []) as { user_id: string; balance: number; last_service: string | null }[]) {
+    const { data: devices } = await sb
+      .from("push_devices").select("token, environment").eq("user_id", c.user_id);
+    if (!devices || devices.length === 0) {
+      await sb.rpc("bump_reorder_nudge", { p_user: c.user_id });
+      reorderMarked++;
+      continue;
+    }
+    let anyOk = false;
+    for (const d of devices) {
+      try {
+        const svc = c.last_service ?? "verification";
+        const r = await sendPush(d.token, {
+          alertTitle: "Need another number?",
+          alertBody: `${c.balance} credit${c.balance === 1 ? "" : "s"} ready — your last ${svc} code came through.`,
+          customData: { winback: "reorder" },
+        }, d.environment as "sandbox" | "production");
+        if (r.ok) { anyOk = true; reorderSent++; }
+        else {
+          failed++; console.error("APNs status", r.status, r.body);
+          await pruneIfDead(d.token, r.status, r.body);
+        }
+      } catch (e) {
+        failed++; console.error("APNs send failed:", e);
+      }
+    }
+    if (anyOk) { await sb.rpc("bump_reorder_nudge", { p_user: c.user_id }); reorderMarked++; }
+  }
+
   // Heartbeat for the SQL watchdog (run_watchdog checks this key's
   // updated_at; the app_config touch trigger maintains it). Written on every
   // completed run — a silent 401 like the 9-day one now pages within a day.
@@ -173,6 +236,7 @@ Deno.serve(async (req) => {
   return json({
     candidates: candidates?.length ?? 0, sent, marked,
     strandedCandidates: stranded?.length ?? 0, strandedSent, strandedMarked,
+    reorderCandidates: reorder?.length ?? 0, reorderSent, reorderMarked,
     failed,
   });
 });
