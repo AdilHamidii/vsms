@@ -32,7 +32,12 @@ struct OrderRow: View {
                         }
                         HStack(spacing: 6) {
                             MonoText(order.number, size: 12, color: theme.text2)
-                            if let otp = order.otp, order.status == .received {
+                            // NOT gated on .received. A late-code rescue
+                            // writes `otp` onto a CANCELED order (the refund
+                            // stands and we give the code away) — gating on the
+                            // status made every rescued code invisible in the
+                            // one place it was stored.
+                            if let otp = order.otp {
                                 Text("·").foregroundStyle(theme.text3)
                                 MonoText(otp, size: 12, weight: .semibold, color: theme.text)
                             }

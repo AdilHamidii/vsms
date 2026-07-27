@@ -337,14 +337,23 @@ final class AppState {
     /// affordable or the pair is unavailable. Drives CreditsSheet's pack
     /// preselection so the user is offered the smallest pack that unblocks them.
     var creditsShortfall: Int {
-        if flow == .esimCheckout, let plan = checkoutEsimPlan, let c = plan.retailCredits {
+        // Not gated on `flow == .esimCheckout`: the credits pill in
+        // EsimStoreScreen opens the ROOT sheet with flow == nil, so the
+        // shortfall was computed from lastService/lastCountry — an SMS route —
+        // and the hint told a user buying a data plan they were "N credits
+        // short for this number".
+        if let plan = checkoutEsimPlan, let c = plan.retailCredits {
             return max(0, c - balance)
         }
         let svc = configuringService
         let cty = configuringCountry
         // Respect the tier being configured: a premium pick must preselect a
         // pack that covers the premium price, not the standard one.
-        let selected = flow == .checkout && checkoutPremium
+        // effectiveCheckoutPremium, not the raw flag: if a catalog refresh drops
+        // the route's premium price under an open checkout, premiumCost returns
+        // nil, the guard below returns 0, and the sheet offers no hint while the
+        // checkout CTA still says "Need N more".
+        let selected = effectiveCheckoutPremium
             ? premiumCost(for: svc, country: cty)
             : cost(for: svc, country: cty)
         guard let c = selected else { return 0 }
@@ -765,6 +774,17 @@ final class AppState {
             self.orders.insert(updated, at: 0)
         }
 
+        // A code can now exist on a NON-received order: the late-code rescue
+        // writes `otp` onto a canceled row after refunding. Check for the code
+        // before branching on status, or a rescued order falls into the
+        // terminal branch and shows "no code arrived" while holding one.
+        if server.otp != nil {
+            activeOrder = updated
+            await refreshWallet(using: wallet)
+            flow = .otp
+            return
+        }
+
         switch server.status {
         case .received:
             activeOrder = updated
@@ -798,7 +818,12 @@ final class AppState {
     }
 
     func cancelWaiting(using orders: OrdersAPI, wallet: WalletAPI) async {
-        guard let order = activeOrder else { flow = nil; return }
+        // !isPlacingOrder matters: the ✕ used to stay live during a reroll, so
+        // this could fire mid-reroll, release the flag early (re-opening the
+        // window it exists to close) and then null activeOrder AFTER the reroll
+        // had installed the fresh one — leaving flow == .waiting with no order,
+        // which renders an empty screen over a live paid order.
+        guard let order = activeOrder, !isPlacingOrder else { return }
         // Same guard as reroll: while the cancel is in flight the background
         // poll/reconcile must not read the row and claim the outcome first
         // (it would land on "No code arrived" instead of "Number released").
@@ -828,15 +853,19 @@ final class AppState {
                                        refundedCredits: updated.costCredits)
             flow = .recovery
         } catch let apiErr as APIError {
-            // Cancel FAILED: the refund reassurance would be a lie here, so
-            // keep the old banner-and-home behavior.
+            // Cancel FAILED — the order is still WAITING and still charged, so
+            // stay on the waiting screen and let the banner explain.
+            //
+            // This used to set `flow = nil` and then null `activeOrder`
+            // unconditionally below, which dumped the user to Home with a live
+            // paid order that nothing was polling any more — the number gone
+            // from every screen and the code reachable only by push. The 180s
+            // minimum hold made that reachable ON PURPOSE: every early ✕ tap
+            // returns 429 `cancel_too_early`.
             lastError = apiErr.userMessage
-            flow = nil
         } catch {
             lastError = "Couldn't cancel that order. Please try again."
-            flow = nil
         }
-        activeOrder = nil
     }
 
     /// Swap the current number for a fresh one without leaving the wait screen.

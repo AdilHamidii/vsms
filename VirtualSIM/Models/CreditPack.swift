@@ -28,10 +28,17 @@ extension CreditPack {
         .init(id: "lg", productId: "com.anthersystems.VirtualSIM.credits.30",
               credits: 30,  price: "$12.99", perCredit: "$0.43 / cr", badge: nil),
         // Larger packs for eSIM data plans (which run pricier than OTP numbers).
+        //
+        // These strings are FALLBACKS shown only until StoreKit returns the real
+        // product — and because neither of these two is APPROVED in App Store
+        // Connect, StoreKit never returns them, so the fallback is all a user
+        // ever sees. They read $22.99/$49.99, which was never what the store
+        // would have billed; the live ASC prices are $24.99/$59.99. Keep these
+        // in sync with App Store Connect, not with intent.
         .init(id: "xl", productId: "com.anthersystems.VirtualSIM.credits.60",
-              credits: 60,  price: "$22.99", perCredit: "$0.38 / cr", badge: nil),
+              credits: 60,  price: "$24.99", perCredit: "$0.42 / cr", badge: nil),
         .init(id: "xxl", productId: "com.anthersystems.VirtualSIM.credits.150",
-              credits: 150, price: "$49.99", perCredit: "$0.33 / cr", badge: "BEST VALUE"),
+              credits: 150, price: "$59.99", perCredit: "$0.40 / cr", badge: "BEST VALUE"),
     ]
 
     static let allProductIds: [String] = all.map(\.productId)
