@@ -884,11 +884,33 @@ final class AppState {
 
         // Release the old number first so its credits are back before we spend
         // again — a reroll must never need a bigger balance than the original.
-        if let server = try? await orders.cancel(orderId: order.id) {
+        //
+        // ABORT if that release fails. This used to be `try?` with the create
+        // running unconditionally afterwards, which meant a rejected cancel
+        // left the original order `waiting` AND charged for a replacement —
+        // two live paid orders from one tap. That is now reachable on purpose:
+        // the server refuses cancels inside the 120s minimum hold, so a reroll
+        // at 30s returns an error rather than a released number.
+        do {
+            let server = try await orders.cancel(orderId: order.id)
             let updated = resolve(server)
             if let idx = self.orders.firstIndex(where: { $0.id == updated.id }) {
                 self.orders[idx] = updated
             }
+            // The cancel can come back DELIVERED (last-chance provider poll).
+            // Rerolling away from a code we just fetched would throw away the
+            // thing the user paid for.
+            if updated.status == .received {
+                activeOrder = updated
+                flow = .otp
+                return
+            }
+        } catch let apiErr as APIError {
+            lastError = apiErr.userMessage
+            return
+        } catch {
+            lastError = "Couldn't release the current number. Please try again."
+            return
         }
         await refreshWallet(using: wallet)
 

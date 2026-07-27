@@ -2,7 +2,28 @@ import { handleCors, json } from "../_shared/cors.ts";
 import { admin, callerUserId } from "../_shared/supabaseAdmin.ts";
 import { markSuccess, poll, release, type Provider } from "../_shared/providers.ts";
 
-interface Body { order_id: string; }
+// Minimum hold before a paid order may be destroyed (owner decision
+// 2026-07-27). Measured: median code arrival 58s, p90 134s, while the median
+// CANCEL lands at 57s — users were killing orders one second before the
+// typical code. 120s covers the bulk of the arrival distribution without
+// running to the full 8-minute expiry.
+//
+// Applies to reroll as well as the ✕: a reroll releases the number exactly
+// like a cancel, so an early reroll throws away an in-flight code just the
+// same.
+const MIN_HOLD_SECONDS = 120;
+
+// `enforce_min_hold` is sent ONLY by clients that know about the rule.
+//
+// It is opt-in for a specific, non-obvious reason. Shipped 1.4's
+// `rerollNumber` does `if let server = try? await orders.cancel(...)` and then
+// creates the replacement order **regardless of whether the cancel
+// succeeded**. Enforcing unconditionally would therefore leave the original
+// order `waiting` AND charge for a second one — a double charge on the live
+// install base. So the server refuses early cancels only for clients that also
+// abort the reroll on failure and hide the button until the hold elapses.
+// Remove the flag once 1.4 is off the field.
+interface Body { order_id: string; enforce_min_hold?: boolean; }
 
 Deno.serve(async (req) => {
   const cors = handleCors(req); if (cors) return cors;
@@ -20,13 +41,32 @@ Deno.serve(async (req) => {
 
   const { data: order, error: oErr } = await sb
     .from("orders")
-    .select("id, user_id, status, cost_credits, provider, smspva_id")
+    .select("id, user_id, status, cost_credits, provider, smspva_id, created_at")
     .eq("id", body.order_id)
     .eq("user_id", userId)
     .single();
   if (oErr || !order) return json({ error: "order_not_found" }, { status: 404 });
   if (order.status !== "waiting") {
     return json({ error: "not_cancelable", current_status: order.status }, { status: 409 });
+  }
+
+  // Minimum-hold gate. Checked BEFORE the last-chance provider poll below —
+  // if we aren't going to release the number there is no reason to spend a
+  // provider round-trip on it.
+  //
+  // 429 (not 409) is deliberate: shipped 1.4 has no case for this error code
+  // and falls back on HTTP status, where 429 reads "You're going a bit fast —
+  // please wait a moment and try again." That is very nearly the right message
+  // by accident, whereas 409's "Not available right now" would be misleading.
+  // Newer clients read `retry_after_seconds` and render an exact countdown.
+  if (body.enforce_min_hold) {
+    const heldSeconds = (Date.now() - new Date(order.created_at as string).getTime()) / 1000;
+    if (heldSeconds < MIN_HOLD_SECONDS) {
+      return json({
+        error: "cancel_too_early",
+        retry_after_seconds: Math.max(1, Math.ceil(MIN_HOLD_SECONDS - heldSeconds)),
+      }, { status: 429 });
+    }
   }
 
   // Last-chance poll before releasing the number: median delivery (53s) and
