@@ -203,7 +203,9 @@ returns a silent 200 on every rejection so it isn't an oracle.
 
 `AppState.cost(for:country:) -> Int?` uses an O(1) `routeIndex` dict (keyed `"serviceId|countryId"`) built in `loadCatalog`. Returns `nil` when the pair has no active route with a `retail_credits` price — meaning **unavailable to book**; UI shows "Unavailable" (see ServiceSheet/CountrySheet) and disables the Get-number button. It deliberately does **NOT** fall back to the seed `service.cost`, since undercharging vs the live provider price burns margin per order. **Do not** linear-scan `routes` (~17k rows after sync-prices) — that froze the country picker before the index was added.
 
-`sync-prices` formula: `credits = max(1, ceil(price / 0.05))` — 1 credit per started 5¢ of wholesale (`CREDIT_DIVISOR = 0.05`, same in `sync-smspool` **and `sync-smspva-operators`**, which prices the premium tier; tune it for global margin adjustment). Order-time enforcement matches: `create-order` has `MIN_MARGIN = 6.0` / `NET_USD_PER_CREDIT = 0.30`, so the max we pay a provider is `credits × $0.05`, enforced on the actual charged cost with cancel-and-fallback. The two are algebraically identical (`credits*0.30/6.0 == credits*0.05`) — keep them in lockstep; raising one alone either blocks honest routes or leaks margin. **SMS markup went 3× → 6× on 2026-07-25** (divisor 0.10 → 0.05); retail is recomputed from `smoothed_cost_cents` every run, so the whole catalog reprices on the next `sync-prices`.
+`sync-prices` formula: `credits = max(1, ceil(price / 0.05))` — 1 credit per started 5¢ of wholesale (`CREDIT_DIVISOR = 0.05`, same in `sync-smspool` **and `sync-smspva-operators`**, which prices the premium tier; tune it for global margin adjustment). Order-time enforcement matches: `create-order` has `MIN_MARGIN = 6.0` / `NET_USD_PER_CREDIT = 0.30`, so the max we pay a provider is `credits × $0.05` **plus `CEILING_HEADROOM_USD` ($0.10)**, enforced on the actual charged cost with cancel-and-fallback. Keep the divisor and the margin pair in lockstep; raising one alone either blocks honest routes or leaks margin.
+
+**The $0.10 headroom is load-bearing — do not "simplify" it away.** Without it the two formulas are exactly inverse (`credits*0.30/6.0 == credits*0.05`), so a route whose wholesale lands on an exact 5¢ boundary has an order-time cap equal to its cost **to the cent**. Measured 2026-07-27: **12,507 of 16,303 active routes (76.7%) sat at exactly zero headroom.** A one-cent rise at SMSPVA then made every order on that route fail `margin_too_low` — charged and instantly refunded — until the next hourly `sync-prices` repriced it. That produced **11 of 22 orders in 24h closing in under a second with no number**, and because those orders were also counted as delivery failures it auto-hid TikTok/Netherlands (see below). The headroom is flat, not proportional, so exposure is bounded at $0.10/order at any price point; the cost is margin on the cheapest routes (a 2-credit route may now pay up to $0.20 against $0.60 of revenue, 3× not 6×), which is strictly better than refunding the order. **SMS markup went 3× → 6× on 2026-07-25** (divisor 0.10 → 0.05); retail is recomputed from `smoothed_cost_cents` every run, so the whole catalog reprices on the next `sync-prices`.
 
 **Changing `CREDIT_DIVISOR` silently breaks the PREMIUM tier until you backfill
 `routes.premium_credits`.** This bit us on the 3× → 6× change (2026-07-25).
@@ -417,9 +419,44 @@ a single unlucky miss changes nothing. Verified live: leboncoin/pt went seeded-9
 → measured-0 (sample 2, still active); betano/bg (0/7) hidden; facebook/dk (4/5)
 untouched at 80.
 
+**Only orders that actually got a number are evidence** (`and o.smspva_number is
+not null`, migration `20260727120000`). Orders that die inside `create-order` —
+`margin_too_low`, stockout, provider fault — close in under a second with a null
+number and used to count as delivery failures. That was self-reinforcing, because
+one `is_conclusive` clause counts a cancel when the same user reorders the same
+service within 10 minutes, which is exactly what a user does when the button keeps
+failing: price ticks above the ceiling → every attempt refused before a number is
+reserved → the user retries → each retry marks the previous one conclusive → the
+route auto-hides at 0%. Live on 2026-07-26 one user tapped TikTok/Netherlands 8
+times in 90s and **deleted the route from the catalog**; it had zero orders in the
+lookback that ever held a number. Note the repair does not happen by itself — the
+function clears measured rates each run but **never sets `status` back to
+`active`**, so anything wrongly hidden stays hidden until you restore it (that
+migration does so for routes whose hiding rested entirely on numberless orders).
+
 Client side, **colour carries confidence, not magnitude** (`SuccessBadge`): a
 seeded rate renders muted whatever it says, green/amber/red are reserved for
 measured. A tilde is not a warning — nobody reads a tilde.
+
+### Why a service reads "Unavailable" — the price ceiling
+
+`sync-prices` hides any route whose wholesale cost exceeds `MAX_WHOLESALE_CENTS`,
+and a hidden route is exactly what the client renders as **"Unavailable"**
+(`cost()` → nil). It was a flat **$4.00** until 2026-07-27, which hid **WhatsApp
+across nearly every Western market** — 40 of its 69 routes, including the UK,
+France, Netherlands and Poland at $5–6 wholesale — even though those are
+comfortably buyable at 100–120 credits. For the most-requested service in the app
+that read as "the app is broken", not as a deliberate cap. It is now **750**
+(= the largest credit pack, 150 cr × $0.05), making the rule *hide only what a
+user literally cannot buy*; that unhid 1,503 routes and took WhatsApp from 29 to
+45 countries. Genuinely absurd routes stay hidden (WhatsApp Germany $13, Italy
+$14.52, Spain $15, Canada $20).
+
+**`blocked_routes` (app_config) is a separate manual kill-list and still wins at
+any price** — `whatsapp|us`, `google|us`, `openai|us`, `twitter-x|us` are hidden
+because those numbers don't work, not because they're expensive. So when checking
+why something is unavailable, look at three things in order: `blocked_routes`,
+then `smoothed_cost_cents > MAX_WHOLESALE_CENTS`, then measured-zero auto-hide.
 
 ## Non-obvious gotchas (real bugs we've hit, do not re-introduce)
 

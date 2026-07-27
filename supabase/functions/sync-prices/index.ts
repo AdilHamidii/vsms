@@ -39,11 +39,26 @@ const MAX_CREDITS = 999;
 // prior smoothed value. 0.5 ≈ a 2-day half-life. First observation seeds it.
 const SMOOTH_ALPHA = 0.5;
 
-// Price ceiling: hide any route whose wholesale cost exceeds this. 5× on a
-// $6–150 SMSPVA WhatsApp price is absurd ($30–750 retail); above the ceiling we
-// mark the route 'hidden' (cost() -> nil -> "Unavailable") instead of listing
-// it. ~96% of the catalog is <= $4, so this only trims the blocked-heavy tail.
-const MAX_WHOLESALE_CENTS = 400;
+// Price ceiling: hide any route whose wholesale cost exceeds this, marking it
+// 'hidden' (cost() -> nil -> "Unavailable") instead of listing it.
+//
+// Tied to the LARGEST credit pack, not an arbitrary round number: 150 credits
+// × $0.05 = $7.50 of wholesale. The rule is therefore "hide only what a user
+// literally cannot buy" — above this, no combination of packs affords a single
+// order, so listing it can only produce a dead end.
+//
+// Was 400 (a flat $4) until 2026-07-27, which hid WhatsApp across nearly every
+// Western market — 40 of its 69 routes, including the UK, France, Netherlands
+// and Poland at $5–6 wholesale — even though those are comfortably purchasable
+// at 100–120 credits. WhatsApp is the single most-requested service, so it read
+// as the app being broken rather than as a deliberate price cap.
+//
+// This does NOT override `blocked_routes` (app_config), which is a manual
+// kill-list and still wins: whatsapp|us, google|us, openai|us and twitter-x|us
+// stay hidden at any price because those numbers don't work, not because they
+// cost too much. Genuinely absurd routes stay hidden too — WhatsApp Germany
+// ($13), Italy ($14.52), Spain ($15) and Canada ($20) are all still above.
+const MAX_WHOLESALE_CENTS = 750;
 
 // Stale-guard safety floor. Only deactivate unrefreshed routes when this run
 // successfully priced at least this many — otherwise a transient SMSPVA failure
