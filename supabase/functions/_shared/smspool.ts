@@ -338,10 +338,19 @@ export function esimPlans(countryCode: string): Promise<EsimPlanRow[]> {
 /** POST /esim/purchase — buy a plan by its numeric id. Returns a transactionId
  *  only; the profile (QR/activation) is fetched separately. */
 export async function esimPurchase(planId: string | number):
-  Promise<{ ok: boolean; transactionId?: string; error?: string }> {
+  Promise<{ ok: boolean; transactionId?: string; error?: string; errorType?: SmspoolErrorType }> {
   const d = await form<{ success?: number; transactionId?: string; message?: string }>(
     "/esim/purchase", { plan: planId },
   );
+  // Surface the classified fault instead of discarding it. `request()` already
+  // builds a SmspoolFault; this function used to throw it away and return only
+  // SMSPool's prose, so create-esim-order's `buy.errorType` was always
+  // undefined and OUT_OF_STOCK, AUTH_ERROR and BALANCE_ERROR all collapsed into
+  // one opaque code — the exact failure the provider_unreachable rename fixed
+  // for SMS. It matters most when SMSPool runs dry: every eSIM purchase then
+  // fails as "something went wrong on our side" and nothing pages.
+  const fault = faultOf(d);
+  if (fault) return { ok: false, error: fault.message, errorType: fault.type };
   if (d?.success !== 1 || !d.transactionId) return { ok: false, error: d?.message ?? "esim_purchase_failed" };
   return { ok: true, transactionId: d.transactionId };
 }

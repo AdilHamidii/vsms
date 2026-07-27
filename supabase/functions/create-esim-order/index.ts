@@ -107,16 +107,35 @@ Deno.serve(async (req) => {
   /** Close the reserved row and return the credits, claim-gated so a
    *  concurrent closer cannot cause a double refund (the create-order bug). */
   const failEsim = async (reason: string) => {
-    const { data: claimed } = await sb
+    // 'failed', NOT 'canceled'. esim_status is
+    // (provisioning, installed, active, depleted, expired, refunded, failed) —
+    // 'canceled' belongs to order_status, a DIFFERENT enum. Writing it made
+    // PostgREST reject the update with 22P02, and because the error was
+    // discarded `claimed` came back empty and this function returned early
+    // WITHOUT REFUNDING. Every failed eSIM purchase charged the user and
+    // silently kept the money.
+    const { data: claimed, error: claimErr } = await sb
       .from("esim_orders")
-      .update({ status: "canceled", updated_at: new Date().toISOString() })
+      .update({ status: "failed", updated_at: new Date().toISOString() })
       .eq("id", orderId)
       .eq("status", "provisioning")
       .select("id");
-    if (!claimed || claimed.length === 0) return;
-    await sb.rpc("wallet_credit", {
-      p_user: userId, p_amount: cost, p_reason: "refund",
+    if (claimErr) {
+      console.error(`failEsim: claim FAILED order=${orderId} reason=${reason}: ${claimErr.message}`);
+      return;
+    }
+    if (!claimed || claimed.length === 0) return;   // already closed elsewhere
+    // Linked to the eSIM order so the ledger reconciles (migration
+    // 20260727160000) — wallet_transactions.order_id FKs public.orders and
+    // cannot hold an esim_orders id.
+    const { error: refundErr } = await sb.rpc("wallet_move_esim", {
+      p_user: userId, p_amount: cost, p_reason: "refund", p_esim_order: orderId,
     });
+    if (refundErr) {
+      console.error(`failEsim: REFUND FAILED order=${orderId} user=${userId} ` +
+                    `credits=${cost}: ${refundErr.message}`);
+      return;
+    }
     console.warn(`create-esim-order failed plan=${plan.id} reason=${reason} order=${orderId}`);
   };
 
@@ -140,13 +159,25 @@ Deno.serve(async (req) => {
   let profile = null as Awaited<ReturnType<typeof esimProfile>> | null;
   try { profile = await esimProfile(buy.transactionId); } catch { /* keep provisioning */ }
 
+  // UPDATE the row begin_esim_order already reserved and charged for — do NOT
+  // insert a second one.
+  //
+  // This was an .insert(), so every purchase wrote TWO rows: the reserved
+  // 'provisioning' row (no smspool_tx, no expires_at) and this one. Verified
+  // live on the only sale since: same plan, 2.1s apart, 8 credits recorded for
+  // a 4-credit sale. The orphan is permanent — expire_esim_orders() only
+  // touches rows with a non-null expires_at — so the buyer sees a phantom eSIM
+  // stuck at "Provisioning" forever, ops_snapshot double-counts eSIM revenue,
+  // telegram-notify sends two "eSIM purchased" alerts, and the 2-minute dedupe
+  // blocks a genuine repeat purchase of the same plan.
+  //
+  // Claim-gated on status='provisioning' exactly like create-order:441, so a
+  // concurrent failEsim() can't race us into resurrecting a canceled order.
   const { data: order, error: insErr } = await sb
     .from("esim_orders")
-    .insert({
-      user_id: userId,
-      plan_id: plan.id,
+    .update({
       smspool_tx: buy.transactionId,
-      cost_credits: cost,
+      updated_at: new Date().toISOString(),
       // The FRESH quote when we have one. This column previously echoed the
       // cached catalog price, which made it useless as a cost record — margin
       // analysis over it was circular and could never reveal drift.
@@ -164,12 +195,20 @@ Deno.serve(async (req) => {
       data_used_mb: profile?.dataUsedMb ?? null,
       activated: profile?.activated ?? false,
     })
+    .eq("id", orderId)
+    .eq("status", "provisioning")
     .select("*").single();
 
   if (insErr || !order) {
     // The eSIM is already provisioned at SMSPool (can't un-buy). Make the user
     // whole; we eat the wholesale cost on this rare failure.
-    await refund();
+    //
+    // This said `await refund()` — an identifier that does not exist (the local
+    // is failEsim). `deno check` reports TS2304, but esbuild bundles free
+    // identifiers without complaint, so it shipped and threw a ReferenceError
+    // at runtime on the one path where the user is already charged and the eSIM
+    // already bought: no refund, no cancel, no alert, no row.
+    await failEsim("order_persist_failed");
     return json({ error: "order_persist_failed", detail: insErr?.message }, { status: 500 });
   }
 

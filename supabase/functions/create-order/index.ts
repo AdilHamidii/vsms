@@ -60,12 +60,15 @@ async function bumpFailStreak(sb: Admin, lastError: string, routeDesc: string): 
       Date.now() - new Date(v.last_alert_at).getTime() >= REALERT_MS;
     const value: Record<string, unknown> = { n, last_alert_at: v.last_alert_at ?? null };
     if (n >= FAIL_STREAK_ALERT_AT && due) {
-      await notifySafe(
+      // Only record the alert if it actually sent — otherwise one dropped
+      // Telegram message buys 6h of silence on an active outage.
+      const sent = await notifySafe(
         `🚨 <b>${n} consecutive SMS order failures</b>\n` +
         `latest: ${esc(lastError)} on ${esc(routeDesc)}\n` +
         `Users are being charged and refunded with no numbers delivered.`,
       );
-      value.last_alert_at = new Date().toISOString();
+      if (sent) value.last_alert_at = new Date().toISOString();
+      else console.error("fail-streak page FAILED to send — will retry next failure");
     }
     await sb.from("app_config").upsert({ key: "order_fail_streak", value }, { onConflict: "key" });
   } catch (e) {
@@ -92,14 +95,21 @@ async function alertProviderFault(sb: Admin, provider: string, errorType: string
       .from("app_config").select("value").eq("key", "provider_fault_alert").maybeSingle();
     const last = (data?.value as { last_at?: string } | null)?.last_at;
     if (last && Date.now() - new Date(last).getTime() < REALERT_MS) return;
+    // Send BEFORE stamping the 6h suppression window, and only stamp on
+    // success. Stamping first meant a single failed send silenced "the provider
+    // account is dead" for six hours.
+    const sent = await notifySafe(
+      `🚨 <b>${esc(provider)} account fault: ${esc(errorType)}</b>\n${esc(detail)}\n` +
+      `Every order on this provider will fail until this is fixed (key revoked or balance empty).`,
+    );
+    if (!sent) {
+      console.error("provider-fault page FAILED to send — not suppressing, will retry");
+      return;
+    }
     await sb.from("app_config").upsert({
       key: "provider_fault_alert",
       value: { last_at: new Date().toISOString(), provider, error_type: errorType },
     }, { onConflict: "key" });
-    await notifySafe(
-      `🚨 <b>${esc(provider)} account fault: ${esc(errorType)}</b>\n${esc(detail)}\n` +
-      `Every order on this provider will fail until this is fixed (key revoked or balance empty).`,
-    );
   } catch (e) {
     console.error("provider-fault alert failed (ignored):", e);
   }

@@ -64,11 +64,20 @@ export async function sendMessage(html: string, chatId?: string): Promise<SendRe
  *  Swallows everything — a missing token, a network failure, a malformed
  *  message must never affect someone's purchase. The per-minute sweep in
  *  telegram-notify re-sends anything that fails here. */
-export async function notifySafe(html: string): Promise<void> {
+/// Never throws. Returns whether the message actually reached Telegram, so a
+/// caller that stamps dedupe/suppression state can avoid recording an alert
+/// that was never delivered. Callers that don't care may ignore the result —
+/// the swallowing behaviour is unchanged.
+export async function notifySafe(html: string): Promise<boolean> {
   try {
     const r = await sendMessage(html);
-    if (!r.ok) console.error("telegram send failed", r.status, r.body);
+    if (!r.ok) {
+      console.error("telegram send failed", r.status, r.body);
+      return false;
+    }
+    return true;
   } catch (e) {
     console.error("telegram notify threw (swallowed):", e);
+    return false;
   }
 }

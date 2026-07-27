@@ -1,17 +1,20 @@
 import { handleCors, json } from "../_shared/cors.ts";
 import { admin, callerUserId } from "../_shared/supabaseAdmin.ts";
-import { markSuccess, poll, release, type Provider } from "../_shared/providers.ts";
+// `release` is deliberately gone: cancel no longer kills the number — the
+// late-code sweep in poll-active-orders owns its lifecycle now.
+import { markSuccess, poll, type Provider } from "../_shared/providers.ts";
 
 // Minimum hold before a paid order may be destroyed (owner decision
 // 2026-07-27). Measured: median code arrival 58s, p90 134s, while the median
 // CANCEL lands at 57s — users were killing orders one second before the
-// typical code. 120s covers the bulk of the arrival distribution without
-// running to the full 8-minute expiry.
+// typical code. 180s (owner decision) sits above p90 arrival (134s), so
+// virtually every code that was ever going to land has landed by then, while
+// still leaving 5 minutes of the 8-minute window.
 //
 // Applies to reroll as well as the ✕: a reroll releases the number exactly
 // like a cancel, so an early reroll throws away an in-flight code just the
 // same.
-const MIN_HOLD_SECONDS = 120;
+const MIN_HOLD_SECONDS = 180;
 
 // `enforce_min_hold` is sent ONLY by clients that know about the rule.
 //
@@ -41,7 +44,7 @@ Deno.serve(async (req) => {
 
   const { data: order, error: oErr } = await sb
     .from("orders")
-    .select("id, user_id, status, cost_credits, provider, smspva_id, created_at")
+    .select("id, user_id, status, cost_credits, provider, smspva_id, created_at, expires_at")
     .eq("id", body.order_id)
     .eq("user_id", userId)
     .single();
@@ -105,9 +108,14 @@ Deno.serve(async (req) => {
   // waiting. If a code landed (or it expired) in the race window, this matches
   // 0 rows and we must NOT refund — otherwise a well-timed cancel could pocket
   // the delivered code AND get the credits back.
+  // late_watch_until keeps the number alive after the cancel — see below.
   const { data: claimed, error: uErr } = await sb
     .from("orders")
-    .update({ status: "canceled", closed_at: new Date().toISOString() })
+    .update({
+      status: "canceled",
+      closed_at: new Date().toISOString(),
+      late_watch_until: order.smspva_id ? order.expires_at : null,
+    })
     .eq("id", order.id)
     .eq("status", "waiting")
     .select("*");
@@ -124,15 +132,27 @@ Deno.serve(async (req) => {
     return json({ error: "not_cancelable", current_status: current?.status }, { status: 409 });
   }
 
-  // We won the flip — now it's safe to refund and best-effort release the number
-  // at its provider (virtualsms enforces a 2-min hold; a failed release there
-  // just means we eat the number, but the user is still made whole).
-  await sb.rpc("wallet_credit", {
+  // We won the flip — refund immediately. Check the result: supabase-js returns
+  // errors rather than throwing, and wallet_credit RAISES on a non-positive
+  // amount or a missing wallet row. Discarding it meant the claim committed,
+  // the money never moved, and the user was told they'd been refunded.
+  const { error: refundErr } = await sb.rpc("wallet_credit", {
     p_user: userId, p_amount: order.cost_credits, p_reason: "refund", p_order: order.id,
   });
-  if (order.smspva_id) {
-    await release((order.provider ?? "smspva") as Provider, order.smspva_id);
+  if (refundErr) {
+    console.error(`cancel-order: REFUND FAILED for ${order.id} user=${userId} ` +
+                  `credits=${order.cost_credits}: ${refundErr.message}`);
+    return json({ error: "refund_failed" }, { status: 500 });
   }
 
+  // Deliberately NOT releasing the number.
+  //
+  // release() reclaims the wholesale cost but kills the number, so a code
+  // arriving seconds later is lost — and cancels (median 57s) land one second
+  // before the median code (58s). We now keep watching until the original
+  // reservation deadline; poll-active-orders hands over any late code for free
+  // and releases the number once the window closes. Owner decision 2026-07-27:
+  // the giveaway is worth it, because 92% of users who ever receive a code go
+  // on to purchase, against at most $3.50 of forfeited wholesale.
   return json({ order: claimed[0] });
 });
