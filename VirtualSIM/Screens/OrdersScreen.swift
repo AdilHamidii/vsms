@@ -89,6 +89,13 @@ struct OrdersScreen: View {
         if order.status == .waiting {
             state.activeOrder = order
             state.flow = .waiting
+        } else if order.otp != nil {
+            // A code exists — show it. Covers rescued codes, which land on a
+            // CANCELED row; without this the only copy the user ever had was a
+            // notification, and tapping the row offered to sell them another
+            // number instead.
+            state.activeOrder = order
+            state.flow = .otp
         } else {
             state.buyAgain(order)
         }

@@ -79,7 +79,7 @@ struct OrdersAPI {
 
     /// Destroys a paid, in-flight order and refunds it.
     ///
-    /// `enforce_min_hold` opts this client in to the server's 120s minimum
+    /// `enforce_min_hold` opts this client in to the server's 180s minimum
     /// hold. It is a flag rather than server-default because shipped 1.4
     /// ignores a failed cancel and creates the replacement order anyway —
     /// enforcing for everyone would double-charge those users. We send it

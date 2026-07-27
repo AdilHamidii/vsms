@@ -79,7 +79,10 @@ struct OtpScreen: View {
                 }
             }
             Spacer()
-            StatusBadge(status: .received)
+            // Real status, not a hardcoded .received. A rescued code lands on
+            // a CANCELED order (refund stands, code given away) — asserting
+            // "received" there would contradict the history row and the refund.
+            StatusBadge(status: order.status)
         }
         .padding(.horizontal, 20)
         .padding(.top, 10)

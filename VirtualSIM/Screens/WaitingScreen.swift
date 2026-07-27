@@ -7,7 +7,7 @@ struct WaitingScreen: View {
     @Environment(PushManager.self) private var push
 
     let order: Order
-    @State private var elapsed: Int = 0
+    @State private var elapsed: Int = 0   // seeded from order.createdAt in .task
     @State private var copied = false
     @State private var showCancelConfirm = false
 
@@ -39,11 +39,22 @@ struct WaitingScreen: View {
             .scrollIndicators(.hidden)
         }
         .task {
-            // Tick the elapsed timer once per second.
-            let start = Date()
+            // Tick once per second, measured from the ORDER, not from when this
+            // view appeared.
+            //
+            // It used to anchor on a local `Date()` captured at .task time. The
+            // view's identity survives a reroll (flow stays .waiting), so @State
+            // persisted: after a reroll `elapsed` was already past the 180s
+            // hold, unlocking ✕ and both reroll buttons on a number seconds old
+            // — every tap then returning 429 cancel_too_early — while the
+            // ELAPSED cell kept counting the PREVIOUS order and rendered
+            // impossible pairs like "ELAPSED 03:22 / EXPIRES IN 07:58".
+            // Conversely resumeInFlightOrder() showed a 7-minute-old order as
+            // ELAPSED 00:00 and locked cancel for longer than the order had
+            // left to live.
             while !Task.isCancelled {
+                elapsed = max(0, Int(Date().timeIntervalSince(order.createdAt)))
                 try? await Task.sleep(nanoseconds: 1_000_000_000)
-                elapsed = Int(Date().timeIntervalSince(start))
             }
         }
         .task {
@@ -145,7 +156,11 @@ struct WaitingScreen: View {
                 .background(theme.chipBg, in: .circle)
             }
             .buttonStyle(.plain)
-            .disabled(holdRemaining != nil)
+            // isPlacingOrder too: leaving the ✕ live during a reroll let
+            // cancelWaiting fire mid-reroll and null activeOrder after the
+            // fresh one was installed, rendering an empty screen over a live
+            // paid order.
+            .disabled(holdRemaining != nil || state.isPlacingOrder)
             .accessibilityLabel(holdRemaining == nil
                 ? Text("Cancel order")
                 : Text("Cancel available in \(holdRemaining ?? 0) seconds"))

@@ -45,6 +45,9 @@ struct ContentView: View {
                             if o.status == .waiting {
                                 state.activeOrder = o
                                 state.flow = .waiting
+                            } else if o.otp != nil {
+                                state.activeOrder = o      // rescued code — show it
+                                state.flow = .otp
                             } else {
                                 state.buyAgain(o)
                             }
