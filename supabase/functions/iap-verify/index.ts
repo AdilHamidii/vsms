@@ -134,6 +134,25 @@ Deno.serve(async (req) => {
   if (insertErr) {
     // Unique constraint violation => already credited.
     if (insertErr.code === "23505") {
+      // A duplicate submit is only genuinely "already credited" if the credits
+      // LANDED. StoreKit runs two paths into here (Transaction.updates and the
+      // Transaction.unfinished sweep), so both can carry the same JWS: if the
+      // winner's wallet_credit then failed, this branch previously told the
+      // loser "ok" and the client called finish() — retiring the transaction
+      // forever on a payment that granted nothing.
+      const { data: prior } = await sb
+        .from("iap_receipts").select("id, granted_credits, environment")
+        .eq("transaction_id", tx.transactionId).maybeSingle();
+      if (prior && prior.environment === "Production" && (prior.granted_credits ?? 0) > 0) {
+        const { count } = await sb
+          .from("wallet_transactions")
+          .select("id", { count: "exact", head: true })
+          .eq("iap_receipt_id", prior.id).eq("reason", "purchase");
+        if (!count) {
+          console.error(`iap-verify: receipt ${prior.id} exists but has NO credit row — not finishing`);
+          return json({ error: "credit_pending" }, { status: 409 });
+        }
+      }
       return json({ ok: true, already_credited: true });
     }
     return json({ error: "persist_failed", detail: insertErr.message }, { status: 500 });
@@ -154,10 +173,20 @@ Deno.serve(async (req) => {
       // would be permanently eaten by a transient DB error. Instead, delete
       // the receipt so StoreKit's automatic redelivery retries the whole
       // grant, fail the request, and page the owner either way.
+      // ZERO the receipt rather than DELETE it.
+      //
+      // Deleting was meant to let StoreKit redeliver — but the transaction_id
+      // is the only replay guard, and dropping the row also drops the audit
+      // trail of a payment we took. Worse, a concurrent duplicate submit may
+      // already have been told `already_credited` and called finish(), so the
+      // redelivery being relied on will never come. Keeping the row at
+      // granted_credits = 0 preserves the evidence, keeps the guard, and the
+      // 23505 branch above now refuses to confirm a receipt with no credit row.
       console.error(`CRITICAL: wallet_credit failed after receipt persist user=${userId}`, creditErr);
       const { error: delErr } = inserted?.id != null
-        ? await sb.from("iap_receipts").delete().eq("id", inserted.id)
-        : { error: { message: "receipt id unknown — delete skipped" } };
+        ? await sb.from("iap_receipts")
+            .update({ granted_credits: 0 }).eq("id", inserted.id)
+        : { error: { message: "receipt id unknown — rollback skipped" } };
       try {
         EdgeRuntime.waitUntil(notifySafe(
           `🚨 <b>IAP credit FAILED after payment</b>\n` +
