@@ -22,7 +22,7 @@ import { admin } from "../_shared/supabaseAdmin.ts";
 // complaint, so /balance THREW ReferenceError on every call in production
 // while every other command worked. Keep imports in lockstep with usage.
 import { sendMessage, ownerChatId, esc } from "../_shared/telegram.ts";
-import { formatDigest, balanceLine } from "../_shared/opsFormat.ts";
+import { formatDigest, formatRevenue, balanceLine } from "../_shared/opsFormat.ts";
 
 const HELP = [
   "🤖 <b>vSMS ops</b>",
@@ -31,7 +31,24 @@ const HELP = [
   "/today — last 24 hours",
   "/week — last 7 days",
   "/balance — provider balances + watchdog",
+  "/revenue — money in, money out, profit",
+  "     <i>/revenue [24h|7d|30d|90d|all]</i> · default: all",
 ].join("\n");
+
+/** Accepted /revenue periods -> the interval passed to revenue_snapshot.
+ *  null means lifetime (the function reads p_window null as no lower bound).
+ *
+ *  Membership is tested with Object.hasOwn, NOT `in` and NOT truthiness:
+ *  truthiness would reject "all" (a legitimate key whose value is null), while
+ *  `in` walks the prototype chain — so `/revenue constructor` would pass the
+ *  guard and hand Object's constructor to the RPC as p_window. */
+const PERIODS: Record<string, string | null> = {
+  "": null, "all": null, "lifetime": null, "total": null, "ever": null,
+  "24h": "24 hours", "today": "24 hours", "day": "24 hours",
+  "7d": "7 days", "week": "7 days",
+  "30d": "30 days", "month": "30 days",
+  "90d": "90 days", "quarter": "90 days",
+};
 
 Deno.serve(async (req) => {
   const cors = handleCors(req); if (cors) return cors;
@@ -53,12 +70,32 @@ Deno.serve(async (req) => {
   if (chatId == null || String(chatId) !== ownerChatId()) return ok();
 
   const text = (update.message?.text ?? "").trim().toLowerCase();
-  const cmd = text.split(/\s+/)[0].replace(/@.*$/, "");   // strip @botname suffix
+  const parts = text.split(/\s+/);
+  const cmd = parts[0].replace(/@.*$/, "");               // strip @botname suffix
+  const arg = (parts[1] ?? "").replace(/^[-/]+/, "");     // tolerate "-7d" / "/7d"
 
   const sb = admin();
   let reply = HELP;
 
-  if (cmd === "/stats" || cmd === "/today" || cmd === "/week") {
+  if (cmd === "/revenue" || cmd === "/profit") {
+    if (!Object.hasOwn(PERIODS, arg)) {
+      reply = `Unknown period <b>${esc(arg)}</b>.\n\n` +
+              `Try: <code>/revenue</code> (all time), or ` +
+              `<code>24h</code> · <code>7d</code> · <code>30d</code> · <code>90d</code>`;
+    } else {
+      // p_window is an interval; null = lifetime. supabase-js sends JSON null,
+      // which Postgres binds as SQL NULL, so the DEFAULT is never applied — the
+      // function must (and does) treat an explicit null as "no lower bound"
+      // rather than relying on its own default value.
+      const { data: snap, error } = await sb.rpc("revenue_snapshot", {
+        p_window: PERIODS[arg],
+      });
+      reply = error || !snap
+        ? "⚠️ Couldn't read revenue right now."
+        : formatRevenue(snap as Record<string, unknown>);
+      if (error) console.error("revenue_snapshot failed:", error.message);
+    }
+  } else if (cmd === "/stats" || cmd === "/today" || cmd === "/week") {
     const window = cmd === "/stats" ? "6 hours" : cmd === "/today" ? "24 hours" : "7 days";
     const { data: snap, error } = await sb.rpc("ops_snapshot", { p_window: window });
     reply = error || !snap
