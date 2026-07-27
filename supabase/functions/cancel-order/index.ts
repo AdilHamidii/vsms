@@ -140,8 +140,17 @@ Deno.serve(async (req) => {
     p_user: userId, p_amount: order.cost_credits, p_reason: "refund", p_order: order.id,
   });
   if (refundErr) {
+    // Roll the claim BACK to waiting. The flip to 'canceled' has already
+    // committed, and every recovery path (the expiry sweep, this function)
+    // requires status='waiting' — so returning here left the order terminal and
+    // PERMANENTLY unrefundable, with the loss visible only in this log line.
+    // Restoring it lets the expiry sweep close and refund it a minute later.
     console.error(`cancel-order: REFUND FAILED for ${order.id} user=${userId} ` +
-                  `credits=${order.cost_credits}: ${refundErr.message}`);
+                  `credits=${order.cost_credits}: ${refundErr.message} — reverting to waiting`);
+    await sb.from("orders")
+      .update({ status: "waiting", closed_at: null, late_watch_until: null })
+      .eq("id", order.id)
+      .eq("status", "canceled");
     return json({ error: "refund_failed" }, { status: 500 });
   }
 

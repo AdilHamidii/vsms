@@ -31,8 +31,13 @@ interface Snapshot {
 const USD_PER_CREDIT = 0.45;
 
 /** Warn below ~5x the wholesale ceiling of a single order, matching the
- *  low-balance threshold poll-active-orders alerts on. */
-const LOW_BALANCE_USD = 20;
+ *  low-balance threshold poll-active-orders alerts on.
+ *
+ *  This said 20 while poll-active-orders derived 7.50 * 5 = 37.50, so between
+ *  $20 and $37.50 the pager fired "balance low" while the digest and /balance —
+ *  the owner's only standing view — rendered the balance with no warning at all.
+ *  Keep in lockstep with MAX_ORDER_COST_USD in poll-active-orders. */
+const LOW_BALANCE_USD = 37.5;
 
 /** What each provider currently pays for. Displayed next to the balance so a
  *  low reading is actionable ("which product just died?") rather than an

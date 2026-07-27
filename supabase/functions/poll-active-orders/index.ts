@@ -397,6 +397,8 @@ Deno.serve(async (req) => {
     .select("id, user_id, cost_credits, provider, smspva_id, late_watch_until, service:service_id ( name )")
     .not("late_watch_until", "is", null)
     .is("otp", null)
+    .eq("status", "canceled")
+    .order("late_watch_until", { ascending: true })
     .limit(50);
   if (lateErr) console.error("poll: late-watch select failed", lateErr);
 
@@ -407,7 +409,11 @@ Deno.serve(async (req) => {
         continue;
       }
       // Window closed with no code — reclaim what we can and stop watching.
-      if ((o.late_watch_until as string) <= nowIso) {
+      // Date comparison, not string. PostgREST renders timestamptz as
+      // "+00:00" while JS toISOString() ends in "Z", so a lexical compare is
+      // only accidentally correct while the DB session is UTC — and inverts
+      // silently if that ever changes, leaving every watched number unreleased.
+      if (new Date(o.late_watch_until as string).getTime() <= Date.now()) {
         await markDead((o.provider ?? "smspva") as Provider, o.smspva_id);
         await sb.from("orders").update({ late_watch_until: null }).eq("id", o.id);
         lateReleased++;
