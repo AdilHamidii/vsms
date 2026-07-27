@@ -188,6 +188,56 @@ VirtualSIM/
 - `refresh_route_observed_success` / `refresh_service_delivery` / `sync_service_visibility` / `apply_measured_service_ranking` — catalog self-correction, all called from `sync-prices`.
 - `ops_snapshot(interval)` — one JSONB blob powering both the Telegram digest and `/stats`.
 
+### Retention — the numbers that decide what's worth building
+
+Measured 2026-07-27, dev account excluded. **Receiving codes IS the retention
+mechanic**, and it is not close:
+
+| codes ever received | users | avg lifetime orders |
+|---|---|---|
+| 0 | 23 | **2.1** |
+| 1 | 8 | 4.9 |
+| 2+ | 5 | **14.8** |
+
+Funnel: 168 signups → 36 ordered (21%) → 13 got a code → **12 purchased (92%)**,
+and 6 of those 12 bought again. There is no monetization problem; delivery *is*
+the monetization, and every point of delivery rate compounds into order volume.
+
+Two hard constraints on any lifecycle work:
+- **Activation is a single-session event.** Median signup → first order is **2
+  minutes**; 35 of 36 order within 24h, and exactly ONE user in the product's
+  history first ordered after day one. Corroborated: 89 users winback-nudged, **1
+  ordered (1.1%)**. Chasing never-ordered users with push is near-worthless.
+- **Every repeat order happens within 5 days.** All 126 observed gaps. A nudge at
+  day 30 is talking to someone already gone.
+
+Three cohorts, all in `winback` (cron `relay-winback`, daily):
+- `winback_candidates` — never got a code. Requires `balance > 0` (it lost that
+  predicate once and told 10 users at zero balance that "your credits are still
+  here"), dormancy via **`push_devices.updated_at`** (a real "last opened the
+  app" signal the shipped build writes on every cold launch), oldest-first, and
+  recurs up to 3× at 14-day spacing. The old one-shot version **exhausted its
+  pool at 8 candidates**.
+- `stranded_credit_candidates` — last order failed, credits idle. Its old gate
+  (`recent_user_delivery_rate >= 25`) counted impatient cancels as delivery
+  failures, so with 68% of orders cancelled at ~57s it sat structurally at 13 and
+  **could never open**. Replaced with a liveness check (provider balance,
+  watchdog fresh **and** clean), and the unprovable "delivery just got a big
+  upgrade" copy — which is what forced the gate to exist — was deleted.
+- `reorder_candidates` — **users who succeeded.** They were excluded from every
+  nudge in the product by construction, despite being the only cohort with proven
+  fit. Fires at 3–14 days, inside the observed repeat window.
+
+**The daily credit is granted by `register-push`, not by a button.**
+`claim_daily_credit()` reads `auth.uid()`, which is null under the service role,
+so only the app could grant it — and the claim UI exists solely in an unreleased
+build. Result: 95–104 pushes/day, **zero claims ever**, repeating forever because
+the dedupe (`last_daily_credit_on = today`) is something the shipped app can
+never set. `claim_daily_credit_for(uuid)` now runs from `register-push`, which
+the app calls on every cold launch — so opening the app *is* the trigger, which
+was the design intent all along. Both share the same advisory-lock key, so they
+cannot double-grant.
+
 ### Telegram ops bot
 
 `telegram-notify` (cron, every minute) sweeps new signups / credit purchases /
@@ -389,9 +439,65 @@ Refunds must be **visible twice**: at the moment (`RecoveryContext.refundedCredi
 refund unconditionally server-side, so status alone is a sound signal.
 
 **The ✕ on the waiting screen destroys a paid order.** It looks like "back" but
-calls `cancel-order`, which does a last-chance provider poll and can discard a
-code seconds from arriving. It requires an explicit confirmation naming the
-refund; don't "simplify" that away.
+calls `cancel-order`. It requires an explicit confirmation naming the refund;
+don't "simplify" that away.
+
+### The 180s minimum hold, and the late-code rescue (2026-07-27)
+
+Cancels landed at a **median of 57s**; codes arrive at a **median of 58s**, p90
+134s, and 45% of codes that arrive do so after 60s. Users were destroying orders
+one second before the typical code. Two changes, and they compose:
+
+**1. `cancel-order` refuses to destroy an order held under `MIN_HOLD_SECONDS`
+(180)**, returning **429 `cancel_too_early`** with `retry_after_seconds`. 180
+sits above p90 arrival while leaving 5 minutes of the 8-minute window. It covers
+**reroll too** — a reroll releases the number identically, so an early reroll
+discards an in-flight code just the same. `WaitingScreen` renders a live
+countdown in place of the ✕ and disables both reroll buttons.
+
+**429, not 409, is deliberate:** shipped 1.4 has no case for the error code and
+falls back on HTTP status, where 429 reads *"You're going a bit fast — please
+wait a moment and try again"* — nearly right by accident, where 409's *"Not
+available right now"* would mislead.
+
+**Enforcement is gated on `enforce_min_hold`, sent only by newer clients, and
+that gate is load-bearing.** Shipped 1.4's `rerollNumber` does
+`if let server = try? await orders.cancel(...)` and then creates the replacement
+**regardless of whether the cancel succeeded** — so enforcing for everyone would
+leave the original `waiting` AND charge for a second order. Drop the flag only
+once 1.4 is off the field. (`rerollNumber` now aborts on a failed cancel.)
+
+**2. `cancel-order` NO LONGER CALLS `release()`.** It refunds, stamps
+`orders.late_watch_until` = the original deadline, and leaves the number alive.
+`poll-active-orders` sweeps those rows and, if a code lands, writes it and pushes
+it — **the code is given away free; the refund stands** (owner decision: 92% of
+users who ever receive a code go on to purchase, against at most $3.50 of
+forfeited wholesale). Once the window closes with no code the sweep `markDead`s
+it to reclaim what it can.
+
+Three non-obvious constraints in that path:
+- **Status stays `canceled`.** `order_status` cannot grow a value without
+  shipping the app first (see the gotcha below), so a rescue is *not* a new
+  status — it is an `otp` on a canceled row. **Every consumer must therefore
+  treat `otp is not null` as "a code exists", not `status = 'received'`.** Five
+  SQL functions and one Swift property keyed on the old predicate and scored a
+  delivered code as a failure; `stranded_credit_candidates` would have told a
+  user who *got* their code that "every number that fails is refunded".
+- **The push carries no `orderId`.** Shipped `PushManager` routes on it and
+  would deep-link into the refund screen instead of the code.
+- **The sweep runs BEFORE the polling loop**, not after. It was last, behind up
+  to 200 expiry claims and 50 sequential provider polls in a ~150s budget — so
+  it was the first thing dropped under load, which is exactly when held numbers
+  cost most, and it is now the *only* thing that ever releases a cancelled
+  number.
+
+**`markDead` cancels FIRST, then bans.** `cancelorder` is what reclaims the
+wholesale; `blocknumber` is hygiene, and SMSPVA's docs don't say whether the ban
+consumes the request id. Banning first was harmless while `cancel-order` called
+`release()` directly — routing all reclamation through `markDead` made it a real
+leak ($38.14 of wholesale sat in cancels over 30 days, against ~$146 net revenue
+in the same period). A forfeited refund is certain cash; a re-issued number is
+already filtered by the fresh-number guarantee.
 
 **`resumeInFlightOrder()` runs on COLD LAUNCH ONLY.** Force-quitting during a
 wait used to strand a paid order — screen gone, nothing polling, only a history
@@ -429,10 +535,36 @@ failing: price ticks above the ceiling → every attempt refused before a number
 reserved → the user retries → each retry marks the previous one conclusive → the
 route auto-hides at 0%. Live on 2026-07-26 one user tapped TikTok/Netherlands 8
 times in 90s and **deleted the route from the catalog**; it had zero orders in the
-lookback that ever held a number. Note the repair does not happen by itself — the
-function clears measured rates each run but **never sets `status` back to
-`active`**, so anything wrongly hidden stays hidden until you restore it (that
-migration does so for routes whose hiding rested entirely on numberless orders).
+lookback that ever held a number.
+
+**Four more evidence rules, all learned the hard way on 2026-07-27:**
+
+1. **`is_code` is `otp is not null`, NOT `status = 'received'`** — a rescued code
+   lives on a `canceled` row (see the late-code rescue above). Applied to
+   `refresh_route_observed_success`, `refresh_service_delivery`,
+   `recent_sms_delivery_rate` and `run_watchdog`.
+2. **The numberless filter has to be back-ported to every consumer.** It was
+   added to two functions and missed on `recent_sms_delivery_rate`, which gates
+   `stranded_credit_candidates` at ≥40 — so a run of price-ceiling rejections
+   could silently suppress the winback cohort. If you add a fifth consumer of
+   order outcomes, it needs the same predicate.
+3. **The lookback is 30 days, and the wipe is CONDITIONAL.** It defaulted to 3
+   days with an unconditional wipe, which at ~10 orders/day left **exactly one
+   measured route in a catalog of 17,807** — `facebook/dk` was measured at 80%
+   and deleted three days later. A measured rate is now cleared only when the
+   new window genuinely has nothing to say about that route.
+4. **Auto-hide is REVERSIBLE.** It used to be one-way: the function cleared an
+   aged-out rate but never restored `status`, so a route hidden on two bad
+   orders stayed invisible forever — and being invisible, it could never earn
+   contrary evidence. A self-sealing catalog that only ever shrinks. It now
+   un-hides both when evidence ages out and on recovery (`received > 0`). Safe
+   because `sync-prices` re-evaluates `blocked_routes` and the price ceiling
+   hourly and re-hides anything genuinely unsellable.
+
+`refresh_service_delivery`'s wipe is scoped the same way, for the same reason:
+unconditional, it left any quiet service with NULL evidence, and
+`apply_measured_service_ranking` needs `observed_attempts >= 8` — so a service
+that went quiet was frozen at its last `sort_order`, unable to be re-evaluated.
 
 Client side, **colour carries confidence, not magnitude** (`SuccessBadge`): a
 seeded rate renders muted whatever it says, green/amber/red are reserved for
@@ -516,6 +648,13 @@ then `smoothed_cost_cents > MAX_WHOLESALE_CENTS`, then measured-zero auto-hide.
 - **Cron-secret auth reads from `Deno.env.get("CRON_SECRET")`**, not from `vault.decrypted_secrets`. The vault schema isn't reachable through PostgREST — the function would silently fail. Both `poll-active-orders` and `sync-prices` rely on the env var being mirrored to the vault entry. **CRON_SECRET therefore lives in TWO stores** (edge secrets + vault `cron_secret`, read by `private_cron_secret()`); rotating one without the other 401s every relayed function at once — including telegram-notify, i.e. the alert channel. The watchdog's `relay-http` check catches the 401s within ~25 min, but rotate both together.
 - **The watchdog is plain SQL — keep it that way.** `run_watchdog()` (pg_cron `*/10`, migration `20260722050000`) checks job freshness (poller heartbeat, `routes`/`esim_plans.last_checked_at`, digest stamp, sync cursors via `app_config.updated_at` — maintained by the `app_config_touch` trigger, so cursor upserts don't need to set it) plus any non-2xx row in `net._http_response`, and writes its verdict to `app_config.'watchdog'`. `telegram-notify` (minutely) turns that into pages (6h re-alert, ✅ on recovery); `/balance` shows the verdict too. It deliberately uses **no edge function, no CRON_SECRET, no HTTP** so it still evaluates when the whole edge/secret layer is broken. If you add a scheduled job, give it a freshness signal and a check here. Residual blind spot: telegram-notify's own death = digest silence >7h (documented in `docs/autopilot-runbook.md`).
 - **IAP environment check constraint must allow `'Xcode'`** for local StoreKit testing alongside `'Sandbox'`/`'Production'`. See migration `..._iap_allow_xcode_env.sql`.
+- **A status string written from TS is NOT checked against the enum — and the error is discarded.** `create-esim-order`'s failure path wrote `status: "canceled"`, which is a member of `order_status` but **not** of `esim_status` (`provisioning, installed, active, depleted, expired, refunded, failed`). PostgREST rejected the UPDATE with 22P02, the code did `const { data: claimed } = await ...` without destructuring `error`, so `claimed` came back empty and the function **returned without refunding**. Every failed eSIM purchase charged the user and silently kept the money. When you write a status literal from an edge function, check it against `pg_enum` — the two enums share several names and differ in exactly the ones that matter.
+- **`supabase-js` RETURNS errors, it does not throw.** Every `await sb.rpc("wallet_credit", …)` that discards `{ error }` is a silent money bug: `wallet_credit` raises on a non-positive amount and on a missing wallet row, so the status claim commits, the balance never moves, and the user gets a push saying "N credits refunded". Four sites had this. Destructure the error at every money call.
+- **`ALTER DEFAULT PRIVILEGES` grants `anon`/`authenticated` rights on every FUTURE object.** Until 2026-07-27 that was `arwdDxtm` on future tables and `EXECUTE` on future functions — so any new table missing `enable row level security` would have been world-**writable** at `/rest/v1/<table>`, and any new SECURITY DEFINER function missing its revoke callable at `/rest/v1/rpc/<name>`. That is how `run_watchdog` became public. The postgres-owned defaults are now revoked (SELECT retained; RLS still governs rows); **the `supabase_admin` half is NOT applied** — it needs membership in that role, which the CLI's postgres connection lacks. Statements are in `20260727211000_default_privileges.sql`. Note this is a backstop, not a licence to skip the explicit `revoke execute` on every new function.
+- **A one-line refactor that changes a watchdog threshold is a monitoring outage.** Rebuilding `run_watchdog` for unrelated coverage silently narrowed the delivery check from 24h/≥10 to 6h/≥8 **and deleted its second branch** (≥20 conclusive at <10%). Measured: the max conclusive orders in ANY 6h window over 30 days is 8, against a gate of 8 — the check became effectively unreachable, leaving zero delivery-outcome coverage. When you re-create a function from `pg_get_functiondef`, diff it against the prior definition clause by clause; the dump is also **truncated** by most tooling, which is how a nonexistent `url` column on `net._http_response` got invented in the same rewrite.
+- **A constant duplicated across files WILL drift.** `MAX_WHOLESALE_CENTS` lives in three sync functions (and as `MAX_ORDER_COST_USD` in `poll-active-orders`, and as `LOW_BALANCE_USD` in `_shared/opsFormat.ts`). Changing it in one place on 2026-07-27 stripped 1,432 routes of their carrier pin and premium price, and left the digest warning at $20 while the pager fired at $37.50. Same for `CREDIT_DIVISOR` (three copies) and `ESIM_MARGIN`/`CREDIT_VALUE_USD` (two each). Change them in one commit or consolidate them into `_shared/`.
+- **Deleting an IAP receipt to force StoreKit redelivery can eat the payment.** `iap-verify` used to delete the row when `wallet_credit` failed, assuming StoreKit would retry. But the client runs **two** paths into that endpoint (`Transaction.updates` and the `Transaction.unfinished` sweep), so a concurrent duplicate may already have been answered `already_credited` and called `finish()` — retiring the transaction forever. It now zeroes `granted_credits` (keeping both the audit trail and the replay guard), and the duplicate branch refuses to confirm a receipt that has no matching `wallet_transactions` row.
+- **The signup bonus was farmable through account deletion.** Everything user-scoped cascades from `auth.users`, so delete → sign in again minted a fresh grant (+3, plus a fresh +2 referral because `referred_by` resets). `public.signup_grants` is a tombstone keyed on a **hash of the email**, living outside that cascade — Apple's private-relay address is stable per (user, app), so it survives deletion while storing no address. It fails **open** on a null email: a missed grant on a real signup costs more than a rare duplicate.
 - **APNs `aps-environment` is `production`** in the entitlements file (flipped for archiving; set `APNS_ENV=production` secret to match). Flip back to `development` if you need to test push against a dev-token build from Xcode.
 - **`Secrets.swift` is gitignored.** Template in `supabase/README.md`. Just `supabaseURL` + `supabaseAnonKey`. The publishable key (`sb_publishable_*`) is fine in client code — it's the new name for the anon key.
 - **Logo loading cascades** in `ServiceLogo`: DuckDuckGo ip3 (`icons.duckduckgo.com/ip3/<domain>.ico`) → Google FaviconV2 → SF Symbol on tinted background. URLCache caches across launches. **Clearbit (`logo.clearbit.com`) was removed** — HubSpot sunset the free Logo API on 2025-12-01 and its host no longer resolves; leaving it as source #1 made every logo eat a DNS failure before falling through. Do not re-add it.
@@ -578,86 +717,84 @@ SMS provider again, walk this list:
 6. **Point balance monitoring at it** (`app_config.<provider>_health` + the `ROLE` map in `_shared/opsFormat.ts`).
 7. **Verify with data, not the deploy log** — per-provider delivery is in `ops_snapshot`'s `by_provider`. A single blended rate averages a dead provider with a live one and describes neither (it read 10% while the live provider was at 43%).
 
-## Current state (2026-07-25)
+## Current state (2026-07-27)
 
-- **Retention/trust fixes are in build 18, submitted 2026-07-25 — still NOT in
-  front of users.** The waiting screen no longer strands a user on
-  "Waiting / 00:00" after the server expired + refunded (reconcile invariant
-  above); the ✕ needs an explicit confirmation before destroying a paid order;
-  refunds are visible both in the moment and durably in history; seeded badges
-  are demoted at 2 zero-code attempts and never render in measured-green. Server
-  side of Bug 4 is **live** (migration `20260725120000`, applied + verified).
-  **Everything client-side reaches users only when 1.5 is APPROVED** — 1.4 is
-  what the install base runs today. Verified by `BUILD SUCCEEDED` +
-  `swiftc -typecheck` exit 0; the three failure states (502 provider, airplane
-  mode, expiry while foregrounded) were reasoned through and covered in code but
-  **not runtime-injected** — that needs an authenticated session and a live paid
-  order.
-- **Margins raised today: SMS 3× → 6×, eSIM 3× → 4×.** Deployed and verified live —
-  16,303 active routes repriced avg 10.4 → 20.5 credits (max 81), 1,081 eSIM plans
-  44.4 → 59.0. `under-margin` and ratchet-violation counts are **0** on both. The
-  premium-tier backfill above was required as part of this; don't repeat a divisor
-  change without it.
-- **Codebase**: `MARKETING_VERSION 1.5`, `CURRENT_PROJECT_VERSION 18`, iOS min
-  **18.0**, 73 Swift sources (type-check clean, warnings only), 76 migrations.
-- **Store state, verified against the ASC API 2026-07-25 16:43Z** (not inferred):
-  **1.5 / build 18 `WAITING_FOR_REVIEW`**, releases `AFTER_APPROVAL`;
-  **1.4 `READY_FOR_SALE`** and is what users run. Two IOS review submissions are
-  in flight — `46c9be95` (the version) and `3cf3b471` (the `credits.60` IAP).
-  Build 17 was submitted and then **cancelled**: it was archived from `02e9c4a`
-  and predates the stale-checkout-draft pricing fix, so it shipped the bug where
-  the pickers priced the last checked-out service.
-  ⚠️ **`credits.150` is stuck at IAP-version state `DEVELOPER_REJECTED`** — the
-  residue of cancelling its submission — and the public API **cannot** resubmit
-  it (see Release prep). It needs the ASC web UI.
-- **SMS: SMSPVA $8.65** (alert tier 2, low). **eSIM: SMSPool $1.90** (alert tier 3,
-  **critically low — top up or eSIM purchases start failing**). Balance pages
-  escalate at $20/$10/$5/$1 crossings.
-- **Delivery reality**: 151 lifetime SMS orders / 39 delivered (~26%). Last 7d
-  SMSPVA 9/33 (27%); the SMSPool 4/50 (8%) rows are legacy SMS from before the
-  cutover — SMSPool is eSIM-only now. **In the 24h to 2026-07-25 every SMS order
-  failed: 12 orders, 3 users, 0 codes, all refunded (net credits 0).** Causes were
-  route-level, not platform: Betano/BG went 0/7 measured and **auto-hid itself**
-  (gambling operators block resale numbers service-side), plus an unproven
-  Colombia cluster. Watchdog is clean (`failing: []`) — note it tracks job
-  freshness and HTTP errors, **not delivery rate**, so a 0%-delivery day does not
-  page. That blind spot is open.
-- **Catalog**: 18,492 routes (16,303 active / 2,189 hidden), 1,081 active eSIM
-  plans, 268 services, 69 countries. 14 pg_cron jobs, all active. (All nine
-  figures re-verified against the live DB 2026-07-25 16:50Z.)
-- Autopilot hardening (2026-07-22, migration `20260722050000`) remains in force:
-  SQL watchdog + Telegram paging, fail-streak pager, provider AUTH/BALANCE pager,
-  iap-verify no longer eats a payment on `wallet_credit` failure, 24h sweep
-  window, dead APNs pruning, winback heartbeat, `job_run_details` 7-day retention,
-  migration bookkeeping (**but `db push` is broken again — see the gotcha**). `docs/autopilot-runbook.md`
-  is the owner's operations reference.
-- **Known-open list cleared 2026-07-25** — every item below is now fixed except
-  the two marked OPEN:
-  - ✅ watchdog delivery-rate blindness → `20260725140000`. Replayed against the
-    2026-07-24 outage: 10 conclusive / 0 delivered → **would have paged**.
-  - ✅ double-tap "Install eSIM" burning a single-use LPA → confirm-on-repeat,
-    persisted across the trip to Settings.
-  - ✅ `pollActiveOrder` swallowing errors → the reconcile invariant above.
-  - ✅ in-flight order not resumed after app kill → `resumeInFlightOrder()`.
-  - ✅ measured arrival timing never reaching the client → wired + the
-    safeupdate bug fixed.
-  - ⚠️ **OPEN (deliberately staged): `routes` cost columns readable
-    unauthenticated.** The client half shipped (explicit column list, and
-    `lastCostCents` deleted from the model — it was decoded and never read).
-    Migration `20260725130000` revokes the column grants but is **NOT APPLIED**:
-    Postgres needs SELECT on every column to answer `select=*`, so applying it
-    before the new build is adopted would make the catalog fail to load and
-    every price render "Unavailable" for users on 1.4/1.5. The explicit-column
-    `CatalogAPI` ships in **build 18**, which is only *submitted* — 1.4 is still
-    what the install base runs, so this stays unapplied until 1.5 is approved
-    **and** adopted. Then re-check with the curl in that file's header.
-  - ⚠️ **OPEN: `credits.150` cannot be resubmitted from the API** — IAP version
-    is `DEVELOPER_REJECTED` after its submission was cancelled. Needs the ASC
-    web UI (Monetization → In-App Purchases → 150 Credits → Submit for Review).
-    `credits.60` is already `WAITING_FOR_REVIEW`. Until both are approved the
-    two best-value packs do not exist for users. See Release prep.
-  - ⚠️ **OPEN: Supabase project is on the FREE plan (no backups).** Owner
-    action — recommend Pro.
+- **Everything client-side from 2026-07-26/27 is in NO installable build.** 1.4 is
+  `READY_FOR_SALE` and is what every user runs. **1.5 / build 18 is
+  `WAITING_FOR_REVIEW`, and it was archived from `02e9c4a` — before all of that
+  day's client work (9 commits touching `VirtualSIM/`).** So the rescued-code UI,
+  the cancel-orphan fix, the 180s countdown, the eSIM terminal card, the corrected
+  pack prices and the `creditsShortfall` fixes reach users only in **build 19**.
+  The backend half of all of it is live.
+- **Backend shipped 2026-07-27** (all live, no review needed): 180s minimum hold
+  + late-code rescue; `markDead` reordered to cancel-then-ban; evidence corrected
+  (`otp is not null`, numberless filter back-ported, 30-day lookback, conditional
+  wipe, reversible auto-hide); premium 20% uplift restored on 16,372 routes; three
+  retention cohorts incl. the new `reorder_candidates`; daily credit granted from
+  `register-push`; balance ladder derived from the ceiling; alert dedupe reordered
+  to send-then-stamp; watchdog staleness + APNs health + eSIM-expiry coverage, and
+  the delivery check **restored** after being narrowed into unreachability; four
+  eSIM money bugs; schema hardening (FKs, CHECKs, indexes, revoked write grants,
+  postgres-owned default privileges); signup-bonus tombstone; `iap-verify`
+  rollback no longer eats a payment.
+- **Codebase**: `MARKETING_VERSION 1.5`, `CURRENT_PROJECT_VERSION 18` (next build
+  is **19**), iOS min **18.0**, 73 Swift sources (BUILD SUCCEEDED), 89 migration
+  files.
+- **Catalog**: 18,492 routes (17,804 active / 688 hidden), **13 measured routes**
+  (was 1 before the lookback fix), 1,081 active eSIM plans, 268 services, 69
+  countries. 14 pg_cron jobs, all active.
+- **Balances: SMSPVA $3.55 — alert tier 4 (EMPTY on the new ladder)**, SMSPool
+  $8.03. The ladder is now derived: `[37.50, 22.50, 11.25, 7.50]` = 5×/3×/1.5×/1×
+  the $7.50 order ceiling. At $3.55, **~1,500 routes cannot be funded at all** —
+  a WhatsApp order is a guaranteed charge-and-refund. **Top up.**
+- **Delivery, 30d, orders that actually got a number**: 38 of 147 (**26%**).
+  SMSPVA alone is ~35%; the SMSPool rows are legacy pre-cutover SMS. Watchdog is
+  clean (`failing: []`).
+- **Retention baseline** (see the Retention section): 168 users, 36 ever ordered,
+  13 ever got a code, 12 of those 13 purchased. 100 users hold ≥3 credits and
+  haven't ordered in 7 days — 466 idle credits.
+
+### Known-open
+
+- ⚠️ **Build 19 not cut.** Until it ships and is adopted, none of the client
+  fixes above exist for users.
+- ⚠️ **`20260725130000_hide_route_cost_columns` deliberately NOT applied.**
+  Postgres needs SELECT on every column to answer `select=*`, and the shipped
+  `CatalogAPI` still sends it — applying this before build 19 is *adopted* makes
+  the catalog fail to load and every price render "Unavailable" for the whole
+  install base. Client-first, revoke-second, in that order.
+- ⚠️ **`esim_plans` publishes the wholesale cost book** to anyone with the
+  publishable key (`last_cost_cents`, `smoothed_cost_cents`) — the `routes` leak
+  repeated, and **neither half is done**: `EsimPlansAPI.fetch()` still sends
+  `select=*`. Needs the same two-phase rollout.
+- ⚠️ **`supabase_admin` default privileges not revoked** — needs membership in
+  that role. Covers objects created via the dashboard rather than migrations.
+  Statements in `20260727211000_default_privileges.sql`.
+- ⚠️ **The late-code rescue has never executed in production** (0 rows with
+  `late_watch_until`). Deployed and unproven; one deliberate cancel would confirm
+  it end-to-end.
+- ⚠️ **Migration drift: a fresh deploy would NOT reproduce production.** 43
+  recorded versions have no local file, ~29 files aren't recorded, two files share
+  version `20260719000000`, five migrations were applied twice, and ~10 functions
+  exist only in the live DB (`smspool_hot_combos` appears in zero migration
+  files). `db push` remains broken. Recover by writing each missing version out of
+  `schema_migrations.statements` — do NOT `migration repair --status reverted`.
+- ⚠️ **No test suite, and it shows.** Of ~20 changes made on 2026-07-27, **six
+  were regressions introduced that same day** — a disabled watchdog check, a
+  wholesale forfeit on every cancel, invisible rescued codes, an orphaned cancel
+  path, a stale constant copy, and a timer/hold interaction. All were caught by
+  post-hoc review, two only by luck. Until something automated covers the order
+  lifecycle and the money paths, assume a similar rate on the next batch.
+- ⚠️ **`credits.60` / `credits.150` still unapproved**, so the two best-value packs
+  don't exist for users and the largest purchasable pack is 30 credits. `credits.150`
+  is `DEVELOPER_REJECTED` and needs the ASC web UI. Note `MAX_WHOLESALE_CENTS = 750`
+  is justified as "150 credits × $0.05" — that pack not existing is why ~1,500
+  routes in the 80–150 credit band need 3–5 separate purchases.
+- ⚠️ **~1,050 lines of removable code identified** and not removed: dead
+  virtualsms paths, `sync-smspool` (unscheduled, self-gated AND calling a
+  nonexistent RPC), `AppState.routes` (written once, never read, ~3 MB of
+  observation-tracked memory), and the duplicated constants above.
+- ⚠️ **Supabase project is on the FREE plan (no backups).** Owner action.
 
 ## Error UX rule
 
