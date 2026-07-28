@@ -344,6 +344,13 @@ Deno.serve(async (req) => {
       // degrades to "say nothing" rather than to numbers about a provider we
       // no longer use.
       ["arrivalTiming", "refresh_arrival_timing"],
+      // Country-level delivery evidence. Steering falls back to a tie-break
+      // whenever the exact route has no record — which is ~17,800 of 17,800
+      // minus 7 — and that tie-break used to be PRICE, i.e. "always pick the
+      // cheapest country in the catalog". This is the evidence that replaces
+      // it. Must run AFTER the route/service refreshes for the same reason
+      // they are ordered: it reads the same order rows they classify.
+      ["countryEvidence", "refresh_country_delivery"],
     ] as const
   ) {
     try {

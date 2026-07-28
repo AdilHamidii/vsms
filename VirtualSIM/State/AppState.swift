@@ -330,18 +330,50 @@ final class AppState {
         return .measured(codes: codes, attempts: attempts)
     }
 
+    /// How this COUNTRY has delivered across every service, over 30 days, on
+    /// the provider we currently use — or nil when we've never had a conclusive
+    /// order there. Server-computed by `refresh_country_delivery`.
+    ///
+    /// Used ONLY to order routes we have no route-level record for — never
+    /// rendered. It is not a claim about the specific route the user is
+    /// looking at, so it must not reach the badge, which says exactly what was
+    /// measured for that pair and nothing else.
+    ///
+    /// Deliberately NOT rolled up client-side from `routes.success_*`, which
+    /// was the first attempt: that data carries no provider scoping the client
+    /// can apply, so the roll-up silently mixed in smspool/virtualsms numbers
+    /// we no longer sell (all 5 of Indonesia's failures, 5 of South Africa's 8)
+    /// and it saw only 12 of the 25 countries we have order history for.
+    func countryRatio(_ country: Country) -> Double? { country.deliveryRatio }
+
+    /// Sort key for a route with no record of its own: country evidence first,
+    /// price only as the final tie-break.
+    ///
+    /// Ordering untested routes by price was picking the cheapest country in
+    /// the catalog every time, which is Colombia — and hiding Colombia does not
+    /// fix it, because the next-cheapest country simply inherits the traffic
+    /// (measured: il/bd/vn/ph, all never tested; cl 2/13, za 0/8, id 0/5).
+    /// The floor regenerates, so the rule has to change, not the inventory.
+    private func untestedKey(_ country: Country, price: Int) -> (Int, Int, Int) {
+        guard let ratio = countryRatio(country) else {
+            return (1, 0, price)                 // country unknown too
+        }
+        return ratio > 0 ? (0, -Int(ratio * 100), price)   // country delivers
+                         : (2, 0, price)                    // country measured 0
+    }
+
     /// The country to land on when the user picks `service`. Ranks by
     /// evidence, but NEVER silently swaps a working selection:
     ///  1. A country we've measured delivering wins — real steering.
     ///  2. Otherwise KEEP `current` when the service is bookable there and not
     ///     measured-failing. The sheet just showed the user a price for that
     ///     country; the buy button must say the same number.
-    ///  3. Otherwise the cheapest untested bookable country. The old rule took
-    ///     the PRICIEST — a SMSPool-era heuristic where the cheapest pool
-    ///     really was the worst inventory. With SMSPVA, per-country carrier
-    ///     prices are flat and the cross-country spread is country cost, not
-    ///     quality — "priciest" was quoting 40cr Thailand right after the list
-    ///     showed 3cr Netherlands, on zero evidence.
+    ///  3. Otherwise the best untested bookable country, ranked by that
+    ///     COUNTRY's measured record and only then by price — see
+    ///     `untestedKey`. Both previous rules were price rules: "priciest"
+    ///     (a SMSPool-era pool heuristic) quoted 40cr Thailand right after the
+    ///     list showed 3cr Netherlands, and "cheapest" that replaced it walks
+    ///     straight into Colombia on every service it can reach.
     ///  4. Everything left is measured-failing; give back the cheapest.
     func bestCountry(for service: Service, keeping current: Country? = nil) -> Country? {
         let bookable = countries.filter { cost(for: service, country: $0) != nil }
@@ -374,9 +406,13 @@ final class AppState {
             return current
         }
 
-        // 3) Cheapest untested.
+        // 3) Best untested — by the COUNTRY's record, price last. See
+        //    `untestedKey`: "cheapest" here was how a new user arrived at
+        //    Colombia, the cheapest of all 69 countries.
         let untested = bookable.filter { deliveryRecord(for: service, country: $0) == .notTested }
-        if let pick = untested.min(by: { priceOf($0) < priceOf($1) }) { return pick }
+        if let pick = untested.min(by: {
+            untestedKey($0, price: priceOf($0)) < untestedKey($1, price: priceOf($1))
+        }) { return pick }
 
         // 4) Everything left is measured-failing; give back the cheapest.
         return bookable.min(by: { priceOf($0) < priceOf($1) })
@@ -486,23 +522,35 @@ final class AppState {
     ///
     /// Cheapest is the one ranking rule guaranteed to surface the inventory
     /// nobody has yet been willing to pay for. Now tiers exactly like
-    /// `bestCountry`: proven → untested → proven-bad, cheapest within a tier,
+    /// `bestCountry`: proven → untested-in-a-good-country → untested-unknown →
+    /// untested-in-a-bad-country → measured-failing, cheapest within a tier,
     /// and still bounded by `balance` so it can only return something buyable.
     ///
-    /// This is a mitigation, not a cure: at 3 credits the affordable set is
-    /// overwhelmingly untested, so the tiering mostly just avoids routes we
-    /// have measured FAILING. Landing new users on proven inventory is a
-    /// pricing question (grant size vs route price), not a ranking one.
+    /// The country tier matters because at 3 credits the affordable set is
+    /// almost entirely untested (1,606 routes, against **2** with a record),
+    /// so route-level evidence has nothing to say and price used to decide by
+    /// default. Country-level evidence at least distinguishes Bulgaria (0 of 7)
+    /// from Switzerland (4 of 4).
+    ///
+    /// Still a mitigation, not a cure: landing new users on genuinely proven
+    /// inventory is a pricing question (grant size vs route price), not a
+    /// ranking one.
     private func affordableFallbackCountry(for service: Service) -> Country? {
         var best: (country: Country, key: (Int, Int, Int))?
         for c in countries {
             guard let price = cost(for: service, country: c), price <= balance else { continue }
             let key: (Int, Int, Int)
             if let ratio = deliveryRecord(for: service, country: c).ratio {
+                // Route-level zero is stronger evidence than country-level
+                // zero, so it sorts BELOW an untested route in a bad country.
                 key = ratio > 0 ? (0, -Int(ratio * 100), price)   // proven
-                                : (2, 0, price)                   // proven-bad
+                                : (4, 0, price)                   // proven-bad
             } else {
-                key = (1, 0, price)                               // untested
+                // Untested: fall back to the country's own record rather than
+                // to price. Offset by 1 so a route with NO record can never
+                // outrank one we have measured delivering.
+                let k = untestedKey(c, price: price)
+                key = (k.0 + 1, k.1, k.2)
             }
             if best == nil || key < best!.key { best = (c, key) }
         }
@@ -995,15 +1043,22 @@ final class AppState {
             //     over one we simply hadn't tried. Exactly backwards at the one
             //     moment the user has already been let down once.
             //
-            // Same tiering as bestCountry / CountrySheet: proven → untested →
-            // proven-bad, ties on the cheapest.
+            //  c. Untested routes then tied on PRICE, i.e. the retry after a
+            //     failure steered to the cheapest country in the catalog —
+            //     Colombia — which is where a good share of first failures
+            //     happen in the first place. Retrying into the same bargain
+            //     bin is the worst possible answer here.
+            //
+            // Same tiering as bestCountry / CountrySheet: proven → untested
+            // ranked by the COUNTRY's record → measured-failing.
             func retryKey(_ c: Country) -> (Int, Int, Int) {
                 let price = cost(for: svc, country: c) ?? .max
                 guard let ratio = deliveryRecord(for: svc, country: c).ratio else {
-                    return (1, 0, price)                      // untested
+                    let k = untestedKey(c, price: price)
+                    return (k.0 + 1, k.1, k.2)                     // untested
                 }
                 return ratio > 0 ? (0, -Int(ratio * 100), price)   // proven
-                                 : (2, 0, price)                   // proven-bad
+                                 : (4, 0, price)                   // proven-bad
             }
             next = alternatives.min { retryKey($0) < retryKey($1) } ?? order.country
         }
@@ -1018,7 +1073,7 @@ final class AppState {
         // running unconditionally afterwards, which meant a rejected cancel
         // left the original order `waiting` AND charged for a replacement —
         // two live paid orders from one tap. That is now reachable on purpose:
-        // the server refuses cancels inside the 120s minimum hold, so a reroll
+        // the server refuses cancels inside the 180s minimum hold, so a reroll
         // at 30s returns an error rather than a released number.
         do {
             let server = try await orders.cancel(orderId: order.id)
