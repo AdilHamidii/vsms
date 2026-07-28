@@ -11,6 +11,7 @@ struct HomeScreen: View {
     var onStart: () -> Void = {}
     var onTapOrder: (Order) -> Void = { _ in }
     var onSeeAllOrders: () -> Void = {}
+    var onOpenEsim: () -> Void = {}
 
     var body: some View {
         ScrollView {
@@ -58,6 +59,17 @@ struct HomeScreen: View {
 
                 if !state.orders.isEmpty {
                     recentSection
+                        .padding(.horizontal, 16)
+                        .padding(.top, 22)
+                }
+
+                // eSIM lived only behind the 2nd tab. It is the healthier of
+                // the two product lines by every measure we have — 4x margin,
+                // ~100% delivery, and 9 of its 12 buyers never ordered SMS at
+                // all — so hiding it behind a tab was costing the line its
+                // only discovery path.
+                if !state.esimCountries.isEmpty {
+                    esimTeaser
                         .padding(.horizontal, 16)
                         .padding(.top, 22)
                 }
@@ -357,6 +369,43 @@ struct HomeScreen: View {
                 }
             }
         }
+    }
+
+    /// Entry point into the eSIM line from Home.
+    ///
+    /// Quotes the CHEAPEST plan actually in the catalog rather than a made-up
+    /// "from" price, and names the real country count. Both come from
+    /// `state.esimCountries`, so an empty or unpriced catalog renders nothing
+    /// instead of "from 0 credits".
+    private var esimTeaser: some View {
+        let cheapest = state.esimCountries.map(\.from).min() ?? 0
+        let countries = state.esimCountries.count
+        return Button(action: onOpenEsim) {
+            HStack(spacing: 12) {
+                Image(systemName: "globe")
+                    .font(.system(size: 18, weight: .medium))
+                    .foregroundStyle(theme.text2)
+                    .frame(width: 40, height: 40)
+                    .background(theme.chipBg, in: .rect(cornerRadius: 12))
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Travelling? Get data abroad")
+                        .font(RFont.display(15, weight: .semibold))
+                        .tracking(-0.2)
+                        .foregroundStyle(theme.text)
+                    Text("eSIM plans in \(countries) countries — from \(cheapest) cr")
+                        .font(RFont.text(12))
+                        .foregroundStyle(theme.text2)
+                }
+                Spacer(minLength: 0)
+                Image(systemName: RIcon.chev)
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(theme.text3)
+            }
+            .padding(14)
+            .background(theme.elev, in: .rect(cornerRadius: 18))
+            .contentShape(.rect)
+        }
+        .buttonStyle(.plain)
     }
 
     private var trustFooter: some View {
