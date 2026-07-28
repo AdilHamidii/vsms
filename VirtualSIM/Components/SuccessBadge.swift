@@ -53,8 +53,13 @@ struct SuccessBadge: View {
             // "2 of 7" rather than "29%". A percentage off a 7-order sample
             // wears the confidence of a 700-order one; the raw pair carries its
             // own uncertainty and needs no asterisk.
+            //
+            // The verb stays in the COMPACT form too. A bare "2 of 7" next to a
+            // coloured dot does not say what is being counted — it could read
+            // as position in a list, or stock. It pairs with "Not tested" on
+            // the same surface, and that phrase names its own subject.
             return compact
-                ? String(localized: "\(codes) of \(attempts)")
+                ? String(localized: "Worked \(codes) of \(attempts)")
                 : String(localized: "Worked \(codes) of \(attempts) times")
         }
     }
