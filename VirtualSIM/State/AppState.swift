@@ -471,17 +471,40 @@ final class AppState {
     private func bestAffordableCountry(for service: Service) -> Country? {
         guard let best = bestCountry(for: service),
               let c = cost(for: service, country: best), c <= balance
-        else { return cheapestAffordableCountry(for: service) }
+        else { return affordableFallbackCountry(for: service) }
         return best
     }
 
-    /// Cheapest available country whose route for `service` costs no more than
-    /// the current balance, or nil when none is affordable.
-    private func cheapestAffordableCountry(for service: Service) -> Country? {
-        var best: (country: Country, cost: Int)?
+    /// Best country for `service` the current balance can actually reach.
+    ///
+    /// This used to return the outright CHEAPEST affordable route with no
+    /// regard for evidence, and that fallback is the common path for a new
+    /// user, because the evidence-first pick is usually unaffordable at the
+    /// 3-credit signup grant. Measured 2026-07-28: it lands a brand-new user on
+    /// **leboncoin/co — 2 cr, never tested, in a country measuring 17% delivery
+    /// over 30 days** — while leboncoin/ch is 4-of-4 but costs 7.
+    ///
+    /// Cheapest is the one ranking rule guaranteed to surface the inventory
+    /// nobody has yet been willing to pay for. Now tiers exactly like
+    /// `bestCountry`: proven → untested → proven-bad, cheapest within a tier,
+    /// and still bounded by `balance` so it can only return something buyable.
+    ///
+    /// This is a mitigation, not a cure: at 3 credits the affordable set is
+    /// overwhelmingly untested, so the tiering mostly just avoids routes we
+    /// have measured FAILING. Landing new users on proven inventory is a
+    /// pricing question (grant size vs route price), not a ranking one.
+    private func affordableFallbackCountry(for service: Service) -> Country? {
+        var best: (country: Country, key: (Int, Int, Int))?
         for c in countries {
-            guard let cost = cost(for: service, country: c), cost <= balance else { continue }
-            if best == nil || cost < best!.cost { best = (c, cost) }
+            guard let price = cost(for: service, country: c), price <= balance else { continue }
+            let key: (Int, Int, Int)
+            if let ratio = deliveryRecord(for: service, country: c).ratio {
+                key = ratio > 0 ? (0, -Int(ratio * 100), price)   // proven
+                                : (2, 0, price)                   // proven-bad
+            } else {
+                key = (1, 0, price)                               // untested
+            }
+            if best == nil || key < best!.key { best = (c, key) }
         }
         return best?.country
     }

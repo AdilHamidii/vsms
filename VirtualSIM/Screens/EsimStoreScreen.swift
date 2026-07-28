@@ -180,9 +180,24 @@ private struct EsimCountryPlans: View {
                                 }
                                 Spacer(minLength: 0)
                                 if let cr = p.retailCredits {
-                                    HStack(alignment: .firstTextBaseline, spacing: 3) {
-                                        Text("\(cr)").font(RFont.display(16, weight: .semibold)).foregroundStyle(theme.text)
-                                        Text("cr").font(RFont.text(12, weight: .medium)).foregroundStyle(theme.text2)
+                                    // Say what the balance can actually reach.
+                                    // The largest APPROVED credit pack is 30 cr
+                                    // while the median eSIM plan is 25 and the
+                                    // mean is 59, so "can I afford this?" is the
+                                    // live question on this screen — and a bare
+                                    // price does not answer it.
+                                    let affordable = cr <= state.balance
+                                    VStack(alignment: .trailing, spacing: 1) {
+                                        HStack(alignment: .firstTextBaseline, spacing: 3) {
+                                            Text("\(cr)").font(RFont.display(16, weight: .semibold))
+                                                .foregroundStyle(affordable ? theme.text : theme.text2)
+                                            Text("cr").font(RFont.text(12, weight: .medium)).foregroundStyle(theme.text2)
+                                        }
+                                        if !affordable {
+                                            Text("+\(cr - state.balance) more")
+                                                .font(RFont.text(11, weight: .medium))
+                                                .foregroundStyle(theme.text3)
+                                        }
                                     }
                                 }
                             }
