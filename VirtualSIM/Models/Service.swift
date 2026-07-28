@@ -43,14 +43,30 @@ struct Service: Identifiable, Hashable, Codable {
         arrivalP50Seconds.map { String(localized: "~\($0)s") }
     }
 
-    /// Full sentence for the waiting screen. Phrasing follows `arrivalScope`
+    /// Full sentence for the WAITING screen. Phrasing follows `arrivalScope`
     /// so a global band is never presented as this service's own record.
+    ///
+    /// Deliberately quotes **p90, not p50** — and that is the whole point of
+    /// this property. A median is wrong for half of all codes *by definition*,
+    /// so quoting it next to a running clock states a deadline we miss half the
+    /// time, at the exact moment the user is deciding whether to hit ✕.
+    /// Measured 2026-07-28: the live global band is p50 59s / p90 161s, we were
+    /// printing "about 59s", and first-time users cancelled at a median of
+    /// **104s** — past our stated number, well short of the real one. **28 of
+    /// 37 first orders were cancelled and not one of them ever got a code**,
+    /// while first-timers who let the window run delivered 33%.
+    ///
+    /// This is the same mistake as the seed `etaSeconds` (28s promised against
+    /// 53s actual) one layer up: that fix corrected the data source and kept
+    /// the framing. Rounding is UP, for the same reason — over-stating the wait
+    /// costs nothing, under-stating it destroys a paid order.
     var typicalWaitSentence: String? {
-        guard let p50 = arrivalP50Seconds else { return nil }
+        guard let p90 = arrivalP90Seconds, p90 > 0 else { return nil }
+        let mins = max(1, Int(ceil(Double(p90) / 60.0)))
         if arrivalScope == "service" {
-            return String(localized: "Usually arrives in about \(p50)s.")
+            return String(localized: "Most \(name) codes arrive within \(mins) min.")
         }
-        return String(localized: "Codes usually arrive in about \(p50)s.")
+        return String(localized: "Most codes arrive within \(mins) min.")
     }
 
     /// How confident we are that this service delivers, from our own orders.
