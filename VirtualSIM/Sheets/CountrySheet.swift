@@ -61,14 +61,25 @@ struct CountrySheet: View {
             // above genuinely untested ones. 323 routes carry a seeded rate
             // against 10 measured, so "Best success" was mostly sorting on a
             // vendor's opinion of its own inventory.
+            //
+            // Within the untested block, order by the COUNTRY's own measured
+            // record before price. Ranking untested routes by price put the
+            // cheapest country in the catalog at the top of "Best success" for
+            // almost every service — which is Colombia, and its two measured
+            // routes read 1 of 3 and 0 of 2. A sort literally labelled "Best
+            // success" was leading with the bargain bin.
             func key(_ c: Country) -> (Int, Int, Int) {
                 let price = state.cost(for: currentService, country: c) ?? .max
                 let avail = state.cost(for: currentService, country: c) != nil ? 0 : 1
                 guard let ratio = state.deliveryRecord(for: currentService, country: c).ratio else {
-                    return (avail, 1, price)   // untested: cheapest first
+                    guard let cr = state.countryRatio(c) else {
+                        return (avail, 2, price)          // nothing known at all
+                    }
+                    return cr > 0 ? (avail, 1, -Int(cr * 100))   // country delivers
+                                  : (avail, 3, price)            // country measured 0
                 }
                 // Percent as a negative so higher delivery sorts first.
-                return ratio > 0 ? (avail, 0, -Int(ratio * 100)) : (avail, 2, price)
+                return ratio > 0 ? (avail, 0, -Int(ratio * 100)) : (avail, 4, price)
             }
             list.sort { key($0) < key($1) }
         }
