@@ -8,6 +8,7 @@ struct Route: Codable, Hashable {
     let successRate: Int?    // 0-100; nil = no badge
     let rateSource: String?  // "measured" | "seeded"; only measured may be stated as fact
     let successSample: Int?  // conclusive orders behind successRate; nil = seeded
+    let successCodes: Int?   // codes delivered — the numerator of "worked X of Y"
     let premiumCredits: Int? // real-SIM tier price; nil = no premium option
 
     // `lastCostCents` was decoded here and never read by a single call site —
@@ -57,7 +58,7 @@ struct CatalogAPI {
             .get, path: "rest/v1/routes",
             query: [
                 URLQueryItem(name: "select",
-                             value: "service_id,country_id,retail_credits,status,success_rate,rate_source,success_sample,premium_credits"),
+                             value: "service_id,country_id,retail_credits,status,success_rate,rate_source,success_sample,success_codes,premium_credits"),
                 URLQueryItem(name: "or", value: "(retail_credits.not.is.null,status.neq.active,success_rate.not.is.null)"),
             ],
             authenticated: false

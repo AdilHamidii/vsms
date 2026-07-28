@@ -77,7 +77,7 @@ struct CountrySheet: View {
                         ForEach(Array(sorted.enumerated()), id: \.element.id) { idx, c in
                             CountryRow(country: c,
                                        price: state.cost(for: currentService, country: c),
-                                       rate: state.rateInfo(for: currentService, country: c),
+                                       record: state.deliveryRecord(for: currentService, country: c),
                                        balance: state.balance,
                                        isLast: idx == sorted.count - 1) {
                                 onPick(c)
@@ -115,7 +115,7 @@ private struct CountryRow: View {
     @Environment(\.theme) private var theme
     let country: Country
     let price: Int?
-    let rate: (rate: Int, isMeasured: Bool, sample: Int?)?
+    let record: DeliveryRecord
     let balance: Int
     let isLast: Bool
     let onTap: () -> Void
@@ -156,9 +156,9 @@ private struct CountryRow: View {
                                 .font(RFont.text(12, weight: .medium))
                                 .foregroundStyle(theme.text3)
                         }
-                        if let rate {
-                            SuccessBadge(rate: rate.rate, measured: rate.isMeasured, sample: rate.sample, compact: true)
-                        }
+                        // Always rendered — see DeliveryRecord. A missing
+                        // badge used to read as "fine" on every untested route.
+                        SuccessBadge(record: record, compact: true)
                     }
                 }
                 .padding(.horizontal, 14)

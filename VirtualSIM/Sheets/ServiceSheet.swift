@@ -100,7 +100,7 @@ struct ServiceSheet: View {
                     ForEach(filtered) { service in
                         ServiceRow(service: service,
                                    price: state.cost(for: service, country: currentCountry),
-                                   rate: state.rateInfo(for: service, country: currentCountry),
+                                   record: state.deliveryRecord(for: service, country: currentCountry),
                                    balance: state.balance) {
                             onPick(service)
                             dismiss()
@@ -125,7 +125,7 @@ private struct ServiceRow: View {
     /// Real synced route price for the currently-selected country, or nil when
     /// the (service, country) pair has no confirmed price (unavailable to book).
     let price: Int?
-    let rate: (rate: Int, isMeasured: Bool, sample: Int?)?
+    let record: DeliveryRecord
     let balance: Int
     let onTap: () -> Void
 
@@ -152,10 +152,8 @@ private struct ServiceRow: View {
                                 .font(RFont.text(12))
                                 .foregroundStyle(theme.text2)
                         }
-                        if let rate {
-                            Text("·").foregroundStyle(theme.text3)
-                            SuccessBadge(rate: rate.rate, measured: rate.isMeasured, sample: rate.sample, compact: true)
-                        }
+                        Text("·").foregroundStyle(theme.text3)
+                        SuccessBadge(record: record, compact: true)
                     }
                 }
                 Spacer(minLength: 0)
