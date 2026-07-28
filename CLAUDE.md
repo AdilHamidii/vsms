@@ -598,22 +598,45 @@ lookback that ever held a number.
    measured route in a catalog of 17,807** — `facebook/dk` was measured at 80%
    and deleted three days later. A measured rate is now cleared only when the
    new window genuinely has nothing to say about that route.
-4. **Auto-hide is REVERSIBLE.** It used to be one-way: the function cleared an
-   aged-out rate but never restored `status`, so a route hidden on two bad
-   orders stayed invisible forever — and being invisible, it could never earn
-   contrary evidence. A self-sealing catalog that only ever shrinks. It now
-   un-hides both when evidence ages out and on recovery (`received > 0`). Safe
-   because `sync-prices` re-evaluates `blocked_routes` and the price ceiling
-   hourly and re-hides anything genuinely unsellable.
+4. **Auto-hide for poor delivery is GONE (2026-07-28, `20260728120000`) — label,
+   don't hide.** `refresh_route_observed_success` no longer sets `status =
+   'hidden'` for delivering zero; it only measures, and only ever *un*-hides
+   (recovery, and evidence ageing out) so routes hidden by the old rule can come
+   back. Hiding for **price** (`sync-prices`, over `MAX_WHOLESALE_CENTS`) and for
+   **`blocked_routes`** is untouched — those mean "you cannot buy this", not
+   "this performed badly". The change was small in the catalog (**only 4 routes**
+   were evidence-hidden; 472 of the 688 hidden are the price kind) and large in
+   the UI: see the label rule below. Note the un-hide statement **must** exclude
+   `blocked_routes` — without that clause it resurrects `whatsapp|us`, which is
+   blocked because those numbers don't work at all.
 
 `refresh_service_delivery`'s wipe is scoped the same way, for the same reason:
 unconditional, it left any quiet service with NULL evidence, and
 `apply_measured_service_ranking` needs `observed_attempts >= 8` — so a service
 that went quiet was frozen at its last `sort_order`, unable to be re-evaluated.
 
-Client side, **colour carries confidence, not magnitude** (`SuccessBadge`): a
-seeded rate renders muted whatever it says, green/amber/red are reserved for
-measured. A tilde is not a warning — nobody reads a tilde.
+Client side, **every route carries a label and there are exactly two of them**
+(`DeliveryRecord` in `Components/SuccessBadge.swift`): **"Not tested"** or
+**"Worked X of Y times"**. Rendered unconditionally in ServiceSheet, CountrySheet,
+Home and Checkout.
+
+The third state is what was wrong. A route we had never sold rendered **no badge
+at all**, and an absent badge reads as *fine*, not as *unknown* — which described
+**17,471 of 17,804 active routes**. Silence was the answer to almost every "is
+this any good?".
+
+Two rules that look like details and are not:
+- **A seeded rate is `.notTested`.** SMSPVA's per-country grade (323 routes) is a
+  vendor's number about a route we may never have sold once. The old muted
+  "~40% estimate" was still a *number*, and users read numbers as evidence.
+- **"2 of 7", never "29%".** A percentage off a 7-order sample wears the
+  confidence of a 700-order one; the raw pair carries its own uncertainty.
+
+`routes.success_codes` is the numerator (backfilled + written by
+`refresh_route_observed_success`) — deliberately stored rather than derived from
+the rounded `success_rate`, because an off-by-one in "worked N times" discredits
+the whole label. **Colour still carries confidence**: `.notTested` is always
+muted; green/amber/red are reserved for measured records.
 
 ### Why a service reads "Unavailable" — the price ceiling
 

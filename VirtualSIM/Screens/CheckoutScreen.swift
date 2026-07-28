@@ -149,22 +149,23 @@ struct CheckoutScreen: View {
                         ReceiptValue(primary: "Real carrier number",
                                      secondaryText: "Best delivery — refunded if it fails")
                     })
-                } else if state.showMetrics, let rate = state.rateInfo(for: service, country: country) {
+                } else if state.showMetrics {
+                    // Always shown, including "Not tested". Previously this row
+                    // was omitted entirely when we had no rate — so the receipt
+                    // for a route we had never sold looked exactly like one for
+                    // a route with nothing to hide.
                     ReceiptRow(label: "Delivery", leading: {
                         ReceiptIconBox(symbol: RIcon.shield)
                     }, trailing: {
-                        if rate.isMeasured {
-                            // State the sample on thin evidence. After the
-                            // asymmetric demotion gate a route can be
-                            // "measured 0%" off just 2 attempts — true, but
-                            // "0% delivered" alone implies a settled fact.
-                            ReceiptValue(primary: (rate.sample.map { $0 < 5 } ?? false)
-                                            ? "\(rate.rate)% of \(rate.sample ?? 0) tries"
-                                            : "\(rate.rate)% delivered",
-                                         secondaryText: rate.rate >= 70 ? "Reliable route" : "Lower-success — refunded if it fails")
-                        } else {
-                            ReceiptValue(primary: "~\(rate.rate)% estimated",
-                                         secondaryText: "Based on provider stats — refunded if it fails")
+                        switch state.deliveryRecord(for: service, country: country) {
+                        case .notTested:
+                            ReceiptValue(primary: "Not tested",
+                                         secondaryText: "No orders on this route yet — refunded if it fails")
+                        case let .measured(codes, attempts):
+                            ReceiptValue(primary: "Worked \(codes) of \(attempts) times",
+                                         secondaryText: attempts > 0 && 100 * codes / attempts >= 70
+                                            ? "Reliable route"
+                                            : "Lower-success — refunded if it fails")
                         }
                     })
                 }

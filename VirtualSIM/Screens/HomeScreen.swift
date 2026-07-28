@@ -192,8 +192,10 @@ struct HomeScreen: View {
         state.cost(for: state.lastService, country: state.lastCountry)
     }
 
-    private var routeRate: (rate: Int, isMeasured: Bool, sample: Int?)? {
-        state.rateInfo(for: state.lastService, country: state.lastCountry)
+    /// Delivery record for the currently-selected route. Never nil — an
+    /// untested route says so rather than showing nothing. See DeliveryRecord.
+    private var routeRecord: DeliveryRecord {
+        state.deliveryRecord(for: state.lastService, country: state.lastCountry)
     }
 
     /// A user who has never placed an order — show them a "start here" framing
@@ -298,17 +300,19 @@ struct HomeScreen: View {
                             Spacer()
                             Metric(label: "No code", value: "Refunded", accent: theme.live)
                             Spacer()
-                            if let routeRate {
-                                // Same rule as SuccessBadge: colour signals
-                                // CONFIDENCE. A seeded rate is a provider
-                                // guess and stays muted however good it looks.
-                                Metric(label: "Success",
-                                       value: routeRate.isMeasured ? "\(routeRate.rate)%" : "~\(routeRate.rate)%",
-                                       accent: routeRate.isMeasured
-                                           ? (routeRate.rate >= 70 ? theme.live : theme.warn)
-                                           : theme.text3)
-                            } else {
-                                Metric(label: "Held for", value: "8 min")
+                            // Always a delivery record, never an omission.
+                            // Colour still signals CONFIDENCE: "Not tested" is
+                            // muted, and only a measured record earns green.
+                            switch routeRecord {
+                            case .notTested:
+                                Metric(label: "Delivery", value: "Not tested", accent: theme.text3)
+                            case let .measured(codes, attempts):
+                                Metric(label: "Delivery",
+                                       value: "\(codes) of \(attempts)",
+                                       accent: attempts > 0 && 100 * codes / attempts >= 70
+                                           ? theme.live
+                                           : (attempts > 0 && 100 * codes / attempts >= 40
+                                              ? theme.warn : theme.fail))
                             }
                         }
                         .padding(.top, 14)

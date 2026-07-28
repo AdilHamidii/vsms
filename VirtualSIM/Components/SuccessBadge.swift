@@ -1,42 +1,62 @@
 import SwiftUI
 
-/// A small delivery-success badge. Shown wherever a per-route success rate is
-/// available. Only a MEASURED rate may read as fact ("delivered"); seeded
-/// estimates carry a tilde + "est." so a provider prior is never presented as
-/// our own delivery record.
+/// What we can honestly say about a route's delivery record.
 ///
-/// Colour carries confidence, not just magnitude. A seeded rate is SMSPVA's
-/// own per-country grade (grade 3 → 90) — a vendor's marketing number about a
-/// route we may have never sold once. Rendering that in the same confident
-/// green as a measured 90% made "~90%" on a route that had delivered 0 of 2
-/// look like earned data; the tilde was the only tell and nobody reads a
-/// tilde. Estimates are therefore always muted, whatever the number says.
-/// Green/amber are reserved for rates we actually measured.
+/// There are exactly TWO states, and that is the point. The previous design had
+/// three — measured, seeded estimate, and nothing at all — and the third was
+/// the bug: a route we had never sold rendered NO badge, and an absent badge
+/// reads as "fine" rather than "unknown". Measured 2026-07-28, **17,471 of
+/// 17,804 active routes** were in that silent state, so "no opinion" was the
+/// answer the UI gave to almost every "is this any good?".
+///
+/// A seeded rate collapses into `.notTested` deliberately. It is SMSPVA's own
+/// per-country grade — a vendor's marketing number about a route we may never
+/// have sold once — and 323 routes carry one. Calling that "tested" is exactly
+/// the overclaim this replaces; the muted "~40% estimate" it used to render was
+/// still a number, and users read numbers as evidence.
+enum DeliveryRecord: Equatable {
+    /// Never conclusively measured. Covers "no data at all" and "vendor
+    /// estimate" alike — neither is a test we ran.
+    case notTested
+    /// `codes` delivered out of `attempts` conclusive orders in the window.
+    case measured(codes: Int, attempts: Int)
+}
+
+/// A small delivery-record badge, shown on EVERY route.
+///
+/// Colour carries confidence, not just magnitude: `.notTested` is always muted,
+/// however tempting it is to render an untested route optimistically. Green /
+/// amber / red are reserved for records we actually measured.
 struct SuccessBadge: View {
     @Environment(\.theme) private var theme
-    let rate: Int
-    var measured: Bool = false   // conservative default: estimate
-    var sample: Int? = nil       // conclusive orders behind a measured rate
+    let record: DeliveryRecord
     var compact: Bool = false
 
-    /// Below this, state the sample instead of a bare percentage. A route that
-    /// has gone 0-of-2 is genuinely measured, but "0% delivered" implies a
-    /// settled fact; "0% of 2 tries" is the same truth without the swagger.
-    private static let thinSample = 5
-
     private var color: Color {
-        guard measured else { return theme.text3 }
-        if rate >= 70 { return theme.live } else if rate >= 40 { return theme.warn } else { return theme.fail }
+        switch record {
+        case .notTested:
+            return theme.text3
+        case let .measured(codes, attempts):
+            guard attempts > 0 else { return theme.text3 }
+            let pct = 100 * codes / attempts
+            if pct >= 70 { return theme.live }
+            if pct >= 40 { return theme.warn }
+            return theme.fail
+        }
     }
 
     private var label: String {
-        guard measured else {
-            return compact ? "~\(rate)% est." : String(localized: "~\(rate)% estimate")
+        switch record {
+        case .notTested:
+            return String(localized: "Not tested")
+        case let .measured(codes, attempts):
+            // "2 of 7" rather than "29%". A percentage off a 7-order sample
+            // wears the confidence of a 700-order one; the raw pair carries its
+            // own uncertainty and needs no asterisk.
+            return compact
+                ? String(localized: "\(codes) of \(attempts)")
+                : String(localized: "Worked \(codes) of \(attempts) times")
         }
-        if let sample, sample < Self.thinSample {
-            return compact ? "\(rate)% · \(sample)" : String(localized: "\(rate)% of \(sample) tries")
-        }
-        return compact ? "\(rate)%" : String(localized: "\(rate)% delivered")
     }
 
     var body: some View {

@@ -284,6 +284,25 @@ final class AppState {
         return (rate, route.rateSource == "measured", route.successSample)
     }
 
+    /// The honest delivery record for a route.
+    ///
+    /// Unlike `rateInfo` this NEVER returns nil — every route gets a label,
+    /// which is the whole point. An absent badge was being read as reassurance
+    /// on the 17,471-of-17,804 active routes we have never measured, and
+    /// "no badge" is indistinguishable from "fine" at a glance.
+    ///
+    /// A seeded rate maps to `.notTested` on purpose: a provider's own grade is
+    /// not a test we ran. See `DeliveryRecord`.
+    func deliveryRecord(for service: Service, country: Country) -> DeliveryRecord {
+        guard let route = routeIndex["\(service.id)|\(country.id)"],
+              route.rateSource == "measured",
+              let codes = route.successCodes,
+              let attempts = route.successSample,
+              attempts > 0
+        else { return .notTested }
+        return .measured(codes: codes, attempts: attempts)
+    }
+
     /// The country to land on when the user picks `service`. Ranks by
     /// evidence, but NEVER silently swaps a working selection:
     ///  1. A country we've measured delivering wins — real steering.
