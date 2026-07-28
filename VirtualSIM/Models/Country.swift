@@ -29,11 +29,24 @@ struct Country: Identifiable, Hashable, Codable {
     var observedAttempts: Int?
     var observedCodes: Int?
 
-    /// Measured delivery ratio, or nil when we have never had a conclusive
-    /// order here. A country with attempts but no codes returns 0, which is a
-    /// real signal and must not be conflated with "unknown".
+    /// Minimum conclusive orders before a country's rate is worth steering on.
+    /// Matches `p_min_sample` in `refresh_route_observed_success`.
+    static let minDeliverySample = 3
+
+    /// Measured delivery ratio, or nil when we have too little to say. A
+    /// country with attempts but no codes returns 0, which is a real signal and
+    /// must not be conflated with "unknown".
+    ///
+    /// The sample floor is load-bearing, not defensive tidiness. Without it
+    /// three countries sitting at **1 of 1** (se, mx, at) scored a perfect
+    /// 1.0 and outranked Netherlands at 7 of 10 and Romania at 10 of 18 — so
+    /// the steering would have sent every new user to whichever country
+    /// happened to have exactly one lucky order. Same failure the badge rules
+    /// already guard against: a ratio off a tiny sample wears the confidence of
+    /// a large one.
     var deliveryRatio: Double? {
-        guard let a = observedAttempts, a > 0, let c = observedCodes else { return nil }
+        guard let a = observedAttempts, a >= Self.minDeliverySample,
+              let c = observedCodes else { return nil }
         return Double(c) / Double(a)
     }
 
