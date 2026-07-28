@@ -401,6 +401,62 @@ Standard orders also pin the route's real carrier whenever it fits the ceiling �
 probed 2026-07-21, the carrier costs the same or *less* than a random fill,
 because "random" usually means a `Donor*` VoIP pool that strict services reject.
 
+### Steering: never tie-break on price, and never "fix" it by hiding inventory
+
+Route-level evidence covers **7 of ~17,800 routes**, so essentially every route
+falls through to the tie-break — and that tie-break used to be **price**.
+Cheapest-first is the one ranking rule guaranteed to select the least-vetted
+inventory in the catalog. Colombia is the cheapest of all 69 countries (avg
+wholesale **$0.109**, median 2 cr), so that is where every ranker landed: a sort
+literally labelled *"Best success"* was leading with the bargain bin, and
+`affordableFallbackCountry` put new users on discord/co (0 of 2).
+
+**Hiding the bad country does not work, and the data is unambiguous.** With
+Colombia hidden, a 3-credit user lands on instagram→bd, discord→il, google→vn,
+tiktok→ph — **all never tested** — and where the next-cheapest countries have
+been measured they are *worse* (cl 2/13, za 0/8, ph 0/2, bd 0/1). Colombia
+(4 of 15) is the best performer in the cheap tier. **The price floor
+regenerates**: delete the cheapest country and the next one inherits the
+traffic, having thrown away the only measurement you had. Fix the rule, not the
+catalog.
+
+The replacement is `countries.observed_attempts/observed_codes/observed_orders`,
+written by **`refresh_country_delivery()`** (migration `20260728130000`, in
+`sync-prices`' hourly maintenance list). It mirrors `refresh_service_delivery`
+including all four evidence rules. Tiering everywhere is now: proven route →
+untested-in-a-good-country → untested-unknown → untested-in-a-bad-country →
+measured-failing route. Applied in **four** places — `bestCountry`,
+`affordableFallbackCountry`, `CountrySheet`'s "Best success", and the
+post-failure **retry picker** (which matters most: retrying into the same
+bargain bin is the worst possible answer after a user has already been let down).
+
+Two constraints:
+- **Country evidence is steering input and is NEVER rendered.** It is not a
+  claim about the specific route on screen; the badge keeps saying exactly what
+  was measured for that pair (see Badge confidence).
+- **Do not roll this up client-side from `routes.success_*`.** That was tried
+  and removed: it carries no provider scoping the client can apply, so it mixes
+  in retired-provider numbers (all 5 of Indonesia's failures and 5 of South
+  Africa's 8 are smspool/virtualsms), and it saw only **12 of the 25** countries
+  with order history against the server's 20.
+
+### Quote p90, never p50, next to a running clock
+
+The waiting screen printed *"Codes usually arrive in about 59s"* — the **median**,
+i.e. wrong for half of all codes by definition — beside a live timer and a ✕ that
+destroys a paid order. Live band is p50 59s / **p90 161s**.
+
+Measured 2026-07-28, every user's first order that got a number: **28 of 37 were
+cancelled and NOT ONE ever produced a code**; the 9 who let the window run
+delivered 33%. Median first-timer bail: **104s** — past our stated number, well
+short of the real one. `Service.typicalWaitSentence` now quotes p90 rounded
+**up** ("Most codes arrive within 3 min"), which also lines up with the 180s
+minimum hold. `typicalWaitShort` keeps p50 for browse/compare surfaces, where
+there is no clock and no destructive button.
+
+This is the seed-`etaSeconds` bug one layer up (28s promised against 53s actual):
+that fix corrected the data source and kept the framing.
+
 ### Measured arrival timing + evidence-gated warnings
 
 `services.eta_seconds` is seed data (22–35s, DB default 30, never recomputed) and
