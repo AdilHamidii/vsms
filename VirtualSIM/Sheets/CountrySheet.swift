@@ -54,13 +54,21 @@ struct CountrySheet: View {
             // the CHEAPEST: the old pricier-first rule was a SMSPool-era pool
             // heuristic; SMSPVA carrier prices carry no quality signal, so it
             // just floated the most expensive countries to the top.
+            //
+            // Tiering is on MEASURED evidence only. It used to read
+            // `successRate`, which includes SMSPVA's seeded per-country grade —
+            // so a route we had never sold was filed under "proven" and sorted
+            // above genuinely untested ones. 323 routes carry a seeded rate
+            // against 10 measured, so "Best success" was mostly sorting on a
+            // vendor's opinion of its own inventory.
             func key(_ c: Country) -> (Int, Int, Int) {
                 let price = state.cost(for: currentService, country: c) ?? .max
                 let avail = state.cost(for: currentService, country: c) != nil ? 0 : 1
-                guard let rate = state.successRate(for: currentService, country: c) else {
+                guard let ratio = state.deliveryRecord(for: currentService, country: c).ratio else {
                     return (avail, 1, price)   // untested: cheapest first
                 }
-                return rate > 0 ? (avail, 0, -rate) : (avail, 2, price)
+                // Percent as a negative so higher delivery sorts first.
+                return ratio > 0 ? (avail, 0, -Int(ratio * 100)) : (avail, 2, price)
             }
             list.sort { key($0) < key($1) }
         }

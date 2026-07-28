@@ -161,7 +161,7 @@ struct AccountScreen: View {
                 .padding(.horizontal, 4)
             Card {
                 VStack(alignment: .leading, spacing: 14) {
-                    Text("Share your code. A friend who joins with it gets **2 free credits** — and you get **5 credits** when they buy their first pack.")
+                    Text("Share your code. A friend who joins with it starts with **\(AppState.inviteJoinerCredits) free credits** — and you get **5 credits** when they buy their first pack.")
                         .font(RFont.text(14))
                         .lineSpacing(2)
                         .foregroundStyle(theme.text2)
@@ -186,8 +186,8 @@ struct AccountScreen: View {
                         .buttonStyle(.plain)
                         .disabled(state.profile?.referralCode == nil)
 
-                        if let code = state.profile?.referralCode {
-                            ShareLink(item: inviteMessage(code)) {
+                        if let invite = state.inviteMessage {
+                            ShareLink(item: invite) {
                                 HStack(spacing: 6) {
                                     Image(systemName: "square.and.arrow.up")
                                         .font(.system(size: 14, weight: .semibold))
@@ -454,10 +454,6 @@ struct AccountScreen: View {
 
     private func open(_ url: URL) {
         UIApplication.shared.open(url)
-    }
-
-    private func inviteMessage(_ code: String) -> String {
-        String(localized: "Get a private temporary number for verification codes on vSMS — my invite code \(code) gives you 2 free credits: https://apps.apple.com/app/id6774768570")
     }
 
     private func copyCode() {

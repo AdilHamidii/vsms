@@ -61,6 +61,33 @@ final class AppState {
     var orders: [Order] = []
     var filter: SortFilter = .all
     var profile: Profile?
+
+    /// Credits a friend actually lands with when they join on an invite code.
+    ///
+    /// This is the SUM of two separate grants, and getting it wrong is how the
+    /// invite copy came to understate itself by 60%: `handle_new_user` credits
+    /// `v_bonus := 3` at signup, and `redeem_referral` credits a further 2 when
+    /// the code is entered. Both share links said "2 free credits" — the
+    /// referral half only.
+    ///
+    /// It matters beyond marketing: measured delivery by starting balance is
+    /// 1 cr → 10.9%, 2 cr → 40.0%, 3 cr → 39.3%, and reachable catalog goes
+    /// 971 → 1,636 → 2,851 routes at 2 / 3 / 5 credits. A joiner starting at 5
+    /// is materially better placed than an organic signup at 3.
+    ///
+    /// Keep in lockstep with those two SQL functions; a constant duplicated
+    /// across a language boundary drifts silently.
+    static let inviteJoinerCredits = 5
+
+    /// Share text for the invite, in ONE place.
+    ///
+    /// It previously lived duplicated in `OtpScreen` and `AccountScreen`, each
+    /// carrying a comment asking the next editor to keep it identical to the
+    /// other — which is precisely how two copies drift apart.
+    var inviteMessage: String? {
+        guard let code = profile?.referralCode else { return nil }
+        return String(localized: "Get a private temporary number for verification codes on vSMS — join with my code \(code) and start with \(Self.inviteJoinerCredits) free credits: https://apps.apple.com/app/id6774768570")
+    }
     var maintenance: MaintenanceStatus = .off
 
     /// Clearing the checkout draft here is load-bearing — see
@@ -320,30 +347,39 @@ final class AppState {
         let bookable = countries.filter { cost(for: service, country: $0) != nil }
         guard !bookable.isEmpty else { return nil }
 
-        // 1) Anything we've actually seen deliver.
-        let proven = bookable.compactMap { c -> (Country, Int)? in
-            guard let r = successRate(for: service, country: c), r > 0 else { return nil }
-            return (c, r)
-        }
-        if let best = proven.max(by: { $0.1 < $1.1 }) { return best.0 }
+        let priceOf: (Country) -> Int = { self.cost(for: service, country: $0) ?? .max }
 
-        // 2) No evidence anywhere — stay where the user already is.
-        if let current,
-           cost(for: service, country: current) != nil,
-           (successRate(for: service, country: current) ?? 1) > 0 {
+        // 1) Anything we have actually SEEN deliver — measured only.
+        //
+        // This used to accept any `successRate > 0`, which includes SMSPVA's
+        // SEEDED per-country grade. So a route we had never sold, carrying a
+        // vendor number about the vendor's own inventory, was ranked as
+        // "proven" and beat every genuinely untested country. 323 routes carry
+        // a seeded rate against 10 measured ones, so the steering was almost
+        // entirely driven by the one signal we had already decided not to
+        // trust anywhere else in the app.
+        let proven = bookable.compactMap { c -> (Country, Double, Int)? in
+            guard let r = deliveryRecord(for: service, country: c).ratio, r > 0 else { return nil }
+            return (c, r, priceOf(c))
+        }
+        if let best = proven.max(by: { a, b in
+            a.1 != b.1 ? a.1 < b.1 : a.2 > b.2      // best ratio; ties -> cheaper
+        }) { return best.0 }
+
+        // 2) Nothing proven — stay where the user already is, unless we have
+        //    measured that route failing. Untested is not a reason to move: the
+        //    sheet just showed the user a price for this country.
+        if let current, cost(for: service, country: current) != nil,
+           !deliveryRecord(for: service, country: current).isMeasuredZero {
             return current
         }
 
         // 3) Cheapest untested.
-        let untested = bookable.filter { successRate(for: service, country: $0) == nil }
-        if let pick = untested.min(by: {
-            (cost(for: service, country: $0) ?? .max) < (cost(for: service, country: $1) ?? .max)
-        }) { return pick }
+        let untested = bookable.filter { deliveryRecord(for: service, country: $0) == .notTested }
+        if let pick = untested.min(by: { priceOf($0) < priceOf($1) }) { return pick }
 
         // 4) Everything left is measured-failing; give back the cheapest.
-        return bookable.min(by: {
-            (cost(for: service, country: $0) ?? .max) < (cost(for: service, country: $1) ?? .max)
-        })
+        return bookable.min(by: { priceOf($0) < priceOf($1) })
     }
 
     /// Country picker shows every country in the catalog. A specific
@@ -926,10 +962,27 @@ final class AppState {
             // seconds after the sheet quoted 3cr for the Netherlands. That is
             // the exact "priciest wins" heuristic already deleted from
             // bestCountry(for:) and CountrySheet; rerollNumber was missed.
-            next = alternatives.min {
-                (-(successRate(for: svc, country: $0) ?? -1), cost(for: svc, country: $0) ?? .max)
-                < (-(successRate(for: svc, country: $1) ?? -1), cost(for: svc, country: $1) ?? .max)
-            } ?? order.country
+            // Two further faults fixed here, both from ranking on `successRate`:
+            //
+            //  a. It counted SMSPVA's SEEDED grade as evidence, so a reroll
+            //     could steer a user who just failed onto a route we had never
+            //     sold, purely on the vendor's opinion of its own inventory.
+            //  b. `?? -1` sorted UNTESTED below measured-zero (key 1 vs 0), so
+            //     the retry preferred a route we had measured never delivering
+            //     over one we simply hadn't tried. Exactly backwards at the one
+            //     moment the user has already been let down once.
+            //
+            // Same tiering as bestCountry / CountrySheet: proven → untested →
+            // proven-bad, ties on the cheapest.
+            func retryKey(_ c: Country) -> (Int, Int, Int) {
+                let price = cost(for: svc, country: c) ?? .max
+                guard let ratio = deliveryRecord(for: svc, country: c).ratio else {
+                    return (1, 0, price)                      // untested
+                }
+                return ratio > 0 ? (0, -Int(ratio * 100), price)   // proven
+                                 : (2, 0, price)                   // proven-bad
+            }
+            next = alternatives.min { retryKey($0) < retryKey($1) } ?? order.country
         }
 
         isPlacingOrder = true

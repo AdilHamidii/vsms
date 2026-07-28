@@ -22,6 +22,22 @@ enum DeliveryRecord: Equatable {
     case measured(codes: Int, attempts: Int)
 }
 
+extension DeliveryRecord {
+    /// Delivered fraction, or nil when we have never measured this route.
+    ///
+    /// `nil` and `0` are deliberately different answers: "we don't know" must
+    /// never sort or read the same as "we know it fails". Ranking code that
+    /// collapses them with `?? 0` buries untested inventory below inventory we
+    /// have proven bad, which is how a catalog stops discovering anything.
+    var ratio: Double? {
+        guard case let .measured(codes, attempts) = self, attempts > 0 else { return nil }
+        return Double(codes) / Double(attempts)
+    }
+
+    /// Measured, and it has never delivered.
+    var isMeasuredZero: Bool { ratio == 0 }
+}
+
 /// A small delivery-record badge, shown on EVERY route.
 ///
 /// Colour carries confidence, not just magnitude: `.notTested` is always muted,
