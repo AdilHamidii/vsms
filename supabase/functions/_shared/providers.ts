@@ -57,26 +57,36 @@ export interface RouteCodes {
   dial: string;
 }
 
-/** Providers that can serve this route, preferred first.
+/** The one provider that serves this route.
  *
- *  HeroSMS serves 100% of SMS orders (owner decision 2026-07-30), and
- *  deliberately as a SINGLE element: there is NO fallback. A silent
- *  cross-provider substitution is what hid virtualsms's dead purchase endpoint
- *  behind SMSPVA for weeks — create-order's loop tried the next provider and
- *  the failure never surfaced. One provider, one attempt, a real error when it
- *  fails.
+ *  Ownership is per SERVICE, not per route (owner decision 2026-07-30):
  *
- *  A route whose service has no HeroSMS mapping returns [] and create-order
- *  answers 409 route_unavailable. That is intentional: 118 of our 268 services
- *  have no HeroSMS code, and between them they carry ONE lifetime order. Those
- *  routes are hidden in the cutover migration so they are never offered.
+ *    - a service HeroSMS carries  -> HeroSMS, in every country
+ *    - a service it does not      -> SMSPVA, in every country
  *
- *  TO ROLL BACK: return ["smspva"] here. The SMSPVA adapter is fully wired and
- *  its routes are never deleted.
+ *  So a given service is never split across providers — no country of Instagram
+ *  is served by one provider while another country is served by the other. That
+ *  keeps delivery evidence per service attributable to a single vendor, which
+ *  is exactly what a blended rate destroys (measured once at 10% while the live
+ *  provider was at 43%).
+ *
+ *  It also preserves the catalog: 118 of 268 services have no HeroSMS code, and
+ *  routing them to SMSPVA keeps 7,757 active routes that would otherwise go
+ *  dark. HeroSMS covers 150 services carrying 99.4% of lifetime order volume.
+ *
+ *  ALWAYS A SINGLE ELEMENT — there is NO fallback. A HeroSMS service whose
+ *  country HeroSMS cannot fill fails honestly rather than quietly buying from
+ *  SMSPVA, because a silent cross-provider substitution is what hid
+ *  virtualsms's dead purchase endpoint behind SMSPVA for weeks: create-order's
+ *  loop tried the next provider and the failure never surfaced.
+ *
+ *  TO ROLL BACK everything to SMSPVA: drop the first branch.
  *
  *  eSIMs are untouched and stay on SMSPool (a separate table and code path). */
 export function providerOrder(c: RouteCodes): Provider[] {
-  return c.heroService && c.heroCountry != null ? ["herosms"] : [];
+  if (c.heroService && c.heroCountry != null) return ["herosms"];
+  if (c.smsService && c.smsCountry) return ["smspva"];
+  return [];
 }
 
 /** Live wholesale price (USD) at a provider, or null if unavailable. */
