@@ -225,8 +225,10 @@ struct ContentView: View {
                 // we've SEEN deliver. Without evidence, bestCountry keeps the
                 // current selection — the sheet priced every row for it, and a
                 // silent swap made the buy button contradict the tapped row.
-                let best = state.bestCountry(for: picked,
-                                             keeping: state.configuringCountry)
+                // Via pickDestination, NOT bestCountry directly: the row the
+                // user just tapped printed its answer ("5 cr in Romania"), and
+                // the two must be the same call or the promise breaks.
+                let best = state.pickDestination(for: picked)?.country
                 if state.flow == .checkout {
                     state.checkoutService = picked
                     if let best { state.checkoutCountry = best }

@@ -442,6 +442,36 @@ final class AppState {
         return bookable.min(by: { priceOf($0) < priceOf($1) })
     }
 
+    /// Where tapping `service` in the service picker actually lands, and what
+    /// it costs there. The single shared definition used by BOTH the picker row
+    /// and the tap handler.
+    ///
+    /// The service picker fixes the COUNTRY and varies the service — the mirror
+    /// of CountrySheet — so a service with no route in the selected country
+    /// rendered a bare "Unavailable" with nothing naming that country. Measured
+    /// 2026-07-30: all 265 visible services are bookable in at least one
+    /// country, so the word was wrong every single time it appeared. It can
+    /// only ever mean "not in this country", and it read as "not at all" for a
+    /// median of 79 services per country (Turkey: 165 of 265, i.e. 62% of the
+    /// catalog looked dead).
+    ///
+    /// Worse, the row was dimmed to look disabled but stayed tappable, and the
+    /// tap WORKED — the handler already relocated to `bestCountry`. So the
+    /// label was steering users away from taps that would have succeeded.
+    ///
+    /// Returning the destination lets the row state it up front, which turns
+    /// that relocation from silent into predicted. Both callers MUST go through
+    /// here: a row promising a different country than the tap delivers would be
+    /// a worse lie than the one it replaces.
+    ///
+    /// nil means bookable NOWHERE — the only case in which "Unavailable",
+    /// unqualified, is actually true.
+    func pickDestination(for service: Service) -> (country: Country, credits: Int)? {
+        guard let c = bestCountry(for: service, keeping: configuringCountry),
+              let credits = cost(for: service, country: c) else { return nil }
+        return (c, credits)
+    }
+
     /// Country picker shows every country in the catalog. A specific
     /// (service, country) pair may still be rejected at order time if
     /// SMSPVA is out of numbers — handled by create-order.

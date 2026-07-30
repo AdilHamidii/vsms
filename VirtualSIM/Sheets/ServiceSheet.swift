@@ -28,11 +28,17 @@ struct ServiceSheet: View {
         }
     }
 
-    /// When the Affordable toggle is on, keep only services with a route in the
-    /// current country the balance can actually buy.
+    /// When the Affordable toggle is on, keep only services the balance can
+    /// actually buy — judged against the price the row SHOWS.
+    ///
+    /// This used to test `cost(for:country:)` alone, so every service without a
+    /// route in the current country failed the `guard` and was dropped, even
+    /// when it was cheaply bookable one tap away. The filter and the list have
+    /// to agree on what a row costs, or "Affordable" hides affordable things.
     private func matchesAffordable(_ s: Service) -> Bool {
         guard affordableOnly else { return true }
-        guard let c = state.cost(for: s, country: currentCountry) else { return false }
+        guard let c = state.cost(for: s, country: currentCountry)
+                ?? state.pickDestination(for: s)?.credits else { return false }
         return c <= state.balance
     }
 
@@ -98,9 +104,21 @@ struct ServiceSheet: View {
             } else {
                 LazyVStack(spacing: 0) {
                     ForEach(filtered) { service in
+                        let here = state.cost(for: service, country: currentCountry)
+                        // Only resolved when there is no route here, so the
+                        // 69-country scan never runs for the common case.
+                        let elsewhere = here == nil
+                            ? state.pickDestination(for: service) : nil
                         ServiceRow(service: service,
-                                   price: state.cost(for: service, country: currentCountry),
-                                   record: state.deliveryRecord(for: service, country: currentCountry),
+                                   price: here,
+                                   elsewhere: elsewhere,
+                                   // The badge must describe the route the tap
+                                   // actually buys. Scored against the current
+                                   // country it would read "Not tested" for a
+                                   // destination route we HAVE measured.
+                                   record: state.deliveryRecord(
+                                       for: service,
+                                       country: elsewhere?.country ?? currentCountry),
                                    balance: state.balance) {
                             onPick(service)
                             dismiss()
@@ -125,20 +143,28 @@ private struct ServiceRow: View {
     /// Real synced route price for the currently-selected country, or nil when
     /// the (service, country) pair has no confirmed price (unavailable to book).
     let price: Int?
+    /// Set only when `price` is nil: where this service IS bookable, and what
+    /// it costs there. Exactly where tapping the row will land the user.
+    let elsewhere: (country: Country, credits: Int)?
     let record: DeliveryRecord
     let balance: Int
     let onTap: () -> Void
+
+    /// Bookable nowhere in the catalog — the one case that is genuinely
+    /// unavailable, and so the only one that may say so or look disabled.
+    private var isDeadEnd: Bool { price == nil && elsewhere == nil }
 
     var body: some View {
         Button(action: onTap) {
             HStack(spacing: 12) {
                 ServiceLogo(service: service, size: 40)
-                    .opacity(price == nil ? 0.45 : 1)
+                    .opacity(isDeadEnd ? 0.45 : 1)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(service.name)
                         .font(RFont.display(16, weight: .semibold))
                         .tracking(-0.3)
-                        .foregroundStyle(price == nil ? theme.text2 : theme.text)
+                        .lineLimit(1)
+                        .foregroundStyle(isDeadEnd ? theme.text2 : theme.text)
                     HStack(spacing: 8) {
                         Text(service.category)
                             .font(RFont.text(12))
@@ -166,6 +192,33 @@ private struct ServiceRow: View {
                             .font(RFont.text(12, weight: .medium))
                             .foregroundStyle(theme.text2)
                     }
+                } else if let elsewhere {
+                    // "Not here, but here's where" — never a bare "Unavailable".
+                    // The country name is what makes the price legible: without
+                    // it this is a number for a route the user did not select.
+                    VStack(alignment: .trailing, spacing: 1) {
+                        HStack(alignment: .firstTextBaseline, spacing: 3) {
+                            Text("\(elsewhere.credits)")
+                                .font(RFont.display(15, weight: .semibold))
+                                .foregroundStyle(elsewhere.credits <= balance
+                                                 ? theme.text : theme.text2)
+                            Text("cr")
+                                .font(RFont.text(12, weight: .medium))
+                                .foregroundStyle(theme.text2)
+                        }
+                        // Flag + name, no preposition, and `verbatim` so it is
+                        // never extracted for translation. "in %@" would need
+                        // six translations for a country name that stays
+                        // English anyway, and the article is gendered in
+                        // pt-BR ("na Romênia" vs "no Brasil") and fr ("en
+                        // Roumanie" vs "au Portugal") — unresolvable from a
+                        // format string. The flag carries "this is a country"
+                        // in every language.
+                        Text(verbatim: "\(elsewhere.country.flag) \(elsewhere.country.name)")
+                            .font(RFont.text(11, weight: .medium))
+                            .foregroundStyle(theme.text3)
+                            .lineLimit(1)
+                    }
                 } else {
                     Text("Unavailable")
                         .font(RFont.text(12, weight: .medium))
@@ -177,5 +230,9 @@ private struct ServiceRow: View {
             .contentShape(.rect)
         }
         .buttonStyle(.plain)
+        // A dead end must not be tappable: bestCountry returns nil, so the tap
+        // would set the service without moving the country and strand the user
+        // on a Home screen whose only button is a disabled "Unavailable".
+        .disabled(isDeadEnd)
     }
 }
