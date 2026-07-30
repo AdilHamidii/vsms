@@ -17,7 +17,12 @@ struct ResumeBar: View {
     /// `activeOrder` — that is cleared when the flow closes, which is exactly
     /// the moment this bar needs to appear.
     private var waitingSms: Order? {
-        state.orders.first { $0.status == .waiting && $0.number != nil }
+        // Test the SERVER field, not `Order.number` — that is a non-optional
+        // computed property returning "Pending…" when there is no number, so
+        // `number != nil` was always true. The bar therefore also appeared for
+        // the pre-reservation row `begin_order` writes as ordinary `waiting`
+        // with a null id, offering to resume an order holding nothing.
+        state.orders.first { $0.status == .waiting && $0.server.smspvaNumber != nil }
     }
     private var waitingEmail: ServerEmailOrder? {
         state.emailOrders.first { $0.status == .waiting && !$0.hasCode }
@@ -52,11 +57,10 @@ struct ResumeBar: View {
                 }
                 .padding(.horizontal, 14)
                 .padding(.vertical, 10)
-                .background(theme.elev, in: .rect(cornerRadius: 16))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 16)
-                        .stroke(theme.sep, lineWidth: 0.5)
-                )
+                // Floats over whatever tab the user navigated to, so it gets
+                // the same glass treatment as the tab bar it sits above.
+                .glassPanel(RoundedRectangle(cornerRadius: 16, style: .continuous),
+                            interactive: true)
                 .shadow(color: .black.opacity(0.10), radius: 10, y: 4)
                 .contentShape(.rect)
             }
@@ -69,7 +73,7 @@ struct ResumeBar: View {
         if let mail = waitingEmail, waitingSms == nil {
             return mail.email ?? mail.domain
         }
-        if let sms = waitingSms { return sms.number ?? sms.service.name }
+        if let sms = waitingSms { return sms.number }
         return ""
     }
 
