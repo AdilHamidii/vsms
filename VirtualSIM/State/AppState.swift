@@ -118,10 +118,34 @@ final class AppState {
     private var esimPlanIndex: [String: EsimPlan] = [:]
     var checkoutService: Service?
     var checkoutCountry: Country?
-    /// True when the user picked the Real-SIM (premium) tier in checkout.
-    /// Reset on every startCheckout so the pricier tier is always an explicit
-    /// choice, never a sticky default.
+    /// True when the Real-SIM (premium) tier is selected in checkout.
+    /// Never sticky across a route change — every reset site recomputes it from
+    /// the NEW route via `defaultPremium(for:country:)`.
     var checkoutPremium = false
+
+    /// Whether checkout should OPEN on the real-SIM tier for this route.
+    ///
+    /// Standard used to be the unconditional default, and for the services
+    /// people actually come here for that meant defaulting to a tier our own
+    /// orders say does not work. Measured 2026-07-30: instagram is **2 of 23**
+    /// all-time and took **12 first orders for 0 codes**; whatsapp 1 of 9;
+    /// discord 0 of 3. Meta and Telegram reject numbers they recognise as
+    /// temporary, which is exactly what the real-SIM tier exists for — and it
+    /// had never been sold once in 192 orders, because it was an opt-in chip
+    /// the user had to notice.
+    ///
+    /// The uplift is small where it matters (instagram 3cr vs 2cr, facebook
+    /// 4 vs 3, discord 3 vs 2) — ~1 credit for a materially better shot at the
+    /// thing they came for. Standard stays selectable.
+    ///
+    /// Returns false whenever the route carries no premium price, preserving
+    /// the invariant behind `effectiveCheckoutPremium`: never send
+    /// `tier: "premium"` to a route without one, because the backend rejects it
+    /// and the Standard chip is hidden in exactly that case — a dead end.
+    func defaultPremium(for service: Service, country: Country) -> Bool {
+        guard premiumCost(for: service, country: country) != nil else { return false }
+        return service.deliversPoorly
+    }
 
     /// Premium is only real when the CURRENT route actually carries a premium
     /// price. Reading `checkoutPremium` directly let a stale selection survive
@@ -789,9 +813,12 @@ final class AppState {
     // ─────────── Checkout / waiting / OTP ───────────
 
     func startCheckout(service: Service? = nil, country: Country? = nil) {
-        checkoutService = service ?? lastService
-        checkoutCountry = country ?? lastCountry
-        checkoutPremium = false
+        let svc = service ?? lastService
+        let cty = country ?? lastCountry
+        checkoutService = svc
+        checkoutCountry = cty
+        // Open on real-SIM where standard is measurably a dead end.
+        checkoutPremium = defaultPremium(for: svc, country: cty)
         flow = .checkout
     }
 
