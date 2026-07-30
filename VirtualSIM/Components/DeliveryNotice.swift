@@ -48,6 +48,19 @@ struct DeliveryNotice: View {
         }
     }
 
+    /// The evidence line states a raw record and can appear below the
+    /// confidence threshold, so it must NOT inherit `accent` — that is keyed to
+    /// the tier, which is `.unknown` on a small sample and paints warn. TikTok
+    /// at 5 of 7 is the app's best first-order service and would have rendered
+    /// its record in the warning colour.
+    private var evidenceColor: Color {
+        if odds != .unknown { return accent }
+        guard let r = service?.observedRatio else { return theme.text2 }
+        if r >= 0.50 { return theme.live }
+        if r >= 0.20 { return theme.warn }
+        return theme.fail
+    }
+
     private var detail: String {
         guard let service else {
             return String(localized: "Some services block temporary numbers, so a code may never come through. If that happens you're not charged — and trying another number is free, as many times as you like.")
@@ -85,7 +98,7 @@ struct DeliveryNotice: View {
                     Text(evidence)
                         .font(RFont.text(12, weight: .medium))
                         .tracking(-0.1)
-                        .foregroundStyle(accent)
+                        .foregroundStyle(evidenceColor)
                 }
 
                 Text("We're sorry for the hassle. We're actively working on improving delivery rates.")
