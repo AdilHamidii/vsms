@@ -37,6 +37,11 @@ struct ServiceSheet: View {
     /// to agree on what a row costs, or "Affordable" hides affordable things.
     private func matchesAffordable(_ s: Service) -> Bool {
         guard affordableOnly else { return true }
+        // The toggle filters on the SMS route price, which does not exist in
+        // email mode — an email is 1 credit or free depending on the domain,
+        // and every service is equally affordable. Filtering on a price that
+        // does not apply would silently hide most of the catalog.
+        guard !state.emailMode else { return true }
         guard let c = state.cost(for: s, country: currentCountry)
                 ?? state.pickDestination(for: s)?.credits else { return false }
         return c <= state.balance
@@ -104,14 +109,25 @@ struct ServiceSheet: View {
             } else {
                 LazyVStack(spacing: 0) {
                     ForEach(filtered) { service in
-                        let here = state.cost(for: service, country: currentCountry)
+                        // In email mode the SMS route price is meaningless — an
+                        // email costs 1 credit or nothing depending on the
+                        // DOMAIN picked next, not on the service — and the SMS
+                        // delivery record describes a different product. Passing
+                        // nil for both makes the row show neither.
+                        let here = state.emailMode
+                            ? nil : state.cost(for: service, country: currentCountry)
                         // Only resolved when there is no route here, so the
                         // 69-country scan never runs for the common case.
-                        let elsewhere = here == nil
+                        let elsewhere = (here == nil && !state.emailMode)
                             ? state.pickDestination(for: service) : nil
                         ServiceRow(service: service,
                                    price: here,
                                    elsewhere: elsewhere,
+                                   emailMode: state.emailMode,
+                                   // The provider needs a target site, which we
+                                   // take from `service.domain`; 11 of 265 have
+                                   // none and cannot offer email at all.
+                                   emailSupported: !(service.domain ?? "").isEmpty,
                                    // The badge must describe the route the tap
                                    // actually buys. Scored against the current
                                    // country it would read "Not tested" for a
@@ -146,13 +162,20 @@ private struct ServiceRow: View {
     /// Set only when `price` is nil: where this service IS bookable, and what
     /// it costs there. Exactly where tapping the row will land the user.
     let elsewhere: (country: Country, credits: Int)?
+    /// Picking a service for an EMAIL address rather than a number.
+    var emailMode: Bool = false
+    /// Only meaningful in email mode: does this service have a target site?
+    var emailSupported: Bool = true
     let record: DeliveryRecord
     let balance: Int
     let onTap: () -> Void
 
-    /// Bookable nowhere in the catalog — the one case that is genuinely
-    /// unavailable, and so the only one that may say so or look disabled.
-    private var isDeadEnd: Bool { price == nil && elsewhere == nil }
+    /// Bookable nowhere — the one case that is genuinely unavailable, and so
+    /// the only one that may say so or look disabled. In email mode that means
+    /// "no domain to bind an address to" instead.
+    private var isDeadEnd: Bool {
+        emailMode ? !emailSupported : (price == nil && elsewhere == nil)
+    }
 
     var body: some View {
         Button(action: onTap) {
@@ -169,21 +192,38 @@ private struct ServiceRow: View {
                         Text(service.category)
                             .font(RFont.text(12))
                             .foregroundStyle(theme.text2)
-                        // MEASURED arrival only — the seed etaSeconds was the
-                        // last surface still stating it as fact. Nothing shows
-                        // when there is no measurement.
-                        if let wait = service.typicalWaitShort {
+                        // Everything after the category is SMS evidence: the
+                        // measured arrival band and the per-route delivery
+                        // record are both about phone numbers on a route. On an
+                        // email pick they would be another product's numbers
+                        // presented as this one's.
+                        if !emailMode {
+                            // MEASURED arrival only — the seed etaSeconds was the
+                            // last surface still stating it as fact. Nothing shows
+                            // when there is no measurement.
+                            if let wait = service.typicalWaitShort {
+                                Text("·").foregroundStyle(theme.text3)
+                                Text("\(wait) typical")
+                                    .font(RFont.text(12))
+                                    .foregroundStyle(theme.text2)
+                            }
                             Text("·").foregroundStyle(theme.text3)
-                            Text("\(wait) typical")
-                                .font(RFont.text(12))
-                                .foregroundStyle(theme.text2)
+                            SuccessBadge(record: record, compact: true)
                         }
-                        Text("·").foregroundStyle(theme.text3)
-                        SuccessBadge(record: record, compact: true)
                     }
                 }
                 Spacer(minLength: 0)
-                if let price {
+                if emailMode {
+                    // No credit figure: the price comes from the DOMAIN chosen
+                    // next (free or 1 cr), not from the service. Showing an SMS
+                    // route price here is what made an email pick quote number
+                    // prices.
+                    Text(emailSupported
+                         ? String(localized: "Available")
+                         : String(localized: "No email"))
+                        .font(RFont.text(12, weight: .medium))
+                        .foregroundStyle(emailSupported ? theme.text2 : theme.text3)
+                } else if let price {
                     HStack(alignment: .firstTextBaseline, spacing: 3) {
                         Text("\(price)")
                             .font(RFont.display(15, weight: .semibold))

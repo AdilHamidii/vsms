@@ -80,9 +80,18 @@ struct ContentView: View {
                 }
             }
 
-            TabBar(tab: $state.tab)
-                .padding(.horizontal, 12)
-                .padding(.bottom, 28)
+            VStack(spacing: 10) {
+                // Sits above the tab bar on every tab. Closing a waiting screen
+                // no longer cancels the order, so there has to be a way back —
+                // otherwise a live order just vanishes from view and the user
+                // reasonably assumes it died.
+                ResumeBar()
+                    .padding(.horizontal, 16)
+                TabBar(tab: $state.tab)
+                    .padding(.horizontal, 12)
+            }
+            .padding(.bottom, 28)
+            .animation(.easeOut(duration: 0.25), value: state.flow)
         }
         // Environment first, THEN overlay/sheet/cover — so banner + cover
         // content all see AppState in scope.
@@ -153,6 +162,7 @@ struct ContentView: View {
                     await state.loadCatalog(using: CatalogAPI(client: api), minInterval: 600)
                     await state.refreshWallet(using: WalletAPI(client: api))
                     await state.loadOrders(using: OrdersAPI(client: api))
+                    await state.loadEmailOrders(using: EmailAPI(client: api))
                     // A user who leaves the app open overnight, or taps the
                     // daily push, crosses the UTC boundary without a cold
                     // launch — so the claim has to run on foreground too.

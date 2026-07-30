@@ -137,23 +137,25 @@ struct WaitingScreen: View {
             // Locked for the first 180s — see `holdRemaining`. Shows the
             // countdown in place of the ✕ so the wait reads as deliberate
             // rather than as a broken button.
+            // ✕ now LEAVES; it does not cancel.
+            //
+            // It read as "back" and destroyed a paid, in-flight order — first
+            // instantly, then behind a confirmation. Both were wrong: the user
+            // has to go and paste the number into another app, and coming back
+            // is the normal path. Leaving is now free, the order keeps running,
+            // and `ResumeBar` above the tab bar brings them back — which is what
+            // makes non-destructive close honest rather than a disappearance.
+            //
+            // Cancelling is still available, as an explicit labelled action
+            // lower down (`cancelAction`), still gated by the 180s hold.
             Button {
-                showCancelConfirm = true
+                state.flow = nil
             } label: {
-                Group {
-                    if let left = holdRemaining {
-                        Text("\(left)s")
-                            .font(RFont.text(12, weight: .semibold))
-                            .monospacedDigit()
-                            .foregroundStyle(theme.text3)
-                    } else {
-                        Image(systemName: RIcon.close)
-                            .font(.system(size: 14, weight: .semibold))
-                            .foregroundStyle(theme.text2)
-                    }
-                }
-                .frame(width: 36, height: 36)
-                .background(theme.chipBg, in: .circle)
+                Image(systemName: RIcon.close)
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(theme.text2)
+                    .frame(width: 36, height: 36)
+                    .background(theme.chipBg, in: .circle)
             }
             .buttonStyle(.plain)
             // isPlacingOrder too: leaving the ✕ live during a reroll let
@@ -245,6 +247,10 @@ struct WaitingScreen: View {
 
                 rerollActions
                     .padding(.top, 10)
+
+                cancelAction
+                    .frame(maxWidth: .infinity)
+                    .padding(.top, 14)
             }
             .padding(.horizontal, 18)
             .padding(.vertical, 22)
@@ -259,6 +265,33 @@ struct WaitingScreen: View {
     /// refuses the number at its signup form within ~20 seconds, so no timer
     /// can detect it — only the user knows. That path must move to a DIFFERENT
     /// country, because a rejection usually means the whole range is flagged.
+    /// Cancel + refund, as an explicit labelled action rather than a ✕.
+    ///
+    /// The ✕ used to be this, which is why it needed a confirmation dialog: a
+    /// glyph that reads as "back" must not destroy a paid order. As a named
+    /// destructive action it can be plain, and it keeps the 180s hold — cancels
+    /// landed at a median of 57s while codes land at a median of 58s, so an
+    /// early cancel usually throws away a code that was already on its way.
+    @ViewBuilder
+    private var cancelAction: some View {
+        if let left = holdRemaining {
+            Text("You can cancel in \(left)s")
+                .font(RFont.text(12))
+                .monospacedDigit()
+                .foregroundStyle(theme.text3)
+        } else {
+            Button {
+                showCancelConfirm = true
+            } label: {
+                Text("Cancel & refund \(order.costCredits) cr")
+                    .font(RFont.text(13, weight: .medium))
+                    .foregroundStyle(theme.text2)
+            }
+            .buttonStyle(.plain)
+            .disabled(state.isPlacingOrder)
+        }
+    }
+
     private var rerollActions: some View {
         HStack(spacing: 8) {
             rerollButton(

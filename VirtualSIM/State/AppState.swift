@@ -449,6 +449,11 @@ final class AppState {
 
         await loadEsimCatalog(using: EsimPlansAPI(client: api))
         await loadEsimOrders(using: EsimOrdersAPI(client: api))
+        // Behind the reveal like the eSIM loads: history is not needed to render
+        // a correct Home screen. It WAS missing entirely — loadEmailOrders
+        // existed and had no caller, so email activations never appeared in
+        // history at all.
+        await loadEmailOrders(using: EmailAPI(client: api))
     }
 
     /// Leave a failed cold start without data rather than trapping the user.
