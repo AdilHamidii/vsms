@@ -68,7 +68,8 @@ supabase db push
 
 # Deploy edge functions (each runs independently)
 supabase functions deploy create-order check-order cancel-order register-push iap-verify delete-account \
-  create-esim-order check-esim-usage redeem-referral
+  create-esim-order check-esim-usage redeem-referral \
+  create-email-order check-email-order email-domains support-send
 # Cron-gated functions MUST ship --no-verify-jwt: their pg_cron relays send
 # only x-cron-secret, no Authorization header. winback lived in the JWT group
 # until 2026-07-21 and silently 401'd on every daily run — zero nudges ever
@@ -109,7 +110,9 @@ supabase db query --linked "
 ```
 
 There is no test suite. Verify iOS with the `swiftc -typecheck` command above
-(exit 0 = all 75 sources compile). Verify backend changes by re-deploying, then
+(exit 0 = all 84 sources compile). It does NOT catch everything — a missing
+`import StoreKit` type-checked fine and failed the real build, so prefer
+`xcodebuild` when you can afford it. Verify backend changes by re-deploying, then
 **checking the resulting DB state** — not by assuming the deploy worked. Several
 bugs this session looked identical to success until a row was queried: an
 SMSPVA balance read that silently wrote nothing, and maintenance jobs that ran
@@ -182,8 +185,11 @@ VirtualSIM/
                                  switch country / refund explainer — see the
                                  retry-steering note below), Maintenance (shown
                                  during the nightly operator-sync window),
-                                 SplashScreen (cold-launch cover — see below)
-  Sheets/                        ServiceSheet (search + categories + per-route
+                                 SplashScreen (cold-launch cover — see below),
+                                 EmailWaiting/EmailCode (temp email),
+                                 SupportChatScreen (live chat)
+  Sheets/                        EmailDomainSheet (4 domains, live stock,
+                                 Free/1cr), ServiceSheet (search + categories + per-route
                                  price; a service with no route in the SELECTED
                                  country shows where it IS bookable, never a bare
                                  "Unavailable" — see the picker note below),
@@ -246,6 +252,26 @@ Runs SMS-Activate's `handler_api` protocol. Base is
   `console.error` never fires.
 - `getPrices` returns `{cost, count, physicalCount}` per (service, country) —
   `physicalCount` is the real-SIM signal and the reason we moved.
+- **`getTopCountriesByService`** works and returns 194 rows of
+  `{country, price, retail_price, count}` per service. That is stock and price,
+  **not** delivery success.
+
+**The per-(service, country) SUCCESS RATES in HeroSMS's dashboard are NOT
+available by API — do not go looking again.** Searched exhaustively 2026-07-30:
+26+ `handler_api` action names; the `/api/v1` namespaces `statistics`, `stats`,
+`analytics`, `top10`, `activations/statistics` (all `ROUTE_NOT_FOUND`); the docs
+page (a pure client-side loader with no SSR content); Nuxt `_payload.json`
+(empty); all 50 JS chunks for any spec reference; 13 conventional OpenAPI paths
+on both the site and their CDN. `/fr/*` is Cloudflare-challenged, so scraping is
+out too. The decisive test: the **same key and `ApiKey` scheme that returns data
+from `/api/v1/emails` is rejected by `/api/v1/activations`** — those are
+dashboard-session endpoints, and the statistics live in that tier. Asking the
+vendor to expose it is the only route.
+
+And if it ever IS exposed: it would be **steering input, never a badge**. It is
+their aggregate across all customers, not our delivery — the same class of number
+as SMSPVA's seeded per-country grade, which ranked as "proven", beat genuinely
+untested countries, and had to be demoted to `.notTested`.
 
 ### Retention — the numbers that decide what's worth building
 
@@ -491,6 +517,116 @@ ladder the code defines is the ladder a user sees — and note this file has now
 been wrong about it twice. (Product-level `state` is unreliable for
 *submittability* — see Release prep — but `APPROVED` vs not is trustworthy.)
 
+### Temporary EMAIL addresses — the third product line (2026-07-30)
+
+Temp mailboxes on four real consumer domains, from HeroSMS. **gmail.com and
+icloud.com cost 1 credit; outlook.com and hotmail.com are FREE.** Margins at
+those prices: gmail **7.5×** ($0.04 wholesale), icloud **15×** ($0.02). Both
+clear `MIN_MARGIN = 6.0`, so no pricing constant changed for this.
+
+**It is a SECOND protocol on the same HeroSMS account**, sharing only the key and
+the balance — see `_shared/heromail.ts`:
+
+| | SMS (`herosms.ts`) | EMAIL (`heromail.ts`) |
+|---|---|---|
+| base | `/stubs/handler_api.php` | `/api/v1` |
+| shape | query params + actions | REST resources |
+| auth | `?api_key=` | **`Authorization: ApiKey <key>`** |
+| errors | bare text (`BAD_KEY`) | `{"title","details"[,"errors"]}` |
+
+**The auth scheme costs an hour if you guess.** It is not Bearer, not
+`X-Api-Key`, not the query param the SMS side uses. Every wrong scheme returns
+`{"title":"Unauthenticated."}` — the SAME body an unknown route returns *after*
+auth — so a wrong header reads exactly like "this API does not exist". It does
+exist. (`/api/v1/activations` and `/api/v1/webhooks` genuinely DO reject the API
+key: they are dashboard-session endpoints.)
+
+Verified live with real purchases:
+- `GET /emails/domains?site=<site>` → `{"data":[{name,cost,count}]}`. **`site` is
+  REQUIRED** (422 without) and BOTH price and stock vary by it.
+- `POST /emails {site,domain}` → 201, address usable immediately, `status: WAIT`.
+- `GET /emails/{id}` → same shape. `DELETE /emails/{id}` → cancel.
+
+**Three provider behaviours you cannot guess:**
+1. **A hard 2-minute cancel floor.** `DELETE` inside 120s returns 400
+   `EARLY_CANCEL_DENIED`. Provider-enforced; we cannot opt out, so a cancel
+   affordance that is live before then is a guaranteed failure. Exported as
+   `EMAIL_MIN_HOLD_SECONDS`.
+2. **The window is ~20–21 minutes and it AUTO-REFUNDS.** Measured by holding one
+   to its natural end: still `WAIT` at 20m22s, `CANCEL` at 21m22s, and the
+   account balance returned to exactly its pre-purchase figure with no action
+   from us. Our own `EMAIL_WINDOW_SECONDS` is **22 min**, deliberately LONGER, so
+   their terminal state is what we normally observe and ours only fires when
+   they are unreachable. Shorter would race a provider still holding a live
+   mailbox, and closing early discards a code that was about to land.
+3. **`CANCEL` is OVERLOADED.** The same value means a user-initiated DELETE *and*
+   their own timeout, with nothing in the payload separating them. Only the
+   caller knows which, so `mapProviderStatus` takes `weCancelled` and merely
+   observing `CANCEL` means **expired**. Mapping it to "canceled" told users they
+   cancelled an order that simply timed out.
+
+**`email_orders.status` is OUR enum, never the vendor's.** Their vocabulary is
+undocumented and undiscoverable — no OpenAPI at any conventional path, absent
+from all 50 JS chunks of their docs SPA — and probing only ever produced `WAIT`
+and `CANCEL`. The value meaning "a code arrived" has never been seen. Encoding a
+guess is exactly what broke eSIM refunds. So `_shared/emailStatus.ts` maps
+vendor → ours, logs loudly on anything new, and falls back to `waiting` (safe:
+keeps polling). **`code is not null` is the authority for "a code arrived"**,
+never `status = 'received'` — same rule as the SMS side's `otp is not null`,
+which means we never needed their success status at all.
+
+**There is no catalog to sync.** `site` is required and stock is per (site,
+domain) and genuinely runs dry — hotmail.com measured **1,028 available for
+google.com and TWO for discord.com** in one sweep. `email-domains` quotes live at
+checkout; `create-email-order` refuses when `count` is 0. Never cache it.
+
+**The free tier is the SCARCEST inventory**, two to three orders of magnitude
+below gmail/icloud. It is also the only thing with no credit gate, so
+`begin_email_order` enforces **N free per user per UTC day (default 3, tunable
+via `app_config.email_free_daily_cap`)** under the same advisory lock. And
+`cost_credits >= 0` is deliberate: `wallet_spend` RAISES on a non-positive
+amount, so the free path skips the spend entirely rather than calling it with 0.
+
+`site` comes from `services.domain`, populated for **254 of 265** visible
+services — the other 11 cannot offer email at all and are filtered out of the
+picker rather than failing at checkout.
+
+**First real activation delivered 2026-07-30**: leboncoin, free tier,
+`status = received`.
+
+### Support chat — user types in-app, owner answers from Telegram (2026-07-30)
+
+`support_threads` + `support_messages`, `support-send`, and a widened
+`telegram-webhook`. Built at this size because the measured failure is
+impatience: cancels land at a median of 57s while codes land at 58s, and a human
+saying "give it thirty more seconds" converts into the one event that drives
+retention.
+
+**The owner answers by REPLYING to the relayed Telegram message.** That is what
+`support_messages.tg_message_id` is for — every relayed message records the id
+Telegram assigned it, so an inbound `reply_to_message.message_id` resolves back
+to a thread. Matching on a thread's LATEST id instead misroutes the moment the
+owner scrolls up to answer the older of two open conversations.
+
+Three security points, since this widens the one public endpoint:
+- **A `callback_query` carries its chat under `callback_query.message.chat.id`,
+  NOT `message.chat.id`.** Reusing the existing owner check would have left the
+  [Accept] button completely ungated. It gets its own comparison.
+- The reply branch runs **before** command parsing, so an answer beginning with
+  "/" reaches the user instead of being eaten as an unknown command — and falls
+  through to commands when the reply is not ours.
+- Both tables are **read-only to clients**. RLS is row-level and cannot stop a
+  client inserting `sender='agent'` and impersonating support, so every write
+  goes through `post_support_message` on the service role.
+
+`post_support_message` serialises per user with the same advisory lock as
+`begin_order`; without it a double-tap creates two open threads and the partial
+unique index turns the second into a raw 23505 the client cannot interpret.
+Storage happens **before** the relay, so a Telegram outage cannot lose a message
+the user was told we sent. Replies push with `kind=support` and deliberately **no
+`orderId`** — `PushManager` routes on that key and would deep-link to the wrong
+screen.
+
 ### Retry steering (create-order)
 
 A retry after a failure must not hand back the same dead pool. Two mechanisms,
@@ -555,8 +691,10 @@ Two constraints:
 ### Quote p90, never p50, next to a running clock
 
 The waiting screen printed *"Codes usually arrive in about 59s"* — the **median**,
-i.e. wrong for half of all codes by definition — beside a live timer and a ✕ that
-destroys a paid order. Live band is p50 59s / **p90 161s**.
+i.e. wrong for half of all codes by definition — beside a live timer and (at the
+time) a ✕ that destroyed a paid order. Live band is p50 59s / **p90 161s**.
+The ✕ is no longer destructive — see the waiting-screen note below — but the
+quoting rule stands on its own.
 
 Measured 2026-07-28, every user's first order that got a number: **28 of 37 were
 cancelled and NOT ONE ever produced a code**; the 9 who let the window run
@@ -733,9 +871,24 @@ Refunds must be **visible twice**: at the moment (`RecoveryContext.refundedCredi
 "I paid and got nothing" even though the refund landed. Both terminal paths
 refund unconditionally server-side, so status alone is a sound signal.
 
-**The ✕ on the waiting screen destroys a paid order.** It looks like "back" but
-calls `cancel-order`. It requires an explicit confirmation naming the refund;
-don't "simplify" that away.
+**The ✕ on the waiting screen LEAVES — it no longer cancels (changed
+2026-07-30).** This file previously said the opposite, and the opposite was the
+bug. The glyph reads as "back", and the user *has* to leave to paste the number
+into another app, so coming back is the NORMAL path rather than an edge case.
+Making it destructive — first instantly, later behind a confirmation dialog —
+meant the ordinary action of stepping away was the same button that threw away a
+paid, in-flight order.
+
+Now: ✕ sets `flow = nil`, the order keeps running, and **`Components/ResumeBar.swift`**
+sits above the tab bar on every tab whenever something is waiting. That bar is
+what makes non-destructive close honest: without a way back, a live order simply
+vanishes from view and the user reasonably assumes it died. It reads the waiting
+order from the LIST, not from `activeOrder` — that is cleared when the flow
+closes, which is exactly the moment the bar must appear.
+
+Cancelling is still available and still refunds, as an explicit labelled
+**"Cancel & refund N cr"** lower down the screen, still gated by the 180s hold.
+A named destructive action does not need a confirmation dialog the way a ✕ did.
 
 ### The 180s minimum hold, and the late-code rescue (2026-07-27)
 
@@ -962,6 +1115,29 @@ then `smoothed_cost_cents > MAX_WHOLESALE_CENTS`, then measured-zero auto-hide.
   `nil` on interactive dismiss). The general rule: **when a write path branches
   on `flow` but the matching read path doesn't, the two disagree the moment the
   flow ends.**
+- **Which PRODUCT the user is buying is declared, never inferred —
+  `AppState.PurchaseIntent`.** The same lesson as the checkout-draft bug above,
+  one product line later. `creditsShortfall` used to branch on
+  `if let plan = checkoutEsimPlan` with no `flow` check — deliberately, because
+  the credits pill in the eSIM tab opens the ROOT sheet with `flow == nil`. But
+  `flow`'s `didSet` cleared the SMS draft and **never cleared `checkoutEsimPlan`**,
+  which was assigned in exactly one place and set to nil in none. So after a
+  single visit to an eSIM checkout, every later "how many credits do you need?"
+  answered for that plan — for the rest of the session, on every screen,
+  including SMS checkout. `CreditsSheet` is product-agnostic and receives only
+  `needed:`, so nothing could notice. Adding a third product to that if-chain
+  would have multiplied the bug. `intent` is now set at each entry point
+  (`startCheckout` / `startEsimCheckout` / the email paths) and cleared centrally
+  in `flow`'s `didSet` alongside `checkoutEsimPlan`.
+- **In email mode the SMS route price and delivery record must NOT render.**
+  `ServiceSheet` fixes the country and varies the service, so in email mode it
+  was quoting `cost(for:country:)` — an SMS price, meaningless when the email
+  price comes from the DOMAIN chosen next — plus the measured arrival band and
+  the per-route delivery record, which describe phone numbers on a route. Same
+  rule as everywhere else: another product's evidence is not this product's. The
+  Home hero has the same guard (no country, no dial code, no metrics row) and the
+  Affordable toggle is inert there, since it filters on a price that does not
+  apply and would hide most of the catalog.
 - **`tint_hex`, not `tint`** — Service column is `tint_hex` (snake) → `tintHex` (Swift). Same casing rule for every Service/Country/Route field. Don't reintroduce shorter names.
 - **Cron-secret auth reads from `Deno.env.get("CRON_SECRET")`**, not from `vault.decrypted_secrets`. The vault schema isn't reachable through PostgREST — the function would silently fail. Both `poll-active-orders` and `sync-prices` rely on the env var being mirrored to the vault entry. **CRON_SECRET therefore lives in TWO stores** (edge secrets + vault `cron_secret`, read by `private_cron_secret()`); rotating one without the other 401s every relayed function at once — including telegram-notify, i.e. the alert channel. The watchdog's `relay-http` check catches the 401s within ~25 min, but rotate both together.
 - **The watchdog is plain SQL — keep it that way.** `run_watchdog()` (pg_cron `*/10`, migration `20260722050000`) checks job freshness (poller heartbeat, `routes`/`esim_plans.last_checked_at`, digest stamp, sync cursors via `app_config.updated_at` — maintained by the `app_config_touch` trigger, so cursor upserts don't need to set it) plus any non-2xx row in `net._http_response`, and writes its verdict to `app_config.'watchdog'`. `telegram-notify` (minutely) turns that into pages (6h re-alert, ✅ on recovery); `/balance` shows the verdict too. It deliberately uses **no edge function, no CRON_SECRET, no HTTP** so it still evaluates when the whole edge/secret layer is broken. If you add a scheduled job, give it a freshness signal and a check here. Residual blind spot: telegram-notify's own death = digest silence >7h (documented in `docs/autopilot-runbook.md`).
@@ -1024,6 +1200,12 @@ then `smoothed_cost_cents > MAX_WHOLESALE_CENTS`, then measured-zero auto-hide.
   since `91dc756`, **not yet fixed**; the fix is `before && isOk(before)`.
   (`deno check` also reports three `Cannot find name 'EdgeRuntime'` — those are
   a Supabase runtime global Deno does not type, and are benign.)
+- **Xcode rewrites `Localizable.xcstrings` in the PRIMARY checkout while you
+  work in a worktree**, which blocks the merge back with *"Your local changes
+  would be overwritten"*. It is the string extractor, not human edits: it adds
+  `"extractionState": "stale"` to strings your branch has not merged yet and
+  drops others. Diff it before discarding — on 2026-07-30 it contained **zero**
+  translations the branch lacked — then `git checkout --` it and merge.
 - **A git worktree is also not linked to Supabase.** `supabase/.temp/` is
   gitignored, so `supabase db query --linked` in a worktree dies with
   *"Cannot find project ref. Have you run supabase link?"* — which looks like a
@@ -1052,7 +1234,7 @@ SMS provider again, walk this list:
 8. **Re-check `active_sms_provider()` AFTER the dust settles, not just after the re-home.** Added 2026-07-30, learned the hard way. It picks by *active route count*, which silently assumed one provider owns the catalog. A per-service split plus a sync that hides unfulfillable rows can leave the **retired** provider holding more rows than the live one — which is exactly what happened (SMSPVA 7,757 vs HeroSMS 5,198), pointing all five `refresh_*` evidence functions at the wrong provider with no error anywhere. Assert it returns what you expect, and re-assert it after the first sync run, not before.
 9. **Give the new provider its own cost column, and scope every cached-cost fallback to the provider that owns the row.** `sync-prices` only maintains SMSPVA's `last_cost_cents`, so any other provider's rows carry a frozen number from a provider you are no longer buying from. A `??` onto that stale value passes the margin gate and then fails at reservation — a charge-and-refund that looks like a stockout. See `sync-herosms`.
 
-## Current state (2026-07-30)
+## Current state (2026-07-30, end of session)
 
 - **Everything client-side since 2026-07-26 is in NO installable build.** 1.4 is
   what every user runs; **1.5 / build 18 was archived from `02e9c4a`**, before all
@@ -1073,9 +1255,22 @@ SMS provider again, walk this list:
 - **First HeroSMS order delivered** — 2026-07-30 13:40Z, alibaba/mx, standard,
   `received`. **1 of 1.** $0.10 wholesale against 4 credits = **12.0× realised**
   (with `MIN_MARGIN` still 6.0 — see the pricing note).
+- **Temporary EMAIL shipped 2026-07-30** (backend live, client in build 19):
+  `_shared/heromail.ts` + `emailStatus.ts`, `email_orders` schema with the free
+  daily cap, `create-email-order` / `check-email-order` / `email-domains`, and the
+  iOS Numbers/E-mails toggle with a live-stock domain picker. **First activation
+  delivered**: leboncoin, free tier, `received`. See the section above.
+- **Live support chat shipped 2026-07-30** (backend live, client in build 19):
+  `support_threads`/`support_messages`, `support-send`, and `telegram-webhook`
+  widened to handle the [Accept] button and the owner's replies. **Never
+  exercised end to end** — the round trip needs the bot secrets.
+- **Also 2026-07-30**: the waiting-screen ✕ made non-destructive + `ResumeBar`;
+  `PurchaseIntent` replacing the `creditsShortfall` inference; email orders added
+  to history (`loadEmailOrders` had had NO caller); and the `isOk(null)`
+  charge-and-forfeit bug in `providers.ts` fixed.
 - **Codebase**: `MARKETING_VERSION 1.5`, `CURRENT_PROJECT_VERSION 18` (next build
-  is **19**), iOS min **18.0**, **75** Swift sources (BUILD SUCCEEDED on
-  iPhone 17 Pro / iOS 26.5), **97** migration files, 19 edge functions.
+  is **19**), iOS min **18.0**, **84** Swift sources (BUILD SUCCEEDED on
+  iPhone 17 Pro / iOS 26.5), **100** migration files, **23** edge functions.
 - **Catalog**: 18,492 routes, **12,955 active** (down from 17,804 — `sync-herosms`
   hid what HeroSMS cannot serve). **HeroSMS 5,198 active / SMSPVA 7,757**;
   **4,046** HeroSMS routes have physical SIMs. **0 measured routes** — the cutover
@@ -1146,9 +1341,22 @@ SMS provider again, walk this list:
   1 in. `providerOrder()` back to `["smspva"]` is still a one-line revert.
 - ⚠️ **Repricing deferred by the owner**: `CREDIT_DIVISOR` 0.05 → 0.025 with
   `MIN_MARGIN` 6.0 → 12.0. HeroSMS routes still carry SMSPVA-derived retail.
-- ⚠️ **`isOk(null)` TypeError on the SMSPVA order path** — see the gotcha above.
-  Charge, refund and forfeited wholesale if a balance call throws. One-line fix,
-  not applied.
+- ✅ **RESOLVED 2026-07-30: the `isOk(null)` TypeError on the SMSPVA order path.**
+  Now `before && isOk(before)`. Source is fixed; **`create-order` has not been
+  redeployed since**, so production still runs the old bundle until it is.
+- 🔴 **Nothing in the email or support paths has been used by a real person
+  through the app.** The client for both ships in build 19 and Apple Sign In does
+  not work in the simulator, so every screen is verified by build + screenshot
+  only. The email money path is proven at SQL level and one activation was
+  bought via the API; the support round trip (send → Accept → reply → push) has
+  **never run**, because it needs `TELEGRAM_BOT_TOKEN` / `TELEGRAM_WEBHOOK_SECRET`.
+- ⚠️ **No cron expiry sweep for `email_orders`.** Narrow but real: the vendor
+  auto-expires and refunds *us*, and `check-email-order` refunds the *user*
+  whenever the app polls — but someone who buys a paid address and never reopens
+  the app waits for their credit. `expire_esim_orders()` is the pattern.
+- ⚠️ **Email is absent from `ops_snapshot` / `revenue_snapshot` /
+  `_shared/opsFormat.ts`.** Per the third-product-line checklist it must be added
+  to all three or it is invisible in the digest, `/stats` and `/profit`.
 - ⚠️ **The HeroSMS API key passed through a chat transcript and should be
   rotated.** It lives only as the `HEROSMS_API_KEY` Supabase secret and appears in
   no commit (verified), but rotate it.
