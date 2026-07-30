@@ -6,6 +6,13 @@ struct AuthGate: View {
     @State private var push = PushManager()
     @State private var iap = IAPStore()
     @AppStorage("onboardingComplete") private var onboardingComplete = false
+    // The splash is themed from the STORED preference, not the system scheme,
+    // unlike its siblings below. It is the one pre-sign-in screen that hands
+    // straight over to `ContentView` on the common path (a returning, signed-in
+    // user), and ContentView forces `state.isDark` — so matching the system
+    // here would recolour the whole screen at the handoff.
+    @AppStorage(PrefKey.isDark) private var prefIsDark = false
+    @AppStorage(PrefKey.accent) private var prefAccent = AccentColor.green.rawValue
     // Pre-sign-in screens (onboarding, sign-in, bootstrap) run before AppState
     // exists, so they can't read its isDark preference — follow the system
     // appearance instead, otherwise they'd render light-only in Dark Mode.
@@ -21,7 +28,10 @@ struct AuthGate: View {
         Group {
             switch session.status {
             case .bootstrapping:
-                BootstrapScreen()
+                SplashScreen(state: .indeterminate)
+                    .environment(\.theme, prefIsDark
+                                 ? .dark(AccentColor(rawValue: prefAccent) ?? .green)
+                                 : .light(AccentColor(rawValue: prefAccent) ?? .green))
             case .signedOut:
                 if onboardingComplete {
                     SignInScreen()
@@ -57,14 +67,6 @@ struct AuthGate: View {
     }
 }
 
-private struct BootstrapScreen: View {
-    @Environment(\.theme) private var theme
-    var body: some View {
-        ZStack {
-            theme.bg.ignoresSafeArea()
-            ProgressView()
-                .controlSize(.large)
-                .tint(theme.text2)
-        }
-    }
-}
+// BootstrapScreen (a bare centred ProgressView) was replaced by SplashScreen.
+// A spinner alone gave the launch no identity and, more importantly, looked
+// identical whether the session refresh was working or wedged.

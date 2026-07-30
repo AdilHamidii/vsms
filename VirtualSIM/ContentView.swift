@@ -91,20 +91,27 @@ struct ContentView: View {
             }
         }
         .animation(.easeOut(duration: 0.3), value: state.maintenance.isActiveNow)
+        // Above the maintenance overlay, so a cold launch shows ONE cover, not
+        // a splash that lifts onto a second full-screen takeover. Suppressed
+        // once maintenance is known to be on: that screen is the honest answer
+        // and should not wait behind five more fetches.
+        .overlay {
+            if state.bootPhase != .ready, !state.maintenance.isActiveNow {
+                SplashScreen(
+                    state: state.bootPhase == .failed
+                        ? .failed : .progress(state.bootProgress),
+                    onRetry:    { Task { await state.coldStart(api: api) } },
+                    onContinue: { state.continueWithoutCatalog() }
+                )
+                .environment(\.theme, theme)
+                .transition(.opacity)
+            }
+        }
+        .animation(.easeOut(duration: 0.35), value: state.bootPhase)
         .task {
-            await state.refreshMaintenance(using: MaintenanceAPI(client: api))
-            await state.loadCatalog(using: CatalogAPI(client: api))
-            await state.refreshWallet(using: WalletAPI(client: api))
-            await state.refreshProfile(using: ProfileAPI(client: api))
-            await state.loadOrders(using: OrdersAPI(client: api))
-            // Today's free credit. Idempotent per UTC day server-side.
-            await state.claimDailyCredit(using: WalletAPI(client: api))
-            // Cold launch only: hand back an order that was mid-flight when
-            // the app was killed, instead of stranding a paid wait.
-            state.resumeInFlightOrder()
-            state.applyStartupSelection()
-            await state.loadEsimCatalog(using: EsimPlansAPI(client: api))
-            await state.loadEsimOrders(using: EsimOrdersAPI(client: api))
+            // The whole cold-launch sequence, including which steps must finish
+            // before the splash lifts. See AppState.coldStart.
+            await state.coldStart(api: api)
         }
         .onChange(of: scenePhase) { _, phase in
             if phase == .active {

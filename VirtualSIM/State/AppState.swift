@@ -26,7 +26,17 @@ struct RecoveryContext {
     var refundedCredits: Int? = nil
 }
 
-private enum PrefKey {
+/// Cold-launch readiness, driving `SplashScreen`.
+///
+/// `failed` is reserved for the CATALOG failing, which is the only fetch Home
+/// cannot render truthfully without — see `AppState.coldStart`.
+enum BootPhase: Equatable { case loading, ready, failed }
+
+/// Internal, not private: `AuthGate` reads `isDark`/`accent` through
+/// `@AppStorage` so the splash it shows during session bootstrap is already
+/// themed the way `ContentView` will theme the app a moment later. Sharing the
+/// constants keeps the two from drifting to different key strings.
+enum PrefKey {
     static let isDark           = "pref.isDark"
     static let accent           = "pref.accent"
     static let waitingAnimation = "pref.waitingAnimation"
@@ -221,6 +231,24 @@ final class AppState {
     /// Latest error string for UI banners. Phase F wires real banner UI.
     var lastError: String?
 
+    /// Cold-launch readiness. `SplashScreen` covers the app until this leaves
+    /// `.loading`, so the first Home frame a user ever sees is a true one.
+    ///
+    /// Before this, `.task` populated an AppState that starts from `SeedData`
+    /// with `routes = []`, so `cost(for:country:)` returned nil for every pair
+    /// and the primary CTA read "Unavailable · Pick another country" for the
+    /// whole fetch. The seed default is WhatsApp/United States, which is in
+    /// `blocked_routes` and therefore never bookable at all — so it stayed
+    /// wrong until `applyStartupSelection()` ran at the END of the chain.
+    private(set) var bootPhase: BootPhase = .loading
+
+    /// 0...1 over the steps `coldStart` has actually completed.
+    ///
+    /// Never synthetic. A timer-driven bar looks like information and carries
+    /// none — the same class of claim as a seeded success rate, which this app
+    /// already refuses to render.
+    private(set) var bootProgress: Double = 0
+
     var isDark: Bool {
         didSet { UserDefaults.standard.set(isDark, forKey: PrefKey.isDark) }
     }
@@ -282,6 +310,74 @@ final class AppState {
         d.set(version, forKey: PrefKey.lastPromptVer)
         return true
     }
+
+    // MARK: - Cold launch
+
+    /// The cold-launch sequence, in the order Home needs it, reporting progress
+    /// so the splash can show real work rather than a timer.
+    ///
+    /// Readiness is deliberately NOT "the chain finished". The eSIM catalog and
+    /// eSIM orders are read only by the eSIM tab, so gating the reveal on them
+    /// would hold a fully correct Home screen behind two fetches nobody is
+    /// looking at. They run AFTER `bootPhase` goes `.ready`, behind the
+    /// already-visible UI.
+    ///
+    /// Everything here stays sequential on the main actor. Overlapping these
+    /// would genuinely shorten the wait — measured, the six steps are ~3 s of
+    /// which the catalog is ~1.5 s — but `AppState` is a plain `@Observable`
+    /// class with no actor isolation, so `async let` over methods that all
+    /// mutate `self` would be a data race, not a speed-up. Doing that safely
+    /// means making the API calls return values instead of mutating, which is a
+    /// separate change with its own risk.
+    func coldStart(api: APIClient) async {
+        bootPhase = .loading
+        bootProgress = 0
+
+        let total = 6.0
+        var done = 0.0
+        func step() {
+            done += 1
+            bootProgress = min(1, done / total)
+        }
+
+        // First, so a maintenance window is known before we bother fetching a
+        // catalog nobody can order from. ContentView reveals on maintenance
+        // without waiting for the rest.
+        await refreshMaintenance(using: MaintenanceAPI(client: api))
+        step()
+
+        // The one fetch Home cannot render truthfully without: with no routes
+        // every price is nil and every service reads "Unavailable".
+        guard await loadCatalog(using: CatalogAPI(client: api)) else {
+            bootPhase = .failed
+            return
+        }
+        step()
+
+        await refreshWallet(using: WalletAPI(client: api));   step()
+        await refreshProfile(using: ProfileAPI(client: api)); step()
+        await loadOrders(using: OrdersAPI(client: api));      step()
+
+        // Before the reveal on purpose: it moves the balance, and a balance
+        // that jumps a beat after the splash lifts reads as a billing glitch.
+        await claimDailyCredit(using: WalletAPI(client: api))
+        step()
+
+        // Both must run before the reveal — they decide WHICH screen and which
+        // service/country the user lands on.
+        resumeInFlightOrder()
+        applyStartupSelection()
+        bootPhase = .ready
+
+        await loadEsimCatalog(using: EsimPlansAPI(client: api))
+        await loadEsimOrders(using: EsimOrdersAPI(client: api))
+    }
+
+    /// Leave a failed cold start without data rather than trapping the user.
+    /// Orders, credits and account still work; the catalog-backed surfaces will
+    /// say "Unavailable", which is at least honest once we have told them the
+    /// server was unreachable.
+    func continueWithoutCatalog() { bootPhase = .ready }
 
     /// Returns the credit cost for (service, country), or nil when we don't
     /// have a confirmed retail price. nil means the pair is unavailable to
@@ -684,10 +780,18 @@ final class AppState {
 
     /// `minInterval` skips the fetch when the catalog is already fresh enough.
     /// Cold launch passes 0 (always load); the foreground path passes 600.
-    func loadCatalog(using api: CatalogAPI, minInterval: TimeInterval = 0) async {
+    /// Returns whether we now hold a live catalog.
+    ///
+    /// This used to be `-> Void` with a bare `catch { /* keep current state */ }`,
+    /// which meant an offline launch silently kept the 30-service `SeedData`
+    /// stub and `routes = []` — rendering a complete Home screen on which every
+    /// service read "Unavailable". Indistinguishable from "this product is
+    /// broken". The caller needs to be able to tell the difference.
+    @discardableResult
+    func loadCatalog(using api: CatalogAPI, minInterval: TimeInterval = 0) async -> Bool {
         if minInterval > 0, let last = lastCatalogLoad,
            Date().timeIntervalSince(last) < minInterval {
-            return
+            return true    // fresh enough — we already have one
         }
         do {
             let catalog = try await api.fetch()
@@ -714,8 +818,12 @@ final class AppState {
             } else if let first = countries.first {
                 lastCountry = first
             }
+            return true
         } catch {
-            // keep current state
+            // Keep whatever we already have — a foreground refresh that fails
+            // must not wipe a good catalog. The BOOL is what tells a cold start
+            // it never got one.
+            return false
         }
     }
 

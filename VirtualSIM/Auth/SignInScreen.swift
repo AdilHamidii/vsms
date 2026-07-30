@@ -30,18 +30,7 @@ struct SignInScreen: View {
 
     private var lockup: some View {
         HStack(spacing: 8) {
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .fill(theme.ink)
-                .frame(width: 26, height: 26)
-                .overlay(
-                    Image(systemName: "bolt.fill")
-                        .font(.system(size: 13, weight: .bold))
-                        .foregroundStyle(theme.onInk)
-                )
-            Text("vSMS")
-                .font(RFont.display(19, weight: .bold))
-                .tracking(-0.3)
-                .foregroundStyle(theme.text)
+            BrandWordmark(size: 22)
             Spacer()
         }
     }

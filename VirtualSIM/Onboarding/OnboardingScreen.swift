@@ -55,18 +55,7 @@ struct OnboardingScreen: View {
 
     private var header: some View {
         HStack(spacing: 7) {
-            RoundedRectangle(cornerRadius: 7, style: .continuous)
-                .fill(theme.ink)
-                .frame(width: 22, height: 22)
-                .overlay(
-                    Image(systemName: "bolt.fill")
-                        .font(.system(size: 11, weight: .bold))
-                        .foregroundStyle(theme.onInk)
-                )
-            Text("vSMS")
-                .font(RFont.display(17, weight: .bold))
-                .tracking(-0.3)
-                .foregroundStyle(theme.text)
+            BrandWordmark(size: 20)
             Spacer()
         }
         .padding(.horizontal, 24)
