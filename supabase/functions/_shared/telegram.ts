@@ -60,6 +60,59 @@ export async function sendMessage(html: string, chatId?: string): Promise<SendRe
   return { ok: resp.ok, status: resp.status, body: resp.ok ? undefined : await resp.text() };
 }
 
+/** sendMessage, but it hands back Telegram's `message_id` and can attach an
+ *  inline keyboard.
+ *
+ *  `sendMessage` above deliberately drops the body on success — it is a
+ *  fire-and-forget alert path and nothing needs the id. Support chat does: the
+ *  owner answers by REPLYING to the relayed message, and
+ *  `message.reply_to_message.message_id` is the only thing tying that reply back
+ *  to a thread. Without the id there is no route home.
+ *
+ *  Returns null on any failure rather than throwing — a support relay that
+ *  cannot reach Telegram must still leave the user's message stored. */
+export async function sendMessageWithId(
+  html: string,
+  opts: { replyMarkup?: unknown; chatId?: string } = {},
+): Promise<number | null> {
+  try {
+    const resp = await fetch(`${BASE}/bot${token()}/sendMessage`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        chat_id: opts.chatId ?? ownerChatId(),
+        text: html.length > MAX_LEN ? `${html.slice(0, MAX_LEN)}\n…` : html,
+        parse_mode: "HTML",
+        disable_web_page_preview: true,
+        ...(opts.replyMarkup ? { reply_markup: opts.replyMarkup } : {}),
+      }),
+      signal: AbortSignal.timeout(5000),
+    });
+    if (!resp.ok) {
+      console.error(`sendMessageWithId: HTTP ${resp.status} ${await resp.text()}`);
+      return null;
+    }
+    const body = await resp.json() as { result?: { message_id?: number } };
+    return body.result?.message_id ?? null;
+  } catch (e) {
+    console.error(`sendMessageWithId: ${String(e)}`);
+    return null;
+  }
+}
+
+/** Acknowledge an inline-button tap. Telegram shows a spinner on the button
+ *  until this is called, so skipping it makes the bot look hung. */
+export async function answerCallback(id: string, text?: string): Promise<void> {
+  try {
+    await fetch(`${BASE}/bot${token()}/answerCallbackQuery`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ callback_query_id: id, text: text ?? "" }),
+      signal: AbortSignal.timeout(5000),
+    });
+  } catch { /* cosmetic only */ }
+}
+
 /** Fire-and-forget variant for use inside a USER'S request path (purchases).
  *  Swallows everything — a missing token, a network failure, a malformed
  *  message must never affect someone's purchase. The per-minute sweep in

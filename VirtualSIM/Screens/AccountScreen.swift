@@ -9,6 +9,7 @@ struct AccountScreen: View {
 
     var openCredits: () -> Void
 
+    @State private var showSupport = false
     @State private var showDeleteConfirm = false
     @State private var deleteInProgress = false
 
@@ -36,6 +37,11 @@ struct AccountScreen: View {
             .padding(.bottom, 140)
         }
         .scrollIndicators(.hidden)
+        .sheet(isPresented: $showSupport) {
+            SupportChatScreen()
+                .environment(\.theme, theme)
+                .environment(api)
+        }
         .confirmationDialog("Delete your account?",
                             isPresented: $showDeleteConfirm,
                             titleVisibility: .visible) {
@@ -406,6 +412,12 @@ struct AccountScreen: View {
                 .padding(.horizontal, 4)
             Card {
                 VStack(spacing: 0) {
+                    // First, above the help centre. A static FAQ cannot answer
+                    // "is my code coming?", which is the question people
+                    // actually have, and it is asked at the exact moment they
+                    // are about to cancel a working order.
+                    SettingRow(label: "Chat with us", icon: "bubble.left.and.bubble.right.fill",
+                               onTap: { showSupport = true })
                     SettingRow(label: "Help center", icon: "questionmark.circle",
                                onTap: { open(LegalLinks.help) })
                     // The only user-triggerable recovery for a purchase whose

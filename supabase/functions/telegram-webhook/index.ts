@@ -21,8 +21,13 @@ import { admin } from "../_shared/supabaseAdmin.ts";
 // being imported for a while — esbuild bundles free identifiers without
 // complaint, so /balance THREW ReferenceError on every call in production
 // while every other command worked. Keep imports in lockstep with usage.
-import { sendMessage, ownerChatId, esc } from "../_shared/telegram.ts";
+import {
+  sendMessage, ownerChatId, esc, sendMessageWithId, answerCallback,
+} from "../_shared/telegram.ts";
 import { formatDigest, formatRevenue, formatGross, balanceLine } from "../_shared/opsFormat.ts";
+// Support replies push to the user's device. Imported explicitly for the reason
+// in the note above — a free identifier here bundles fine and throws at runtime.
+import { sendPush } from "../_shared/apns.ts";
 
 const HELP = [
   "🤖 <b>vSMS ops</b>",
@@ -63,12 +68,41 @@ Deno.serve(async (req) => {
   }
 
   let update: {
-    message?: { chat?: { id?: number | string }; text?: string };
+    message?: {
+      chat?: { id?: number | string };
+      text?: string;
+      reply_to_message?: { message_id?: number };
+    };
+    callback_query?: {
+      id?: string;
+      data?: string;
+      message?: { chat?: { id?: number | string } };
+    };
   };
   try { update = await req.json(); } catch { return ok(); }
 
+  // ── Support chat ─────────────────────────────────────────────────────────
+  // Two new update kinds, BOTH gated on the owner chat id exactly like
+  // commands. A callback_query carries its chat under
+  // `callback_query.message.chat.id`, NOT `message.chat.id` — reusing the old
+  // path would have left the Accept button ungated.
+  const cbChat = update.callback_query?.message?.chat?.id;
+  if (update.callback_query && cbChat != null && String(cbChat) === ownerChatId()) {
+    return await handleCallback(update.callback_query);
+  }
+
   const chatId = update.message?.chat?.id;
   if (chatId == null || String(chatId) !== ownerChatId()) return ok();
+
+  // A reply to a relayed support message is an ANSWER, not a command. Checked
+  // before command parsing so an agent whose reply happens to start with "/"
+  // still reaches the user instead of being swallowed as an unknown command.
+  const replyTo = update.message?.reply_to_message?.message_id;
+  if (replyTo != null && (update.message?.text ?? "").trim() !== "") {
+    const handled = await handleAgentReply(replyTo, update.message!.text!.trim());
+    if (handled) return ok();
+    // Not a support reply — fall through and treat it as a normal command.
+  }
 
   const text = (update.message?.text ?? "").trim().toLowerCase();
   const parts = text.split(/\s+/);
@@ -166,3 +200,113 @@ Deno.serve(async (req) => {
   await sendMessage(reply);
   return ok();
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Support chat — the owner's half of the conversation.
+//
+// Callers have ALREADY checked the secret token and the owner chat id. Nothing
+// below may be reached by anyone else.
+
+/** [✅ Accept] on the first message of a thread. */
+async function handleCallback(
+  cb: { id?: string; data?: string },
+): Promise<Response> {
+  const ok = () => json({ ok: true });
+  const data = cb.data ?? "";
+  if (!data.startsWith("sup:accept:")) { await answerCallback(cb.id ?? ""); return ok(); }
+
+  const threadId = data.slice("sup:accept:".length);
+  const sb = admin();
+  // Claim-gated: only an OPEN thread can be accepted, so a double-tap (or a
+  // stale button from an old notification) cannot reopen a closed conversation.
+  const { data: claimed, error } = await sb
+    .from("support_threads")
+    .update({ status: "assigned" })
+    .eq("id", threadId).eq("status", "open")
+    .select("id");
+  if (error) console.error(`support accept: ${error.message}`);
+
+  await answerCallback(
+    cb.id ?? "",
+    claimed?.length ? "You're on it — reply to the message to answer." : "Already handled.",
+  );
+  return ok();
+}
+
+/** The owner replied to a relayed message. Route it back to that user.
+ *
+ *  Returns false when the reply does not correspond to a support message, so
+ *  the caller can fall through and treat it as an ordinary command. */
+async function handleAgentReply(replyToId: number, text: string): Promise<boolean> {
+  const sb = admin();
+
+  // tg_message_id -> thread. Set when the message was relayed, which is why a
+  // reply to ANY message in a thread works, not only the newest.
+  const { data: src, error: findErr } = await sb
+    .from("support_messages")
+    .select("thread_id")
+    .eq("tg_message_id", replyToId)
+    .maybeSingle();
+  if (findErr) {
+    console.error(`support reply: lookup failed tg=${replyToId}: ${findErr.message}`);
+    return false;
+  }
+  if (!src) return false;                      // replying to some other message
+
+  const { data: thread, error: thErr } = await sb
+    .from("support_threads").select("id, user_id, status").eq("id", src.thread_id).maybeSingle();
+  if (thErr || !thread) {
+    console.error(`support reply: thread missing for tg=${replyToId}`);
+    return false;
+  }
+
+  const { data: posted, error: postErr } = await sb.rpc("post_support_message", {
+    p_user: thread.user_id, p_body: text, p_sender: "agent",
+  });
+  if (postErr) {
+    console.error(`support reply: post failed thread=${thread.id}: ${postErr.message}`);
+    await sendMessage("⚠️ Couldn't deliver that reply — it was NOT sent to the user.");
+    return true;
+  }
+  const res = posted as { ok?: boolean; reason?: string } | null;
+  if (!res?.ok) {
+    await sendMessage(`⚠️ Reply rejected (${esc(res?.reason ?? "unknown")}) — NOT sent.`);
+    return true;
+  }
+
+  // Answering implies accepting: a thread the owner has replied to is theirs,
+  // whether or not they pressed the button first.
+  if (thread.status === "open") {
+    await sb.from("support_threads").update({ status: "assigned" }).eq("id", thread.id);
+  }
+
+  // Wake the user. Without this the reply sits unread until they happen to
+  // reopen the app, which for a support answer is most of its value gone.
+  await pushSupportReply(sb, thread.user_id, text);
+  return true;
+}
+
+/** Best-effort APNs nudge. Never throws: a failed push must not make the owner
+ *  think the message itself failed — it is stored and will render in-app. */
+async function pushSupportReply(
+  // deno-lint-ignore no-explicit-any
+  sb: any, userId: string, text: string,
+): Promise<void> {
+  try {
+    const { data: devices } = await sb
+      .from("push_devices").select("token, environment").eq("user_id", userId);
+    if (!devices?.length) return;
+    for (const d of devices) {
+      await sendPush(d.token, {
+        alertTitle: "vSMS support",
+        alertBody: text.length > 120 ? `${text.slice(0, 117)}…` : text,
+        sound: "default",
+        // No orderId: PushManager routes on that key, and a support reply is
+        // not an order — carrying one would deep-link into the wrong screen.
+        customData: { kind: "support" },
+      }, d.environment === "sandbox" ? "sandbox" : undefined);
+    }
+  } catch (e) {
+    console.error(`support push failed user=${userId}: ${String(e)}`);
+  }
+}
