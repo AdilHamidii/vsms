@@ -51,6 +51,29 @@ function classify(status: number, body: unknown, raw: string): SmspoolFault | nu
     return { ok: false, type: "AUTH_ERROR", status, message: "invalid api key" };
   }
   const b = (body ?? {}) as Record<string, unknown>;
+
+  // SMSPool has TWO error shapes and this only ever understood one.
+  //
+  // The SMS endpoints return {type, message}. The eSIM endpoints return
+  //   {"success":0,"errors":[{"message":"…","param":"…"}]}
+  // — often with HTTP 200. Neither `type` nor `message` exists there, so every
+  // eSIM failure produced errorType=undefined and SMSPool's own prose was
+  // thrown away. That is why three eSIM purchases failed on 2026-07-30 with no
+  // recoverable reason: the diagnosis was destroyed at this line.
+  const errArr = Array.isArray(b.errors) ? b.errors as Record<string, unknown>[] : null;
+  if (errArr?.length) {
+    const msg = String(errArr[0]?.message ?? "").replace(/<[^>]*>/g, "").trim();
+    const up = msg.toUpperCase();
+    const type: SmspoolErrorType =
+      /API KEY|UNAUTHORIZ|FORBIDDEN|MISSING A REQUIRED PARAMETER/.test(up) ? "AUTH_ERROR"
+      : /BALANCE|FUNDS|INSUFFICIENT/.test(up)                             ? "BALANCE_ERROR"
+      : /STOCK|UNAVAIL|SOLD OUT|NO .*AVAILABLE/.test(up)                  ? "OUT_OF_STOCK"
+      : /PRICE/.test(up)                                                  ? "PRICE_NOT_FOUND"
+      : /LIMIT|TOO MANY|RATE/.test(up)                                    ? "RATE_LIMITED"
+      : "TRANSPORT_ERROR";
+    return { ok: false, type, status, message: msg || "smspool_error" };
+  }
+
   const declared = typeof b.type === "string" ? b.type : null;
   if (declared === "OUT_OF_STOCK" || declared === "PRICE_NOT_FOUND" || declared === "BALANCE_ERROR") {
     return {
@@ -180,7 +203,14 @@ export async function esimPurchase(planId: string | number):
   // fails as "something went wrong on our side" and nothing pages.
   const fault = faultOf(d);
   if (fault) return { ok: false, error: fault.message, errorType: fault.type };
-  if (d?.success !== 1 || !d.transactionId) return { ok: false, error: d?.message ?? "esim_purchase_failed" };
+  if (d?.success !== 1 || !d.transactionId) {
+    // Surface whatever SMSPool actually said. `d.message` is the SMS shape;
+    // eSIM failures carry `errors[].message` (handled in classify above, but
+    // a success:0 with no HTTP error code lands here instead).
+    const arr = (d as unknown as { errors?: { message?: string }[] })?.errors;
+    const detail = arr?.[0]?.message ?? d?.message;
+    return { ok: false, error: detail ?? "esim_purchase_failed" };
+  }
   return { ok: true, transactionId: d.transactionId };
 }
 

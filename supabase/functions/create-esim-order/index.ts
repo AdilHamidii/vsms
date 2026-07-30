@@ -91,11 +91,19 @@ Deno.serve(async (req) => {
   if (beginErr) {
     return json({ error: "spend_failed", detail: beginErr.message }, { status: 500 });
   }
-  const beginRes = begun as { status?: string; order_id?: string } | null;
-  if (beginRes?.status === "insufficient") {
+  // `reason`, NOT `status`. begin_esim_order returns
+  // jsonb_build_object('ok', false, 'reason', 'insufficient'|'duplicate_request').
+  // Reading `status` made BOTH branches below dead code, so running out of
+  // credits and double-tapping both fell through to spend_failed/500 and the
+  // app said "We couldn't complete that" instead of "Not enough credits — tap
+  // Top up" or "That purchase is already going through". No money moved either
+  // way (the SQL rolls back before charging); it was purely the wrong message
+  // on the two most likely failures.
+  const beginRes = begun as { ok?: boolean; reason?: string; order_id?: string } | null;
+  if (beginRes?.reason === "insufficient") {
     return json({ error: "insufficient_credits", needed: cost }, { status: 402 });
   }
-  if (beginRes?.status === "duplicate") {
+  if (beginRes?.reason === "duplicate_request") {
     // An identical purchase is already in flight for this user+plan.
     return json({ error: "duplicate_request" }, { status: 409 });
   }
@@ -141,7 +149,24 @@ Deno.serve(async (req) => {
 
   const buy = await esimPurchase(plan.id);
   if (!buy.ok || !buy.transactionId) {
+    // Log the PROVIDER'S OWN message, not just our classification. failEsim
+    // only ever printed the errorType, and buy.error was logged nowhere — so
+    // when three purchases failed on 2026-07-30 there was no recoverable
+    // reason anywhere in the system.
+    console.error(
+      `esim purchase FAILED plan=${plan.id} user=${userId} ` +
+      `type=${buy.errorType ?? "unclassified"} detail=${buy.error ?? "(none)"}`,
+    );
     await failEsim(buy.errorType ?? "purchase_failed");
+    // Page on failure too. alertEsim fires only on the SUCCESS path, so eSIM
+    // failures reached nobody — the owner found out by trying to buy one.
+    try {
+      EdgeRuntime.waitUntil(notifySafe(
+        `🚨 <b>eSIM purchase failed</b>\n` +
+        `plan <b>${plan.id}</b> · ${cost} credits · refunded\n` +
+        `${buy.errorType ?? "unclassified"}: ${buy.error ?? "no detail"}`,
+      ));
+    } catch { /* paging must never affect the order path */ }
     // Classify, don't echo. buy.error is SMSPool's own prose, which matches no
     // case in APIError and fell through to "Something went wrong on our side"
     // — blaming our infrastructure for SMSPool being out of stock, the exact

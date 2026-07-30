@@ -5,7 +5,15 @@ enabled = true
 port = 54321
 schemas = ["public"]
 extra_search_path = ["public", "extensions"]
-max_rows = 1000
+# MUST match the live value (`alter role authenticator set pgrst.db_max_rows`).
+# The catalog is 18,492 routes and PostgREST truncates SILENTLY at this cap —
+# HTTP 206, no error, the app just receives fewer routes and every missing one
+# renders "Unavailable" or keeps a stale price. Indistinguishable from "the
+# prices are wrong" when seen from a phone.
+#
+# This file said 1000 while production ran 60000, so any `supabase config push`
+# would have cut the catalog to 5.4% of itself with no error anywhere.
+max_rows = 60000
 
 [db]
 port = 54322
