@@ -371,12 +371,19 @@ off the $5.99/$12.99 numbers is ~17% optimistic for US sales. Confirm against
 
 **The 60 and 150 packs are the LIVE ASC prices, read back from the API on
 2026-07-25 — this file previously claimed $22.99/$49.99, which was never what
-the store would have billed.** Only the first three packs (`credits.5/12/30`)
-are `APPROVED`; `credits.60` and `credits.150` have **never** been approved, so
-the two best-value tiers are not purchasable in production no matter what
-`CreditPack.swift` defines — StoreKit only returns approved products. Check
-`state` on `/v1/apps/6774768570/inAppPurchasesV2` before assuming the ladder the
-code defines is the ladder a user sees. (Product-level `state` is unreliable for
+the store would have billed.** **`credits.60` is now `APPROVED` and SELLING** —
+verified 2026-07-30 both on `/v1/apps/6774768570/inAppPurchasesV2` and by two
+live `$24.99 USD` purchases within 20 minutes of each other. This file said it
+had "**never** been approved" and that the largest purchasable pack was 30
+credits; that is wrong, and it mattered — the 60-pack is now the **top revenue
+product**, out-earning everything else in the 24h to 2026-07-30. So four packs
+(`credits.5/12/30/60`) are live; only `credits.150` is not, and it was
+**submitted for review 2026-07-30 06:53Z** once `credits.60` cleared a slot in
+Apple's 2-in-flight cap.
+
+Check `state` on `/v1/apps/6774768570/inAppPurchasesV2` before assuming the
+ladder the code defines is the ladder a user sees — and note this file has now
+been wrong about it twice. (Product-level `state` is unreliable for
 *submittability* — see Release prep — but `APPROVED` vs not is trustworthy.)
 
 ### Retry steering (create-order)
@@ -910,11 +917,12 @@ SMS provider again, walk this list:
   path, a stale constant copy, and a timer/hold interaction. All were caught by
   post-hoc review, two only by luck. Until something automated covers the order
   lifecycle and the money paths, assume a similar rate on the next batch.
-- ⚠️ **`credits.60` / `credits.150` still unapproved**, so the two best-value packs
-  don't exist for users and the largest purchasable pack is 30 credits. `credits.150`
-  is `DEVELOPER_REJECTED` and needs the ASC web UI. Note `MAX_WHOLESALE_CENTS = 750`
-  is justified as "150 credits × $0.05" — that pack not existing is why ~1,500
-  routes in the 80–150 credit band need 3–5 separate purchases.
+- ✅ **RESOLVED 2026-07-30: `credits.60` is `APPROVED` and selling** ($24.99 USD
+  ×2 in one morning — the top revenue product). `credits.150` was submitted
+  2026-07-30 06:53Z (`WAITING_FOR_REVIEW`, IOS) the moment `credits.60` freed a
+  slot in the 2-in-flight cap. `MAX_WHOLESALE_CENTS = 750` is justified as
+  "150 credits × $0.05", so until 150 clears, routes in the 80–150 credit band
+  still need 2+ separate purchases.
 - ⚠️ **~1,050 lines of removable code identified** and not removed: dead
   virtualsms paths, `sync-smspool` (unscheduled, self-gated AND calling a
   nonexistent RPC), `AppState.routes` (written once, never read, ~3 MB of
@@ -956,7 +964,7 @@ vSMS is a single-target app, so only one `Info.plist` needs patching. The real f
 - `POST /v1/inAppPurchaseSubmissions` fails with 409 *"has no pending version for submission"* in **two opposite** cases — the version is already `READY_FOR_REVIEW`/`WAITING_FOR_REVIEW` (nothing to submit), or it is `DEVELOPER_REJECTED` (nothing submittable). Read the version state before believing the error means "incomplete metadata".
 - An ASC-UI-created review submission can sit at `state: READY_FOR_REVIEW` with **`submittedDate: null`** — staged but never actually sent, so the IAP waits forever. Fix is `PATCH /v1/reviewSubmissions/<id> {"attributes":{"submitted":true}}`; its `platform` resolves from null to IOS on submit. This is how `credits.60` finally entered review, and it did **not** disturb the in-flight version submission.
 - **The in-flight cap is exactly TWO per platform, and hitting it looks like a broken submission.** This file previously concluded "two IOS submissions coexisted fine, contradicting the one-in-flight rule" — the real rule is a limit of **2**, which is simply where we stopped. Verified 2026-07-28: `PATCH …{"submitted":true}` on `credits.150`'s staged submission failed with `STATE_ERROR.MAX_IN_REVIEW_SUBMISSIONS_PER_PLATFORM_LIMIT_REACHED` — *"maximum limit of 2 in-flight reviewSubmissions for platform=IOS"* — because both slots were held by the 1.5 app version and `credits.60`. The failed PATCH is a clean no-op; nothing changes. So a staged-unsent submission has **two** possible causes: nobody pressed submit, or the queue is full. Read the `associatedErrors` array, not just the top-level `detail`, which only says "check associated errors".
-- **`credits.150` is NOT `DEVELOPER_REJECTED` any more** (this file said it was, and that it needed the ASC web UI). As of 2026-07-28 its version `d934db03-60ec-4a8b-acaf-0bd4ad85d9a6` is `READY_FOR_REVIEW` with a staged submission `0320433d-b4ba-4bd4-83e0-24106d146129` waiting on a free slot. **Submit it the moment 1.5 or `credits.60` clears** — it is the pack that lifts both the ARPU ceiling and the eSIM ceiling (median eSIM plan 25 cr, mean 59, largest approved pack 30).
+- **`credits.150` is NOT `DEVELOPER_REJECTED` any more** (this file said it was, and that it needed the ASC web UI). As of 2026-07-28 its version `d934db03-60ec-4a8b-acaf-0bd4ad85d9a6` is `READY_FOR_REVIEW` with a staged submission `0320433d-b4ba-4bd4-83e0-24106d146129` waiting on a free slot. **Submit it the moment 1.5 or `credits.60` clears** — it is the pack that lifts both the ARPU ceiling and the eSIM ceiling (median eSIM plan 25 cr, mean 59, largest approved pack 30). **DONE 2026-07-30 06:53Z**: `credits.60` was approved, freeing a slot, and the same `PATCH …{"submitted":true}` that failed on 2026-07-28 succeeded — `WAITING_FOR_REVIEW`, `platform` resolved null→IOS. Confirms the cap reading exactly: the identical call fails or succeeds purely on slot availability, so a `MAX_IN_REVIEW_SUBMISSIONS` failure means "retry later", not "this submission is broken".
 - **Cancelling an IAP submission is close to a one-way door.** It leaves the IAP version at `DEVELOPER_REJECTED`, and nothing in the public API moves it back: editing `reviewNote` (a product-level field) does not dirty a version, and even a localization write leaves it at version 1. Recovering it requires the ASC **web UI**. Prefer leaving an IAP submission alone over cancelling it.
 
 `docs/submission-checklist.md` is the source of truth for App Store submission steps. `docs/app-store-listing.md` has all metadata copy + nutrition labels pre-filled. Legal docs (`privacy-policy.md`, `terms.md`, `refund-policy.md`, `help.md`) are written to be pasted into Notion as public pages — URLs then go into `VirtualSIM/LegalLinks.swift`.
