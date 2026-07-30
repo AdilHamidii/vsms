@@ -338,9 +338,17 @@ Deno.serve(async (req) => {
   const maintenance: Record<string, unknown> = {};
   for (
     const [name, fn] of [
-      ["observedHidden", "refresh_route_observed_success"],
+      // Route + service + country evidence, for EVERY provider that owns
+      // active routes — not just whichever one `active_sms_provider()` votes
+      // for. That vote counts active ROUTES, and after the per-service split
+      // SMSPVA held 7,757 against HeroSMS's 5,201, so it returned the provider
+      // that had stopped serving the demand and HeroSMS routes could never
+      // accumulate a measured rate: `rate_source='measured'` was 0 rows
+      // catalog-wide. The wrapper also scopes evidence to the provider that
+      // still OWNS each service, which drops retired providers (smspool,
+      // virtualsms) out of the window by construction.
+      ["evidence", "refresh_evidence_all_providers"],
       ["visibilityChanged", "sync_service_visibility"],
-      ["serviceEvidence", "refresh_service_delivery"],
       ["reranked", "apply_measured_service_ranking"],
       // Measured arrival percentiles. Migration 20260724120000 documented
       // itself as "called from sync-prices' hourly maintenance list" but was
@@ -356,7 +364,8 @@ Deno.serve(async (req) => {
       // cheapest country in the catalog". This is the evidence that replaces
       // it. Must run AFTER the route/service refreshes for the same reason
       // they are ordered: it reads the same order rows they classify.
-      ["countryEvidence", "refresh_country_delivery"],
+      // (country evidence now runs inside refresh_evidence_all_providers —
+      // once, not per provider, because a country is not owned by one)
     ] as const
   ) {
     try {
