@@ -459,8 +459,17 @@ Deno.serve(async (req) => {
               : res.errorType === "BALANCE_ERROR"   ? "provider_unreachable"
               : res.errorType === "RATE_LIMITED"    ? "provider_unreachable"
               : res.errorType === "AUTH_ERROR"      ? "provider_unreachable"
+              // A timeout or socket failure is NOT a stockout. Without this arm
+              // it fell through to no_numbers_available, telling the user to
+              // "try another country" for a network problem — and worse, a
+              // timeout on the BUY call may mean the number was allocated and
+              // billed, so it must be visible rather than filed as scarcity.
+              : res.errorType === "TRANSPORT_ERROR" ? "provider_unreachable"
               : res.error === "number_never_activated" ? "no_numbers_available"
               : "no_numbers_available";
+    if (res.errorType === "TRANSPORT_ERROR") {
+      console.error(`${p} TRANSPORT_ERROR — possible orphaned paid reservation: ${res.error}`);
+    }
     if (res.errorType === "BALANCE_ERROR" || res.errorType === "AUTH_ERROR") {
       console.error(`${p} ${res.errorType} — orders will keep failing until fixed: ${res.error}`);
       try {

@@ -258,6 +258,41 @@ function classifySmspvaFault(raw: string): ProviderErrorType | undefined {
  *  entire time, delivering nothing, and never reclaiming the wholesale. Refuse
  *  loudly instead; a retired provider has no open orders to service anyway
  *  (verified 2026-07-30: zero waiting orders on any provider). */
+/** Cancel a HeroSMS activation and classify the outcome LOUDLY.
+ *
+ *  `hero.cancel()` RETURNS `{ok:false, error}` — it does not throw — so a bare
+ *  try/catch around it is dead code and the failure vanishes. That mattered:
+ *  handler_api refuses a cancel inside the first ~2 minutes with
+ *  EARLY_CANCEL_DENIED, and several call sites fire milliseconds after the buy
+ *  (the over-ceiling release and the order_persist_failed release). Every one
+ *  of those forfeits the wholesale AND leaves the number held against the
+ *  account's concurrency cap, with nothing in the logs.
+ *
+ *  We cannot retry from here — the caller has already flipped the row terminal,
+ *  so no sweep will revisit it. What we CAN do is make it visible and
+ *  distinguish the three real outcomes, so the cost is measurable rather than
+ *  invisible. A durable retry queue is the proper fix and is tracked separately.
+ */
+async function heroRelease(fn: string, orderId: string): Promise<void> {
+  try {
+    const r = await hero.cancel(orderId);
+    if (r.ok) return;
+    const err = r.error ?? "unknown";
+    if (hero.isCancelAlreadyDone(err)) return;      // already finished — fine
+    if (hero.isCodeArrived(err)) {
+      // Cancelling would discard a code the provider says has ARRIVED.
+      console.error(`${fn} herosms order=${orderId}: code already arrived (${err}) — not cancelled`);
+      return;
+    }
+    console.error(
+      `${fn} herosms order=${orderId}: cancel FAILED (${err})` +
+      `${hero.isCancelRetryable(err) ? " — retryable, wholesale forfeited for now" : ""}`,
+    );
+  } catch (e) {
+    console.error(`${fn} herosms order=${orderId} threw:`, e);
+  }
+}
+
 function refuseRetired(fn: string, p: string, orderId: string): void {
   console.error(
     `${fn}: refusing retired provider "${p}" order=${orderId} — no adapter, ` +
@@ -291,22 +326,7 @@ export async function markSuccess(p: OrderProvider, orderId: string): Promise<vo
  *  has already happened by the time this runs and must never depend on it. */
 export async function markDead(p: OrderProvider, orderId: string): Promise<void> {
   if (p === "herosms") {
-    // setStatus=8 cancels AND reclaims the wholesale. There is no separate ban
-    // primitive here — SMSPVA needs one because an unbanned request id is
-    // re-issued for ~10 minutes (measured: 9 retries drew only 6 distinct
-    // numbers); this protocol releases on cancel.
-    //
-    // EARLY_CANCEL_DENIED is retryable, NOT terminal: handler_api historically
-    // refuses a cancel inside the first ~2 minutes. Our own 180s minimum hold
-    // means a user-initiated cancel is always past that, but the expiry sweep
-    // can fire earlier on a short window — so log and let the next sweep retry
-    // rather than treating the wholesale as forfeited.
-    try {
-      const r = await hero.cancel(orderId);
-      console.log(`markDead herosms order=${orderId} cancel=${r.ok} ${r.error ?? ""}`);
-    } catch (e) {
-      console.error(`markDead herosms order=${orderId} threw:`, e);
-    }
+    await heroRelease("markDead", orderId);
     return;
   }
   if (p !== "smspva") { refuseRetired("markDead", p, orderId); return; }
@@ -369,12 +389,7 @@ export async function poll(p: OrderProvider, orderId: string): Promise<PollResul
 
 /** Best-effort release/cancel at a provider (local refund happens regardless). */
 export async function release(p: OrderProvider, orderId: string): Promise<void> {
-  if (p === "herosms") {
-    try { await hero.cancel(orderId); } catch (e) {
-      console.error(`release failed provider=herosms order=${orderId}:`, e);
-    }
-    return;
-  }
+  if (p === "herosms") { await heroRelease("release", orderId); return; }
   if (p !== "smspva") { refuseRetired("release", p, orderId); return; }
   try {
     await smsCancel(orderId);

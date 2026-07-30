@@ -47,6 +47,13 @@ const API = "https://hero-sms.com/stubs/handler_api.php";
  *  hang. */
 const TIMEOUT_MS = 10_000;
 
+/** The BUY call gets longer. It is the slowest endpoint in this protocol and
+ *  the vendor's own SDK defaults to 30s; at 10s a slow-but-successful
+ *  allocation aborts client-side while the provider has already reserved and
+ *  BILLED the number, leaving a paid orphan we cannot see. Reads keep the
+ *  tighter budget so the per-minute poller stays inside its worker limit. */
+const BUY_TIMEOUT_MS = 30_000;
+
 /** ISO-4217 numeric for USD. Pinned on every price-bearing call — see header. */
 export const CURRENCY_USD = 840;
 
@@ -65,12 +72,13 @@ export type Wire =
 async function call(
   action: string,
   params: Record<string, string | number> = {},
+  timeoutMs: number = TIMEOUT_MS,
 ): Promise<Wire> {
   const q = new URLSearchParams({ api_key: apiKey(), action });
   for (const [k, v] of Object.entries(params)) q.set(k, String(v));
 
   const ctl = new AbortController();
-  const timer = setTimeout(() => ctl.abort(), TIMEOUT_MS);
+  const timer = setTimeout(() => ctl.abort(), timeoutMs);
   try {
     const res = await fetch(`${API}?${q}`, {
       signal: ctl.signal,
@@ -125,6 +133,13 @@ export function errorTokenOf(w: Wire): string | null {
     const d = w.data;
     if (typeof d.title === "string" && d.details !== undefined) return d.title;
     if (d.status === "error" && typeof d.error === "string") return d.error;
+    // Third shape, observed live on getPrices with a bad country:
+    // {"status":"false","msg":"country is incorrect"} at HTTP 200. Without
+    // this arm it reads as SUCCESS, which is how a failed getNumberV2 could
+    // fall through and trigger a SECOND purchase on the v1 path.
+    if ((d.status === "false" || d.status === false) && typeof d.msg === "string") {
+      return d.msg;
+    }
     return null;
   }
   // Bare text: success sentinels all start with ACCESS_ or STATUS_.
@@ -146,21 +161,105 @@ export function errorTokenOf(w: Wire): string | null {
 export function classifyHerosmsFault(raw: string): ProviderErrorType | undefined {
   const t = raw.trim().toUpperCase();
 
-  if (t === "NO_NUMBERS" || t === "NO_NUMBER") return "OUT_OF_STOCK";
-  if (t === "NO_BALANCE" || t === "LOW_BALANCE") return "BALANCE_ERROR";
-  if (t === "BAD_KEY" || t === "ERROR_NO_KEY" || t === "UNAUTHORIZED") return "AUTH_ERROR";
+  // Suffixed codes MUST be matched by prefix. `WRONG_MAX_PRICE:0.35` carries
+  // the minimum acceptable price and `BANNED:<date>` the ban expiry, so an
+  // exact match silently misses both. That mattered: WRONG_MAX_PRICE is OUR
+  // margin ceiling refusing the buy, and unclassified it reached the user as
+  // "no numbers available — try another country", sending them country-shopping
+  // over a price problem.
+  if (t.startsWith("WRONG_MAX_PRICE")) return "PRICE_NOT_FOUND";
   if (t.startsWith("BANNED")) return "AUTH_ERROR";
-  if (t === "WRONG_MAX_PRICE") return "PRICE_NOT_FOUND";
-  if (t === "HTTP_403_BLOCKED" || t === "HTTP_429_BLOCKED") return "RATE_LIMITED";
-  if (t === "TRANSPORT_ERROR") return "TRANSPORT_ERROR";
-  // BAD_ACTION / BAD_SERVICE / WRONG_SERVICE / BAD_STATUS are OUR bug — a
-  // malformed request — not a provider outage. Surface as AUTH_ERROR so it
-  // pages rather than silently reading as "no numbers here".
-  if (t === "BAD_ACTION" || t === "BAD_SERVICE" || t === "WRONG_SERVICE" ||
-      t === "BAD_STATUS" || t === "ERROR_SQL") return "AUTH_ERROR";
+
+  switch (t) {
+    // ── Genuinely no stock on this route ─────────────────────────────────
+    case "NO_NUMBERS":
+    case "SERVICE_NOT_AVAILABLE":
+    case "SIM_OFFLINE":
+    case "OPERATORS_NOT_FOUND":
+      return "OUT_OF_STOCK";
+
+    case "NO_BALANCE":
+      return "BALANCE_ERROR";
+
+    // ── Concurrency cap, NOT a stockout ──────────────────────────────────
+    // "Account channels limit reached" — the provider's cap on simultaneous
+    // activations, carrying {current_threads, max_allowed}. It arrives exactly
+    // when we are busiest, and as OUT_OF_STOCK it would tell every user at peak
+    // to go try another country.
+    case "CHANNELS_LIMIT":
+      return "RATE_LIMITED";
+
+    // ── Account / credentials — these must PAGE ──────────────────────────
+    // create-order only escalates on BALANCE_ERROR and AUTH_ERROR, so anything
+    // that means "the account cannot buy" belongs here or it fails silently
+    // forever. NO_KEY is what an unset HEROSMS_API_KEY produces.
+    case "BAD_KEY":
+    case "NO_KEY":
+    case "ACCOUNT_INACTIVE":
+      return "AUTH_ERROR";
+
+    // ── OUR malformed request. Also AUTH_ERROR so it pages: a request bug
+    // that reads as "no numbers" is indistinguishable from genuine scarcity.
+    case "BAD_ACTION":
+    case "BAD_SERVICE":
+    case "WRONG_SERVICE":
+    case "BAD_STATUS":
+    case "BAD_DURATION":
+    case "WRONG_COUNTRY":
+    case "WRONG_CURRENCY":
+    case "WRONG_ACTIVATION_ID":
+    case "UNPROCESSABLE_ENTITY":
+      return "AUTH_ERROR";
+
+    // ── Provider-side transient ──────────────────────────────────────────
+    case "SERVER_ERROR":
+    case "ERROR_SQL":
+    case "PARSE_ERROR":
+    case "TRANSPORT_ERROR":
+      return "TRANSPORT_ERROR";
+
+    // ── Our own transport sentinels ──────────────────────────────────────
+    case "HTTP_403_BLOCKED":
+    case "HTTP_429_BLOCKED":
+      return "RATE_LIMITED";
+  }
 
   console.error(`herosms: unclassified error "${raw}" — add it to classifyHerosmsFault`);
   return undefined;
+}
+
+/** Cancel/release faults that mean "this activation is already finished" —
+ *  treat as success, since the goal (stop holding the number) is achieved.
+ *  NOT_FOUND is included: a bogus/expired id 404s, and retrying cannot help. */
+export function isCancelAlreadyDone(raw: string): boolean {
+  const t = raw.trim().toUpperCase();
+  return t === "FINISHED" || t === "CANCELED" || t === "REFUNDED" ||
+         t === "ACTIVATION_NOT_ACTIVE" || t === "NOT_FOUND" ||
+         t === "NO_ACTIVATION" || t === "WRONG_ACTIVATION_ID" ||
+         t === "FREE_CANCELLATION_EXPIRED";
+}
+
+/** Cancel faults worth retrying LATER rather than dropping.
+ *
+ *  handler_api refuses a cancel inside the first ~2 minutes
+ *  (EARLY_CANCEL_DENIED). Every release() call site fires within that window —
+ *  the over-ceiling release and the order_persist_failed release both run
+ *  milliseconds after the buy — so without a retry the wholesale is forfeited
+ *  and the number stays reserved against the concurrency cap.
+ *
+ *  OTP_RECEIVED / NEW_OTP_RECEIVED are also retryable-ish, but they mean a code
+ *  ARRIVED: cancelling would throw away a delivered SMS, so callers should
+ *  fetch it rather than retry the cancel. */
+export function isCancelRetryable(raw: string): boolean {
+  const t = raw.trim().toUpperCase();
+  return t === "EARLY_CANCEL_DENIED" || t === "SERVER_ERROR" ||
+         t === "TRANSPORT_ERROR" || t.startsWith("HTTP_");
+}
+
+/** The provider says a code arrived — do NOT cancel, fetch it instead. */
+export function isCodeArrived(raw: string): boolean {
+  const t = raw.trim().toUpperCase();
+  return t === "OTP_RECEIVED" || t === "NEW_OTP_RECEIVED";
 }
 
 // ── Reads ───────────────────────────────────────────────────────────────────
@@ -274,7 +373,7 @@ export async function buyNumber(
     params.maxPrice = Number(maxPriceUsd.toFixed(4));
   }
 
-  const v2 = await call("getNumberV2", params);
+  const v2 = await call("getNumberV2", params, BUY_TIMEOUT_MS);
   const v2err = errorTokenOf(v2);
 
   if (v2.kind === "json" && !v2err) {
@@ -296,12 +395,24 @@ export async function buyNumber(
     }
   }
 
-  // BAD_ACTION means this deployment has no V2 — fall back rather than fail.
-  if (v2err && v2err.toUpperCase() !== "BAD_ACTION") {
-    return { ok: false, error: v2err, errorType: classifyHerosmsFault(v2err) };
+  // Fall back to v1 ONLY on BAD_ACTION (this deployment has no V2).
+  //
+  // Deliberately a POSITIVE gate. It used to be `if (v2err && !== BAD_ACTION)
+  // return error`, so any V2 response that was neither a recognised success
+  // NOR a recognised error token fell through to a SECOND getNumber call — a
+  // second purchase. Real shapes hit that hole: `{"status":"false","msg":...}`
+  // at HTTP 200 (now handled in errorTokenOf), and any text-form V2 reply.
+  // With ORDER_ALREADY_EXISTS the duplicate would likely be refused, so the
+  // user gets refunded while the FIRST number stays bought and orphaned.
+  if (v2err?.toUpperCase() !== "BAD_ACTION") {
+    return {
+      ok: false,
+      error: v2err ?? "unexpected_getnumberv2_shape",
+      errorType: classifyHerosmsFault(v2err ?? "PARSE_ERROR"),
+    };
   }
 
-  const v1 = await call("getNumber", params);
+  const v1 = await call("getNumber", params, BUY_TIMEOUT_MS);
   const v1err = errorTokenOf(v1);
   if (v1err) return { ok: false, error: v1err, errorType: classifyHerosmsFault(v1err) };
   if (v1.kind !== "text") {
@@ -341,10 +452,18 @@ export async function getStatus(orderId: string): Promise<HeroStatus> {
   const t = w.text;
   const up = t.toUpperCase();
   if (up.startsWith("STATUS_OK")) {
-    const code = t.slice(t.indexOf(":") + 1).trim();
-    return { state: "received", code, fullText: code };
+    // Guard the colon: `indexOf` returns -1 on a bare "STATUS_OK", and
+    // slice(-1 + 1) = slice(0) would hand the user the literal string
+    // "STATUS_OK" as their verification code.
+    const i = t.indexOf(":");
+    if (i < 0) return { state: "waiting" };
+    const code = t.slice(i + 1).trim();
+    return code ? { state: "received", code, fullText: code } : { state: "waiting" };
   }
-  if (up === "STATUS_WAIT_CODE" || up === "STATUS_WAIT_RETRY") return { state: "waiting" };
+  // Prefix, not equality: STATUS_WAIT_RETRY always carries a ":<lastcode>"
+  // suffix, so `=== "STATUS_WAIT_RETRY"` could never match. STATUS_WAIT_RESEND
+  // exists too. All three mean the same thing to us — keep waiting.
+  if (up.startsWith("STATUS_WAIT")) return { state: "waiting" };
   if (up === "STATUS_CANCEL") return { state: "canceled" };
   return { state: "unknown" };
 }
@@ -405,6 +524,13 @@ export async function activeActivations(): Promise<Record<string, unknown>[] | n
   const d = w.data;
   // The vendor's changelog shows `activeActivations`; their own npm client
   // declares `data`. Accept both rather than betting on one.
-  const list = (d.activeActivations ?? d.data) as unknown;
-  return Array.isArray(list) ? list as Record<string, unknown>[] : [];
+  // `data` FIRST. The live response is
+  //   {"status":"success","data":[],"activeActivations":{...,"rows":[]}}
+  // — `activeActivations` is an OBJECT, so `activeActivations ?? data` never
+  // evaluates the right-hand side, Array.isArray fails, and this returned []
+  // unconditionally. "Nothing is stranded" was hardcoded, on the one endpoint
+  // that exists to find stranded reservations.
+  if (Array.isArray(d.data)) return d.data as Record<string, unknown>[];
+  const nested = (d.activeActivations as { rows?: unknown } | undefined)?.rows;
+  return Array.isArray(nested) ? nested as Record<string, unknown>[] : [];
 }
