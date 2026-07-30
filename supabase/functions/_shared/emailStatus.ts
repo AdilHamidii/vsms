@@ -20,19 +20,28 @@
 
 import type { EmailStatus } from "./providers.ts";
 
-/** How long we keep an activation open before closing and refunding.
+/** Our local backstop window — deliberately LONGER than the vendor's.
  *
- *  UNCONFIRMED against the vendor: the probe above sat at WAIT for 15+ minutes
- *  without flipping, so the real timeout is at least that. 20 minutes matches
- *  the window HeroSMS advertises for SMS activations and is the conservative
- *  choice — closing early forfeits our wholesale and, worse, discards a code
- *  that was about to land. Tighten only against an observed vendor timeout. */
-export const EMAIL_WINDOW_SECONDS = 20 * 60;
+ *  MEASURED 2026-07-30 by holding one activation to its natural end: still WAIT
+ *  at 20m22s, CANCEL at 21m22s. So the vendor's own window is ~20–21 minutes,
+ *  and it **auto-refunds** — the account balance returned to exactly its
+ *  pre-purchase figure with no action from us.
+ *
+ *  Ours sits at 22 minutes so the vendor's terminal state is what we normally
+ *  observe, and this only fires when we cannot reach them at all. Setting it
+ *  SHORTER would race a provider that is still holding a live mailbox, and
+ *  closing early discards a code that was about to land — the expensive
+ *  direction, since receiving a code is the retention mechanic. */
+export const EMAIL_WINDOW_SECONDS = 22 * 60;
 
-/** Vendor strings seen live. Anything outside this set is logged, not assumed. */
+/** Vendor strings seen live. Anything outside this set is logged, not assumed.
+ *
+ *  `CANCEL` is deliberately absent: it is OVERLOADED. The vendor returns it for
+ *  a user-initiated DELETE *and* for its own ~20-minute timeout, with nothing
+ *  in the payload distinguishing them. Only the caller knows which happened, so
+ *  it is resolved in `mapProviderStatus` from `weCancelled` instead of here. */
 const KNOWN: Record<string, EmailStatus> = {
   WAIT: "waiting",
-  CANCEL: "canceled",
 };
 
 export interface MappedStatus {
@@ -57,11 +66,28 @@ export function mapProviderStatus(
   value: string | null,
   createdAt: string,
   windowSeconds: number = EMAIL_WINDOW_SECONDS,
+  /** Did WE issue a DELETE for this activation? Resolves the overloaded
+   *  `CANCEL` — see below. Defaults false, which is correct for every code path
+   *  that merely polls. */
+  weCancelled = false,
 ): MappedStatus {
   const code = value != null && String(value).trim() !== "" ? String(value).trim() : null;
   if (code) return { status: "received", code };
 
   const raw = (providerStatus ?? "").trim().toUpperCase();
+
+  // CANCEL means "this activation is over" and NOTHING about who ended it. The
+  // vendor uses it for both a user DELETE and its own ~20-minute timeout, with
+  // nothing in the payload to tell them apart.
+  //
+  // Defaulting it to 'canceled' would tell a user they cancelled an order that
+  // simply timed out — a false statement on their history row, and the same
+  // class of error as showing "Expired" with no refund line. So the caller's
+  // knowledge decides, and merely observing CANCEL means it expired.
+  if (raw === "CANCEL") {
+    return { status: weCancelled ? "canceled" : "expired", code: null };
+  }
+
   const known = KNOWN[raw];
   if (known && known !== "waiting") return { status: known, code: null };
 
