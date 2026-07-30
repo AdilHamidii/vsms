@@ -52,6 +52,16 @@ struct EsimMapView: View {
         var isSingle: Bool { members.count == 1 }
     }
 
+    /// Clustered pins, held in state rather than recomputed in `body`.
+    ///
+    /// As a computed property this re-bucketed every pin on EVERY body
+    /// evaluation — not just when the camera moved, but whenever anything else
+    /// in the view changed (a selection, an `AppState` mutation anywhere, a
+    /// parent redraw). It also produced a new array each time, so SwiftUI saw
+    /// changed `ForEach` data and tore down and rebuilt all the annotations.
+    /// Now it is recomputed only when its two real inputs change.
+    @State private var clusters: [Cluster] = []
+
     private var pins: [Pin] {
         countries.compactMap { c in
             guard let coord = CountryGeo.centroid(c.code) else { return nil }
@@ -70,7 +80,7 @@ struct EsimMapView: View {
     /// Dividing by 7 gives roughly seven cells across the visible width, which
     /// keeps bubbles far enough apart to be tappable at any zoom without
     /// collapsing distinct countries the user has already zoomed in to separate.
-    private var clusters: [Cluster] {
+    private func computeClusters() -> [Cluster] {
         let cell = max(span.latitudeDelta, span.longitudeDelta) / 7
         guard cell > 0.01 else {                       // fully zoomed in: no clustering
             return pins.map { Cluster(id: $0.id, coord: $0.coord, members: [$0]) }
@@ -120,6 +130,9 @@ struct EsimMapView: View {
                 commit(ctx.region.span)
             }
             .ignoresSafeArea(edges: .bottom)
+            .onAppear { clusters = computeClusters() }
+            .onChange(of: span.latitudeDelta) { _, _ in clusters = computeClusters() }
+            .onChange(of: countries) { _, _ in clusters = computeClusters() }
 
             VStack(spacing: 8) {
                 if let selected { selectionCard(selected) }

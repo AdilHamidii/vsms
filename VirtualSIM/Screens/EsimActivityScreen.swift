@@ -49,11 +49,11 @@ struct EsimActivityScreen: View {
                          size: 116, lineWidth: 11)
 
                 VStack(alignment: .leading, spacing: 10) {
-                    Metric(label: "Data used",
+                    Metric(label: String(localized: "Data used"),
                            value: EsimFormat.data(state.esimTotalUsedMb))
-                    Metric(label: "Countries",
+                    Metric(label: String(localized: "Countries"),
                            value: "\(state.esimCountriesVisited)")
-                    Metric(label: "Credits spent",
+                    Metric(label: String(localized: "Credits spent"),
                            value: "\(state.esimCreditsSpent)")
                 }
                 Spacer(minLength: 0)
@@ -87,9 +87,11 @@ struct EsimActivityScreen: View {
 
     private func expiryLine(_ date: Date) -> String {
         let days = Calendar.current.dateComponents([.day], from: .now, to: date).day ?? 0
-        if days < 0  { return "Latest plan has expired" }
-        if days == 0 { return "Soonest plan expires today" }
-        return days == 1 ? "Soonest plan expires tomorrow" : "Soonest plan expires in \(days) days"
+        if days < 0  { return String(localized: "Latest plan has expired") }
+        if days == 0 { return String(localized: "Soonest plan expires today") }
+        return days == 1
+            ? String(localized: "Soonest plan expires tomorrow")
+            : String(localized: "Soonest plan expires in \(days) days")
     }
 
     // MARK: - Sections

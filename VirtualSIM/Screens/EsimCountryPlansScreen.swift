@@ -209,6 +209,17 @@ struct EsimCountryPlansScreen: View {
 
     // MARK: - Disclosure
 
+    private var disclosureLabel: String {
+        if showAll {
+            return hiddenCount == 1
+                ? String(localized: "Hide 1 worse-value plan")
+                : String(localized: "Hide \(hiddenCount) worse-value plans")
+        }
+        return hiddenCount == 1
+            ? String(localized: "Show 1 more plan")
+            : String(localized: "Show \(hiddenCount) more plans")
+    }
+
     /// Never shorten a list silently. The user is told exactly how many rows are
     /// held back and why, and can see them in one tap — the filter is a default,
     /// not a decision made on their behalf.
@@ -219,9 +230,12 @@ struct EsimCountryPlansScreen: View {
             HStack(spacing: 6) {
                 Image(systemName: showAll ? "eye.slash" : "eye")
                     .font(.system(size: 11, weight: .medium))
-                Text(showAll
-                     ? "Hide \(hiddenCount) worse-value \(hiddenCount == 1 ? "plan" : "plans")"
-                     : "Show \(hiddenCount) more \(hiddenCount == 1 ? "plan" : "plans")")
+                // Four complete sentences rather than interpolating the noun.
+                // "Show %lld more %@" cannot be translated correctly — German
+                // and the Romance languages inflect the adjective to agree with
+                // the noun, so the fragment has to be part of the translated
+                // string, not substituted into it.
+                Text(disclosureLabel)
                     .font(RFont.text(12, weight: .medium))
             }
             .foregroundStyle(theme.text2)

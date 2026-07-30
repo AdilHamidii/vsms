@@ -123,6 +123,6 @@ extension EsimPlan {
     /// A 1-day plan's "per day" is just its size, which is noise on the row.
     var perDayLabel: String? {
         guard let mb = dataMb, let d = validityDays, d > 1, mb > 0 else { return nil }
-        return "\(EsimFormat.data(max(1, mb / d)))/day"
+        return String(localized: "\(EsimFormat.data(max(1, mb / d)))/day")
     }
 }

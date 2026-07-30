@@ -915,6 +915,32 @@ at their weakest over bright ocean. The map's cluster bubbles also need an
 bubble blend into whatever was under it — invisible as blue-on-ocean, and
 nearly as bad as green-on-Europe, since the landmass is green too.
 
+### Localization: `Text("literal")` is localized, a `String` return is NOT
+
+`Text("Preparing")` picks up the catalog automatically because the literal
+becomes a `LocalizedStringKey`. A computed property returning a plain `String`
+does not — it never enters `Localizable.xcstrings` at all, so it cannot even be
+*seen* as missing by an audit of the file. The whole eSIM tab passed a
+file-level "0 untranslated" check while still rendering **"14 MB/day"** in
+French, and that was only caught by screenshotting a non-English locale.
+
+Anything user-facing returned as `String` needs `String(localized:)`:
+`EsimStatus.label`, `EsimPlan.validityLabel`, `perDayLabel`,
+`dataRemainingLabel`, and the expiry line in `EsimActivityScreen` all needed it.
+**`Metric(label:)` takes a plain `String`** and does `Text(label.uppercased())`,
+so every call site must pass `String(localized:)` itself.
+
+Two more rules, both learned here:
+- **Never interpolate a pluralised noun into a sentence.** `"Show %lld more %@"`
+  with `%@` = "plan"/"plans" cannot be translated — German and the Romance
+  languages inflect the adjective to agree. Ship four complete sentences instead.
+- **Verify format specifiers mechanically.** A dropped or reordered `%lld`/`%@`
+  is a runtime crash and is invisible in review. Compare the multiset of
+  specifiers in every translation against its key, and normalise positional
+  form (`%1$@`) first — it is equivalent, and a translation may legitimately
+  *omit* a later argument (Italian and Japanese do exactly that for the English
+  plural-`s` fragment in "You're %lld credit%@ short…").
+
 ### The map's camera callback fires EVERY FRAME
 
 `.onMapCameraChange(frequency: .continuous)` fires per frame of a pan or pinch.
@@ -930,6 +956,22 @@ below the ~1.6× step needed for the grid cell to regroup anything — so cluste
 still merge and split visibly during a pinch, while a pan (which does not change
 the span at all) rebuilds nothing. If you add anything else derived from the
 live camera, throttle it the same way.
+
+**Derived catalog data must be STORED, not computed.** `AppState` is
+`@Observable`, so a computed property is re-evaluated on every body evaluation
+of every view that reads it. `esimCountries` walked all **1,081** plans and
+rebuilt a dictionary — twice per `HomeScreen` redraw, once per `EsimStoreScreen`
+redraw, continuously while the map was being dragged — and returned a
+freshly-allocated array each time, so SwiftUI saw new `ForEach` data and rebuilt
+every annotation. Same for `esimPlans(forCountry:)`, a filter+sort over 1,081
+called ~4× per body on the plans screen. Both are now derived once inside
+`loadEsimCatalog` (`esimCountries`, `esimPlansByCountry`), and
+`EsimMapView.clusters` is `@State` refreshed on change rather than computed.
+
+**Do not put `.animation(_:value:)` on a container holding the `Map`.** It
+applies to every descendant, so an unrelated state change animates MapKit's own
+layout. `SegmentedTabs` and the browse toggle already wrap their state changes
+in `withAnimation`, which the branch `.transition`s pick up.
 
 ### The eSIM store — why it shows FEWER plans than the catalog has
 

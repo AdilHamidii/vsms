@@ -36,6 +36,10 @@ struct EsimStoreScreen: View {
                 // A plain if/else swaps content with no motion at all, which on
                 // a segmented control reads as a screen flash. The asymmetric
                 // slide follows the direction the segment moved.
+                // No blanket `.animation` here either — `SegmentedTabs` already
+                // wraps its selection change in `withAnimation`, which the
+                // transitions below pick up. Adding one would additionally
+                // animate the MapKit view nested inside `store`.
                 ZStack {
                     switch seg {
                     case .store:    store.transition(.opacity)
@@ -43,7 +47,6 @@ struct EsimStoreScreen: View {
                     case .activity: EsimActivityScreen().transition(.opacity)
                     }
                 }
-                .animation(RMotion.content, value: seg)
             }
             .background(theme.bg)
             .navigationBarHidden(true)
@@ -112,6 +115,13 @@ struct EsimStoreScreen: View {
             // A search query is a list action — the user typed a name, so show
             // named rows. Staying on the map would answer a text search with a
             // silent camera move the user cannot see the result of.
+            // NOTE: no `.animation(_:value:)` on this container.
+            //
+            // A blanket animation modifier here applies to every descendant —
+            // including the MapKit view — so an unrelated state change made
+            // SwiftUI animate the map's own layout. The crossfade is expressed
+            // by the transitions instead, scoped to the two branches that
+            // actually swap.
             if browse == .map && query.isEmpty {
                 EsimMapView(countries: countries) { entry in destination = entry }
                     .transition(.opacity)
@@ -119,8 +129,6 @@ struct EsimStoreScreen: View {
                 countryList.transition(.opacity)
             }
         }
-        .animation(RMotion.content, value: browse)
-        .animation(RMotion.content, value: query.isEmpty)
     }
 
     private var browseToggle: some View {
