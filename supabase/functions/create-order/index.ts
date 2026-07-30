@@ -136,12 +136,12 @@ Deno.serve(async (req) => {
   const sb = admin();
 
   const { data: service, error: svcErr } = await sb
-    .from("services").select("id, smspva_code")
+    .from("services").select("id, smspva_code, herosms_code")
     .eq("id", body.service_id).single();
   if (svcErr || !service) return json({ error: "unknown_service" }, { status: 404 });
 
   const { data: country, error: cErr } = await sb
-    .from("countries").select("id, smspva_code, dial_code")
+    .from("countries").select("id, smspva_code, herosms_id, dial_code")
     .eq("id", body.country_id).single();
   if (cErr || !country) return json({ error: "unknown_country" }, { status: 404 });
 
@@ -158,6 +158,23 @@ Deno.serve(async (req) => {
   // Premium exists only where sync-smspva-operators found a real-SIM carrier
   // it could price. The app hides the option when premium_credits is null, so
   // hitting this means a stale client cache — same remedy as a dead route.
+  //
+  // `smspva_operator` and `premium_credits` are written ONLY by
+  // sync-smspva-operators, i.e. they describe an SMSPVA carrier. Once SMS
+  // routes to HeroSMS there is no pin to apply: the operator string is
+  // meaningless to a different provider, so the tier would charge the 20-50%
+  // uplift and reserve exactly the same number the standard tier does. Refuse
+  // it rather than sell nothing.
+  //
+  // This is deliberately a HARD refusal, not a silent downgrade to standard:
+  // downgrading would charge premium credits for a standard fill. HeroSMS does
+  // expose per-country operators AND a physicalCount of real-SIM stock, so the
+  // tier can be rebuilt on it properly — but that is a separate change, and
+  // until then it must not be sellable.
+  const heroRouted = service.herosms_code != null && country.herosms_id != null;
+  if (tier === "premium" && heroRouted) {
+    return json({ error: "premium_unavailable" }, { status: 409 });
+  }
   if (tier === "premium" && (route.smspva_operator == null || route.premium_credits == null)) {
     return json({ error: "premium_unavailable" }, { status: 409 });
   }
@@ -176,6 +193,8 @@ Deno.serve(async (req) => {
     ? route.premium_credits as number
     : route.retail_credits as number;
   const codes: RouteCodes = {
+    heroService: service.herosms_code,
+    heroCountry: country.herosms_id,
     smsService: service.smspva_code,
     smsCountry: country.smspva_code,
     dial: country.dial_code,
@@ -370,7 +389,11 @@ Deno.serve(async (req) => {
     let liveCost: number | null;
     if (tier === "premium" && (rotatedPinUsd != null || route.smspva_operator_cents != null)) {
       const opUsd = rotatedPinUsd ?? (route.smspva_operator_cents as number) / 100;
-      const liveBase = p === "smspva" ? await livePriceUsd(p, codes) : null;
+      // Was `p === "smspva" ? ... : null`, which meant any OTHER provider had
+      // its premium margin gate evaluated against a frozen SMSPVA operator
+      // price and never once looked at what it was actually about to be
+      // charged. livePriceUsd() is provider-generic; ask it.
+      const liveBase = await livePriceUsd(p, codes);
       liveCost = liveBase != null ? Math.max(opUsd, liveBase) : opUsd;
     } else {
       liveCost = await livePriceUsd(p, codes);

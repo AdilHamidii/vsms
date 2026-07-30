@@ -13,6 +13,7 @@
 // `orders_provider_check` still permits them. Rewriting those rows would
 // destroy the delivery evidence they carry.
 
+import * as hero from "./herosms.ts";
 import {
   getNumber as smsGetNumber,
   getSms,
@@ -23,8 +24,12 @@ import {
   isOk,
 } from "./smspva.ts";
 
-/** Providers that can be ROUTED TO for a new order. */
-export type Provider = "smspva";
+/** Providers that can be ROUTED TO for a new order.
+ *
+ *  `smspva` is retained ONLY as a rollback target (owner decision 2026-07-30):
+ *  it is fully wired and its routes are never deleted, but providerOrder() does
+ *  not return it. Reverting the cutover is a one-line change there. */
+export type Provider = "herosms" | "smspva";
 
 /** Providers that may appear on an existing `orders.provider`, including
  *  retired ones. Lifecycle calls (poll/release/markDead/markSuccess) accept
@@ -43,6 +48,10 @@ export type ProviderErrorType =
   | "RATE_LIMITED" | "AUTH_ERROR" | "TRANSPORT_ERROR";
 
 export interface RouteCodes {
+  /** HeroSMS short service code ("ig", "wa", "do"=leboncoin). */
+  heroService?: string | null;
+  /** HeroSMS numeric country id (16=UK, 187=USA, 33=Colombia). */
+  heroCountry?: number | string | null;
   smsService?: string | null;
   smsCountry?: string | null;
   dial: string;
@@ -50,20 +59,32 @@ export interface RouteCodes {
 
 /** Providers that can serve this route, preferred first.
  *
- *  SMSPVA only, and deliberately a single element: there is NO fallback.
- *  A silent cross-provider substitution is what hid virtualsms's dead purchase
- *  endpoint behind SMSPVA for weeks — create-order's loop tried the next
- *  provider and the failure never surfaced. One provider, one attempt, a real
- *  error when it fails.
+ *  HeroSMS serves 100% of SMS orders (owner decision 2026-07-30), and
+ *  deliberately as a SINGLE element: there is NO fallback. A silent
+ *  cross-provider substitution is what hid virtualsms's dead purchase endpoint
+ *  behind SMSPVA for weeks — create-order's loop tried the next provider and
+ *  the failure never surfaced. One provider, one attempt, a real error when it
+ *  fails.
+ *
+ *  A route whose service has no HeroSMS mapping returns [] and create-order
+ *  answers 409 route_unavailable. That is intentional: 118 of our 268 services
+ *  have no HeroSMS code, and between them they carry ONE lifetime order. Those
+ *  routes are hidden in the cutover migration so they are never offered.
+ *
+ *  TO ROLL BACK: return ["smspva"] here. The SMSPVA adapter is fully wired and
+ *  its routes are never deleted.
  *
  *  eSIMs are untouched and stay on SMSPool (a separate table and code path). */
 export function providerOrder(c: RouteCodes): Provider[] {
-  return c.smsService && c.smsCountry ? ["smspva"] : [];
+  return c.heroService && c.heroCountry != null ? ["herosms"] : [];
 }
 
 /** Live wholesale price (USD) at a provider, or null if unavailable. */
 export async function livePriceUsd(p: Provider, c: RouteCodes): Promise<number | null> {
   try {
+    if (p === "herosms" && c.heroService && c.heroCountry != null) {
+      return await hero.getPrice(c.heroCountry, c.heroService);
+    }
     if (p === "smspva" && c.smsService && c.smsCountry) {
       const r = await getServicePrice(c.smsCountry, c.smsService);
       return isOk(r) && Number.isFinite(r.data?.price) && r.data.price > 0 ? r.data.price : null;
@@ -90,10 +111,39 @@ export interface Reservation {
  *  pinStrict=true (premium tier) makes a dry pin a hard failure instead of
  *  retrying unpinned. */
 export async function reserve(
-  p: Provider, c: RouteCodes, _maxPriceUsd?: number, pool?: string | null,
+  p: Provider, c: RouteCodes, maxPriceUsd?: number, pool?: string | null,
   pinStrict = false,
 ): Promise<Reservation> {
   try {
+    if (p === "herosms" && c.heroService && c.heroCountry != null) {
+      // Unlike SMSPVA, this provider ACCEPTS a price cap and REPORTS the cost,
+      // so `maxPriceUsd` is enforced provider-side instead of only being
+      // checked after the fill. That closes the window where a route quoted at
+      // pennies bills dollars (seen live on the old stack: wechat/kg quoted 6c,
+      // filled at 79c).
+      //
+      // `pool` is a carrier name from getOperators. pinStrict (premium tier)
+      // makes a dry carrier a hard failure; standard retries unpinned rather
+      // than losing the sale.
+      let r = await hero.buyNumber(c.heroCountry, c.heroService, pool ?? undefined, maxPriceUsd);
+      if (!r.ok && pool && !pinStrict &&
+          (r.errorType === "OUT_OF_STOCK" || r.errorType === undefined)) {
+        r = await hero.buyNumber(c.heroCountry, c.heroService, undefined, maxPriceUsd);
+      }
+      if (!r.ok) return { ok: false, error: r.error, errorType: r.errorType };
+      return {
+        ok: true,
+        orderId: r.orderId,
+        // Already normalised to full E.164 with a leading "+" by the adapter.
+        // Deliberately NOT `${c.dial} ${number}` — that form exists for SMSPVA,
+        // which returns a NATIONAL number, and reusing it here would produce a
+        // doubled country code.
+        number: r.phoneNumber ?? "",
+        costUsd: r.costUsd,
+        expiresAt: r.expiresAt,
+        pool: pool ?? undefined,
+      };
+    }
     if (p === "smspva" && c.smsService && c.smsCountry) {
       // SMSPVA's allocation endpoint accepts no price cap and reports no cost
       // — it once billed $3.60 on a route quoted at pennies. Bracket the
@@ -210,6 +260,11 @@ function refuseRetired(fn: string, p: string, orderId: string): void {
  *  quality of numbers they hand out next. Best-effort hygiene: a failure here
  *  must never affect the delivered order. */
 export async function markSuccess(p: OrderProvider, orderId: string): Promise<void> {
+  if (p === "herosms") {
+    // setStatus=6 (finish) is HeroSMS's "this activation is done" signal.
+    try { await hero.finish(orderId); } catch { /* hygiene only */ }
+    return;
+  }
   if (p !== "smspva") return;
   try { await smsBlock(orderId); } catch { /* hygiene only */ }
 }
@@ -225,6 +280,25 @@ export async function markSuccess(p: OrderProvider, orderId: string): Promise<vo
  *  reclaim the wholesale refund; both best-effort — the user's credit refund
  *  has already happened by the time this runs and must never depend on it. */
 export async function markDead(p: OrderProvider, orderId: string): Promise<void> {
+  if (p === "herosms") {
+    // setStatus=8 cancels AND reclaims the wholesale. There is no separate ban
+    // primitive here — SMSPVA needs one because an unbanned request id is
+    // re-issued for ~10 minutes (measured: 9 retries drew only 6 distinct
+    // numbers); this protocol releases on cancel.
+    //
+    // EARLY_CANCEL_DENIED is retryable, NOT terminal: handler_api historically
+    // refuses a cancel inside the first ~2 minutes. Our own 180s minimum hold
+    // means a user-initiated cancel is always past that, but the expiry sweep
+    // can fire earlier on a short window — so log and let the next sweep retry
+    // rather than treating the wholesale as forfeited.
+    try {
+      const r = await hero.cancel(orderId);
+      console.log(`markDead herosms order=${orderId} cancel=${r.ok} ${r.error ?? ""}`);
+    } catch (e) {
+      console.error(`markDead herosms order=${orderId} threw:`, e);
+    }
+    return;
+  }
   if (p !== "smspva") { refuseRetired("markDead", p, orderId); return; }
   // Log both outcomes explicitly: these calls return SMSPVA's error ENVELOPE
   // rather than throwing, so a silent try/catch would hide whether the ban
@@ -268,6 +342,10 @@ export interface PollResult {
 
 /** Poll a provider order for the SMS code. */
 export async function poll(p: OrderProvider, orderId: string): Promise<PollResult> {
+  if (p === "herosms") {
+    const s = await hero.getStatus(orderId);
+    return { state: s.state, code: s.code, fullText: s.fullText };
+  }
   if (p !== "smspva") {
     refuseRetired("poll", p, orderId);
     return { state: "unknown" };
@@ -281,6 +359,12 @@ export async function poll(p: OrderProvider, orderId: string): Promise<PollResul
 
 /** Best-effort release/cancel at a provider (local refund happens regardless). */
 export async function release(p: OrderProvider, orderId: string): Promise<void> {
+  if (p === "herosms") {
+    try { await hero.cancel(orderId); } catch (e) {
+      console.error(`release failed provider=herosms order=${orderId}:`, e);
+    }
+    return;
+  }
   if (p !== "smspva") { refuseRetired("release", p, orderId); return; }
   try {
     await smsCancel(orderId);
