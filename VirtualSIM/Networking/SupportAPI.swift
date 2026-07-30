@@ -20,11 +20,25 @@ struct SupportAPI {
 
     /// Send a message. The server creates or reuses the thread — there is at
     /// most one live thread per user, enforced by a partial unique index.
+    /// Decodes NOTHING on purpose.
+    ///
+    /// This used to decode `{thread_id, relayed}` into a struct declaring
+    /// `let thread_id`. `JSONDecoder.relay` sets `.convertFromSnakeCase`, so the
+    /// key arrives as `threadId` and the snake_case property never matched —
+    /// the decode threw on a request that had already stored the message AND
+    /// relayed it to Telegram. The user saw "Couldn't reach the server" while
+    /// the owner's phone was buzzing with their message.
+    ///
+    /// The caller discards the value anyway, so the safest contract is not to
+    /// have one: `Empty` short-circuits decoding entirely, and no future change
+    /// to this endpoint's response shape can break sending a support message —
+    /// which is the one screen a user reaches for when everything else is
+    /// already broken.
     func send(_ body: String) async throws {
         struct Body: Encodable { let body: String }
-        struct Ack: Decodable { let thread_id: String; let relayed: Bool }
         _ = try await client.request(
-            .post, path: "functions/v1/support-send", body: Body(body: body), as: Ack.self
+            .post, path: "functions/v1/support-send", body: Body(body: body),
+            as: APIClient.Empty.self
         )
     }
 

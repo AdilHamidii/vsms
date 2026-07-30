@@ -29,8 +29,16 @@ enum APIError: Error, LocalizedError {
             return ""
         case .appleSignInFailed:
             return "Sign in didn't complete. Please try again."
-        case .badResponse, .decoding:
+        case .badResponse:
             return "Couldn't reach the server. Check your connection and try again."
+        case .decoding:
+            // NOT a connectivity message. A decode failure means the request
+            // SUCCEEDED and we could not read the reply — blaming the user's
+            // connection sends them to re-check their wifi and, worse, to retry
+            // an action the server already performed. That is exactly what
+            // happened with support messages: sent, relayed, and reported as a
+            // network failure.
+            return "Something went wrong on our side. Your last action may have gone through — check before retrying."
         case .http(let status, let body):
             // Surface a known business-logic error from our own backend.
             if let kind = parseErrorType(body) {

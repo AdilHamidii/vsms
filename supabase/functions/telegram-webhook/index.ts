@@ -104,7 +104,24 @@ Deno.serve(async (req) => {
     // Not a support reply — fall through and treat it as a normal command.
   }
 
-  const text = (update.message?.text ?? "").trim().toLowerCase();
+  // Plain text, no leading "/", while a conversation is assigned → it is an
+  // ANSWER to that conversation, not a mistyped command.
+  //
+  // Without this, accepting a chat and then simply typing a reply — the obvious
+  // thing to do, and what "I get to be the support to that user" means — got
+  // swallowed by the command parser and answered with the help text. The user
+  // waiting on the other end saw nothing at all.
+  //
+  // Replies still take precedence above, and remain the way to target a
+  // specific conversation when several are open; this only covers the case
+  // where the owner is plainly talking to the one they just accepted.
+  const raw = (update.message?.text ?? "").trim();
+  if (raw !== "" && !raw.startsWith("/") && update.message?.reply_to_message == null) {
+    const routed = await routeToAssignedThread(raw);
+    if (routed) return ok();
+  }
+
+  const text = raw.toLowerCase();
   const parts = text.split(/\s+/);
   const cmd = parts[0].replace(/@.*$/, "");               // strip @botname suffix
   const arg = (parts[1] ?? "").replace(/^[-/]+/, "");     // tolerate "-7d" / "/7d"
@@ -283,6 +300,54 @@ async function handleAgentReply(replyToId: number, text: string): Promise<boolea
   // Wake the user. Without this the reply sits unread until they happen to
   // reopen the app, which for a support answer is most of its value gone.
   await pushSupportReply(sb, thread.user_id, text);
+  return true;
+}
+
+/** Plain text from the owner while a conversation is assigned → send it there.
+ *
+ *  Returns false when there is nothing assigned, so the caller falls through to
+ *  command parsing and an ordinary typo still gets the help text. */
+async function routeToAssignedThread(text: string): Promise<boolean> {
+  const sb = admin();
+
+  // Most recently active assigned thread. With several open at once this is a
+  // guess, which is why the confirmation below NAMES the recipient — the owner
+  // must be able to see immediately that it went somewhere they did not mean,
+  // and `reply` remains the way to target one explicitly.
+  const { data: thread, error } = await sb
+    .from("support_threads")
+    .select("id, user_id")
+    .eq("status", "assigned")
+    .order("last_message_at", { ascending: false })
+    .limit(1).maybeSingle();
+  if (error) {
+    console.error(`support route: lookup failed: ${error.message}`);
+    return false;
+  }
+  if (!thread) return false;
+
+  const { data: posted, error: postErr } = await sb.rpc("post_support_message", {
+    p_user: thread.user_id, p_body: text, p_sender: "agent",
+  });
+  if (postErr) {
+    console.error(`support route: post failed thread=${thread.id}: ${postErr.message}`);
+    await sendMessage("⚠️ Couldn't deliver that — it was NOT sent to the user.");
+    return true;
+  }
+  const res = posted as { ok?: boolean; reason?: string } | null;
+  if (!res?.ok) {
+    await sendMessage(`⚠️ Rejected (${esc(res?.reason ?? "unknown")}) — NOT sent.`);
+    return true;
+  }
+
+  const { data: profile } = await sb
+    .from("profiles").select("display_name").eq("user_id", thread.user_id).maybeSingle();
+  const who = profile?.display_name?.trim() || `user ${String(thread.user_id).slice(0, 8)}`;
+
+  await pushSupportReply(sb, thread.user_id, text);
+  // Confirm, and say to WHOM. Silent delivery to an unnamed recipient is how
+  // the owner ends up sending a private note into a customer conversation.
+  await sendMessage(`✅ Sent to <b>${esc(who)}</b>.`);
   return true;
 }
 
