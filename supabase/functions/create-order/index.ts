@@ -147,7 +147,7 @@ Deno.serve(async (req) => {
 
   const { data: route, error: rErr } = await sb
     .from("routes")
-    .select("retail_credits, status, last_cost_cents, provider, smspool_pool, smspva_operator, smspva_operator_cents, premium_credits")
+    .select("retail_credits, status, last_cost_cents, herosms_cost_cents, provider, smspool_pool, smspva_operator, smspva_operator_cents, premium_credits")
     .eq("service_id", service.id)
     .eq("country_id", country.id)
     .maybeSingle();
@@ -398,8 +398,26 @@ Deno.serve(async (req) => {
     } else {
       liveCost = await livePriceUsd(p, codes);
     }
-    if (liveCost == null && route.last_cost_cents != null && (route.last_cost_cents as number) > 0) {
-      liveCost = (route.last_cost_cents as number) / 100; // graceful degrade to last synced cost
+    // Graceful degrade to the last SYNCED cost — but only to a cost synced for
+    // THIS provider.
+    //
+    // `last_cost_cents` is written by sync-prices, which prices SMSPVA and
+    // deliberately skips non-SMSPVA rows. So on a HeroSMS route it holds a
+    // frozen SMSPVA number. Falling back to it margin-checked a HeroSMS
+    // purchase against a retired provider's price, and for routes HeroSMS
+    // cannot serve at all (livePriceUsd -> null) that stale cost PASSED the
+    // gate — the reservation then failed NO_NUMBERS and the user was charged,
+    // refunded, and told to "try another country or service". ~16% of HeroSMS
+    // routes were in that state.
+    //
+    // A HeroSMS route with no HeroSMS cost is now correctly unavailable rather
+    // than sellable-then-broken. sync-herosms hides those routes; this is the
+    // belt to that braces, for the window before it next runs.
+    const cachedCents = p === "herosms"
+      ? (route.herosms_cost_cents as number | null)
+      : (route.last_cost_cents as number | null);
+    if (liveCost == null && cachedCents != null && cachedCents > 0) {
+      liveCost = cachedCents / 100;
     }
     if (liveCost == null) { lastError = "route_unavailable"; continue; }
     if (liveCost > maxCostUsd) {
