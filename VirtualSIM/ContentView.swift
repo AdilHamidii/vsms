@@ -1,7 +1,7 @@
 import SwiftUI
 
 enum ActiveSheet: String, Identifiable {
-    case services, country, credits
+    case services, country, credits, emailDomain
     var id: String { rawValue }
 }
 
@@ -47,8 +47,16 @@ struct ContentView: View {
                     HomeScreen(
                         openServices: { sheet = .services },
                         openCountries: { sheet = .country },
+                        openEmailDomains: { sheet = .emailDomain },
                         openCredits: { sheet = .credits },
                         onStart: { state.startCheckout() },
+                        onStartEmail: {
+                            Task {
+                                await state.confirmGetEmail(
+                                    using: EmailAPI(client: api),
+                                    wallet: WalletAPI(client: api))
+                            }
+                        },
                         onTapOrder: { o in
                             if o.status == .waiting {
                                 state.activeOrder = o
@@ -120,6 +128,18 @@ struct ContentView: View {
             // The whole cold-launch sequence, including which steps must finish
             // before the splash lifts. See AppState.coldStart.
             await state.coldStart(api: api)
+        }
+        // Stock is live and per (service, domain), so the picker has to be
+        // re-quoted whenever either input changes — entering email mode, or
+        // switching service while already in it. Cheap: one call, and only when
+        // the user is actually looking at email.
+        .onChange(of: state.emailMode) { _, on in
+            guard on else { return }
+            Task { await state.loadEmailDomains(using: EmailAPI(client: api)) }
+        }
+        .onChange(of: state.lastService.id) { _, _ in
+            guard state.emailMode else { return }
+            Task { await state.loadEmailDomains(using: EmailAPI(client: api)) }
         }
         .onChange(of: scenePhase) { _, phase in
             if phase == .active {
@@ -223,6 +243,10 @@ struct ContentView: View {
             if let order = state.activeEsimOrder {
                 EsimDetailScreen(order: order)
             } else { emptyFlow }
+        case .emailWaiting:
+            EmailWaitingScreen()
+        case .emailCode:
+            EmailCodeScreen()
         }
     }
 
@@ -282,6 +306,14 @@ struct ContentView: View {
                 if let n = iap.lastGrantedCredits, n > 0 {
                     state.creditPurchaseBanner = n
                 }
+            })
+        case .emailDomain:
+            EmailDomainSheet(onPick: { picked in
+                state.emailDomain = picked
+                // Declare the intent here too: the credits pill can be opened
+                // from Home with flow == nil, and creditsShortfall must size for
+                // the email price rather than the SMS route behind it.
+                state.intent = .email
             })
         }
     }

@@ -112,7 +112,8 @@ Deno.serve(async (req) => {
 
   // ── Charge (or, for the free tier, just claim a slot) ────────────────────
   const { data: begun, error: beginErr } = await sb.rpc("begin_email_order", {
-    p_user: userId, p_site: site, p_domain: domain, p_credits: credits,
+    p_user: userId, p_service: service.id, p_site: site,
+    p_domain: domain, p_credits: credits,
   });
   if (beginErr) {
     console.error(`create-email-order: begin_email_order failed: ${beginErr.message}`);

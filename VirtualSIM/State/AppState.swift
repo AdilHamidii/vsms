@@ -6,7 +6,32 @@ enum AppTab: String, Hashable, CaseIterable {
 
 enum FlowStage: String, Hashable, Identifiable {
     case checkout, waiting, otp, recovery, esimCheckout, esimDetail
+    case emailWaiting, emailCode
     var id: String { rawValue }
+}
+
+/// Which product the user is currently buying.
+///
+/// This exists because `creditsShortfall` used to infer it, and inference was
+/// wrong. It branched on `if let plan = checkoutEsimPlan` with no `flow` check —
+/// deliberately, because the credits pill in the eSIM tab opens the ROOT sheet
+/// with `flow == nil`. But `flow`'s `didSet` clears the SMS draft and **never
+/// cleared `checkoutEsimPlan`**, which was assigned in exactly one place and set
+/// to nil in none. So after a single visit to an eSIM checkout, every later
+/// "how many credits do you need?" answered for that plan — for the rest of the
+/// session, on every screen, including SMS checkout.
+///
+/// `CreditsSheet` is product-agnostic and receives only `needed:`, so it had no
+/// way to notice. Adding a third product to that if-chain would have multiplied
+/// the bug rather than added to it.
+///
+/// Stated once so it generalises: **when a write path branches on `flow` but the
+/// read path doesn't, the two disagree the moment the flow ends.** The intent is
+/// therefore set explicitly at each entry point and cleared centrally in
+/// `flow`'s `didSet`, exactly as `configuringService`/`configuringCountry`
+/// already discipline the SMS draft.
+enum PurchaseIntent: String, Hashable {
+    case sms, esim, email
 }
 
 /// What the post-failure recovery card needs to know. Stored on AppState
@@ -110,17 +135,43 @@ final class AppState {
     /// happens once, centrally, on every transition out of `.checkout`.
     var flow: FlowStage? {
         didSet {
+            // The eSIM plan and the purchase intent are cleared on ANY exit,
+            // not just out of `.checkout`. `checkoutEsimPlan` was previously
+            // never cleared anywhere, which is what let a stale plan answer
+            // `creditsShortfall` for the rest of the session — see PurchaseIntent.
+            if flow == nil {
+                checkoutEsimPlan = nil
+                emailDomain = nil
+                intent = .sms
+            }
             guard flow != .checkout else { return }
             checkoutService = nil
             checkoutCountry = nil
             checkoutPremium = false
         }
     }
+
+    /// What the user is buying right now. See `PurchaseIntent`.
+    var intent: PurchaseIntent = .sms
     /// Context for the `.recovery` flow stage; set wherever an order ends
     /// without a code, cleared by retry/dismiss.
     var recovery: RecoveryContext?
 
     // eSIM product line
+    // ── Temporary email ──────────────────────────────────────────────────
+    /// Home's Numbers / E-mails segmented selection. Purely a view mode; the
+    /// authoritative "what am I buying" is `intent`, set at the entry points.
+    var emailMode = false
+    var emailOrders: [ServerEmailOrder] = []
+    /// Live domain options for the service being configured. Refetched whenever
+    /// the service changes — stock is per (service, domain) and moves.
+    var emailDomains: [EmailDomainOption] = []
+    var isLoadingEmailDomains = false
+    /// The domain chosen in the picker; drives price and the CTA.
+    var emailDomain: EmailDomainOption?
+    var activeEmailOrder: ServerEmailOrder?
+    var isBuyingEmail = false
+
     var esimPlans: [EsimPlan] = []
     var esimOrders: [EsimOrder] = []
     var checkoutEsimPlan: EsimPlan?
@@ -605,13 +656,24 @@ final class AppState {
     /// affordable or the pair is unavailable. Drives CreditsSheet's pack
     /// preselection so the user is offered the smallest pack that unblocks them.
     var creditsShortfall: Int {
-        // Not gated on `flow == .esimCheckout`: the credits pill in
-        // EsimStoreScreen opens the ROOT sheet with flow == nil, so the
-        // shortfall was computed from lastService/lastCountry — an SMS route —
-        // and the hint told a user buying a data plan they were "N credits
-        // short for this number".
-        if let plan = checkoutEsimPlan, let c = plan.retailCredits {
+        // Switch on the DECLARED intent, never infer it from which draft happens
+        // to be non-nil. See `PurchaseIntent` for the bug that shape caused.
+        //
+        // Still not gated on `flow`, and that is deliberate: the credits pill in
+        // EsimStoreScreen opens the ROOT sheet with flow == nil. The intent is
+        // what carries the product across that boundary, and unlike the old
+        // draft-sniffing it is cleared when the flow ends.
+        switch intent {
+        case .esim:
+            guard let c = checkoutEsimPlan?.retailCredits else { return 0 }
             return max(0, c - balance)
+        case .email:
+            // Free domains can never leave you short, so they contribute 0
+            // rather than a spurious "buy credits" nudge.
+            guard let c = emailDomain?.credits, c > 0 else { return 0 }
+            return max(0, c - balance)
+        case .sms:
+            break
         }
         let svc = configuringService
         let cty = configuringCountry
@@ -893,8 +955,95 @@ final class AppState {
             .sorted { ($0.retailCredits ?? 0) < ($1.retailCredits ?? 0) }
     }
 
+    // ─────────── Temporary email ───────────
+
+    /// Services that can offer an email address at all.
+    ///
+    /// The provider REQUIRES a target site, which we take from `service.domain`
+    /// — and 11 of 265 visible services have none. Filtering here is the
+    /// difference between an absent row and a tap that fails at checkout with
+    /// `email_unsupported_service`.
+    var emailCapableServices: [Service] {
+        services.filter { !($0.domain ?? "").isEmpty }
+    }
+
+    var emailSupported: Bool { !(configuringService.domain ?? "").isEmpty }
+
+    /// Refresh the live domain list for whatever service is selected.
+    ///
+    /// Always refetched, never cached: stock is per (service, domain) and
+    /// genuinely moves — hotmail.com measured 1,028 for google.com and 2 for
+    /// discord.com in one sweep. A stale "available" is a promise we break at
+    /// the moment the user taps buy.
+    @MainActor
+    func loadEmailDomains(using api: EmailAPI) async {
+        let svc = configuringService
+        guard !(svc.domain ?? "").isEmpty else {
+            emailDomains = []; emailDomain = nil; return
+        }
+        isLoadingEmailDomains = true
+        defer { isLoadingEmailDomains = false }
+        do {
+            let res = try await api.domains(serviceId: svc.id)
+            emailDomains = res.domains
+            // Keep the selection only if it is still buyable; otherwise fall to
+            // the first in-stock option so the CTA is never armed on a dead one.
+            if let cur = emailDomain,
+               let same = res.domains.first(where: { $0.domain == cur.domain }),
+               same.inStock {
+                emailDomain = same
+            } else {
+                emailDomain = res.domains.first(where: { $0.inStock })
+            }
+        } catch {
+            emailDomains = []
+            emailDomain = nil
+            lastError = (error as? APIError)?.userMessage
+        }
+    }
+
+    @MainActor
+    func loadEmailOrders(using api: EmailAPI) async {
+        do { emailOrders = try await api.list() } catch { /* keep what we have */ }
+    }
+
+    /// Buy the selected address. Free domains move no credits, so the balance
+    /// refresh afterwards is still correct — it just does not change.
+    @MainActor
+    func confirmGetEmail(using api: EmailAPI, wallet: WalletAPI) async {
+        guard !isBuyingEmail, let dom = emailDomain, dom.inStock else { return }
+        let svc = configuringService
+        isBuyingEmail = true
+        defer { isBuyingEmail = false }
+        do {
+            let order = try await api.create(serviceId: svc.id, domain: dom.domain)
+            emailOrders.insert(order, at: 0)
+            activeEmailOrder = order
+            intent = .email
+            flow = .emailWaiting
+            await refreshWallet(using: wallet)
+        } catch {
+            lastError = (error as? APIError)?.userMessage
+                ?? String(localized: "Couldn't get an address. Please try again.")
+        }
+    }
+
+    /// Poll one activation. `hasCode` — not `status` — decides we are done, the
+    /// same rule the SMS side had to learn.
+    @MainActor
+    func refreshEmailOrder(using api: EmailAPI) async {
+        guard let cur = activeEmailOrder else { return }
+        guard let fresh = try? await api.check(orderId: cur.id) else { return }
+        activeEmailOrder = fresh
+        if let i = emailOrders.firstIndex(where: { $0.id == fresh.id }) {
+            emailOrders[i] = fresh
+        }
+        if fresh.hasCode, flow == .emailWaiting { flow = .emailCode }
+    }
+
     func startEsimCheckout(_ plan: EsimPlan) {
         checkoutEsimPlan = plan
+        intent = .esim          // declare it; never let creditsShortfall guess
         flow = .esimCheckout
     }
     func openEsimDetail(_ order: EsimOrder) {
@@ -980,6 +1129,7 @@ final class AppState {
     func startCheckout(service: Service? = nil, country: Country? = nil) {
         let svc = service ?? lastService
         let cty = country ?? lastCountry
+        intent = .sms
         checkoutService = svc
         checkoutCountry = cty
         // Open on real-SIM where standard is measurably a dead end.

@@ -73,6 +73,25 @@ enum APIError: Error, LocalizedError {
                     return "That eSIM plan isn't available anymore."
                 case "duplicate_request":
                     return "That purchase is already going through — give it a moment."
+                // Temporary email. Mapped in the same commit as the edge
+                // functions that emit them: an unmapped code falls through to
+                // the 5xx fallback and blames our infrastructure for a stockout.
+                case "email_out_of_stock":
+                    return "That email domain just ran out. Try another one."
+                case "domain_unavailable":
+                    return "We don't offer that email domain."
+                case "email_unsupported_service":
+                    // 11 of 265 services have no domain, so the provider has no
+                    // target site to bind the address to.
+                    return "Email addresses aren't available for this service yet."
+                case "email_purchase_failed":
+                    return "We couldn't get an address right now. Please try again."
+                case "free_limit_reached":
+                    return "You've used today's free addresses. Try again tomorrow, or pick Gmail or iCloud."
+                case "unknown_service":
+                    return "That service isn't available anymore."
+                case "order_persist_failed":
+                    return "Something went wrong saving that. Your credits are unchanged."
                 case "spend_failed", "refund_failed":
                     return "We couldn't complete that. Your credits are unchanged — please try again."
                 case "verification_failed":

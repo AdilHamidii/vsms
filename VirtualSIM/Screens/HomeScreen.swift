@@ -7,8 +7,10 @@ struct HomeScreen: View {
 
     var openServices: () -> Void = {}
     var openCountries: () -> Void = {}
+    var openEmailDomains: () -> Void = {}
     var openCredits: () -> Void = {}
     var onStart: () -> Void = {}
+    var onStartEmail: () -> Void = {}
     var onTapOrder: (Order) -> Void = { _ in }
     var onSeeAllOrders: () -> Void = {}
     var onOpenEsim: () -> Void = {}
@@ -48,6 +50,10 @@ struct HomeScreen: View {
                         .padding(.top, 14)
                         .transition(.move(edge: .top).combined(with: .opacity))
                 }
+
+                modeSwitch
+                    .padding(.horizontal, 16)
+                    .padding(.top, 18)
 
                 heroSection
                     .padding(.horizontal, 16)
@@ -181,7 +187,7 @@ struct HomeScreen: View {
                     .font(RFont.text(13))
                     .tracking(-0.1)
                     .foregroundStyle(theme.text2)
-                Text("Get a number.")
+                Text(state.emailMode ? "Get an email." : "Get a number.")
                     .font(RFont.display(28, weight: .bold))
                     .tracking(-0.7)
                     .foregroundStyle(theme.text)
@@ -271,18 +277,28 @@ struct HomeScreen: View {
                                 .font(RFont.display(18, weight: .semibold))
                                 .tracking(-0.4)
                                 .foregroundStyle(theme.text)
-                            HStack(spacing: 6) {
-                                FlagImage(country: state.lastCountry, size: 14, radius: 3)
-                                Text(state.lastCountry.name)
+                            // An email address has no country and no dial code,
+                            // so the SMS subtitle would be inventing both.
+                            if state.emailMode {
+                                Text(verbatim: state.emailDomain?.displayName ?? "—")
                                     .font(RFont.text(13))
                                     .foregroundStyle(theme.text2)
-                                Text("·").foregroundStyle(theme.text3)
-                                MonoText(state.lastCountry.dialCode, size: 12, color: theme.text2)
+                            } else {
+                                HStack(spacing: 6) {
+                                    FlagImage(country: state.lastCountry, size: 14, radius: 3)
+                                    Text(state.lastCountry.name)
+                                        .font(RFont.text(13))
+                                        .foregroundStyle(theme.text2)
+                                    Text("·").foregroundStyle(theme.text3)
+                                    MonoText(state.lastCountry.dialCode, size: 12, color: theme.text2)
+                                }
                             }
                         }
                         Spacer(minLength: 0)
                         VStack(alignment: .trailing, spacing: 4) {
-                            if let routeCost {
+                            if state.emailMode {
+                                emailHeroPrice
+                            } else if let routeCost {
                                 HStack(alignment: .firstTextBaseline, spacing: 3) {
                                     Text("\(routeCost)")
                                         .font(RFont.display(22, weight: .semibold))
@@ -299,7 +315,14 @@ struct HomeScreen: View {
                             }
                         }
                     }
-                    if state.showMetrics {
+                    // The metrics row is SMS-only ON PURPOSE. Typical wait,
+                    // "No code → Refunded" and the delivery record are all
+                    // measured for phone numbers on a specific route. Rendering
+                    // them on an email purchase would restate another product's
+                    // evidence as this one's — the same mistake as quoting the
+                    // seed etaSeconds, and we have measured nothing for email
+                    // yet. Silence is the honest answer until we have.
+                    if state.showMetrics && !state.emailMode {
                         Rectangle()
                             .fill(theme.sep)
                             .frame(height: 0.5)
@@ -329,8 +352,10 @@ struct HomeScreen: View {
                         }
                         .padding(.top, 14)
                     }
-                    heroCTA
-                        .padding(.top, 16)
+                    Group {
+                        if state.emailMode { emailCTA } else { heroCTA }
+                    }
+                    .padding(.top, 16)
                 }
                 .padding(18)
             }
@@ -341,6 +366,18 @@ struct HomeScreen: View {
         }
     }
 
+    /// Numbers / E-mails. A segmented control rather than a fifth tab: the two
+    /// products share the service picker and differ only in what they deliver,
+    /// so they belong on one screen.
+    private var modeSwitch: some View {
+        @Bindable var s = state
+        return SegmentedTabs(
+            selection: $s.emailMode,
+            items: [(tag: false, label: String(localized: "Number"), count: nil),
+                    (tag: true,  label: String(localized: "E-mail"), count: nil)]
+        )
+    }
+
     private var pickersSection: some View {
         VStack(alignment: .leading, spacing: 0) {
             SectionHeader(label: "Change")
@@ -348,10 +385,86 @@ struct HomeScreen: View {
                 PickerCard(label: "Service", value: state.lastService.name, icon: {
                     ServiceLogo(service: state.lastService, size: 32, radius: 9)
                 }, onTap: openServices)
-                PickerCard(label: "Country", value: state.lastCountry.name, icon: {
-                    FlagImage(country: state.lastCountry, size: 32, radius: 9)
-                }, onTap: openCountries)
+                if state.emailMode {
+                    // The domain replaces the country: an email address has no
+                    // country, and showing one would imply a choice that does
+                    // not exist.
+                    PickerCard(label: "Domain",
+                               value: state.emailDomain?.displayName
+                                   ?? String(localized: "Choose"),
+                               icon: {
+                        Image(systemName: "envelope.fill")
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundStyle(theme.ink)
+                            .frame(width: 32, height: 32)
+                            .background(theme.inkSoft, in: .rect(cornerRadius: 9))
+                    }, onTap: openEmailDomains)
+                } else {
+                    PickerCard(label: "Country", value: state.lastCountry.name, icon: {
+                        FlagImage(country: state.lastCountry, size: 32, radius: 9)
+                    }, onTap: openCountries)
+                }
             }
+        }
+    }
+
+    /// Price in the email hero. "Free" is a word, not a 0 — rendering "0 cr"
+    /// reads as a broken price rather than a gift.
+    @ViewBuilder
+    private var emailHeroPrice: some View {
+        if let dom = state.emailDomain {
+            if dom.isFree {
+                Text("Free")
+                    .font(RFont.display(19, weight: .semibold))
+                    .tracking(-0.4)
+                    .foregroundStyle(theme.live)
+            } else {
+                HStack(alignment: .firstTextBaseline, spacing: 3) {
+                    Text("\(dom.credits)")
+                        .font(RFont.display(22, weight: .semibold))
+                        .tracking(-0.5)
+                        .foregroundStyle(theme.text)
+                    Text("cr")
+                        .font(RFont.text(13, weight: .medium))
+                        .foregroundStyle(theme.text2)
+                }
+            }
+        } else {
+            Text("—")
+                .font(RFont.display(22, weight: .semibold))
+                .foregroundStyle(theme.text3)
+        }
+    }
+
+    /// CTA for the email line.
+    ///
+    /// Three distinct states, and the differences matter: a service with no
+    /// domain cannot offer email AT ALL (11 of 265), a domain can be out of
+    /// stock, and the free tier must never render a credit price.
+    @ViewBuilder
+    private var emailCTA: some View {
+        if !state.emailSupported {
+            PrimaryButton(label: "Not available for this service",
+                          sub: "Pick another service",
+                          icon: RIcon.bolt, disabled: true, action: {})
+        } else if let dom = state.emailDomain, dom.inStock {
+            if dom.credits > 0 && state.balance < dom.credits {
+                PrimaryButton(label: "Buy credits",
+                              sub: "Need \(dom.credits - state.balance) more",
+                              icon: RIcon.plus, action: openCredits)
+            } else {
+                PrimaryButton(
+                    label: "Get email address",
+                    sub: dom.isFree ? String(localized: "Free") : "\(dom.credits) cr",
+                    icon: RIcon.bolt,
+                    disabled: state.isBuyingEmail,
+                    action: onStartEmail
+                )
+            }
+        } else {
+            PrimaryButton(label: "Choose a domain",
+                          sub: "Tap Domain below",
+                          icon: RIcon.bolt, disabled: true, action: {})
         }
     }
 
@@ -413,7 +526,14 @@ struct HomeScreen: View {
             Image(systemName: RIcon.shield)
                 .font(.system(size: 13, weight: .medium))
                 .foregroundStyle(theme.text3)
-            Text("No code in 8 minutes → refunded automatically.")
+            // The 8-minute window is the SMS order's. An email activation runs
+            // ~20 minutes (measured), and a FREE one has nothing to refund —
+            // so promising a refund there would be meaningless at best.
+            Text(state.emailMode
+                 ? (state.emailDomain?.isFree == true
+                    ? String(localized: "Free addresses cost you nothing if no code arrives.")
+                    : String(localized: "No code in 20 minutes → refunded automatically."))
+                 : String(localized: "No code in 8 minutes → refunded automatically."))
                 .font(RFont.text(12))
                 .tracking(-0.1)
                 .foregroundStyle(theme.text3)
