@@ -634,6 +634,31 @@ Three security points, since this widens the one public endpoint:
   client inserting `sender='agent'` and impersonating support, so every write
   goes through `post_support_message` on the service role.
 
+**Telegram only delivers the update types named in `allowed_updates`, and the
+webhook was registered with `["message"]`.** So every `callback_query` — i.e.
+every press of the [✅ Accept] button — was dropped by Telegram *before* it
+reached our function. Nothing logged, no error, no trace: the thread simply
+stayed `open` while the owner tapped a button that did nothing. Verified
+2026-07-30 via `getWebhookInfo`, which reported `allowed_updates: ['message']`.
+
+Registration now lives in the repo as **`telegram-setup`** (cron-gated, deploy
+`--no-verify-jwt`) rather than in someone's shell history. It names
+`["message", "callback_query"]` explicitly — relying on Telegram's default set
+means a future default change silently disables a feature — and returns
+`getWebhookInfo` from **before and after**, so "did this actually change
+anything" is answerable. Trigger it the same way as any cron-gated function
+(`net.http_post` + `private_cron_secret()`), which is also why the bot token
+never has to leave the platform. **Re-run it after changing the webhook URL, the
+webhook secret, or adding any new update type.**
+
+**Plain text from the owner is an ANSWER, not a mistyped command.** Replying to
+the relayed message is still the way to target a specific conversation, but
+typing a bare message while a thread is `assigned` now routes to that thread —
+which is the obvious thing to do after pressing Accept, and previously got
+swallowed by the command parser and answered with the help text while the user
+waited. The confirmation **names the recipient**, because picking "most recently
+active assigned thread" is a guess the owner has to be able to catch.
+
 `post_support_message` serialises per user with the same advisory lock as
 `begin_order`; without it a double-tap creates two open threads and the partial
 unique index turns the second into a raw 23505 the client cannot interpret.
@@ -1576,6 +1601,21 @@ SMS provider again, walk this list:
   (written once, never read, ~3 MB of observation-tracked memory) and the
   constants duplicated across files above.
 - ⚠️ **Supabase project is on the FREE plan (no backups).** Owner action.
+
+**A snake_case property name is a decode FAILURE, not a no-op.**
+`JSONDecoder.relay` sets `.convertFromSnakeCase`, so an edge function returning
+`{thread_id}` arrives as `threadId`; a struct declaring `let thread_id` matches
+nothing and throws. `SupportAPI` did exactly this, so a support message that was
+stored AND relayed to Telegram reported **"Couldn't reach the server"** to the
+user while the owner's phone buzzed with it. When a caller discards the response
+— as every fire-and-forget endpoint does — decode `APIClient.Empty` instead and
+give the endpoint no client-side contract to break at all.
+
+**`APIError.decoding` must never render as a connectivity message.** It shared
+its copy with `.badResponse` (*"Check your connection and try again"*), which is
+actively wrong: a decode failure means the request **succeeded**. It sends the
+user to check their wifi and, worse, to retry an action the server already
+performed. It now says the action may have gone through.
 
 ## Error UX rule
 
