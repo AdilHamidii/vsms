@@ -54,6 +54,15 @@ export type ProviderErrorType =
   | "OUT_OF_STOCK" | "PRICE_NOT_FOUND" | "BALANCE_ERROR"
   | "RATE_LIMITED" | "AUTH_ERROR" | "TRANSPORT_ERROR";
 
+/** Our temporary-EMAIL vocabulary — mirrors `public.email_status` exactly.
+ *
+ *  Deliberately OURS and not the vendor's: HeroSMS's email status set is
+ *  undocumented and only `WAIT`/`CANCEL` have ever been observed. See
+ *  `_shared/emailStatus.ts` for the mapping and why guessing a vendor enum into
+ *  the database is the mistake that already broke eSIM refunds. */
+export type EmailStatus =
+  | "waiting" | "received" | "canceled" | "expired" | "failed";
+
 export interface RouteCodes {
   /** HeroSMS short service code ("ig", "wa", "do"=leboncoin). */
   heroService?: string | null;
@@ -196,8 +205,15 @@ export async function reserve(
       }
       let costUsd: number | undefined;
       const after = await smsGetBalance().catch(() => null);
-      const b0 = isOk(before) ? before.data?.balance : undefined;
-      const b1 = isOk(after) ? after.data?.balance : undefined;
+      // `before`/`after` are `.catch(() => null)` — the null is the whole point,
+      // because the balance probe is best-effort cost attribution. But `isOk`
+      // dereferences `r.statusCode`, so `isOk(null)` THROWS, and it throws here:
+      // after the number is already reserved and billed. That is a charge, a
+      // refund, and forfeited wholesale on a number we then abandon. Caught by
+      // `deno check` 2026-07-30; present since 91dc756 on a path that still
+      // serves 7,757 active SMSPVA routes.
+      const b0 = before && isOk(before) ? before.data?.balance : undefined;
+      const b1 = after && isOk(after) ? after.data?.balance : undefined;
       if (typeof b0 === "number" && typeof b1 === "number" && b0 > b1) costUsd = b0 - b1;
       return {
         ok: true,
