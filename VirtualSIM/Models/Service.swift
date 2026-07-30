@@ -121,6 +121,22 @@ struct Service: Identifiable, Hashable, Codable {
         return String(localized: "\(codes) of the last \(attempts) attempts got a code")
     }
 
+    /// True when our OWN orders say this service usually rejects temporary
+    /// numbers — the signal used to default checkout to the real-SIM tier.
+    ///
+    /// Asymmetric on purpose, mirroring the route rule ("demote fast, promote
+    /// slow"): a rate needs 3 attempts to look bad, but delivering ZERO needs
+    /// only 2. Measured 2026-07-30 this selects instagram (2 of 11), whatsapp
+    /// (1 of 7) and discord (0 of 2) — between them 18 first orders and **0**
+    /// first-time codes — while leaving facebook (6 of 14) and tiktok (5 of 7)
+    /// on standard. Telegram (0 of 0) is correctly excluded: no evidence is not
+    /// evidence of failure.
+    var deliversPoorly: Bool {
+        guard let a = observedAttempts, let c = observedCodes else { return false }
+        if c == 0 && a >= 2 { return true }
+        return a >= Self.minEvidenceSample && Double(c) / Double(a) < 0.20
+    }
+
     /// Measured delivery ratio over whatever sample exists, or nil with none.
     /// Used to colour `deliveryEvidence` when the sample is too small for a
     /// confidence tier — otherwise a GOOD record (tiktok, 5 of 7) inherits the

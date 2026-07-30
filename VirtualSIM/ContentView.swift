@@ -230,15 +230,19 @@ struct ContentView: View {
                 if state.flow == .checkout {
                     state.checkoutService = picked
                     if let best { state.checkoutCountry = best }
-                    // Real SIM is a per-ROUTE choice. Left set across a route
-                    // change it stranded checkout: the tier chips vanish when
-                    // the new route has no premium price, the Cost row silently
-                    // shows the STANDARD price, the receipt still claims "Real
-                    // carrier", and Get number then fails with "Real-SIM
-                    // numbers just sold out here. Try Standard" — with no
-                    // Standard chip on screen to tap. The only escape was
-                    // backing out of checkout entirely.
-                    state.checkoutPremium = false
+                    // Real SIM is a per-ROUTE choice, so it is RECOMPUTED for
+                    // the new route, never carried over. Left set across a
+                    // route change it stranded checkout: the tier chips vanish
+                    // when the new route has no premium price, the Cost row
+                    // silently shows the STANDARD price, the receipt still
+                    // claims "Real carrier", and Get number then fails with
+                    // "Real-SIM numbers just sold out here. Try Standard" —
+                    // with no Standard chip on screen to tap. The only escape
+                    // was backing out of checkout entirely.
+                    // `defaultPremium` returns false whenever the new route has
+                    // no premium price, so that invariant still holds.
+                    state.checkoutPremium = state.defaultPremium(
+                        for: picked, country: best ?? state.configuringCountry)
                 } else {
                     state.lastService = picked
                     if let best { state.lastCountry = best }
@@ -248,7 +252,9 @@ struct ContentView: View {
             CountrySheet(onPick: { picked in
                 if state.flow == .checkout {
                     state.checkoutCountry = picked
-                    state.checkoutPremium = false   // see note above
+                    // Recomputed for the new route — see note above.
+                    state.checkoutPremium = state.defaultPremium(
+                        for: state.configuringService, country: picked)
                 } else { state.lastCountry = picked }
             })
         case .credits:
