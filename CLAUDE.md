@@ -214,6 +214,10 @@ VirtualSIM/
                                  (`RMotion`: one animation vocabulary named by
                                  what moves — select/panel/content/value/camera
                                  + `stagger`. Use these, not inline curves)
+                                 + **Glass.swift** (`.glassPanel(shape:)` —
+                                 Liquid Glass on iOS 26, frosted material below.
+                                 See the note below: the availability guard
+                                 lives HERE and nowhere else)
   Localizable.xcstrings          String Catalog: en source + de/es/fr/it/ja/pt-BR
   Products.storekit              Local IAP test config (enable via scheme)
   VirtualSIM.entitlements        Sign in with Apple + aps-environment
@@ -843,6 +847,52 @@ strand the user on a Home screen whose only button is a disabled "Unavailable".
 The badge is scored against the DESTINATION route, and the Affordable filter
 judges by the price the row shows (it used to test `cost(for:country:)` alone and
 silently drop every service without a route here).
+
+### Palette + Liquid Glass (2026-07-30)
+
+**The brand accent is BLUE `#0057FF`, and that was an accessibility fix, not a
+taste change.** White on the old brand green `#279400` measures **3.95:1** —
+below WCAG AA's 4.5:1 for normal text — so *every primary button in the app*
+failed. White on `#0057FF` measures **5.52:1**, and the accent on the background
+goes 3.54:1 → 5.15:1. Dark mode uses a lightened `#4C8DFF`, because `#0057FF`
+on black is only **3.81:1**; the `AccentColor` light/dark hex pair already
+existed for exactly this.
+
+Light `bg` is warm paper `#F8F7F4` (was iOS's cool `#F2F2F7`) with `elev` left
+pure white, so cards read as genuinely raised. Dark mode is unchanged.
+
+Three things that must move together, each a real trap:
+- **`AccentColor` default is set in TWO places** — `Theme.light/dark(_:)` and
+  `AuthGate`'s `@AppStorage`, plus a third `?? .blue` fallback in `AppState`'s
+  init. They must agree or the pre-sign-in screens render a different colour
+  from the app they lead into.
+- **`Assets.xcassets/LaunchBackground.colorset` must match `theme.bg`.** It is
+  the static launch screen, so a mismatch is a visible colour flash on every
+  cold launch before SwiftUI has drawn anything.
+- **`live`/`warn`/`fail` are untouched and must stay that way.** Green still
+  means "your code arrived" / "your credits came back". Now that the accent is
+  no longer green, that separation is *stronger* than before — but it also means
+  green appearing anywhere is a semantic claim, not decoration.
+
+**Liquid Glass is `.glassPanel(_:interactive:)` in `DesignSystem/Glass.swift`,
+and the `#available(iOS 26)` guard lives there and nowhere else.** The
+deployment target is **18.0**, so the majority of devices only ever render the
+fallback (near-opaque fill over `.ultraThinMaterial` with a hairline border) —
+which is precisely why scattering the guard would let one surface drift without
+anyone noticing.
+
+Applied ONLY to chrome that floats over content: the tab bar, `ResumeBar`, and
+the eSIM map's selection card / globe button / warning pill. Not to inline
+cards — Apple's guidance is that glass belongs to the navigation layer, and on
+ordinary cards it puts text over unpredictable backgrounds while destroying the
+elevation hierarchy `theme.elev` already expresses.
+
+**Glass over a saturated background is the failure case, and the eSIM tab is
+exactly that** (a full-bleed map, now the default view). Two consequences worth
+keeping in mind: inactive tab-bar icons are at their weakest over bright ocean,
+and the map's cluster bubbles needed an **opaque** ring in `theme.elev` — with
+the old translucent-white ring, a blue bubble on blue water was close to
+invisible the moment the accent stopped being green.
 
 ### The eSIM store — why it shows FEWER plans than the catalog has
 

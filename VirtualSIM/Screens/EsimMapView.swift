@@ -170,14 +170,20 @@ struct EsimMapView: View {
             zoomToFit(cluster.members)
         } label: {
             ZStack {
-                Circle().fill(theme.ink.opacity(0.92))
-                Circle().stroke(theme.onInk.opacity(0.55), lineWidth: 1.5)
+                Circle().fill(theme.ink)
+                // SOLID ring in the surface colour, not a translucent white one.
+                // The accent went from green to blue, and a blue bubble on the
+                // blue ocean of a map is close to invisible — the old
+                // `onInk.opacity(0.55)` ring let the fill blend straight into
+                // the water. An opaque ring separates the pin from whatever is
+                // under it, land or sea, in either theme.
+                Circle().stroke(theme.elev, lineWidth: 2.5)
                 Text("\(n)")
                     .font(RFont.display(d * 0.36, weight: .bold))
                     .foregroundStyle(theme.onInk)
             }
             .frame(width: d, height: d)
-            .shadow(color: .black.opacity(0.25), radius: 4, y: 2)
+            .shadow(color: .black.opacity(0.3), radius: 5, y: 2)
         }
         .buttonStyle(.plain)
     }
@@ -208,8 +214,8 @@ struct EsimMapView: View {
                     .font(.system(size: 13, weight: .semibold)).foregroundStyle(theme.text3)
             }
             .padding(14)
-            .background(theme.elev, in: .rect(cornerRadius: 18))
-            .overlay(RoundedRectangle(cornerRadius: 18).stroke(theme.sep, lineWidth: 0.5))
+            .glassPanel(RoundedRectangle(cornerRadius: 18, style: .continuous),
+                        interactive: true)
             .shadow(color: .black.opacity(0.16), radius: 12, y: 4)
         }
         .buttonStyle(.plain)
@@ -224,7 +230,7 @@ struct EsimMapView: View {
                       systemImage: "exclamationmark.circle")
                     .font(RFont.text(11)).foregroundStyle(theme.text2)
                     .padding(.horizontal, 10).padding(.vertical, 6)
-                    .background(theme.elev.opacity(0.92), in: .capsule)
+                    .glassPanel(Capsule())
             }
             Spacer(minLength: 0)
             Button {
@@ -235,8 +241,7 @@ struct EsimMapView: View {
                     .font(.system(size: 15, weight: .semibold))
                     .foregroundStyle(theme.text)
                     .frame(width: 38, height: 38)
-                    .background(theme.elev.opacity(0.95), in: .circle)
-                    .overlay(Circle().stroke(theme.sep, lineWidth: 0.5))
+                    .glassPanel(Circle(), interactive: true)
                     .shadow(color: .black.opacity(0.12), radius: 6, y: 2)
             }
             .buttonStyle(.plain)

@@ -351,9 +351,12 @@ final class AppState {
 
         let defaults = UserDefaults.standard
         self.appearance = AppState.storedAppearance(defaults)
+        // Must match AuthGate's @AppStorage default. Two defaults for one
+        // preference is how the pre-sign-in screens end up a different colour
+        // from the app they lead into.
         self.accent = AccentColor(
             rawValue: defaults.string(forKey: PrefKey.accent) ?? ""
-        ) ?? .green
+        ) ?? .blue
         self.waitingAnimation = WaitingAnimation(
             rawValue: defaults.string(forKey: PrefKey.waitingAnimation) ?? ""
         ) ?? .pulse

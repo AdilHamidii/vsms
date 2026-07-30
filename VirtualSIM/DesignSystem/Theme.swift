@@ -31,7 +31,10 @@ enum AccentColor: String, CaseIterable, Identifiable, Codable {
     var lightHex: UInt32 {
         switch self {
         case .green:  0x279400
-        case .blue:   0x0A6CD6
+        // Brand blue. White on this measures **5.52:1**, where white on the old
+        // brand green (`0x279400`) measured **3.95:1** — i.e. every primary
+        // button in the app failed WCAG AA for normal text, and this fixes it.
+        case .blue:   0x0057FF
         case .indigo: 0x4B3FCF
         case .purple: 0x8A3FBF
         case .pink:   0xC2306B
@@ -43,7 +46,10 @@ enum AccentColor: String, CaseIterable, Identifiable, Codable {
     var darkHex: UInt32 {
         switch self {
         case .green:  0x33B81F
-        case .blue:   0x3B9EFF
+        // Lightened for dark mode. The light-mode `0x0057FF` measures only
+        // **3.81:1** on black, which is below AA even for large text; this
+        // measures 6.56:1 at the same hue.
+        case .blue:   0x4C8DFF
         case .indigo: 0x7C6BFF
         case .purple: 0xB57BEA
         case .pink:   0xF06496
@@ -127,12 +133,15 @@ struct Theme: Equatable {
 
     /// `live`/`liveSoft` stay the semantic success green at every accent — see
     /// the note on `AccentColor`.
-    static func light(_ accent: AccentColor = .green) -> Theme {
+    static func light(_ accent: AccentColor = .blue) -> Theme {
         let a = accent.lightHex
         return Theme(
-            bg:        Color(hex: 0xF2F2F7),
+            // Warm paper rather than iOS's cool `0xF2F2F7`. Pure-white `elev`
+            // cards then read as genuinely raised off it, which the old
+            // near-identical pair never quite did.
+            bg:        Color(hex: 0xF8F7F4),
             elev:      Color(hex: 0xFFFFFF),
-            elev2:     Color(hex: 0xF7F7F9),
+            elev2:     Color(hex: 0xF1F0EB),
             text:      Color(hex: 0x0A0A0B),
             text2:     Color(red: 60/255, green: 60/255, blue: 67/255, opacity: 0.62),
             text3:     Color(red: 60/255, green: 60/255, blue: 67/255, opacity: 0.38),
@@ -153,7 +162,7 @@ struct Theme: Equatable {
         )
     }
 
-    static func dark(_ accent: AccentColor = .green) -> Theme {
+    static func dark(_ accent: AccentColor = .blue) -> Theme {
         let a = accent.darkHex
         return Theme(
             bg:        Color(hex: 0x000000),

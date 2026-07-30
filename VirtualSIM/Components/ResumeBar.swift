@@ -57,11 +57,10 @@ struct ResumeBar: View {
                 }
                 .padding(.horizontal, 14)
                 .padding(.vertical, 10)
-                .background(theme.elev, in: .rect(cornerRadius: 16))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 16)
-                        .stroke(theme.sep, lineWidth: 0.5)
-                )
+                // Floats over whatever tab the user navigated to, so it gets
+                // the same glass treatment as the tab bar it sits above.
+                .glassPanel(RoundedRectangle(cornerRadius: 16, style: .continuous),
+                            interactive: true)
                 .shadow(color: .black.opacity(0.10), radius: 10, y: 4)
                 .contentShape(.rect)
             }
