@@ -108,7 +108,7 @@ Deno.serve(async (req) => {
     // (SMSPVA) was not shown at all.
     const { data: rows } = await sb
       .from("app_config").select("key, value")
-      .in("key", ["smspva_health", "smspool_health"]);
+      .in("key", ["herosms_health", "smspva_health", "smspool_health"]);
 
     const read = (k: string) => {
       const v = (rows ?? []).find((r) => r.key === k)?.value as
@@ -123,11 +123,13 @@ Deno.serve(async (req) => {
     const FRESH_MS = 10 * 60 * 1000;
     const fresh = (v: { checked_at?: string } | null) =>
       !!v?.checked_at && Date.now() - new Date(v.checked_at).getTime() <= FRESH_MS;
+    const heroRaw = read("herosms_health");
     const pvaRaw = read("smspva_health"), poolRaw = read("smspool_health");
+    const hero = fresh(heroRaw) ? heroRaw : null;
     const pva = fresh(pvaRaw) ? pvaRaw : null;
     const pool = fresh(poolRaw) ? poolRaw : null;
-    const checked = pvaRaw?.checked_at ?? poolRaw?.checked_at;
-    const stalePoller = (pvaRaw || poolRaw) && !pva && !pool;
+    const checked = heroRaw?.checked_at ?? pvaRaw?.checked_at ?? poolRaw?.checked_at;
+    const stalePoller = (heroRaw || pvaRaw || poolRaw) && !hero && !pva && !pool;
 
     // Surface the watchdog verdict here too — /balance is the owner's "is
     // everything alive" reflex, so it should answer for the jobs as well.
@@ -142,6 +144,9 @@ Deno.serve(async (req) => {
     if (wdAgeMs > 30 * 60 * 1000) failing.push("watchdog_stale");
 
     reply = [
+      // HeroSMS first: it serves SMS for 150 services carrying 99.4% of order
+      // volume, so it is the number that answers "can we sell right now".
+      balanceLine("HeroSMS", hero?.balance_usd),
       balanceLine("SMSPVA", pva?.balance_usd),
       balanceLine("SMSPool", pool?.balance_usd),
       stalePoller ? "⚠️ balance readings are STALE — the poller may be dead" : "",

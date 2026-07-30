@@ -43,7 +43,11 @@ const LOW_BALANCE_USD = 37.5;
  *  low reading is actionable ("which product just died?") rather than an
  *  anonymous number — the migration of 2026-07-21 swapped these roles and the
  *  digest silently kept reporting the old one. */
-const ROLE: Record<string, string> = { smspva: "SMS", smspool: "eSIM" };
+const ROLE: Record<string, string> = {
+  herosms: "SMS",
+  smspva: "SMS fallback",
+  smspool: "eSIM",
+};
 
 export function balanceLine(name: string, usd: number | null | undefined): string {
   const role = ROLE[name.toLowerCase()] ?? "";

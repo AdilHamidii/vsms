@@ -120,8 +120,13 @@ Deno.serve(async (req) => {
   // The fix is to stop making the unprovable claim (see copy below) rather than
   // to keep a metric that can't open. What remains is a LIVENESS check: only
   // invite someone back if we can actually serve them.
+  // Gate on the provider that actually serves the cohort. This read
+  // smspva_health, but since the 2026-07-30 cutover SMSPVA carries only the 118
+  // services HeroSMS has no code for — a funded SMSPVA would have waved the
+  // cohort through while the provider serving 99.4% of volume sat empty, which
+  // is the exact outage this gate exists to prevent.
   const { data: health } = await sb
-    .from("app_config").select("value").eq("key", "smspva_health").maybeSingle();
+    .from("app_config").select("value").eq("key", "herosms_health").maybeSingle();
   const balUsd = Number((health?.value as { balance_usd?: number } | null)?.balance_usd ?? 0);
   const { data: wd } = await sb
     .from("app_config").select("value").eq("key", "watchdog").maybeSingle();

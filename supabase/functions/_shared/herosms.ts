@@ -76,17 +76,23 @@ async function call(
       signal: ctl.signal,
       headers: { accept: "application/json, text/plain, */*" },
     });
-    const ctype = res.headers.get("content-type") ?? "";
     const body = await res.text();
+    const trimmed = body.trim();
 
-    // Form 4 first: an edge block is NOT an API response. Detect on the
-    // transport facts (status + HTML) rather than on body text, which is a
-    // Cloudflare template we do not control and which changes.
-    if (res.status === 403 || ctype.includes("text/html")) {
+    // Form 4: an edge block is NOT an API response.
+    //
+    // Detect on STATUS plus an HTML BODY — deliberately NOT on content-type.
+    // HeroSMS serves EVERY response as `content-type: text/html; charset=UTF-8`,
+    // including both the JSON of getPrices and the bare text of getBalance.
+    // Keying on the header therefore misclassifies every successful call as a
+    // block: measured live 2026-07-30, it made getBalanceUsd() return null (so
+    // no health row was ever written, and an absent row reads as healthy) and
+    // would have failed every order with no_numbers_available.
+    if (res.status === 403 || res.status === 429 ||
+        trimmed.startsWith("<!DOCTYPE") || trimmed.toLowerCase().startsWith("<html")) {
       return { kind: "blocked", status: res.status };
     }
 
-    const trimmed = body.trim();
     if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
       try {
         return { kind: "json", data: JSON.parse(trimmed) as Record<string, unknown> };

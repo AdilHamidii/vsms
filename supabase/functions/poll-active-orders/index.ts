@@ -6,6 +6,7 @@ import { handleCors, json } from "../_shared/cors.ts";
 import { admin } from "../_shared/supabaseAdmin.ts";
 import { markDead, markSuccess, poll, type OrderProvider } from "../_shared/providers.ts";
 import { getBalanceUsd } from "../_shared/smspool.ts";
+import { getBalanceUsd as getHeroBalanceUsd } from "../_shared/herosms.ts";
 import { getBalance as getSmspvaBalance, isOk } from "../_shared/smspva.ts";
 import { sendPush } from "../_shared/apns.ts";
 import { notifySafe } from "../_shared/telegram.ts";
@@ -210,6 +211,13 @@ Deno.serve(async (req) => {
       return Number.isFinite(n) ? n : null;
     }),
     recordBalance("smspool_health", "SMSPool (eSIM)", getBalanceUsd),
+    // HeroSMS serves 100% of SMS for the services it carries. Monitoring it is
+    // not optional: CLAUDE.md records that an ABSENT balance line reads as
+    // healthy, which is exactly how SMSPVA went unmonitored while serving all
+    // SMS. `balanceLine` renders a missing reading as "no reading" rather than
+    // omitting it, so registering the key here is what makes a dry HeroSMS
+    // visible at all.
+    recordBalance("herosms_health", "HeroSMS (SMS)", getHeroBalanceUsd),
   ]);
 
   // ── Auto-expire overdue orders. Each expiry is an atomic claim (flip
