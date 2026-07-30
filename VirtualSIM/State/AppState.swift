@@ -37,7 +37,9 @@ enum BootPhase: Equatable { case loading, ready, failed }
 /// themed the way `ContentView` will theme the app a moment later. Sharing the
 /// constants keeps the two from drifting to different key strings.
 enum PrefKey {
+    /// Legacy Bool, read once for migration — see `AppState.storedAppearance`.
     static let isDark           = "pref.isDark"
+    static let appearance       = "pref.appearance"
     static let accent           = "pref.accent"
     static let waitingAnimation = "pref.waitingAnimation"
     static let otpAnimation     = "pref.otpAnimation"
@@ -249,8 +251,10 @@ final class AppState {
     /// already refuses to render.
     private(set) var bootProgress: Double = 0
 
-    var isDark: Bool {
-        didSet { UserDefaults.standard.set(isDark, forKey: PrefKey.isDark) }
+    /// System / Light / Dark. See `AppearanceMode` — `.system` is the default,
+    /// so the launch screen, the splash and the app all agree out of the box.
+    var appearance: AppearanceMode {
+        didSet { UserDefaults.standard.set(appearance.rawValue, forKey: PrefKey.appearance) }
     }
     /// Brand colour. Affects `ink`/`inkSoft`/`glow` only — semantic
     /// success/warn/fail colours are fixed. See `AccentColor`.
@@ -267,12 +271,35 @@ final class AppState {
         didSet { UserDefaults.standard.set(showMetrics, forKey: PrefKey.showMetrics) }
     }
 
+    /// Read the appearance preference, migrating the old `pref.isDark` Bool.
+    ///
+    /// The distinction that matters is **explicitly set vs never touched**, and
+    /// `defaults.bool(forKey:)` cannot express it — it returns false for both,
+    /// which is exactly how "never chose" became "wants light" for every user.
+    /// So this checks `object(forKey:)` for presence:
+    ///   - `pref.isDark` present  → the user really did pick; honour it.
+    ///   - absent                 → they never chose, so follow the device.
+    ///
+    /// Shared with `AuthGate`, which needs the same answer before `AppState`
+    /// exists. Deliberately does NOT write back: leaving the old key untouched
+    /// keeps a downgrade to the shipped build (1.4/1.5) working unchanged.
+    static func storedAppearance(_ defaults: UserDefaults = .standard) -> AppearanceMode {
+        if let raw = defaults.string(forKey: PrefKey.appearance),
+           let mode = AppearanceMode(rawValue: raw) {
+            return mode
+        }
+        if defaults.object(forKey: PrefKey.isDark) != nil {
+            return defaults.bool(forKey: PrefKey.isDark) ? .dark : .light
+        }
+        return .system
+    }
+
     init() {
         self.lastService = SeedData.services.first ?? AppState.fallbackService
         self.lastCountry = SeedData.countries.first ?? AppState.fallbackCountry
 
         let defaults = UserDefaults.standard
-        self.isDark = defaults.bool(forKey: PrefKey.isDark)
+        self.appearance = AppState.storedAppearance(defaults)
         self.accent = AccentColor(
             rawValue: defaults.string(forKey: PrefKey.accent) ?? ""
         ) ?? .green

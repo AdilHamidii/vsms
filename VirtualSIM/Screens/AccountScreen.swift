@@ -275,6 +275,43 @@ struct AccountScreen: View {
         .padding(.trailing, 2)
     }
 
+    /// System / Light / Dark as three visible segments, for the same reason the
+    /// accent uses swatches: the options should be on screen, not behind a menu.
+    ///
+    /// It replaces a Bool toggle, which could not express "follow my device" —
+    /// and defaulted to off, so every dark-mode user got a light app until they
+    /// came here and found it.
+    private func appearancePicker(state: AppState) -> some View {
+        HStack(spacing: 2) {
+            ForEach(AppearanceMode.allCases) { option in
+                let isOn = state.appearance == option
+                Button {
+                    withAnimation(.easeOut(duration: 0.18)) { state.appearance = option }
+                } label: {
+                    Image(systemName: icon(for: option))
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(isOn ? theme.onInk : theme.text2)
+                        .frame(width: 34, height: 26)
+                        .background(isOn ? theme.ink : .clear, in: .rect(cornerRadius: 8))
+                        .contentShape(.rect)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(option.label)
+                .accessibilityAddTraits(isOn ? [.isSelected] : [])
+            }
+        }
+        .padding(2)
+        .background(theme.chipBg, in: .rect(cornerRadius: 10))
+    }
+
+    private func icon(for mode: AppearanceMode) -> String {
+        switch mode {
+        case .system: "circle.lefthalf.filled"
+        case .light:  "sun.max.fill"
+        case .dark:   "moon.fill"
+        }
+    }
+
     private func preferences(state: AppState) -> some View {
         @Bindable var state = state
         return VStack(alignment: .leading, spacing: 0) {
@@ -285,10 +322,7 @@ struct AccountScreen: View {
                     SettingRow(
                         label: "Appearance",
                         icon: "moon.fill",
-                        trailing: {
-                            Toggle("", isOn: $state.isDark)
-                                .labelsHidden().tint(theme.ink)
-                        }
+                        trailing: { appearancePicker(state: state) }
                     )
                     SettingRow(
                         label: "Accent",

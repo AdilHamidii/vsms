@@ -6,17 +6,28 @@ struct AuthGate: View {
     @State private var push = PushManager()
     @State private var iap = IAPStore()
     @AppStorage("onboardingComplete") private var onboardingComplete = false
-    // The splash is themed from the STORED preference, not the system scheme,
-    // unlike its siblings below. It is the one pre-sign-in screen that hands
-    // straight over to `ContentView` on the common path (a returning, signed-in
-    // user), and ContentView forces `state.isDark` — so matching the system
-    // here would recolour the whole screen at the handoff.
-    @AppStorage(PrefKey.isDark) private var prefIsDark = false
+    // Pre-sign-in screens (onboarding, sign-in, splash) run before AppState
+    // exists, so they read the same UserDefaults it will. Via @AppStorage so a
+    // change applies live, falling back to the migration path when the key has
+    // never been written.
+    //
+    // These used to hard-follow the SYSTEM scheme, with the note "otherwise
+    // they'd render light-only in Dark Mode" — a fair workaround when the only
+    // preference was a Bool defaulting to false. Now that `.system` exists and
+    // is the default, that case is covered by the preference itself, and an
+    // explicit Light/Dark choice is honoured here too instead of being ignored
+    // until the app proper loads.
+    @AppStorage(PrefKey.appearance) private var appearanceRaw = ""
     @AppStorage(PrefKey.accent) private var prefAccent = AccentColor.green.rawValue
-    // Pre-sign-in screens (onboarding, sign-in, bootstrap) run before AppState
-    // exists, so they can't read its isDark preference — follow the system
-    // appearance instead, otherwise they'd render light-only in Dark Mode.
     @Environment(\.colorScheme) private var colorScheme
+
+    private var appearance: AppearanceMode {
+        AppearanceMode(rawValue: appearanceRaw) ?? AppState.storedAppearance()
+    }
+    private var resolvedTheme: Theme {
+        let accent = AccentColor(rawValue: prefAccent) ?? .green
+        return appearance.isDark(system: colorScheme) ? .dark(accent) : .light(accent)
+    }
 
     init() {
         let client = APIClient()
@@ -29,9 +40,6 @@ struct AuthGate: View {
             switch session.status {
             case .bootstrapping:
                 SplashScreen(state: .indeterminate)
-                    .environment(\.theme, prefIsDark
-                                 ? .dark(AccentColor(rawValue: prefAccent) ?? .green)
-                                 : .light(AccentColor(rawValue: prefAccent) ?? .green))
             case .signedOut:
                 if onboardingComplete {
                     SignInScreen()
@@ -52,8 +60,9 @@ struct AuthGate: View {
                     }
             }
         }
-        // Pre-sign-in: no AppState yet, so the default accent is correct here.
-        .environment(\.theme, colorScheme == .dark ? .dark() : .light())
+        .environment(\.theme, resolvedTheme)
+        // nil under `.system`, which is what actually lets the device decide.
+        .preferredColorScheme(appearance.colorScheme)
         .environment(api)
         .environment(session)
         .environment(push)

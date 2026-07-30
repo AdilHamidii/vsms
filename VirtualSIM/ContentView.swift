@@ -24,8 +24,16 @@ struct ContentView: View {
     /// country on the confirm screen felt broken. One binding per presenter.
     @State private var flowSheet: ActiveSheet?
 
+    /// The DEVICE appearance. Read here rather than derived from
+    /// `.preferredColorScheme` below: that modifier pushes a scheme DOWN to
+    /// children, so the ambient value read at this level is still the system's
+    /// — which is precisely what `.system` mode needs to resolve against.
+    @Environment(\.colorScheme) private var systemScheme
+
+    private var isDark: Bool { state.appearance.isDark(system: systemScheme) }
+
     private var theme: Theme {
-        state.isDark ? .dark(state.accent) : .light(state.accent)
+        isDark ? .dark(state.accent) : .light(state.accent)
     }
 
     var body: some View {
@@ -72,7 +80,7 @@ struct ContentView: View {
         // content all see AppState in scope.
         .environment(\.theme, theme)
         .environment(state)
-        .preferredColorScheme(state.isDark ? .dark : .light)
+        .preferredColorScheme(state.appearance.colorScheme)
         .overlay(alignment: .top) {
             ErrorBanner()
                 .environment(\.theme, theme)
@@ -171,7 +179,7 @@ struct ContentView: View {
         .fullScreenCover(item: $state.flow) { stage in
             flowContent(stage)
                 .modifier(EnvBundle(theme: theme, state: state, api: api, push: push, session: session, iap: iap))
-                .preferredColorScheme(state.isDark ? .dark : .light)
+                .preferredColorScheme(state.appearance.colorScheme)
                 .overlay(alignment: .top) {
                     ErrorBanner()
                         .environment(\.theme, theme)

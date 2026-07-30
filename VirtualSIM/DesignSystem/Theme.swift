@@ -57,6 +57,52 @@ enum AccentColor: String, CaseIterable, Identifiable, Codable {
     func swatch(isDark: Bool) -> Color { Color(hex: hex(isDark: isDark)) }
 }
 
+/// Light / dark preference, including the option to follow the device.
+///
+/// This replaces a plain `isDark` Bool that defaulted to **false**, so the app
+/// — and the splash, which is the very first thing anyone sees — rendered LIGHT
+/// on a dark-mode phone until the user found the toggle in Account. There was
+/// no way to say "follow my device" at all, which is the setting most people
+/// assume they already have.
+///
+/// `.system` is the default, so the static launch screen (an adaptive colour
+/// set), the splash and the app all resolve to the same appearance and the
+/// launch has no flash.
+enum AppearanceMode: String, CaseIterable, Identifiable, Codable {
+    case system, light, dark
+
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .system: String(localized: "System")
+        case .light:  String(localized: "Light")
+        case .dark:   String(localized: "Dark")
+        }
+    }
+
+    /// What to hand `.preferredColorScheme`. **nil means "don't override"** —
+    /// that is what actually lets the device decide, and is why this is
+    /// `ColorScheme?` rather than a Bool.
+    var colorScheme: ColorScheme? {
+        switch self {
+        case .system: nil
+        case .light:  .light
+        case .dark:   .dark
+        }
+    }
+
+    /// Resolve to a concrete appearance. `system` is the only case that needs
+    /// the ambient value, so callers pass the environment's `colorScheme`.
+    func isDark(system: ColorScheme) -> Bool {
+        switch self {
+        case .system: system == .dark
+        case .light:  false
+        case .dark:   true
+        }
+    }
+}
+
 struct Theme: Equatable {
     let bg: Color
     let elev: Color
