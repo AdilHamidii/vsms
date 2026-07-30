@@ -3,12 +3,27 @@ import Foundation
 struct EsimPlansAPI {
     let client: APIClient
 
+    /// Every column `EsimPlan` decodes, and no others.
+    ///
+    /// This was `select=*`, which shipped `last_cost_cents` and
+    /// `smoothed_cost_cents` — our eSIM wholesale cost book — to anyone holding
+    /// the publishable key. Naming the columns is the CLIENT half of the
+    /// two-phase fix; the server-side column revoke can only land once a build
+    /// carrying this is *adopted*, because Postgres needs SELECT on every column
+    /// to answer `select=*` and revoking first would make the catalog fail to
+    /// load for the whole install base. Client first, revoke second — the same
+    /// ordering the `routes` leak needs.
+    private static let columns = [
+        "id", "name", "country_code", "region", "data_mb",
+        "validity_days", "speed", "extendable", "retail_credits", "status",
+    ].joined(separator: ",")
+
     /// Public catalog (like services/routes) — fetched with the publishable key.
     func fetch() async throws -> [EsimPlan] {
         try await client.request(
             .get, path: "rest/v1/esim_plans",
             query: [
-                URLQueryItem(name: "select", value: "*"),
+                URLQueryItem(name: "select", value: Self.columns),
                 URLQueryItem(name: "status", value: "eq.active"),
                 URLQueryItem(name: "order", value: "country_code.asc,retail_credits.asc"),
             ],

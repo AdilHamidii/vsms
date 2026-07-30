@@ -1,26 +1,21 @@
 import SwiftUI
 
-/// cc "AT" -> 🇦🇹
-func flagEmoji(_ cc: String) -> String {
-    let base: UInt32 = 127397
-    var s = ""
-    for u in cc.uppercased().unicodeScalars where u.value >= 65 && u.value <= 90 {
-        if let sc = Unicode.Scalar(base + u.value) { s.unicodeScalars.append(sc) }
-    }
-    return s.isEmpty ? "🌐" : s
-}
-
 struct EsimStoreScreen: View {
     @Environment(\.theme) private var theme
     @Environment(AppState.self) private var state
     @Environment(APIClient.self) private var api
     var openCredits: () -> Void
 
-    private enum Seg: String, CaseIterable { case store = "Store", mine = "My eSIMs" }
-    @State private var seg: Seg = .store
-    @State private var query = ""
+    private enum Seg: Hashable { case store, mine, activity }
+    private enum Browse: Hashable { case map, list }
 
-    private var countries: [(code: String, name: String, from: Int)] {
+    @State private var seg: Seg = .store
+    @State private var browse: Browse = .map
+    @State private var query = ""
+    @State private var appeared = false
+    @State private var destination: EsimCountryEntry?
+
+    private var countries: [EsimCountryEntry] {
         let all = state.esimCountries
         guard !query.isEmpty else { return all }
         return all.filter { $0.name.localizedCaseInsensitiveContains(query) }
@@ -30,17 +25,40 @@ struct EsimStoreScreen: View {
         NavigationStack {
             VStack(spacing: 0) {
                 header
-                segmented
-                if seg == .store { storeList } else { myEsims }
+                SegmentedTabs(selection: $seg, items: [
+                    (.store, String(localized: "Store"), nil),
+                    (.mine, String(localized: "My eSIMs"),
+                     state.liveEsimOrders.isEmpty ? nil : state.liveEsimOrders.count),
+                    (.activity, String(localized: "Activity"), nil),
+                ])
+                .padding(.horizontal, 16).padding(.top, 12).padding(.bottom, 8)
+
+                // A plain if/else swaps content with no motion at all, which on
+                // a segmented control reads as a screen flash. The asymmetric
+                // slide follows the direction the segment moved.
+                ZStack {
+                    switch seg {
+                    case .store:    store.transition(.opacity)
+                    case .mine:     mine.transition(.opacity)
+                    case .activity: EsimActivityScreen().transition(.opacity)
+                    }
+                }
+                .animation(RMotion.content, value: seg)
             }
             .background(theme.bg)
             .navigationBarHidden(true)
+            .navigationDestination(item: $destination) { entry in
+                EsimCountryPlansScreen(entry: entry, openCredits: openCredits)
+            }
         }
         .task {
             await state.loadEsimCatalog(using: EsimPlansAPI(client: api))
             await state.loadEsimOrders(using: EsimOrdersAPI(client: api))
+            withAnimation(RMotion.content) { appeared = true }
         }
     }
+
+    // MARK: - Header
 
     private var header: some View {
         HStack {
@@ -56,165 +74,199 @@ struct EsimStoreScreen: View {
         .padding(.horizontal, 20).padding(.top, 6)
     }
 
-    private var segmented: some View {
-        HStack(spacing: 6) {
-            ForEach(Seg.allCases, id: \.self) { s in
-                Button { withAnimation(.easeOut(duration: 0.15)) { seg = s } } label: {
-                    Text(s.rawValue)
-                        .font(RFont.display(14, weight: .semibold)).tracking(-0.2)
-                        .foregroundStyle(seg == s ? theme.onInk : theme.text2)
-                        .padding(.vertical, 8).frame(maxWidth: .infinity)
-                        .background(seg == s ? theme.ink : theme.chipBg, in: .capsule)
-                }
-                .buttonStyle(.plain)
-            }
-        }
-        .padding(.horizontal, 16).padding(.top, 14).padding(.bottom, 8)
-    }
+    // MARK: - Store
 
-    private var storeList: some View {
-        ScrollView {
-            if !state.esimPlans.isEmpty {
+    private var store: some View {
+        VStack(spacing: 0) {
+            HStack(spacing: 8) {
                 HStack(spacing: 8) {
-                    Image(systemName: RIcon.search).font(.system(size: 14)).foregroundStyle(theme.text3)
+                    Image(systemName: RIcon.search)
+                        .font(.system(size: 14)).foregroundStyle(theme.text3)
                     TextField("Search countries", text: $query)
                         .font(RFont.text(15)).foregroundStyle(theme.text)
-                }
-                .padding(.horizontal, 14).frame(height: 44)
-                .background(theme.chipBg, in: .rect(cornerRadius: 12))
-                .padding(.horizontal, 16).padding(.bottom, 8)
-            }
-            Card {
-                LazyVStack(spacing: 0) {
-                    ForEach(Array(countries.enumerated()), id: \.element.code) { idx, c in
-                        NavigationLink { EsimCountryPlans(code: c.code, name: c.name) } label: {
-                            HStack(spacing: 12) {
-                                Text(flagEmoji(c.code)).font(.system(size: 26))
-                                Text(c.name).font(RFont.display(16, weight: .semibold)).tracking(-0.3).foregroundStyle(theme.text)
-                                Spacer(minLength: 0)
-                                Text("from \(c.from) cr").font(RFont.text(13, weight: .medium)).foregroundStyle(theme.text2)
-                                Image(systemName: RIcon.chev).font(.system(size: 12, weight: .semibold)).foregroundStyle(theme.text3)
-                            }
-                            .padding(.horizontal, 14).padding(.vertical, 12).contentShape(.rect)
+                        .submitLabel(.search)
+                    if !query.isEmpty {
+                        Button { withAnimation(RMotion.content) { query = "" } } label: {
+                            Image(systemName: "xmark.circle.fill")
+                                .font(.system(size: 14)).foregroundStyle(theme.text3)
                         }
                         .buttonStyle(.plain)
-                        if idx != countries.count - 1 {
-                            Rectangle().fill(theme.sep).frame(height: 0.5).padding(.leading, 52)
-                        }
+                        .transition(.scale.combined(with: .opacity))
                     }
                 }
+                .padding(.horizontal, 12).frame(height: 40)
+                .background(theme.chipBg, in: .rect(cornerRadius: 12))
+
+                browseToggle
             }
-            .padding(.horizontal, 16).padding(.bottom, 140)
+            .padding(.horizontal, 16).padding(.bottom, 10)
+
+            // A search query is a list action — the user typed a name, so show
+            // named rows. Staying on the map would answer a text search with a
+            // silent camera move the user cannot see the result of.
+            if browse == .map && query.isEmpty {
+                EsimMapView(countries: countries) { entry in destination = entry }
+                    .transition(.opacity)
+            } else {
+                countryList.transition(.opacity)
+            }
+        }
+        .animation(RMotion.content, value: browse)
+        .animation(RMotion.content, value: query.isEmpty)
+    }
+
+    private var browseToggle: some View {
+        HStack(spacing: 0) {
+            ForEach([Browse.map, Browse.list], id: \.self) { b in
+                let active = browse == b
+                Button {
+                    withAnimation(RMotion.select) { browse = b }
+                } label: {
+                    Image(systemName: b == .map ? "map" : "list.bullet")
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundStyle(active ? theme.text : theme.text3)
+                        .frame(width: 38, height: 34)
+                        .background(active ? theme.elev : .clear, in: .rect(cornerRadius: 9))
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(b == .map ? "Map view" : "List view")
+            }
+        }
+        .padding(3)
+        .background(theme.chipBg, in: .rect(cornerRadius: 12))
+    }
+
+    private var countryList: some View {
+        ScrollView {
+            LazyVStack(spacing: 8) {
+                ForEach(Array(countries.enumerated()), id: \.element.id) { idx, c in
+                    Button { destination = c } label: { countryRow(c) }
+                        .buttonStyle(PressableStyle())
+                        .riseIn(appeared, index: idx)
+                }
+                if countries.isEmpty && !query.isEmpty {
+                    Text("No country matches “\(query)”.")
+                        .font(RFont.text(13)).foregroundStyle(theme.text2)
+                        .padding(.top, 50)
+                }
+                Color.clear.frame(height: 130)
+            }
+            .padding(.horizontal, 16)
         }
         .scrollIndicators(.hidden)
     }
 
-    private var myEsims: some View {
+    private func countryRow(_ c: EsimCountryEntry) -> some View {
+        HStack(spacing: 12) {
+            CodeFlag(code: c.code, size: 34)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(c.name)
+                    .font(RFont.display(16, weight: .semibold)).tracking(-0.3)
+                    .foregroundStyle(theme.text)
+                Text(c.planCount == 1 ? "1 plan" : "\(c.planCount) plans")
+                    .font(RFont.text(11)).foregroundStyle(theme.text3)
+            }
+            Spacer(minLength: 0)
+            HStack(alignment: .firstTextBaseline, spacing: 3) {
+                Text("from").font(RFont.text(11)).foregroundStyle(theme.text3)
+                Text("\(c.fromCredits)")
+                    .font(RFont.display(16, weight: .semibold)).foregroundStyle(theme.text)
+                Text("cr").font(RFont.text(11, weight: .medium)).foregroundStyle(theme.text2)
+            }
+            Image(systemName: RIcon.chev)
+                .font(.system(size: 12, weight: .semibold)).foregroundStyle(theme.text3)
+        }
+        .padding(.horizontal, 14).padding(.vertical, 12)
+        .background(theme.elev, in: .rect(cornerRadius: 16))
+        .overlay(RoundedRectangle(cornerRadius: 16).stroke(theme.sep, lineWidth: 0.5))
+        .contentShape(.rect)
+    }
+
+    // MARK: - My eSIMs
+
+    private var mine: some View {
         ScrollView {
-            if state.esimOrders.isEmpty {
+            if state.liveEsimOrders.isEmpty {
                 VStack(spacing: 8) {
-                    Image(systemName: "simcard").font(.system(size: 34)).foregroundStyle(theme.text3)
-                    Text("No eSIMs yet").font(RFont.display(17, weight: .semibold)).foregroundStyle(theme.text)
+                    Image(systemName: "simcard")
+                        .font(.system(size: 34)).foregroundStyle(theme.text3)
+                    Text("No active eSIMs")
+                        .font(RFont.display(17, weight: .semibold)).foregroundStyle(theme.text)
                     Text("Buy a data plan to get an eSIM you can install in seconds.")
-                        .font(RFont.text(13)).foregroundStyle(theme.text2).multilineTextAlignment(.center)
+                        .font(RFont.text(13)).foregroundStyle(theme.text2)
+                        .multilineTextAlignment(.center)
+                    Button { withAnimation(RMotion.select) { seg = .store } } label: {
+                        Text("Browse plans")
+                            .font(RFont.display(14, weight: .semibold))
+                            .foregroundStyle(theme.onInk)
+                            .padding(.horizontal, 18).padding(.vertical, 10)
+                            .background(theme.ink, in: .capsule)
+                    }
+                    .buttonStyle(.plain)
+                    .padding(.top, 6)
                 }
                 .padding(.top, 60).padding(.horizontal, 40)
             } else {
-                Card {
-                    LazyVStack(spacing: 0) {
-                        ForEach(Array(state.esimOrders.enumerated()), id: \.element.id) { idx, o in
-                            Button { state.openEsimDetail(o) } label: { EsimOrderRow(order: o) }
-                                .buttonStyle(.plain)
-                            if idx != state.esimOrders.count - 1 {
-                                Rectangle().fill(theme.sep).frame(height: 0.5).padding(.leading, 52)
-                            }
-                        }
+                VStack(spacing: 10) {
+                    ForEach(Array(state.liveEsimOrders.enumerated()), id: \.element.id) { idx, o in
+                        Button { state.openEsimDetail(o) } label: { liveCard(o) }
+                            .buttonStyle(PressableStyle())
+                            .riseIn(appeared, index: idx)
                     }
+                    Color.clear.frame(height: 130)
                 }
-                .padding(.horizontal, 16).padding(.top, 6).padding(.bottom, 140)
+                .padding(.horizontal, 16).padding(.top, 4)
             }
         }
         .scrollIndicators(.hidden)
     }
-}
 
-private struct EsimOrderRow: View {
-    @Environment(\.theme) private var theme
-    let order: EsimOrder
-    var body: some View {
-        HStack(spacing: 12) {
-            Text(flagEmoji(order.plan?.countryCode ?? "")).font(.system(size: 24))
-            VStack(alignment: .leading, spacing: 2) {
-                Text(order.name).font(RFont.display(15, weight: .semibold)).foregroundStyle(theme.text)
-                Text("\(order.plan?.dataLabel ?? "") · \(order.status.label)")
+    private func liveCard(_ o: EsimOrder) -> some View {
+        HStack(spacing: 14) {
+            DataRing(usedMb: o.dataUsedMb, totalMb: o.dataTotalMb, size: 74, lineWidth: 7)
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 7) {
+                    CodeFlag(code: o.plan?.countryCode ?? "", size: 20)
+                    Text(o.name)
+                        .font(RFont.display(16, weight: .semibold)).tracking(-0.3)
+                        .foregroundStyle(theme.text)
+                }
+                Text("\(o.plan?.dataLabel ?? "—") · \(o.plan?.validityLabel ?? "—")")
                     .font(RFont.text(12)).foregroundStyle(theme.text2)
+                StatusChip(status: o.status)
             }
             Spacer(minLength: 0)
-            if order.dataTotalMb != nil {
-                Text(order.dataRemainingLabel).font(RFont.mono(12, weight: .medium)).foregroundStyle(theme.text2)
-            }
-            Image(systemName: RIcon.chev).font(.system(size: 12, weight: .semibold)).foregroundStyle(theme.text3)
+            Image(systemName: RIcon.chev)
+                .font(.system(size: 13, weight: .semibold)).foregroundStyle(theme.text3)
         }
-        .padding(.horizontal, 14).padding(.vertical, 12).contentShape(.rect)
+        .padding(14)
+        .background(theme.elev, in: .rect(cornerRadius: 20))
+        .overlay(RoundedRectangle(cornerRadius: 20).stroke(theme.sep, lineWidth: 0.5))
+        .contentShape(.rect)
     }
 }
 
-/// Drill-down: the data-plan tiers for one country.
-private struct EsimCountryPlans: View {
+/// Small status pill for an eSIM. Colour matches the semantics used everywhere
+/// else — `theme.live` is success, never decoration.
+private struct StatusChip: View {
     @Environment(\.theme) private var theme
-    @Environment(AppState.self) private var state
-    let code: String
-    let name: String
+    let status: EsimStatus
+
+    private var tint: Color {
+        switch status {
+        case .active, .installed: theme.live
+        case .provisioning:       theme.text2
+        case .depleted, .expired: theme.warn
+        case .failed:             theme.fail
+        case .refunded:           theme.text2
+        }
+    }
 
     var body: some View {
-        ScrollView {
-            Card {
-                LazyVStack(spacing: 0) {
-                    let plans = state.esimPlans(forCountry: code)
-                    ForEach(Array(plans.enumerated()), id: \.element.id) { idx, p in
-                        Button { state.startEsimCheckout(p) } label: {
-                            HStack(spacing: 12) {
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(p.dataLabel).font(RFont.display(16, weight: .semibold)).foregroundStyle(theme.text)
-                                    Text("\(p.validityLabel) · \(p.speed ?? "")").font(RFont.text(12)).foregroundStyle(theme.text2)
-                                }
-                                Spacer(minLength: 0)
-                                if let cr = p.retailCredits {
-                                    // Say what the balance can actually reach.
-                                    // The largest APPROVED credit pack is 30 cr
-                                    // while the median eSIM plan is 25 and the
-                                    // mean is 59, so "can I afford this?" is the
-                                    // live question on this screen — and a bare
-                                    // price does not answer it.
-                                    let affordable = cr <= state.balance
-                                    VStack(alignment: .trailing, spacing: 1) {
-                                        HStack(alignment: .firstTextBaseline, spacing: 3) {
-                                            Text("\(cr)").font(RFont.display(16, weight: .semibold))
-                                                .foregroundStyle(affordable ? theme.text : theme.text2)
-                                            Text("cr").font(RFont.text(12, weight: .medium)).foregroundStyle(theme.text2)
-                                        }
-                                        if !affordable {
-                                            Text("+\(cr - state.balance) more")
-                                                .font(RFont.text(11, weight: .medium))
-                                                .foregroundStyle(theme.text3)
-                                        }
-                                    }
-                                }
-                            }
-                            .padding(.horizontal, 14).padding(.vertical, 14).contentShape(.rect)
-                        }
-                        .buttonStyle(.plain)
-                        if idx != plans.count - 1 {
-                            Rectangle().fill(theme.sep).frame(height: 0.5)
-                        }
-                    }
-                }
-            }
-            .padding(16)
-        }
-        .scrollIndicators(.hidden)
-        .background(theme.bg)
-        .navigationTitle("\(flagEmoji(code)) \(name)")
-        .navigationBarTitleDisplayMode(.inline)
+        Text(status.label)
+            .font(RFont.text(10, weight: .semibold)).tracking(0.2)
+            .foregroundStyle(tint)
+            .padding(.horizontal, 7).padding(.vertical, 3)
+            .background(tint.opacity(0.12), in: .capsule)
     }
 }

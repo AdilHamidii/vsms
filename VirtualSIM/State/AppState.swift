@@ -939,8 +939,8 @@ final class AppState {
     }
 
     /// eSIM plans grouped by country (cheapest tier per country), for the store.
-    var esimCountries: [(code: String, name: String, from: Int)] {
-        var byCode: [String: (name: String, minCr: Int)] = [:]
+    var esimCountries: [EsimCountryEntry] {
+        var byCode: [String: (name: String, minCr: Int, count: Int)] = [:]
         for p in esimPlans {
             let code = p.countryCode ?? "??"
             // SKIP unpriced plans rather than folding in Int.max. `?? Int.max`
@@ -949,15 +949,50 @@ final class AppState {
             // esimPlans(forCountry:), which uses `?? 0` for the same field — the
             // two functions took opposite views of a missing price.
             guard let cr = p.retailCredits else { continue }
-            if let ex = byCode[code] { if cr < ex.minCr { byCode[code] = (ex.name, cr) } }
-            else { byCode[code] = (p.name, cr) }
+            if let ex = byCode[code] {
+                byCode[code] = (ex.name, min(cr, ex.minCr), ex.count + 1)
+            } else {
+                byCode[code] = (p.name, cr, 1)
+            }
         }
-        return byCode.map { (code: $0.key, name: $0.value.name, from: $0.value.minCr) }
+        return byCode
+            .map { EsimCountryEntry(code: $0.key, name: $0.value.name,
+                                    fromCredits: $0.value.minCr, planCount: $0.value.count) }
             .sorted { $0.name < $1.name }
     }
     func esimPlans(forCountry code: String) -> [EsimPlan] {
         esimPlans.filter { $0.countryCode == code }
             .sorted { ($0.retailCredits ?? 0) < ($1.retailCredits ?? 0) }
+    }
+
+    // MARK: eSIM usage metrics
+    //
+    // Every figure here is arithmetic over rows the provider wrote — credits we
+    // charged, megabytes `check-esim-usage` reported. Nothing is modelled or
+    // estimated, which is why there is no "average speed" or "coverage
+    // quality": we do not measure those, and the standing rule is that we show
+    // nothing rather than a plausible-looking guess.
+
+    /// eSIMs that can still change state — worth polling and worth showing first.
+    var liveEsimOrders: [EsimOrder] { esimOrders.filter { $0.status.keepsPolling } }
+
+    /// Total data consumed across every eSIM ever bought, in MB.
+    var esimTotalUsedMb: Int { esimOrders.reduce(0) { $0 + $1.dataUsedMb } }
+
+    /// Credits spent on eSIMs. Refunded orders are excluded — the money came
+    /// back, so counting it as spend would overstate what the product cost.
+    var esimCreditsSpent: Int {
+        esimOrders.filter { $0.status != .refunded }.reduce(0) { $0 + $1.server.costCredits }
+    }
+
+    /// Distinct countries the user has held an eSIM for.
+    var esimCountriesVisited: Int {
+        Set(esimOrders.compactMap { $0.plan?.countryCode }).count
+    }
+
+    /// Soonest expiry among live eSIMs, for the "expires in N days" line.
+    var esimNextExpiry: Date? {
+        liveEsimOrders.compactMap(\.expiresAt).min()
     }
 
     // ─────────── Temporary email ───────────

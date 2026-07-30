@@ -180,7 +180,11 @@ VirtualSIM/
   Screens/                       Home, Checkout, Waiting (+ WaitingAnimations),
                                  OTP (fires native review prompt on code
                                  delivery), Orders, Account, + eSIM flow
-                                 (EsimStore, EsimCheckout, EsimDetail = QR + usage),
+                                 (EsimStore = Store/My eSIMs/Activity segments,
+                                 EsimMapView = clustered MapKit country picker,
+                                 EsimCountryPlans = duration→size chooser,
+                                 EsimActivity = usage metrics + history,
+                                 EsimCheckout, EsimDetail = QR + usage),
                                  Recovery (post-failure: retry on a fresh number /
                                  switch country / refund explainer — see the
                                  retry-steering note below), Maintenance (shown
@@ -201,8 +205,15 @@ VirtualSIM/
                                  fallback; SuccessBadge renders MEASURED delivery
                                  odds only (grey/amber/red), never seed rates;
                                  BrandWordmark (green `v` + SMS — the logo, and on
-                                 the splash also the loading indicator)
-  Push/, IAP/, Onboarding/, DesignSystem/  Self-explanatory
+                                 the splash also the loading indicator);
+                                 CodeFlag (flag from a bare ISO2 — the eSIM
+                                 catalog has no `Country`); DataRing/DataBar
+                                 (usage gauges, show REMAINING not used)
+  Push/, IAP/, Onboarding/       Self-explanatory
+  DesignSystem/                  Theme, Typography, Icons + **Motion.swift**
+                                 (`RMotion`: one animation vocabulary named by
+                                 what moves — select/panel/content/value/camera
+                                 + `stagger`. Use these, not inline curves)
   Localizable.xcstrings          String Catalog: en source + de/es/fr/it/ja/pt-BR
   Products.storekit              Local IAP test config (enable via scheme)
   VirtualSIM.entitlements        Sign in with Apple + aps-environment
@@ -833,6 +844,67 @@ The badge is scored against the DESTINATION route, and the Affordable filter
 judges by the price the row shows (it used to test `cost(for:country:)` alone and
 silently drop every service without a route here).
 
+### The eSIM store — why it shows FEWER plans than the catalog has
+
+The store used to render every active plan for a country in one price-ascending
+list. Measured against the live catalog on 2026-07-30, that list is unusable for
+two independent reasons, and neither is fixable with a nicer row design:
+
+- **382 of 1,081 active plans (35.3%) are DOMINATED** — another plan in the same
+  country gives *at least as much data, for at least as many days, at the same
+  price or less*. Japan sells 490 MB/1 day for **6** credits and 490 MB/**7
+  days** for **5** — cheaper *and* longer. Sorting by price ascending puts the
+  strictly worse plan first.
+- **187 (country, data, days) triples have more than one plan.** Japan lists
+  "1 GB · 1 day" **four** times at 9/10/11/12 credits with nothing on the row to
+  tell them apart — because there *is* nothing; the extra 3 credits buy nothing.
+
+`EsimPlanRanking.frontier()` keeps only the Pareto frontier over
+(data ↑, days ↑, price ↓), collapsing exact three-axis ties to one row. Japan's
+7-day view goes 5 rows → 3. Two rules in it are load-bearing:
+
+- **Plans missing data/validity/price are never dropped.** They cannot be
+  compared, and hiding a row because a provider column was NULL would let a
+  catalog gap decide what the user may see.
+- **The filter is never silent.** A "Show N more plans" control states exactly
+  how many rows are held back. It is a default, not a decision made for them.
+
+Duration is the FIRST axis, not a filter. It is the only one the traveller
+already knows before opening the app. The catalog is clean here — 1/7/15/30/180
+days cover 1,078 of 1,081 plans — and the chips are derived from the data, so a
+new duration appears without a code change. The default is **the duration
+closest to 7 days**: 1-day plans are 496 of 1,081 purely because the provider
+lists many, so defaulting to the modal duration would open every country on
+single-day plans.
+
+`credits/GB` is shown because it is the one number that makes different sizes
+comparable, and it is arithmetic on **our own retail price** — not a provider
+quality signal. There is deliberately no speed/coverage/reliability score on
+these screens: we do not measure any of that, and the standing rule is to show
+nothing rather than a plausible-looking guess.
+
+**The map is `EsimMapView` (MapKit) and it clusters — that is not optional.**
+35 of the 66 countries are European, so one pin per country is a solid blob over
+Europe at world zoom. Pins are grid-bucketed against the live camera span
+(`onMapCameraChange`), so bubbles become flags as you pinch. Two things learned
+the hard way:
+
+- **MapKit aspect-FILLS a requested region, it does not fit it.** On a 0.46-aspect
+  phone the whole world is simply not reachable in flat mode: `MKMapRect.world`
+  matched the view's *height* and cropped longitude to ~140°, and a 120°×150°
+  region cropped to ~60° over Africa. The opening camera therefore centres on the
+  densest part of the catalog instead of pretending to show everything.
+- **A price badge and a cluster count are the same glyph.** Cameroon's "33"
+  (credits) was indistinguishable from a green "13" (a 13-country cluster) — same
+  size, same badge. The price chip now always carries its unit ("33 cr") and a
+  distinct light treatment.
+
+`CountryGeo` is a static ISO2→centroid table, not geocoding (CLGeocoder is a
+rate-limited network round-trip per country, which would make the map's contents
+depend on connectivity). `CountryGeo.missingCodes(in:)` exists so a catalog
+country with no pin is *assertable* — the map renders a "N not on map" note
+rather than silently dropping a country it can sell. Currently 66/66 are placed.
+
 ### Order-state honesty (client) — the reconcile invariant
 
 **`check-order` is NOT the authority on whether an order ended.** It polls the
@@ -1269,7 +1341,7 @@ SMS provider again, walk this list:
   to history (`loadEmailOrders` had had NO caller); and the `isOk(null)`
   charge-and-forfeit bug in `providers.ts` fixed.
 - **Codebase**: `MARKETING_VERSION 1.5`, `CURRENT_PROJECT_VERSION 18` (next build
-  is **19**), iOS min **18.0**, **84** Swift sources (BUILD SUCCEEDED on
+  is **19**), iOS min **18.0**, **92** Swift sources (BUILD SUCCEEDED on
   iPhone 17 Pro / iOS 26.5), **100** migration files, **23** edge functions.
 - **Catalog**: 18,492 routes, **12,955 active** (down from 17,804 — `sync-herosms`
   hid what HeroSMS cannot serve). **HeroSMS 5,198 active / SMSPVA 7,757**;
@@ -1298,8 +1370,11 @@ SMS provider again, walk this list:
   install base. Client-first, revoke-second, in that order.
 - ⚠️ **`esim_plans` publishes the wholesale cost book** to anyone with the
   publishable key (`last_cost_cents`, `smoothed_cost_cents`) — the `routes` leak
-  repeated, and **neither half is done**: `EsimPlansAPI.fetch()` still sends
-  `select=*`. Needs the same two-phase rollout.
+  repeated. **The CLIENT half is now done**: `EsimPlansAPI.fetch()` names its ten
+  columns instead of `select=*` (2026-07-30). The server-side column revoke is
+  still outstanding and **must wait until build 19 is adopted** — revoking while
+  the shipped 1.4 still sends `select=*` makes the eSIM catalog fail to load for
+  the whole install base. Client first, revoke second, same as `routes`.
 - ⚠️ **`supabase_admin` default privileges not revoked** — needs membership in
   that role. Covers objects created via the dashboard rather than migrations.
   Statements in `20260727211000_default_privileges.sql`.

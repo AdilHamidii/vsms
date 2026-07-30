@@ -491,7 +491,7 @@ struct HomeScreen: View {
     /// `state.esimCountries`, so an empty or unpriced catalog renders nothing
     /// instead of "from 0 credits".
     private var esimTeaser: some View {
-        let cheapest = state.esimCountries.map(\.from).min() ?? 0
+        let cheapest = state.esimCountries.map(\.fromCredits).min() ?? 0
         let countries = state.esimCountries.count
         return Button(action: onOpenEsim) {
             HStack(spacing: 12) {

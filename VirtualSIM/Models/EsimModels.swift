@@ -51,6 +51,22 @@ struct EsimPlan: Codable, Hashable, Identifiable {
     var flagCode: String { (countryCode ?? "").lowercased() }
 }
 
+/// One destination in the eSIM store: a country plus what it costs to enter.
+///
+/// Replaces the `(code:name:from:)` tuple `esimCountries` used to return. A
+/// tuple cannot be `Identifiable`, so every `ForEach` over it had to key on
+/// `\.element.code` through an `enumerated()` wrapper, and the map needs to
+/// pass one of these through a selection binding — which a tuple also cannot do.
+struct EsimCountryEntry: Identifiable, Hashable {
+    /// ISO 3166-1 alpha-2, exactly as `esim_plans.country_code` stores it.
+    let code: String
+    let name: String
+    let fromCredits: Int
+    let planCount: Int
+
+    var id: String { code }
+}
+
 /// Server row from `esim_orders`.
 struct ServerEsimOrder: Codable, Hashable, Identifiable {
     let id: String
