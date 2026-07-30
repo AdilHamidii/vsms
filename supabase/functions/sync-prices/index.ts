@@ -97,13 +97,19 @@ Deno.serve(async (req) => {
     return json({ error: "countries_load_failed", detail: cErr?.message }, { status: 500 });
   }
 
-  // Combos the weekly virtualsms overlay owns — skip them here so we never
-  // clobber the real-SIM price/provider with an SMSPVA one.
-  // Combos owned by another provider (virtualsms overlay OR smspool primary) —
-  // skip them here so this SMSPVA sync never clobbers their price/success.
+  // Combos owned by ANY provider other than SMSPVA — skip them here so this
+  // SMSPVA sync never clobbers their price/success.
+  //
+  // Deliberately `neq('smspva')` rather than a hardcoded list of the others.
+  // The list form silently failed open: a provider not named in it kept having
+  // its `retail_credits` and `smoothed_cost_cents` overwritten hourly from
+  // SMSPVA's price book, so retail stayed pegged to a provider we no longer
+  // buy from and margin analysis over `smoothed_cost_cents` was permanently
+  // wrong. Any future provider is now covered the moment it owns a row,
+  // without anyone remembering to edit this line.
   const { data: ownedRoutes } = await sb
-    .from("routes").select("service_id, country_id").in("provider", ["virtualsms", "smspool"]);
-  const vsOwned = new Set((ownedRoutes ?? []).map((r) => `${r.service_id}|${r.country_id}`));
+    .from("routes").select("service_id, country_id").neq("provider", "smspva");
+  const foreignOwned = new Set((ownedRoutes ?? []).map((r) => `${r.service_id}|${r.country_id}`));
 
   // Prior smoothed cost per route, for the EWMA below.
   const { data: prevRows } = await sb
@@ -213,7 +219,7 @@ Deno.serve(async (req) => {
     const cents = Math.round((price as number) * 100);
     for (let i = 0; i < svcs.length; i++) {
       const key = `${svcs[i].id}|${cid}`;
-      if (vsOwned.has(key)) continue; // virtualsms owns this combo
+      if (foreignOwned.has(key)) continue; // another provider owns this combo
       if (i > 0) fannedOut++;
       pricedServiceIds.add(svcs[i].id);
 

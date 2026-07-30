@@ -1,6 +1,6 @@
 import { handleCors, json } from "../_shared/cors.ts";
 import { admin, callerUserId } from "../_shared/supabaseAdmin.ts";
-import { markDead, markSuccess, poll, type Provider } from "../_shared/providers.ts";
+import { markDead, markSuccess, poll, type OrderProvider } from "../_shared/providers.ts";
 
 interface Body { order_id: string; }
 
@@ -43,7 +43,7 @@ Deno.serve(async (req) => {
     // the dead number here so SMSPVA doesn't re-issue it (their docs require
     // the ban; the request id is otherwise retained ~10 min). Best-effort.
     if (order.smspva_id) {
-      await markDead((order.provider ?? "smspva") as Provider, order.smspva_id);
+      await markDead((order.provider ?? "smspva") as OrderProvider, order.smspva_id);
     }
     const { data: updated } = await sb.from("orders").select("*").eq("id", order.id).single();
     return json({ order: updated });
@@ -51,7 +51,7 @@ Deno.serve(async (req) => {
 
   let result;
   try {
-    result = await poll((order.provider ?? "smspva") as Provider, order.smspva_id!);
+    result = await poll((order.provider ?? "smspva") as OrderProvider, order.smspva_id!);
   } catch (e) {
     return json({ error: "provider_unreachable", detail: String(e) }, { status: 502 });
   }
@@ -85,7 +85,7 @@ Deno.serve(async (req) => {
     if (rows && rows.length > 0) {
       // Tell SMSPVA the activation succeeded — best-effort account-karma
       // hygiene, never blocks handing the code to the user.
-      await markSuccess((order.provider ?? "smspva") as Provider, order.smspva_id!);
+      await markSuccess((order.provider ?? "smspva") as OrderProvider, order.smspva_id!);
       return json({ order: rows[0], arrived: true });
     }
 

@@ -1,13 +1,18 @@
-// Unified provider router. Preference order: SMSPool (primary) -> SMSPVA
-// (fallback) -> virtualsms (last; currently degraded). The order functions call
-// these instead of a specific provider, so routing + failover live in one place.
+// Unified provider router. SMS is served by ONE provider at a time, with no
+// cross-provider fallback (owner decision 2026-07-30). The order functions call
+// these instead of a specific provider, so routing lives in one place.
+//
 // Each provider owns its identifier scheme:
-//   smspool    — numeric service id ("1363") + numeric country id ("3")
-//   smspva     — smspva_code ("opt20") + smspva country code ("US")
-//   virtualsms — service short code ("wa") + ISO country ("FR")
+//   smspva  — smspva_code ("opt20") + smspva country code ("US")
+//
+// RETIRED 2026-07-30: smspool (SMS only — it keeps the eSIM line, a separate
+// table and code path) and virtualsms (purchase endpoint 503'd for every combo,
+// 3 lifetime orders, 0 codes). Their adapters, syncs and route codes are gone.
+// Their names survive ONLY as historical values on `orders.provider` — 50 and 3
+// rows respectively — which is why `OrderProvider` still admits them and
+// `orders_provider_check` still permits them. Rewriting those rows would
+// destroy the delivery evidence they carry.
 
-import * as sp from "./smspool.ts";
-import * as vs from "./virtualsms.ts";
 import {
   getNumber as smsGetNumber,
   getSms,
@@ -18,49 +23,47 @@ import {
   isOk,
 } from "./smspva.ts";
 
-export type Provider = "smspool" | "smspva" | "virtualsms";
+/** Providers that can be ROUTED TO for a new order. */
+export type Provider = "smspva";
+
+/** Providers that may appear on an existing `orders.provider`, including
+ *  retired ones. Lifecycle calls (poll/release/markDead/markSuccess) accept
+ *  this wider type because they run against rows written long ago. */
+export type OrderProvider = Provider | "smspool" | "virtualsms";
+
+/** Documented provider failure classes, so callers map to real user copy.
+ *  create-order branches on THIS, never on the raw error string.
+ *
+ *  Formerly `SmspoolErrorType`, defined in the SMSPool adapter. It was never
+ *  SMSPool-specific — it is the router's shared vocabulary — and leaving it
+ *  named after a provider that no longer serves SMS invited exactly the kind of
+ *  confusion this cleanup exists to remove. */
+export type ProviderErrorType =
+  | "OUT_OF_STOCK" | "PRICE_NOT_FOUND" | "BALANCE_ERROR"
+  | "RATE_LIMITED" | "AUTH_ERROR" | "TRANSPORT_ERROR";
 
 export interface RouteCodes {
-  spService?: string | null;   // SMSPool numeric service id
-  spCountry?: string | null;   // SMSPool numeric country id
-  vsService?: string | null;
-  vsCountry?: string | null;
   smsService?: string | null;
   smsCountry?: string | null;
   dial: string;
 }
 
 /** Providers that can serve this route, preferred first.
- *  SMSPVA for SMS; SMSPool keeps the eSIM line only (owner decision
- *  2026-07-21). SMSPool served 43 SMS orders across 3 days and delivered 3.
- *  The decisive test: leboncoin/NL — 8 of 13 on SMSPVA — went 0 of 1 on
- *  SMSPool with everything working (number issued from the pinned pool at 7c
- *  against a 1-credit charge, held 173s); the SMS simply never arrived.
  *
- *  SMSPool is deliberately NOT a fallback here: its ToS 6.7 bans financial,
- *  crypto, KYC, telecom and government verifications outright, and SMSPVA
- *  carries ~134 services SMSPool has no mapping for at all — so routing SMS
- *  to it costs coverage as well as delivery.
+ *  SMSPVA only, and deliberately a single element: there is NO fallback.
+ *  A silent cross-provider substitution is what hid virtualsms's dead purchase
+ *  endpoint behind SMSPVA for weeks — create-order's loop tried the next
+ *  provider and the failure never surfaced. One provider, one attempt, a real
+ *  error when it fails.
  *
- *  eSIMs are untouched and stay on SMSPool (9 of 9 delivered, a separate
- *  table and code path).
- *
- *  virtualsms stays retired: its purchase endpoint 503s for every combo. */
-export function providerOrder(c: RouteCodes, _prefer: Provider = "smspva"): Provider[] {
+ *  eSIMs are untouched and stay on SMSPool (a separate table and code path). */
+export function providerOrder(c: RouteCodes): Provider[] {
   return c.smsService && c.smsCountry ? ["smspva"] : [];
 }
 
 /** Live wholesale price (USD) at a provider, or null if unavailable. */
 export async function livePriceUsd(p: Provider, c: RouteCodes): Promise<number | null> {
   try {
-    if (p === "smspool" && c.spService && c.spCountry) {
-      const r = await sp.getPrice(c.spCountry, c.spService);
-      return r.ok && r.priceUsd != null ? r.priceUsd : null;
-    }
-    if (p === "virtualsms" && c.vsService && c.vsCountry) {
-      const r = await vs.price(c.vsService, c.vsCountry);
-      return r.ok && r.priceUsd != null ? r.priceUsd : null;
-    }
     if (p === "smspva" && c.smsService && c.smsCountry) {
       const r = await getServicePrice(c.smsCountry, c.smsService);
       return isOk(r) && Number.isFinite(r.data?.price) && r.data.price > 0 ? r.data.price : null;
@@ -76,61 +79,21 @@ export interface Reservation {
   costUsd?: number;
   /** Provider's own hold deadline (epoch seconds) when it reports one. */
   expiresAt?: number;
-  /** Pool that actually filled (SMSPool), for outcome attribution. */
+  /** Carrier/pool that actually filled, for outcome attribution. */
   pool?: string;
   error?: string;
-  /** Documented provider failure class, so callers map to real user copy. */
-  errorType?: sp.SmspoolErrorType;
+  errorType?: ProviderErrorType;
 }
 
 /** Reserve a number at a provider. maxPriceUsd caps the fill price where the
- *  provider supports it (SMSPool max_price); pool pins the pool/carrier the
- *  route was priced from. pinStrict=true (premium tier) makes a dry pin a
- *  hard failure instead of retrying unpinned. */
+ *  provider supports it; pool pins the carrier the route was priced from.
+ *  pinStrict=true (premium tier) makes a dry pin a hard failure instead of
+ *  retrying unpinned. */
 export async function reserve(
-  p: Provider, c: RouteCodes, maxPriceUsd?: number, pool?: string | null,
+  p: Provider, c: RouteCodes, _maxPriceUsd?: number, pool?: string | null,
   pinStrict = false,
 ): Promise<Reservation> {
   try {
-    if (p === "smspool" && c.spService && c.spCountry) {
-      // Pin the pool the route was priced from. Pools are SUPPLIERS with
-      // different carriers and measurably different delivery — and sync picks
-      // the pin on MEASURED success rate, not price (price is mildly
-      // ANTI-correlated with delivery: on 20 sampled combos the priciest pool
-      // was the worst-performing one 10 times, and the best-rate pool was also
-      // cheaper on 13).
-      //
-      // Pinning without a fallback would convert "this pool is dry" into a
-      // hard failure, so an OUT_OF_STOCK on the pinned pool retries once on
-      // auto — we would rather fill from a mediocre pool than not at all.
-      let r = await sp.purchase(c.spCountry, c.spService, maxPriceUsd, pool ?? undefined);
-      if (!r.ok && pool && r.errorType === "OUT_OF_STOCK") {
-        r = await sp.purchase(c.spCountry, c.spService, maxPriceUsd);
-      }
-      if (!r.ok) return { ok: false, error: r.error, errorType: r.errorType };
-      // A number still activating cannot receive a code (SMSPool FAQ), so a
-      // failed wait means release it and let the caller fall through rather
-      // than hand over a number that is guaranteed to fail.
-      if (r.orderId) {
-        const ready = await sp.waitUntilReady(r.orderId).catch(() => false);
-        if (!ready) {
-          await sp.cancel(r.orderId).catch(() => {});
-          return { ok: false, error: "number_never_activated" };
-        }
-      }
-      return {
-        ok: true, orderId: r.orderId, number: r.phoneNumber ?? "",
-        costUsd: r.costUsd, expiresAt: r.expiresAt, pool: r.pool,
-      };
-    }
-    if (p === "virtualsms" && c.vsService && c.vsCountry) {
-      const r = await vs.buyNumber(c.vsService, c.vsCountry);
-      if (!r.ok) return { ok: false, error: r.error };
-      const num = r.phoneNumber
-        ? (r.phoneNumber.startsWith("+") ? r.phoneNumber : `+${r.phoneNumber}`)
-        : "";
-      return { ok: true, orderId: r.orderId, number: num, costUsd: r.costUsd };
-    }
     if (p === "smspva" && c.smsService && c.smsCountry) {
       // SMSPVA's allocation endpoint accepts no price cap and reports no cost
       // — it once billed $3.60 on a route quoted at pennies. Bracket the
@@ -172,6 +135,9 @@ export async function reserve(
       return {
         ok: true,
         orderId: String(r.data.orderId),
+        // SMSPVA returns a NATIONAL number, so the dial code is prepended here.
+        // Any future provider that returns full E.164 must NOT reuse this line
+        // — it would produce a doubled country code.
         number: `${c.dial} ${r.data.phoneNumber}`,
         costUsd,
         pool: usedPool,
@@ -195,8 +161,8 @@ export async function reserve(
  *    - the one console.error written to make a dead provider loud is itself
  *      gated on errorType, so it never fired for the only SMS provider we have.
  *
- *  With SMSPVA the sole SMS provider, an empty balance would take the product
- *  down with no signal anywhere.
+ *  With one SMS provider and no fallback, an empty balance would take the
+ *  product down with no signal anywhere.
  *
  *  SMSPVA's error vocabulary is not publicly documented (docs.smspva.com
  *  describes a different, older API), and the only string confirmed live is
@@ -204,7 +170,7 @@ export async function reserve(
  *  full enum, and log anything unrecognised so the real vocabulary can be
  *  learned from production instead of guessed.
  */
-function classifySmspvaFault(raw: string): sp.SmspoolErrorType | undefined {
+function classifySmspvaFault(raw: string): ProviderErrorType | undefined {
   const t = raw.toUpperCase();
   if (/BALANCE|FUND|MONEY|DEPOSIT|PAYMENT/.test(t)) return "BALANCE_ERROR";
   if (/APIKEY|API_KEY|AUTH|TOKEN|FORBID|DENIED/.test(t)) return "AUTH_ERROR";
@@ -223,11 +189,27 @@ function classifySmspvaFault(raw: string): sp.SmspoolErrorType | undefined {
   return undefined;
 }
 
+/** A lifecycle call arrived for a provider we can no longer talk to.
+ *
+ *  This function is the whole reason the retired names survive in the type.
+ *  Previously every lifecycle switch ended in an UNGUARDED SMSPVA call, so any
+ *  provider without an explicit branch silently had its orders polled and
+ *  cancelled against SMSPVA using a foreign order id — returning HTTP 200 the
+ *  entire time, delivering nothing, and never reclaiming the wholesale. Refuse
+ *  loudly instead; a retired provider has no open orders to service anyway
+ *  (verified 2026-07-30: zero waiting orders on any provider). */
+function refuseRetired(fn: string, p: string, orderId: string): void {
+  console.error(
+    `${fn}: refusing retired provider "${p}" order=${orderId} — no adapter, ` +
+    `and falling through to another provider's API would corrupt its state`,
+  );
+}
+
 /** Tell the provider an activation SUCCEEDED. SMSPVA's blocknumber marks the
  *  number used — their docs ask for it, and account karma influences the
  *  quality of numbers they hand out next. Best-effort hygiene: a failure here
  *  must never affect the delivered order. */
-export async function markSuccess(p: Provider, orderId: string): Promise<void> {
+export async function markSuccess(p: OrderProvider, orderId: string): Promise<void> {
   if (p !== "smspva") return;
   try { await smsBlock(orderId); } catch { /* hygiene only */ }
 }
@@ -242,8 +224,8 @@ export async function markSuccess(p: Provider, orderId: string): Promise<void> {
  *  dead numbers cycling back into our own orders. Ban first, then cancel to
  *  reclaim the wholesale refund; both best-effort — the user's credit refund
  *  has already happened by the time this runs and must never depend on it. */
-export async function markDead(p: Provider, orderId: string): Promise<void> {
-  if (p !== "smspva") { await release(p, orderId); return; }
+export async function markDead(p: OrderProvider, orderId: string): Promise<void> {
+  if (p !== "smspva") { refuseRetired("markDead", p, orderId); return; }
   // Log both outcomes explicitly: these calls return SMSPVA's error ENVELOPE
   // rather than throwing, so a silent try/catch would hide whether the ban
   // registered and whether the follow-up cancel still reclaims the wholesale
@@ -285,17 +267,10 @@ export interface PollResult {
 }
 
 /** Poll a provider order for the SMS code. */
-export async function poll(p: Provider, orderId: string): Promise<PollResult> {
-  if (p === "smspool") {
-    const s = await sp.check(orderId);
-    // "activating" is not terminal — the number simply isn't live yet. Report
-    // it as waiting so callers keep polling rather than expiring the order.
-    const state = s.state === "activating" ? "waiting" : s.state;
-    return { state, code: s.code, fullText: s.fullText };
-  }
-  if (p === "virtualsms") {
-    const s = await vs.getOrder(orderId);
-    return { state: s.state, code: s.code, fullText: s.fullText };
+export async function poll(p: OrderProvider, orderId: string): Promise<PollResult> {
+  if (p !== "smspva") {
+    refuseRetired("poll", p, orderId);
+    return { state: "unknown" };
   }
   const r = await getSms(orderId);
   if (isOk(r) && r.data.sms?.code) {
@@ -305,10 +280,9 @@ export async function poll(p: Provider, orderId: string): Promise<PollResult> {
 }
 
 /** Best-effort release/cancel at a provider (local refund happens regardless). */
-export async function release(p: Provider, orderId: string): Promise<void> {
+export async function release(p: OrderProvider, orderId: string): Promise<void> {
+  if (p !== "smspva") { refuseRetired("release", p, orderId); return; }
   try {
-    if (p === "smspool") { await sp.cancel(orderId); return; }
-    if (p === "virtualsms") { await vs.cancelOrder(orderId); return; }
     await smsCancel(orderId);
   } catch (e) {
     console.error(`release failed provider=${p} order=${orderId}:`, e);

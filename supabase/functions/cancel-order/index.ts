@@ -2,7 +2,7 @@ import { handleCors, json } from "../_shared/cors.ts";
 import { admin, callerUserId } from "../_shared/supabaseAdmin.ts";
 // `release` is deliberately gone: cancel no longer kills the number — the
 // late-code sweep in poll-active-orders owns its lifecycle now.
-import { markSuccess, poll, type Provider } from "../_shared/providers.ts";
+import { markSuccess, poll, type OrderProvider } from "../_shared/providers.ts";
 
 // Minimum hold before a paid order may be destroyed (owner decision
 // 2026-07-27). Measured: median code arrival 58s, p90 134s, while the median
@@ -81,7 +81,7 @@ Deno.serve(async (req) => {
   // Best-effort: any poll failure falls through to the normal cancel.
   if (order.smspva_id) {
     try {
-      const last = await poll((order.provider ?? "smspva") as Provider, order.smspva_id);
+      const last = await poll((order.provider ?? "smspva") as OrderProvider, order.smspva_id);
       if (last.state === "received" && last.code) {
         const { data: got } = await sb
           .from("orders")
@@ -96,7 +96,7 @@ Deno.serve(async (req) => {
           .eq("status", "waiting")
           .select("*");
         if (got && got.length > 0) {
-          await markSuccess((order.provider ?? "smspva") as Provider, order.smspva_id);
+          await markSuccess((order.provider ?? "smspva") as OrderProvider, order.smspva_id);
           console.warn(`cancel-order: code was in flight for ${order.id} — delivered instead of canceled`);
           return json({ order: got[0], arrived: true });
         }

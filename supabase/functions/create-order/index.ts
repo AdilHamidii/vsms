@@ -136,12 +136,12 @@ Deno.serve(async (req) => {
   const sb = admin();
 
   const { data: service, error: svcErr } = await sb
-    .from("services").select("id, smspva_code, virtualsms_code, smspool_code")
+    .from("services").select("id, smspva_code")
     .eq("id", body.service_id).single();
   if (svcErr || !service) return json({ error: "unknown_service" }, { status: 404 });
 
   const { data: country, error: cErr } = await sb
-    .from("countries").select("id, smspva_code, virtualsms_code, smspool_code, dial_code")
+    .from("countries").select("id, smspva_code, dial_code")
     .eq("id", body.country_id).single();
   if (cErr || !country) return json({ error: "unknown_country" }, { status: 404 });
 
@@ -176,10 +176,6 @@ Deno.serve(async (req) => {
     ? route.premium_credits as number
     : route.retail_credits as number;
   const codes: RouteCodes = {
-    spService: service.smspool_code,
-    spCountry: country.smspool_code,
-    vsService: service.virtualsms_code,
-    vsCountry: country.virtualsms_code,
     smsService: service.smspva_code,
     smsCountry: country.smspva_code,
     dial: country.dial_code,
@@ -215,9 +211,9 @@ Deno.serve(async (req) => {
     console.warn("retry-context read failed (ignored):", e);
   }
 
-  // virtualsms is always tried first where it has a code (real-SIM quality);
-  // SMSPVA is the fallback. route.provider only reflects the display-price
-  // source, not the fulfilment preference.
+  // ONE provider, no fallback (owner decision 2026-07-30). `route.provider`
+  // only reflects the display-price source, not the fulfilment preference —
+  // providerOrder() is the single routing truth and reads only the codes.
   const providers = providerOrder(codes);
   if (providers.length === 0) return json({ error: "route_unavailable" }, { status: 409 });
 
@@ -388,11 +384,14 @@ Deno.serve(async (req) => {
       lastError = "margin_too_low";
       continue;
     }
-    // Pin per provider: smspva rides the real-SIM carrier (mandatory for
-    // premium, opportunistic for standard); smspool keeps its pool pin.
-    // smspvaPin already encodes the tier rule plus any rotation away from a
-    // pool this user just failed on.
-    const pin = p === "smspva" ? smspvaPin : route.smspool_pool;
+    // smspva rides the real-SIM carrier (mandatory for premium, opportunistic
+    // for standard). smspvaPin already encodes the tier rule plus any rotation
+    // away from a carrier this user just failed on.
+    //
+    // This used to read `p === "smspva" ? smspvaPin : route.smspool_pool`. Any
+    // future provider MUST get its own explicit arm here — the old else-branch
+    // silently handed an SMSPool pool name to whatever provider ran next.
+    const pin = p === "smspva" ? smspvaPin : null;
     // Fresh-number guarantee: SMSPVA re-issues a just-canceled number to the
     // same buyer. If the fill matches a number this user already drew for
     // this service in the last hour, release it and draw again — at most 3

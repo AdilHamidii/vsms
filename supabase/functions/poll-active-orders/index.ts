@@ -4,7 +4,7 @@
 
 import { handleCors, json } from "../_shared/cors.ts";
 import { admin } from "../_shared/supabaseAdmin.ts";
-import { markDead, markSuccess, poll, type Provider } from "../_shared/providers.ts";
+import { markDead, markSuccess, poll, type OrderProvider } from "../_shared/providers.ts";
 import { getBalanceUsd } from "../_shared/smspool.ts";
 import { getBalance as getSmspvaBalance, isOk } from "../_shared/smspva.ts";
 import { sendPush } from "../_shared/apns.ts";
@@ -262,7 +262,7 @@ Deno.serve(async (req) => {
       // docs explicitly say to ban when no SMS arrived). Best-effort — the
       // refund above already happened and must never depend on this.
       if (row.smspva_id) {
-        await markDead((row.provider ?? "smspva") as Provider, row.smspva_id);
+        await markDead((row.provider ?? "smspva") as OrderProvider, row.smspva_id);
       }
 
       const svc = row.service as { name: string } | null;
@@ -325,13 +325,13 @@ Deno.serve(async (req) => {
       // only accidentally correct while the DB session is UTC — and inverts
       // silently if that ever changes, leaving every watched number unreleased.
       if (new Date(o.late_watch_until as string).getTime() <= Date.now()) {
-        await markDead((o.provider ?? "smspva") as Provider, o.smspva_id);
+        await markDead((o.provider ?? "smspva") as OrderProvider, o.smspva_id);
         await sb.from("orders").update({ late_watch_until: null }).eq("id", o.id);
         lateReleased++;
         continue;
       }
 
-      const res = await poll((o.provider ?? "smspva") as Provider, o.smspva_id);
+      const res = await poll((o.provider ?? "smspva") as OrderProvider, o.smspva_id);
       if (res.state !== "received" || !res.code) continue;
 
       // Write the code onto the canceled row. `otp is not null` is what the
@@ -350,7 +350,7 @@ Deno.serve(async (req) => {
         .select("id");
       if (!got || got.length === 0) continue;   // another run got there first
 
-      await markSuccess((o.provider ?? "smspva") as Provider, o.smspva_id);
+      await markSuccess((o.provider ?? "smspva") as OrderProvider, o.smspva_id);
       rescued++;
       const svc = o.service as { name: string } | null;
       pushSent += await notify(
@@ -386,7 +386,7 @@ Deno.serve(async (req) => {
     polled++;
     let result;
     try {
-      result = await poll((o.provider ?? "smspva") as Provider, o.smspva_id!);
+      result = await poll((o.provider ?? "smspva") as OrderProvider, o.smspva_id!);
     } catch (e) {
       console.error("poll failed for order", o.id, e);
       continue;
@@ -421,7 +421,7 @@ Deno.serve(async (req) => {
       }
 
       // Tell SMSPVA the activation succeeded — best-effort karma hygiene.
-      await markSuccess((o.provider ?? "smspva") as Provider, o.smspva_id);
+      await markSuccess((o.provider ?? "smspva") as OrderProvider, o.smspva_id);
 
       arrived++;
       // Optional-chained: a null embed here used to throw out of the whole

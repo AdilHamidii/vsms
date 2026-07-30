@@ -4,7 +4,7 @@
 
 import { handleCors, json } from "../_shared/cors.ts";
 import { admin, callerUserId } from "../_shared/supabaseAdmin.ts";
-import { release, type Provider } from "../_shared/providers.ts";
+import { release, type OrderProvider } from "../_shared/providers.ts";
 
 Deno.serve(async (req) => {
   const cors = handleCors(req); if (cors) return cors;
@@ -25,7 +25,7 @@ Deno.serve(async (req) => {
     .eq("status", "waiting");
 
   for (const o of pending ?? []) {
-    if (o.smspva_id) await release((o.provider ?? "smspva") as Provider, o.smspva_id);
+    if (o.smspva_id) await release((o.provider ?? "smspva") as OrderProvider, o.smspva_id);
   }
 
   const { error } = await sb.auth.admin.deleteUser(userId);
