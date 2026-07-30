@@ -14,13 +14,13 @@ enum EsimStatus: String, Codable, Hashable {
 
     var label: String {
         switch self {
-        case .provisioning: "Preparing"
-        case .installed:    "Ready to install"
-        case .active:       "Active"
-        case .depleted:     "Data used up"
-        case .expired:      "Expired"
-        case .refunded:     "Refunded"
-        case .failed:       "Failed"
+        case .provisioning: String(localized: "Preparing")
+        case .installed:    String(localized: "Ready to install")
+        case .active:       String(localized: "Active")
+        case .depleted:     String(localized: "Data used up")
+        case .expired:      String(localized: "Expired")
+        case .refunded:     String(localized: "Refunded")
+        case .failed:       String(localized: "Failed")
         }
     }
     var isLive: Bool { self == .installed || self == .active || self == .provisioning }
@@ -45,7 +45,9 @@ struct EsimPlan: Codable, Hashable, Identifiable {
     }
     var validityLabel: String {
         guard let d = validityDays else { return "—" }
-        return d == 1 ? "1 day" : "\(d) days"
+        // String(localized:) — a plain String return is NOT auto-localized
+        // the way a `Text("literal")` is, so these never reached the catalog.
+        return d == 1 ? String(localized: "1 day") : String(localized: "\(d) days")
     }
     /// 2-letter code for flag lookup, lowercased to match our Country ids.
     var flagCode: String { (countryCode ?? "").lowercased() }
@@ -118,7 +120,7 @@ struct EsimOrder: Identifiable, Hashable {
     }
     var dataRemainingLabel: String {
         guard let total = dataTotalMb else { return "—" }
-        return "\(EsimFormat.data(max(0, total - dataUsedMb))) left"
+        return String(localized: "\(EsimFormat.data(max(0, total - dataUsedMb))) left")
     }
 }
 

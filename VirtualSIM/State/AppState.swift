@@ -932,6 +932,10 @@ final class AppState {
         var idx: [String: EsimPlan] = [:]
         for p in plans { idx[p.id] = p }
         esimPlanIndex = idx
+        // Derived once per fetch — see the note on `esimCountries`.
+        esimCountries = AppState.groupByCountry(plans)
+        esimPlansByCountry = Dictionary(grouping: plans) { $0.countryCode ?? "??" }
+            .mapValues { $0.sorted { ($0.retailCredits ?? 0) < ($1.retailCredits ?? 0) } }
         // Re-resolve any already-loaded orders against the fresh catalog.
         esimOrders = esimOrders.map { EsimOrder(server: $0.server, plan: idx[$0.server.planId ?? ""]) }
     }
@@ -942,9 +946,20 @@ final class AppState {
     }
 
     /// eSIM plans grouped by country (cheapest tier per country), for the store.
-    var esimCountries: [EsimCountryEntry] {
+    ///
+    /// **Stored, not computed.** It was a computed property that walked all
+    /// **1,081** plans and rebuilt a dictionary — and because `AppState` is
+    /// `@Observable`, that ran on every body evaluation of any view touching it:
+    /// twice per `HomeScreen` redraw and once per `EsimStoreScreen` redraw, i.e.
+    /// constantly while the map is being dragged. It also handed `EsimMapView` a
+    /// freshly-allocated array each time, so SwiftUI saw new input and rebuilt
+    /// every annotation. The catalog only changes when it is fetched, so it is
+    /// derived exactly there.
+    private(set) var esimCountries: [EsimCountryEntry] = []
+
+    private static func groupByCountry(_ plans: [EsimPlan]) -> [EsimCountryEntry] {
         var byCode: [String: (name: String, minCr: Int, count: Int)] = [:]
-        for p in esimPlans {
+        for p in plans {
             let code = p.countryCode ?? "??"
             // SKIP unpriced plans rather than folding in Int.max. `?? Int.max`
             // meant a country whose plans were all unpriced surfaced its minimum
@@ -963,9 +978,16 @@ final class AppState {
                                     fromCredits: $0.value.minCr, planCount: $0.value.count) }
             .sorted { $0.name < $1.name }
     }
+    /// Plans for one country, cheapest first.
+    ///
+    /// Indexed for the same reason as `esimCountries`: this was a filter+sort
+    /// over all 1,081 plans, and `EsimCountryPlansScreen` calls it about four
+    /// times per body evaluation (`visible`, `durations`, `hiddenCount`, the
+    /// disclosure count).
+    private(set) var esimPlansByCountry: [String: [EsimPlan]] = [:]
+
     func esimPlans(forCountry code: String) -> [EsimPlan] {
-        esimPlans.filter { $0.countryCode == code }
-            .sorted { ($0.retailCredits ?? 0) < ($1.retailCredits ?? 0) }
+        esimPlansByCountry[code] ?? []
     }
 
     // MARK: eSIM usage metrics
