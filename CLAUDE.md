@@ -6,18 +6,40 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **vSMS** (App Store display name; formerly "vSIM OTP" — the Xcode target/scheme is still `VirtualSIM`) — iOS app selling two products, both paid with in-app **credits**: (1) **temporary phone numbers** for SMS verification codes and (2) **eSIM data plans** priced at 4× wholesale. iOS frontend in SwiftUI + Supabase backend (Postgres + Auth + Edge Functions + pg_cron).
 
-**Provider split as of 2026-07-21 — SMSPVA for SMS, SMSPool for eSIMs only.**
-SMSPool served 43 SMS orders over 3 days and delivered 3. The decisive test was
-leboncoin/NL — 8 of 13 on SMSPVA — going 0 of 1 on SMSPool with every mechanism
-working correctly. Measured after the switch: SMSPool 5% delivery vs SMSPVA 43%
-on the same catalog. SMSPool keeps eSIMs (9 of 9 delivered). virtualsms is fully
-retired. `providerOrder()` in `_shared/providers.ts` is the single source of
-truth for SMS routing; order/poll functions call the router, never a provider.
+**Provider split as of 2026-07-30 — HeroSMS + SMSPVA for SMS (split per
+SERVICE), SMSPool for eSIMs only, virtualsms and SMSPool-SMS deleted.**
 
-The provider has now changed twice in 24h and each switch broke something
-non-obvious, because **`routes` is ONE row per (service_id, country_id) with
+SMS-Activate — the one provider we had flagged as defensible — **closed
+2025-12-22** (API hostnames NXDOMAIN), and on its closure page it names
+**HeroSMS** as the successor. HeroSMS runs SMS-Activate's `handler_api`
+protocol, and its `getPrices` exposes **`physicalCount`** — real-SIM stock per
+(service, country), which SMSPVA never gave us. That matters because Meta's
+properties reject VoIP ranges and are ~53% of order volume at ~12% delivery: on
+SMSPVA we could only *guess* VoIP by regex-matching operator names against
+`^(Donor|Other_|MVNO_|Total_)`.
+
+**Ownership is per SERVICE, never per route** (owner decision): a service
+HeroSMS carries goes entirely to HeroSMS; one it doesn't stays entirely on
+SMSPVA. That keeps 265 services instead of the ~148 HeroSMS maps, without ever
+splitting one service across two providers — which is what keeps per-service
+evidence meaningful. **There is no fallback between providers**: `providerOrder()`
+returns exactly one, so a HeroSMS stockout fails as a stockout rather than
+silently re-reserving at SMSPVA under a different price and delivery profile.
+SMSPVA stays fully wired as the rollback target and its routes are never deleted.
+
+`providerOrder()` in `_shared/providers.ts` is the single source of truth for SMS
+routing; order/poll functions call the router, never a provider.
+
+The provider has now changed three times, and every switch broke something that
+threw no error, because **`routes` is ONE row per (service_id, country_id) with
 `provider` as a column** — re-homing rows strands any combo the new provider
-can't serve. If you switch again, re-read the "provider switch checklist" below.
+can't serve. If you switch again, re-read the "provider switch checklist" below;
+it has a new entry that the HeroSMS cutover added.
+
+*History, kept because it is the evidence base:* SMSPool served 43 SMS orders in
+3 days and delivered 3 (5%, vs SMSPVA 43% on the same catalog); the decisive test
+was leboncoin/NL — 8 of 13 on SMSPVA — going 0 of 1 on SMSPool with every
+mechanism working. SMSPool keeps eSIMs, where it is 9 of 9.
 
 Bundle ID: `com.anthersystems.VirtualSIM` · Supabase ref: `enugzltysdmjzavisloy` · Project root holds `Appidea.md` (original product brief).
 
@@ -51,33 +73,33 @@ supabase functions deploy create-order check-order cancel-order register-push ia
 # only x-cron-secret, no Authorization header. winback lived in the JWT group
 # until 2026-07-21 and silently 401'd on every daily run — zero nudges ever
 # sent, invisible because pg_net purges response history within hours.
-supabase functions deploy poll-active-orders sync-prices sync-smspool sync-esim-plans \
+supabase functions deploy poll-active-orders sync-prices sync-herosms sync-esim-plans \
   sync-smspva-operators sync-smspva-conversions winback telegram-notify telegram-webhook \
-  smspool-catalog daily-credit --no-verify-jwt
+  daily-credit --no-verify-jwt
 # daily-credit (cron relay-daily-credit, 11 16 * * *) sends the "claim your free
 # credit" push. It is cron-gated, so it MUST stay in this --no-verify-jwt group.
-# sync-virtualsms still exists on disk but virtualsms is RETIRED — do not deploy
-# or schedule it; it is kept only so historical orders remain inspectable.
-# smspool-catalog is an operator-only read-only dump of SMSPool's service/country
-# ids (for mapping unmatched catalog entries); CRON_SECRET-gated like the syncs.
-# (The old `list-orders/` leftover directory is GONE as of 2026-07-25 — the two
-# lists above plus sync-virtualsms now account for every directory on disk.)
+# sync-herosms (cron relay-sync-herosms, 37 * * * *) records HeroSMS's real
+# per-route cost + physicalCount and hides what HeroSMS cannot serve. It does
+# NOT touch retail_credits — see "Why sync-herosms exists" below.
+# DELETED 2026-07-30: sync-virtualsms/, sync-smspool/, smspool-catalog/ — all
+# three are gone from disk AND undeployed. The two lists above now account for
+# every directory in supabase/functions except _shared (19 functions total).
 
 # Query the remote DB
 supabase db query --linked "select count(*) from public.routes;"
 
 # Trigger any cron-gated function WITHOUT handling the secret yourself. pg_net
 # calls it server-side and private_cron_secret() never leaves the database.
-# Live pg_cron schedule (14 jobs, all active — re-verified 2026-07-25 16:50Z):
+# Live pg_cron schedule (15 jobs, all active — re-verified 2026-07-30 15:12Z):
 #   relay-poll-active-orders  * * * * *     relay-telegram-notify  * * * * *
 #   watchdog                  */10 * * * *  relay-sync-prices      17 * * * *
+#   relay-sync-herosms        37 * * * *    (offset from sync-prices on purpose)
 #   relay-sync-smspva-conversions 49 * * * *  relay-sync-esim-plans 0 2 * * *
 #   relay-sync-smspva-operators 30,32,34,36,38,40 4 * * *  (6 chunked slots)
 #   relay-winback             0 15 * * *    relay-daily-credit     11 16 * * *
 #   expire-esim-orders        */15 * * * *
 #   relay-smspva-operators-maint-up 29 4  / -down 43 4  (maintenance screen)
 #   purge-job-run-details 7 3 * * *       telegram-events-prune 30 4 * * *
-# relay-sync-smspool is UNSCHEDULED (SMSPool serves eSIMs only).
 supabase db query --linked "
   select net.http_post(
     url := 'https://enugzltysdmjzavisloy.supabase.co/functions/v1/sync-prices',
@@ -87,7 +109,7 @@ supabase db query --linked "
 ```
 
 There is no test suite. Verify iOS with the `swiftc -typecheck` command above
-(exit 0 = all 73 sources compile). Verify backend changes by re-deploying, then
+(exit 0 = all 75 sources compile). Verify backend changes by re-deploying, then
 **checking the resulting DB state** — not by assuming the deploy worked. Several
 bugs this session looked identical to success until a row was queried: an
 SMSPVA balance read that silently wrote nothing, and maintenance jobs that ran
@@ -112,17 +134,17 @@ ContentView (4 tabs: home / esim /          routes, orders, esim_plans, esim_ord
   RPC   → /functions/v1/...               Edge Functions (Deno):
                                             create-order/check-order/cancel-order
 Providers — _shared/providers.ts:           poll-active-orders (cron, every 1 min)
-  SMS   → SMSPVA  (api.smspva.com)          create-esim-order/check-esim-usage
-  eSIM  → SMSPool (api.smspool.net)         sync-prices (hourly :17, + catalog
-  virtualsms retired; adapters kept           maintenance) / sync-esim-plans (daily)
-  only so historical orders poll/cancel     sync-smspool (UNSCHEDULED)
-                                            telegram-notify (cron 1 min) /
-APNs ←── token-auth (.p8) HTTP/2            telegram-webhook (public, 2-gate)
-Telegram ←── ops alerts + 6h digest         redeem-referral / winback
-                                            register-push / iap-verify / delete-account
+  SMS  → HeroSMS (hero-sms.com), for       create-esim-order/check-esim-usage
+         every service it carries          sync-prices (hourly :17, + catalog
+  SMS  → SMSPVA (api.smspva.com), for        maintenance) / sync-esim-plans (daily)
+         services HeroSMS lacks            sync-herosms (hourly :37)
+         + the rollback target             telegram-notify (cron 1 min) /
+  eSIM → SMSPool (api.smspool.net)         telegram-webhook (public, 2-gate)
+  Split is per SERVICE, no fallback        redeem-referral / winback
+  smspool-SMS + virtualsms DELETED         register-push / iap-verify / delete-account
                                             sync-smspva-operators (nightly, chunked)
-                                            sync-smspva-conversions (hourly :49)
-                                            smspool-catalog (operator-only dump)
+APNs ←── token-auth (.p8) HTTP/2            sync-smspva-conversions (hourly :49)
+Telegram ←── ops alerts + 6h digest         daily-credit (cron 11 16)
 ```
 
 **iOS minimum is 18.0**, lowered from 26.2 in `a9b92c0` (shipped as 1.5 build 16)
@@ -159,15 +181,21 @@ VirtualSIM/
                                  Recovery (post-failure: retry on a fresh number /
                                  switch country / refund explainer — see the
                                  retry-steering note below), Maintenance (shown
-                                 during the nightly operator-sync window)
+                                 during the nightly operator-sync window),
+                                 SplashScreen (cold-launch cover — see below)
   Sheets/                        ServiceSheet (search + categories + per-route
-                                 price), CountrySheet (sort + per-route price),
+                                 price; a service with no route in the SELECTED
+                                 country shows where it IS bookable, never a bare
+                                 "Unavailable" — see the picker note below),
+                                 CountrySheet (sort + per-route price),
                                  CreditsSheet (StoreKit 2)
   Components/                    Theme primitives + ServiceLogo / FlagImage /
                                  FlagCircle — bundle-first via BundledImageStore,
                                  network cascade (DuckDuckGo/FaviconV2, flagcdn) as
                                  fallback; SuccessBadge renders MEASURED delivery
-                                 odds only (grey/amber/red), never seed rates
+                                 odds only (grey/amber/red), never seed rates;
+                                 BrandWordmark (green `v` + SMS — the logo, and on
+                                 the splash also the loading indicator)
   Push/, IAP/, Onboarding/, DesignSystem/  Self-explanatory
   Localizable.xcstrings          String Catalog: en source + de/es/fr/it/ja/pt-BR
   Products.storekit              Local IAP test config (enable via scheme)
@@ -177,16 +205,47 @@ VirtualSIM/
 ### Backend layout
 
 - `supabase/migrations/` — chronological SQL, each phase ships its own file
-- `supabase/functions/_shared/` — `providers.ts` (unified router; SMS goes to SMSPVA only — order/poll functions call this, NOT a specific provider), `smspool.ts` (eSIM + legacy numbers), `smspva.ts` (v2 REST wrapper), `virtualsms.ts` (retired), `apns.ts` (HTTP/2 + JWT), `cors.ts`, `iap.ts` (Apple receipt chain verification), `telegram.ts`, `opsFormat.ts`, `supabaseAdmin.ts`
+- `supabase/functions/_shared/` — `providers.ts` (unified router; per-SERVICE split HeroSMS/SMSPVA with NO cross-provider fallback — order/poll functions call this, NOT a specific provider), `herosms.ts` (SMS-Activate `handler_api` wrapper), `smspva.ts` (v2 REST wrapper), `smspool.ts` (eSIM + balance ONLY — the SMS surface was deleted 2026-07-30), `apns.ts` (HTTP/2 + JWT), `cors.ts`, `iap.ts` (Apple receipt chain verification), `telegram.ts`, `opsFormat.ts`, `supabaseAdmin.ts`. `virtualsms.ts` is **gone**.
 - `supabase/functions/<name>/index.ts` — one per endpoint, all Deno.serve
 - `supabase/README.md` — deployment + secret setup walkthrough
 
 **Key SQL functions** (all `SECURITY DEFINER`, all revoked from `anon`/`authenticated` — clients reach them only through edge functions on the service role):
 - `begin_order(user, service, country, credits)` — dedupe + insert order + charge, in ONE transaction under `pg_advisory_xact_lock(user)`. See the gotcha below; do not go back to charging before the row exists.
 - `wallet_spend` / `wallet_credit` — atomic single-statement balance moves. Always pass `p_order` so the ledger reconciles.
-- `active_sms_provider()` — returns whichever provider owns the most `active` routes. Maintenance functions default to it so a provider switch can't silently orphan them again.
+- `active_sms_provider()` — returns whichever provider owns the most `active` routes. Maintenance functions default to it so a provider switch can't silently orphan them again. **⚠️ It is WRONG as of 2026-07-30 and returns `smspva`.** It was written for a winner-take-all world; the HeroSMS cutover deliberately made the catalog a per-service *split*, and then `sync-herosms` hid 4,849 routes HeroSMS cannot serve — so SMSPVA now owns **7,757** active routes against HeroSMS's **5,198** and wins a vote it should not be in. Every `refresh_*` evidence function scopes to this, so route/service/country evidence is currently being gathered for the provider that is **not** serving the demand, and HeroSMS delivery can never accumulate route evidence while it stays this way. Row count is the wrong metric: pick by *orders served*, or make the evidence functions provider-agnostic. See Known-open.
 - `refresh_route_observed_success` / `refresh_service_delivery` / `sync_service_visibility` / `apply_measured_service_ranking` — catalog self-correction, all called from `sync-prices`.
 - `ops_snapshot(interval)` — one JSONB blob powering both the Telegram digest and `/stats`.
+
+### HeroSMS API — what cost us time (probed live 2026-07-30)
+
+Runs SMS-Activate's `handler_api` protocol. Base is
+`https://hero-sms.com/stubs/handler_api.php?api_key=…&action=…` — there is **no
+`api.` subdomain**, it is NXDOMAIN. `getCountries` / `getServicesList` /
+`getOperators` need no key, so the whole mapping can be built before paying.
+
+- **Every response is served as `content-type: text/html`, including the JSON
+  ones.** Block detection keyed on content-type therefore classified every
+  *successful* response as a Cloudflare block, which broke ordering outright. Key
+  on **status 403/429 plus an HTML-looking body**, never on content-type. The
+  symptom was a missing `herosms_health` row — and `recordBalance` returns early
+  on null, so the absence looked like nothing at all.
+- **Error codes carry suffixes**: `WRONG_MAX_PRICE:0.35`, `BANNED:<date>`. Exact
+  `switch` matching silently never fires; use prefix matching for those two.
+- **`activeActivations` is an OBJECT, not an array** — the real shape is
+  `{"status":"success","data":[],"activeActivations":{…,"rows":[]}}`. So
+  `d.activeActivations ?? d.data` never falls through and always returned `[]`.
+  Read `d.data` first.
+- **There is no documented per-second rate limit.** A 403 during probing was the
+  *website's* bot challenge, not the API — 25 rapid calls all returned 200. The
+  real cap is the account's `CHANNELS_LIMIT`. Do not add throttling to work
+  around a 403 you got from a browser-shaped request.
+- **`classifyHerosmsFault` is mandatory.** Per the provider-switch checklist, an
+  adapter that does not set `errorType` collapses dead account / bad key / rate
+  limit / genuine stockout into `no_numbers_available`, so users are told to "try
+  another country" while the whole product is down and the escalation
+  `console.error` never fires.
+- `getPrices` returns `{cost, count, physicalCount}` per (service, country) —
+  `physicalCount` is the real-SIM signal and the reason we moved.
 
 ### Retention — the numbers that decide what's worth building
 
@@ -249,9 +308,13 @@ and the sweep can never double-send. Secrets: `TELEGRAM_BOT_TOKEN`,
 twice — matching `X-Telegram-Bot-Api-Secret-Token` **and** owner chat id — and
 returns a silent 200 on every rejection so it isn't an oracle.
 
-**`/revenue [24h|7d|30d|90d|all]`** (default `all`, alias `/profit`) reports gross
-→ Apple's cut → wholesale → profit, via `revenue_snapshot(interval)` +
-`formatRevenue` in `_shared/opsFormat.ts`.
+**`/revenue [24h|7d|30d|90d|all]`** (default `all`) answers exactly one question —
+**how much money customers actually paid, in USD** — and derives nothing else.
+**`/profit`** is the separate command that nets off Apple's cut and wholesale.
+Both read `revenue_snapshot(interval)`; the split is in the formatter
+(`formatGross` vs `formatRevenue` in `_shared/opsFormat.ts`). Keep them apart:
+`/revenue` answering with a P&L was the thing that made the number hard to trust
+at a glance, because a single figure was silently three assumptions deep.
 
 **It does NOT use a hardcoded price table, and must not be "simplified" into
 one.** `iap_receipts` stores no price, so the obvious implementation is a
@@ -287,7 +350,7 @@ does **not** filter environment, so the digest counts the one Sandbox receipt
 
 `AppState.cost(for:country:) -> Int?` uses an O(1) `routeIndex` dict (keyed `"serviceId|countryId"`) built in `loadCatalog`. Returns `nil` when the pair has no active route with a `retail_credits` price — meaning **unavailable to book**; UI shows "Unavailable" (see ServiceSheet/CountrySheet) and disables the Get-number button. It deliberately does **NOT** fall back to the seed `service.cost`, since undercharging vs the live provider price burns margin per order. **Do not** linear-scan `routes` (~17k rows after sync-prices) — that froze the country picker before the index was added.
 
-`sync-prices` formula: `credits = max(1, ceil(price / 0.05))` — 1 credit per started 5¢ of wholesale (`CREDIT_DIVISOR = 0.05`, same in `sync-smspool` **and `sync-smspva-operators`**, which prices the premium tier; tune it for global margin adjustment). Order-time enforcement matches: `create-order` has `MIN_MARGIN = 6.0` / `NET_USD_PER_CREDIT = 0.30`, so the max we pay a provider is `credits × $0.05` **plus `CEILING_HEADROOM_USD` ($0.10)**, enforced on the actual charged cost with cancel-and-fallback. Keep the divisor and the margin pair in lockstep; raising one alone either blocks honest routes or leaks margin.
+`sync-prices` formula: `credits = max(1, ceil(price / 0.05))` — 1 credit per started 5¢ of wholesale (`CREDIT_DIVISOR = 0.05`, duplicated in exactly **two** files as of 2026-07-30 — `sync-prices` and `sync-smspva-operators`, which prices the premium tier; tune it for global margin adjustment). Order-time enforcement matches: `create-order` has `MIN_MARGIN = 6.0` / `NET_USD_PER_CREDIT = 0.30`, so the max we pay a provider is `credits × $0.05` **plus `CEILING_HEADROOM_USD` ($0.10)**, enforced on the actual charged cost with cancel-and-fallback. Keep the divisor and the margin pair in lockstep; raising one alone either blocks honest routes or leaks margin.
 
 **The $0.10 headroom is load-bearing — do not "simplify" it away.** Without it the two formulas are exactly inverse (`credits*0.30/6.0 == credits*0.05`), so a route whose wholesale lands on an exact 5¢ boundary has an order-time cap equal to its cost **to the cent**. Measured 2026-07-27: **12,507 of 16,303 active routes (76.7%) sat at exactly zero headroom.** A one-cent rise at SMSPVA then made every order on that route fail `margin_too_low` — charged and instantly refunded — until the next hourly `sync-prices` repriced it. That produced **11 of 22 orders in 24h closing in under a second with no number**, and because those orders were also counted as delivery failures it auto-hid TikTok/Netherlands (see below). The headroom is flat, not proportional, so exposure is bounded at $0.10/order at any price point; the cost is margin on the cheapest routes (a 2-credit route may now pay up to $0.20 against $0.60 of revenue, 3× not 6×), which is strictly better than refunding the order. **SMS markup went 3× → 6× on 2026-07-25** (divisor 0.10 → 0.05); retail is recomputed from `smoothed_cost_cents` every run, so the whole catalog reprices on the next `sync-prices`.
 
@@ -352,9 +415,51 @@ is. After ANY divisor change, re-check every fixed grant: `handle_new_user()`
 ```ts
 const smoothed = prev == null || cents > prev ? cents : Math.round(A*cents + (1-A)*prev);
 ```
-A plain `0.5*new + 0.5*prev` averages a rise against yesterday's cheaper price and sets retail BELOW what you're about to pay. That shipped once and put **4,384 routes under wholesale** in a single run. All three syncs (`sync-prices`, `sync-smspool`, `sync-esim-plans`) now have the ratchet — if you add a fourth pricing path, give it one too.
+A plain `0.5*new + 0.5*prev` averages a rise against yesterday's cheaper price and sets retail BELOW what you're about to pay. That shipped once and put **4,384 routes under wholesale** in a single run. Both retail-setting syncs (`sync-prices`, `sync-esim-plans`) have the ratchet — if you add another pricing path, give it one too. `sync-herosms` deliberately has none: it records the **raw** observed cost and never derives retail, so smoothing there would only blur the number the margin gate reads.
 
 **eSIM** plans (`sync-esim-plans`) are priced **separately** at 4× wholesale (raised 3× → 4× on 2026-07-25) — `ESIM_MARGIN = 4`, `CREDIT_VALUE_USD = 0.48`, `retail_credits = ceil(usd * 4 / 0.48)` — NOT via `CREDIT_DIVISOR`, so the two product lines never collide. Inverted, the order-time ceiling in `create-esim-order` is `credits * 0.12`: SMSPool's `/esim/purchase` accepts no price cap and its response reports **no cost at all**, so the function takes a fresh `/esim/plans` quote, blocks above the ceiling, and writes that real number into `actual_cost_cents`. It fails **closed** on a bad price and **open** on a failed lookup — an unreachable SMSPool must not make eSIMs unbuyable. (Before this, `actual_cost_cents` echoed the cached catalog price, so margin analysis over it was circular and could never reveal drift.)
+
+**HeroSMS routes are NOT repriced yet, and that is deliberate.** `sync-prices`
+skips non-SMSPVA rows by design, so every HeroSMS route still carries the retail
+price derived from **SMSPVA's** wholesale while being *bought* at HeroSMS's,
+which is far cheaper. Realised margin on the first HeroSMS order was **12.0×**
+(4 credits = $1.20 net against **$0.10** wholesale) even though `MIN_MARGIN` is
+still **6.0**. The agreed repricing — `CREDIT_DIVISOR` 0.05 → **0.025** with
+`MIN_MARGIN` 6.0 → **12.0** in lockstep — is **owner-deferred, not forgotten**.
+Until it lands, do not read 12× as a guarantee: the enforced ceiling is
+`credits × $0.30 / 6.0 + $0.10`, so a 4-credit order may legitimately clear at
+**4×**. When you do change the divisor, re-read the two warnings above it —
+`premium_credits` needs an immediate backfill, and every FIXED credit grant
+silently buys half as much.
+
+### Why `sync-herosms` exists (hourly :37)
+
+It records HeroSMS's real per-route wholesale into
+`routes.herosms_cost_cents` + `herosms_physical_count` / `herosms_total_count` /
+`herosms_checked_at`, and hides routes HeroSMS cannot serve. **It deliberately
+does not touch `retail_credits`** — repricing is the separate owner decision
+above; this function exists to stop us selling what we cannot deliver.
+
+The bug it fixes: after the cutover, HeroSMS rows still held SMSPVA's frozen
+`last_cost_cents`, and `create-order`'s graceful degrade did
+`liveCost ??= route.last_cost_cents/100`. For routes HeroSMS cannot serve at all
+`livePriceUsd` returns null, the **stale SMSPVA cost passed the margin gate**,
+and the reservation then failed `NO_NUMBERS` — charging and refunding the user
+and telling them to "try another country". The fallback is now provider-scoped,
+so a HeroSMS route can only fall back to a HeroSMS cost. First run hid **4,849**
+routes (active HeroSMS 10,049 → 5,198); ~3× more than estimated.
+
+Guards worth keeping, each matching a failure this codebase has already had: it
+**aborts without writing if every price fetch fails** (a dead key must not hide
+the catalog), skips routes whose service code failed *this* run rather than
+reading a failed fetch as "not served", destructures every read error, and
+enforces `blocked_routes` and `MAX_WHOLESALE_CENTS` — neither of which was
+enforceable on HeroSMS rows before it existed.
+
+`herosms_physical_count` is the **real-SIM** count (vs VoIP), confirmed against
+HeroSMS's own UI: every country it labels "Only virtual" reports 0. **4,046 of
+the 5,198 active HeroSMS routes have physical stock.** Stored and not yet used
+for steering — that is the open lever for the Meta services.
 
 **Credit packs** (`Models/CreditPack.swift` + `Products.storekit` + `_shared/iap.ts` `PRODUCT_TO_CREDITS`): 5/$2.99, 12/$5.99 (MOST POPULAR), 30/$12.99, 60/**$24.99**, 150/**$59.99** (BEST VALUE) — a strictly improving per-credit ladder (each pack beats stacking smaller ones): $0.598 → $0.499 → $0.433 → $0.417 → $0.400. The per-credit label is computed **live** from the StoreKit price in `IAPStore.perCredit`, so it never drifts; production prices must be set to match in App Store Connect.
 
@@ -507,6 +612,88 @@ claim that the client "requires `success_sample >= 5`" was false. It now does
 carry it, and below 5 the UI states the sample instead of a bare percentage
 ("0% of 2 tries", not "0% delivered") — which matters because the asymmetric
 gate writes `measured 0%` off just two attempts.
+
+### Cold launch — the splash, and why readiness is not a timer
+
+`AppState` starts from `SeedData` with `routes = []`, so `cost(for:country:)`
+returns nil for **every** pair. Before `SplashScreen` existed the launch was:
+blank system launch screen → a bare `ProgressView` → a Home screen whose primary
+CTA read **"Unavailable · Pick another country"** for the whole fetch. The seed
+default pair is WhatsApp/United States, which is in `blocked_routes` and never
+bookable, so it stayed wrong until `applyStartupSelection()` ran at the END of
+the chain. A first-run user met a screen saying the product was unavailable —
+expensive here specifically, because activation is a single-session event
+(median signup → first order is 2 minutes).
+
+- **`AppState.coldStart(api:)`** owns the sequence and publishes `bootPhase` +
+  `bootProgress` from steps that actually completed. **Never fill that bar on a
+  timer** — a synthetic bar is the same class of claim as a seeded success rate.
+- **Readiness is NOT "the chain finished".** The two eSIM fetches are read only
+  by the eSIM tab, so they run *after* `bootPhase = .ready`, behind the revealed
+  UI, instead of holding a correct Home screen behind them.
+- **`loadCatalog` returns `Bool`.** It used to be `-> Void` with a bare
+  `catch { /* keep current state */ }`, so an offline launch silently kept the
+  30-service seed stub and rendered a full Home screen on which every service
+  read "Unavailable" — indistinguishable from "this product is broken". The
+  splash now offers **Try again** / **Continue anyway**. It still keeps existing
+  data when a *foreground* refresh fails; only the cold path treats it as failure.
+- The splash sits **above** the maintenance overlay but is suppressed once
+  maintenance is known active — that screen is the honest answer and must not
+  wait behind five more fetches.
+- Measured 2026-07-30: catalog = 18,492 routes, **3.48 MB raw / 179 KB gzipped**,
+  ~0.8–1.5s, and it is one of **six sequential round-trips** (~3s total).
+  Overlapping them would genuinely help, but `AppState` is a plain `@Observable`
+  with no actor isolation, so `async let` over methods that all mutate `self` is
+  a data race, not a speed-up. Doing it safely means making the API calls return
+  values instead of mutating — a separate change.
+
+**The logo is `BrandWordmark`: a green `v` + `SMS`.** The old lockup was a
+`bolt.fill` in a rounded-rect tile — a generic badge that said nothing about the
+product. The `v` takes `theme.ink` (the user-selectable accent) and **not**
+`theme.live`, which is the semantic success green; spending that colour on
+branding is the conflation `AccentColor` documents as forbidden. On the splash
+the letters type on and then the `v` rotates as the loading indicator, which is
+why there is no spinner. The progress bar appears only after 1.2s and the
+slow-connection line after 3.5s, so a healthy launch shows neither.
+
+**Appearance is `AppearanceMode` — System / Light / Dark, defaulting to System.**
+It replaced a `pref.isDark` Bool that defaulted to **false**, so the app and the
+splash rendered LIGHT on a dark-mode phone until the user found the toggle, and
+there was no way to say "follow my device" at all. `colorScheme` is
+`ColorScheme?` on purpose: **nil is what actually lets the device decide**, which
+a Bool cannot express. Migration keys on *explicitly set vs never touched* —
+`defaults.bool(forKey:)` returns false for both, which is exactly how "never
+chose" became "wants light" for everyone — so `object(forKey:)` decides, and the
+legacy key is deliberately not rewritten so a downgrade to 1.4/1.5 still works.
+`ContentView` reads the ambient `colorScheme` **above** its own
+`.preferredColorScheme`, because that modifier pushes a scheme *down* to children
+and `.system` must resolve against the device's.
+
+### The service picker says where a service IS bookable
+
+`ServiceSheet` fixes the COUNTRY and varies the service — the mirror of
+`CountrySheet` — so a service with no route in the selected country used to
+render a bare **"Unavailable"** with nothing on the row naming that country.
+Measured 2026-07-30: **all 265 visible services are bookable in at least one
+country**, so the word was wrong every single time it appeared. It read as "not
+at all" for a median of **79 services per country** (Turkey: 165 of 265 — 62% of
+the catalog looked dead), and the services hidden on a Turkey selection are
+available in **68 of the 69 countries**.
+
+Worse, the row was dimmed to look disabled but stayed tappable and the tap
+WORKED — the handler already relocated via `bestCountry`. The label was steering
+users away from taps that would have succeeded.
+
+**`AppState.pickDestination(for:)` is the single shared definition** used by both
+the picker row and the tap handler, so the row cannot promise a country the tap
+does not deliver. A row promising Romania while the tap lands in Colombia would
+be a worse lie than the one it replaced. "Unavailable" now survives only for
+bookable-nowhere — the one case where it is true — and that case is `disabled`,
+because the tap would otherwise set the service without moving the country and
+strand the user on a Home screen whose only button is a disabled "Unavailable".
+The badge is scored against the DESTINATION route, and the Affordable filter
+judges by the price the row shows (it used to test `cost(for:country:)` alone and
+silently drop every service without a route here).
 
 ### Order-state honesty (client) — the reconcile invariant
 
@@ -784,7 +971,7 @@ then `smoothed_cost_cents > MAX_WHOLESALE_CENTS`, then measured-zero auto-hide.
 - **`revoke execute … from anon, authenticated` IS A NO-OP while PUBLIC holds the grant.** `CREATE FUNCTION` grants EXECUTE to PUBLIC by default, and anon/authenticated are members of PUBLIC — so the revoke line present on ~35 migrations changes nothing on its own, and the function stays callable at `/rest/v1/rpc/<name>`. Read the ACL, not the migration: a secured function is `postgres=X/postgres | service_role=X/postgres`, a leaking one has a **leading `=X/postgres`** (empty grantee = PUBLIC). Caught 2026-07-27 when `revenue_snapshot` — the first function created after the default-privileges hardening — shipped world-callable *with* its revoke line, exposing gross revenue, wholesale cost and profit to anyone holding the publishable key (SECURITY DEFINER, so RLS was no help). `20260727211000` revoked the *default* for anon/authenticated but **not for PUBLIC**, so every future function kept arriving public. Fixed in `20260727240000`: `alter default privileges in schema public revoke execute on functions from public`, plus explicit `from public, anon, authenticated` on the four affected functions. Assert with `has_function_privilege('anon', p.oid,'execute')` — it must be **0 rows** across `pg_proc` in `public`; a passing `revoke` statement proves nothing.
 - **`ALTER DEFAULT PRIVILEGES` grants `anon`/`authenticated` rights on every FUTURE object.** Until 2026-07-27 that was `arwdDxtm` on future tables and `EXECUTE` on future functions — so any new table missing `enable row level security` would have been world-**writable** at `/rest/v1/<table>`, and any new SECURITY DEFINER function missing its revoke callable at `/rest/v1/rpc/<name>`. That is how `run_watchdog` became public. The postgres-owned defaults are now revoked (SELECT retained; RLS still governs rows); **the `supabase_admin` half is NOT applied** — it needs membership in that role, which the CLI's postgres connection lacks. Statements are in `20260727211000_default_privileges.sql`. Note this is a backstop, not a licence to skip the explicit `revoke execute` on every new function.
 - **A one-line refactor that changes a watchdog threshold is a monitoring outage.** Rebuilding `run_watchdog` for unrelated coverage silently narrowed the delivery check from 24h/≥10 to 6h/≥8 **and deleted its second branch** (≥20 conclusive at <10%). Measured: the max conclusive orders in ANY 6h window over 30 days is 8, against a gate of 8 — the check became effectively unreachable, leaving zero delivery-outcome coverage. When you re-create a function from `pg_get_functiondef`, diff it against the prior definition clause by clause; the dump is also **truncated** by most tooling, which is how a nonexistent `url` column on `net._http_response` got invented in the same rewrite.
-- **A constant duplicated across files WILL drift.** `MAX_WHOLESALE_CENTS` lives in three sync functions (and as `MAX_ORDER_COST_USD` in `poll-active-orders`, and as `LOW_BALANCE_USD` in `_shared/opsFormat.ts`). Changing it in one place on 2026-07-27 stripped 1,432 routes of their carrier pin and premium price, and left the digest warning at $20 while the pager fired at $37.50. Same for `CREDIT_DIVISOR` (three copies) and `ESIM_MARGIN`/`CREDIT_VALUE_USD` (two each). Change them in one commit or consolidate them into `_shared/`.
+- **A constant duplicated across files WILL drift.** `MAX_WHOLESALE_CENTS` lives in three sync functions (and as `MAX_ORDER_COST_USD` in `poll-active-orders`, and as `LOW_BALANCE_USD` in `_shared/opsFormat.ts`). Changing it in one place on 2026-07-27 stripped 1,432 routes of their carrier pin and premium price, and left the digest warning at $20 while the pager fired at $37.50. Same for `CREDIT_DIVISOR` (**two** copies since `sync-smspool` was deleted — `sync-prices` and `sync-smspva-operators`) and `ESIM_MARGIN`/`CREDIT_VALUE_USD` (two each). `MAX_WHOLESALE_CENTS`'s three syncs are now `sync-prices`, `sync-smspva-operators` and `sync-herosms`. Change them in one commit or consolidate them into `_shared/`.
 - **Deleting an IAP receipt to force StoreKit redelivery can eat the payment.** `iap-verify` used to delete the row when `wallet_credit` failed, assuming StoreKit would retry. But the client runs **two** paths into that endpoint (`Transaction.updates` and the `Transaction.unfinished` sweep), so a concurrent duplicate may already have been answered `already_credited` and called `finish()` — retiring the transaction forever. It now zeroes `granted_credits` (keeping both the audit trail and the replay guard), and the duplicate branch refuses to confirm a receipt that has no matching `wallet_transactions` row.
 - **The signup bonus was farmable through account deletion.** Everything user-scoped cascades from `auth.users`, so delete → sign in again minted a fresh grant (+3, plus a fresh +2 referral because `referred_by` resets). `public.signup_grants` is a tombstone keyed on a **hash of the email**, living outside that cascade — Apple's private-relay address is stable per (user, app), so it survives deletion while storing no address. It fails **open** on a null email: a missed grant on a real signup costs more than a rare duplicate.
 - **APNs `aps-environment` is `production`** in the entitlements file (flipped for archiving; set `APNS_ENV=production` secret to match). Flip back to `development` if you need to test push against a dev-token build from Xcode.
@@ -815,14 +1002,28 @@ then `smoothed_cost_cents > MAX_WHOLESALE_CENTS`, then measured-zero auto-hide.
   SDK to an installed runtime (install the newer Xcode), not to chase the old
   runtime. **Archiving for the App Store is still gated separately** by the
   beta-macOS `BuildMachineOSBuild` patch under "Release prep".
+- **The repo lives at `/Users/adyl/Desktop/IOS_APPS/VirtualSIM`.** It MOVED from
+  `~/Desktop/VirtualSIM`, which no longer exists — so any `cp` from the old path
+  fails silently-ish and the instruction below used to point at nothing. Stale
+  worktrees under the old path still show in `git worktree list` marked
+  `prunable`; ignore them.
 - **A git worktree cannot build or type-check until you copy `Secrets.swift` in.**
   `VirtualSIM/Networking/Secrets.swift` is gitignored, so a fresh worktree lacks
   it and both `swiftc -typecheck` and `xcodebuild` fail with `cannot find
   'Secrets' in scope` — which looks like your edit broke the build and is not.
-  `cp /Users/adyl/Desktop/VirtualSIM/VirtualSIM/Networking/Secrets.swift
+  `cp /Users/adyl/Desktop/IOS_APPS/VirtualSIM/VirtualSIM/Networking/Secrets.swift
   VirtualSIM/Networking/Secrets.swift` first; it stays ignored, so it will not be
-  committed. (This is also why `find VirtualSIM -name '*.swift' | wc -l` reads 73
-  in a working checkout but 72 in a bare worktree.)
+  committed. (This is also why `find VirtualSIM -name '*.swift' | wc -l` reads 75
+  in a working checkout but 74 in a bare worktree.)
+- **`isOk()` from `_shared/smspva.ts` dereferences its argument and callers pass
+  it `null`.** `providers.ts` does `smsGetBalance().catch(() => null)` and then
+  `isOk(before)` / `isOk(after)`; `isOk` reads `r.statusCode`, so a thrown
+  balance call makes it a `TypeError` **after the number is already reserved** —
+  charge, refund, and forfeited wholesale on a number we abandon. Live on the
+  SMSPVA path (7,757 active routes). Caught by `deno check` 2026-07-30, present
+  since `91dc756`, **not yet fixed**; the fix is `before && isOk(before)`.
+  (`deno check` also reports three `Cannot find name 'EdgeRuntime'` — those are
+  a Supabase runtime global Deno does not type, and are benign.)
 - **A git worktree is also not linked to Supabase.** `supabase/.temp/` is
   gitignored, so `supabase db query --linked` in a worktree dies with
   *"Cannot find project ref. Have you run supabase link?"* — which looks like a
@@ -848,40 +1049,45 @@ SMS provider again, walk this list:
 5. **Classify the new provider's errors.** `create-order` branches on `errorType`, not on the raw error string. If the adapter doesn't set it, *every* failure — dead account, bad key, rate limit, genuine stockout — collapses into "no_numbers_available", so users are told to "try another country" while the whole product is down, and the escalation `console.error` (also gated on `errorType`) never fires.
 6. **Point balance monitoring at it** (`app_config.<provider>_health` + the `ROLE` map in `_shared/opsFormat.ts`).
 7. **Verify with data, not the deploy log** — per-provider delivery is in `ops_snapshot`'s `by_provider`. A single blended rate averages a dead provider with a live one and describes neither (it read 10% while the live provider was at 43%).
+8. **Re-check `active_sms_provider()` AFTER the dust settles, not just after the re-home.** Added 2026-07-30, learned the hard way. It picks by *active route count*, which silently assumed one provider owns the catalog. A per-service split plus a sync that hides unfulfillable rows can leave the **retired** provider holding more rows than the live one — which is exactly what happened (SMSPVA 7,757 vs HeroSMS 5,198), pointing all five `refresh_*` evidence functions at the wrong provider with no error anywhere. Assert it returns what you expect, and re-assert it after the first sync run, not before.
+9. **Give the new provider its own cost column, and scope every cached-cost fallback to the provider that owns the row.** `sync-prices` only maintains SMSPVA's `last_cost_cents`, so any other provider's rows carry a frozen number from a provider you are no longer buying from. A `??` onto that stale value passes the margin gate and then fails at reservation — a charge-and-refund that looks like a stockout. See `sync-herosms`.
 
-## Current state (2026-07-27)
+## Current state (2026-07-30)
 
-- **Everything client-side from 2026-07-26/27 is in NO installable build.** 1.4 is
-  `READY_FOR_SALE` and is what every user runs. **1.5 / build 18 is
-  `WAITING_FOR_REVIEW`, and it was archived from `02e9c4a` — before all of that
-  day's client work (9 commits touching `VirtualSIM/`).** So the rescued-code UI,
-  the cancel-orphan fix, the 180s countdown, the eSIM terminal card, the corrected
-  pack prices and the `creditsShortfall` fixes reach users only in **build 19**.
-  The backend half of all of it is live.
-- **Backend shipped 2026-07-27** (all live, no review needed): 180s minimum hold
-  + late-code rescue; `markDead` reordered to cancel-then-ban; evidence corrected
-  (`otp is not null`, numberless filter back-ported, 30-day lookback, conditional
-  wipe, reversible auto-hide); premium 20% uplift restored on 16,372 routes; three
-  retention cohorts incl. the new `reorder_candidates`; daily credit granted from
-  `register-push`; balance ladder derived from the ceiling; alert dedupe reordered
-  to send-then-stamp; watchdog staleness + APNs health + eSIM-expiry coverage, and
-  the delivery check **restored** after being narrowed into unreachability; four
-  eSIM money bugs; schema hardening (FKs, CHECKs, indexes, revoked write grants,
-  postgres-owned default privileges); signup-bonus tombstone; `iap-verify`
-  rollback no longer eats a payment.
+- **Everything client-side since 2026-07-26 is in NO installable build.** 1.4 is
+  what every user runs; **1.5 / build 18 was archived from `02e9c4a`**, before all
+  of that work. So the rescued-code UI, the cancel-orphan fix, the 180s countdown,
+  the eSIM terminal card, the corrected pack prices, the `creditsShortfall` fixes,
+  **and everything from 2026-07-30 — the splash, the wordmark, System/Light/Dark,
+  and the service-picker fix — reach users only in build 19.** The backend half of
+  all of it is live.
+- **HeroSMS cutover shipped 2026-07-30** (backend, live): `_shared/herosms.ts`;
+  per-SERVICE `providerOrder()` with no cross-provider fallback; `sync-herosms`
+  (hourly :37) recording real cost + `physicalCount` and hiding 4,849
+  unfulfillable routes; provider-scoped cached-cost fallback in `create-order`;
+  premium hard-refused on HeroSMS routes; `smspool.ts` trimmed to eSIM + balance
+  with its `errors[]` shape finally parsed; `sync-virtualsms`/`sync-smspool`/
+  `smspool-catalog` deleted; `config.toml` `max_rows` 1000 → **60000** (it did not
+  match the live value, so any config push would have hidden 94.6% of routes);
+  `/revenue` split from `/profit`.
+- **First HeroSMS order delivered** — 2026-07-30 13:40Z, alibaba/mx, standard,
+  `received`. **1 of 1.** $0.10 wholesale against 4 credits = **12.0× realised**
+  (with `MIN_MARGIN` still 6.0 — see the pricing note).
 - **Codebase**: `MARKETING_VERSION 1.5`, `CURRENT_PROJECT_VERSION 18` (next build
-  is **19**), iOS min **18.0**, 73 Swift sources (BUILD SUCCEEDED), 89 migration
-  files.
-- **Catalog**: 18,492 routes (17,804 active / 688 hidden), **13 measured routes**
-  (was 1 before the lookback fix), 1,081 active eSIM plans, 268 services, 69
-  countries. 14 pg_cron jobs, all active.
-- **Balances: SMSPVA $3.55 — alert tier 4 (EMPTY on the new ladder)**, SMSPool
-  $8.03. The ladder is now derived: `[37.50, 22.50, 11.25, 7.50]` = 5×/3×/1.5×/1×
-  the $7.50 order ceiling. At $3.55, **~1,500 routes cannot be funded at all** —
-  a WhatsApp order is a guaranteed charge-and-refund. **Top up.**
-- **Delivery, 30d, orders that actually got a number**: 38 of 147 (**26%**).
-  SMSPVA alone is ~35%; the SMSPool rows are legacy pre-cutover SMS. Watchdog is
-  clean (`failing: []`).
+  is **19**), iOS min **18.0**, **75** Swift sources (BUILD SUCCEEDED on
+  iPhone 17 Pro / iOS 26.5), **97** migration files, 19 edge functions.
+- **Catalog**: 18,492 routes, **12,955 active** (down from 17,804 — `sync-herosms`
+  hid what HeroSMS cannot serve). **HeroSMS 5,198 active / SMSPVA 7,757**;
+  **4,046** HeroSMS routes have physical SIMs. **0 measured routes** — the cutover
+  wiped route evidence, see Known-open. 265 visible services, 69 countries, 1,081
+  active eSIM plans. **15** pg_cron jobs, all active. Watchdog clean (`failing: []`).
+- **Balances (2026-07-30 15:12Z): HeroSMS $10.60 (tier 3), SMSPVA $5.26 (tier 4),
+  SMSPool $7.23 (tier 4).** All three are `low`. The ladder is derived:
+  `[37.50, 22.50, 11.25, 7.50]` = 5×/3×/1.5×/1× the $7.50 order ceiling. **Top up
+  — HeroSMS is the one that now serves the demand.**
+- **Delivery, 30d, orders that got a number**: SMSPVA 41/121 (**34%**), HeroSMS
+  1/1, SMSPool 4/50 (legacy pre-cutover SMS), virtualsms 0/3. Never quote a
+  blended rate: it averages retired providers with the live one.
 - **Retention baseline** (see the Retention section): 168 users, 36 ever ordered,
   13 ever got a code, 12 of those 13 purchased. 100 users hold ≥3 credits and
   haven't ordered in 7 days — 466 idle credits.
@@ -905,11 +1111,13 @@ SMS provider again, walk this list:
 - ⚠️ **The late-code rescue has never executed in production** (0 rows with
   `late_watch_until`). Deployed and unproven; one deliberate cancel would confirm
   it end-to-end.
-- ⚠️ **Migration drift: a fresh deploy would NOT reproduce production.** 43
-  recorded versions have no local file, ~29 files aren't recorded, two files share
-  version `20260719000000`, five migrations were applied twice, and ~10 functions
-  exist only in the live DB (`smspool_hot_combos` appears in zero migration
-  files). `db push` remains broken. Recover by writing each missing version out of
+- ⚠️ **Migration drift: a fresh deploy would NOT reproduce production.**
+  Re-measured 2026-07-30 and **unchanged**: 110 versions recorded in the DB
+  against 97 local files — **43** recorded versions have no local file and **29**
+  local files aren't recorded. Two files share version `20260719000000`, five
+  migrations were applied twice, and ~10 functions exist only in the live DB
+  (`smspool_hot_combos` appears in zero migration files). `db push` remains
+  broken. Recover by writing each missing version out of
   `schema_migrations.statements` — do NOT `migration repair --status reverted`.
 - ⚠️ **No test suite, and it shows.** Of ~20 changes made on 2026-07-27, **six
   were regressions introduced that same day** — a disabled watchdog check, a
@@ -917,16 +1125,44 @@ SMS provider again, walk this list:
   path, a stale constant copy, and a timer/hold interaction. All were caught by
   post-hoc review, two only by luck. Until something automated covers the order
   lifecycle and the money paths, assume a similar rate on the next batch.
+- 🔴 **`active_sms_provider()` returns the WRONG provider (`smspva`).** Highest-
+  value open item, because it is silent. It votes by active route count, and the
+  per-service split plus `sync-herosms` hiding unfulfillable rows left SMSPVA with
+  7,757 against HeroSMS's 5,198. All five `refresh_*` evidence functions scope to
+  it, so evidence is being gathered for the provider that is not serving demand,
+  and **HeroSMS can never accumulate route evidence** while this holds. Fix by
+  voting on orders served, or by making the evidence functions provider-agnostic.
+- 🔴 **All measured route evidence is gone — `rate_source='measured'` is 0 rows.**
+  Expected (the refresh functions scope by provider and the catalog was re-homed),
+  and the pre-cutover snapshot was taken, but until it rebuilds every route shows
+  "Not tested" and the steering tiers fall through to the untested path. The
+  `active_sms_provider()` bug above blocks the rebuild for HeroSMS.
+- ⚠️ **`physicalCount` is stored but unused.** 4,046 active HeroSMS routes have
+  real SIM stock and nothing steers on it. This is the lever for the Meta services
+  (~53% of order volume at ~12% delivery) — the reason HeroSMS was chosen at all.
+- ⚠️ **HeroSMS is proven by exactly ONE order.** Delivery is 1/1. Do not treat
+  that as a rate; the pre-registered rollback trigger was "conclusive delivery
+  over the first 40 orders materially below SMSPVA's frozen baseline", and we are
+  1 in. `providerOrder()` back to `["smspva"]` is still a one-line revert.
+- ⚠️ **Repricing deferred by the owner**: `CREDIT_DIVISOR` 0.05 → 0.025 with
+  `MIN_MARGIN` 6.0 → 12.0. HeroSMS routes still carry SMSPVA-derived retail.
+- ⚠️ **`isOk(null)` TypeError on the SMSPVA order path** — see the gotcha above.
+  Charge, refund and forfeited wholesale if a balance call throws. One-line fix,
+  not applied.
+- ⚠️ **The HeroSMS API key passed through a chat transcript and should be
+  rotated.** It lives only as the `HEROSMS_API_KEY` Supabase secret and appears in
+  no commit (verified), but rotate it.
 - ✅ **RESOLVED 2026-07-30: `credits.60` is `APPROVED` and selling** ($24.99 USD
   ×2 in one morning — the top revenue product). `credits.150` was submitted
   2026-07-30 06:53Z (`WAITING_FOR_REVIEW`, IOS) the moment `credits.60` freed a
   slot in the 2-in-flight cap. `MAX_WHOLESALE_CENTS = 750` is justified as
   "150 credits × $0.05", so until 150 clears, routes in the 80–150 credit band
   still need 2+ separate purchases.
-- ⚠️ **~1,050 lines of removable code identified** and not removed: dead
-  virtualsms paths, `sync-smspool` (unscheduled, self-gated AND calling a
-  nonexistent RPC), `AppState.routes` (written once, never read, ~3 MB of
-  observation-tracked memory), and the duplicated constants above.
+- ⚠️ **Removable code — most of it is now gone.** `virtualsms.ts`,
+  `sync-virtualsms/`, `sync-smspool/`, `smspool-catalog/` and `smspool.ts`'s SMS
+  surface were all deleted 2026-07-30. Still outstanding: `AppState.routes`
+  (written once, never read, ~3 MB of observation-tracked memory) and the
+  constants duplicated across files above.
 - ⚠️ **Supabase project is on the FREE plan (no backups).** Owner action.
 
 ## Error UX rule

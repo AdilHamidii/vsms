@@ -26,9 +26,16 @@ import {
 
 /** Providers that can be ROUTED TO for a new order.
  *
- *  `smspva` is retained ONLY as a rollback target (owner decision 2026-07-30):
- *  it is fully wired and its routes are never deleted, but providerOrder() does
- *  not return it. Reverting the cutover is a one-line change there. */
+ *  Ownership is PER SERVICE, not per route (owner decision 2026-07-30): a
+ *  service HeroSMS carries goes entirely to HeroSMS, and a service it does not
+ *  carry stays entirely on SMSPVA. That keeps the catalog wide — 265 services
+ *  instead of the ~148 HeroSMS maps — without ever splitting one service across
+ *  two providers, which is what makes evidence per service meaningful.
+ *
+ *  There is no fallback BETWEEN providers: providerOrder() returns exactly one,
+ *  so a HeroSMS stockout fails as a stockout instead of silently re-reserving
+ *  at SMSPVA under a different price and delivery profile. SMSPVA also stays
+ *  fully wired as the rollback target, and its routes are never deleted. */
 export type Provider = "herosms" | "smspva";
 
 /** Providers that may appear on an existing `orders.provider`, including
