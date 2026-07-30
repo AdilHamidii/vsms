@@ -65,6 +65,15 @@ Deno.serve(async (req) => {
     Array.isArray(cfg?.value) ? (cfg.value as string[]) : [],
   );
 
+  // Services that reject VoIP numbers (Meta's properties). Same shape and role
+  // as `blocked_routes`: a hand-maintained list, editable without a deploy.
+  // Empty it to roll the VoIP rule back — the next run re-activates everything.
+  const { data: voipCfg } = await sb
+    .from("app_config").select("value").eq("key", "voip_strict_services").maybeSingle();
+  const voipStrict = new Set<string>(
+    Array.isArray(voipCfg?.value) ? (voipCfg.value as string[]) : [],
+  );
+
   // HeroSMS numeric country id -> our country id. Several of our countries can
   // never collide here: the mapping is 1:1 and was built from HeroSMS's own
   // getCountries.
@@ -122,6 +131,7 @@ Deno.serve(async (req) => {
   };
   const updates: Row[] = [];
   let unfulfillable = 0, tooExpensive = 0, blockedCount = 0, sellable = 0, physical = 0;
+  let voipOnly = 0;
 
   for (const r of routes) {
     const key = `${r.service_id}|${r.country_id}`;
@@ -135,6 +145,21 @@ Deno.serve(async (req) => {
     let status: string;
     if (!hit || hit.count <= 0) { status = "hidden"; unfulfillable++; }
     else if (blocked.has(key)) { status = "hidden"; blockedCount++; }
+    // Services that reject VoIP ranges cannot be delivered on a route with no
+    // real SIMs, whatever the stock number says. Measured 2026-07-30: facebook
+    // 16.3% and instagram 8.3% over 30 days — together ~50% of all order volume
+    // — while 20 of facebook's 69 routes and 21 of instagram's have zero
+    // physical stock. This is "we cannot deliver this", the same category as
+    // `blocked_routes`, NOT a judgement on measured performance — so it does
+    // not contradict the standing "label, don't hide" rule, which governs
+    // delivery outcomes we have actually observed.
+    //
+    // `hit` is non-null here (the first branch caught that), so a zero is a
+    // real reading and not a missing one. Routes whose service failed to price
+    // this run were skipped above and never reach this ladder.
+    else if (voipStrict.has(r.service_id as string) && hit.physicalCount <= 0) {
+      status = "hidden"; voipOnly++;
+    }
     else if (Math.round(hit.cost * 100) > MAX_WHOLESALE_CENTS) { status = "hidden"; tooExpensive++; }
     else { status = "active"; sellable++; if (hit.physicalCount > 0) physical++; }
 
@@ -178,6 +203,11 @@ Deno.serve(async (req) => {
     hidden_unfulfillable: unfulfillable,
     hidden_over_ceiling: tooExpensive,
     hidden_blocked: blockedCount,
+    // Counted separately so the VoIP rule's blast radius is visible per run —
+    // a sudden jump means either the strict list grew or HeroSMS lost real-SIM
+    // stock, and those need very different responses.
+    hidden_voip_only: voipOnly,
+    voip_strict_services: [...voipStrict],
   };
   console.log(`sync-herosms ${JSON.stringify(result)}`);
   return json(result);

@@ -233,8 +233,9 @@ VirtualSIM/
 **Key SQL functions** (all `SECURITY DEFINER`, all revoked from `anon`/`authenticated` — clients reach them only through edge functions on the service role):
 - `begin_order(user, service, country, credits)` — dedupe + insert order + charge, in ONE transaction under `pg_advisory_xact_lock(user)`. See the gotcha below; do not go back to charging before the row exists.
 - `wallet_spend` / `wallet_credit` — atomic single-statement balance moves. Always pass `p_order` so the ledger reconciles.
-- `active_sms_provider()` — returns whichever provider owns the most `active` routes. Maintenance functions default to it so a provider switch can't silently orphan them again. **⚠️ It is WRONG as of 2026-07-30 and returns `smspva`.** It was written for a winner-take-all world; the HeroSMS cutover deliberately made the catalog a per-service *split*, and then `sync-herosms` hid 4,849 routes HeroSMS cannot serve — so SMSPVA now owns **7,757** active routes against HeroSMS's **5,198** and wins a vote it should not be in. Every `refresh_*` evidence function scopes to this, so route/service/country evidence is currently being gathered for the provider that is **not** serving the demand, and HeroSMS delivery can never accumulate route evidence while it stays this way. Row count is the wrong metric: pick by *orders served*, or make the evidence functions provider-agnostic. See Known-open.
-- `refresh_route_observed_success` / `refresh_service_delivery` / `sync_service_visibility` / `apply_measured_service_ranking` — catalog self-correction, all called from `sync-prices`.
+- `active_sms_provider()` — returns whichever provider owns the most `active` routes. Maintenance functions default to it so a provider switch can't silently orphan them again. **⚠️ It is WRONG as of 2026-07-30 and returns `smspva`.** It was written for a winner-take-all world; the HeroSMS cutover deliberately made the catalog a per-service *split*, and then `sync-herosms` hid 4,849 routes HeroSMS cannot serve — so SMSPVA now owns **7,757** active routes against HeroSMS's **5,198** and wins a vote it should not be in. It is still the wrong metric, but **as of 2026-07-30 it is no longer load-bearing**: `sync-prices` calls `refresh_evidence_all_providers()`, which runs the refreshes once per provider instead of trusting this vote. Do not wire anything new to it.
+- `refresh_evidence_all_providers()` — **the only evidence entry point `sync-prices` calls.** Runs the route + service refreshes once per provider that owns active routes, then country evidence once. See "Evidence must describe the provider that serves the NEXT order" below.
+- `refresh_route_observed_success` / `refresh_service_delivery` / `refresh_country_delivery` / `sync_service_visibility` / `apply_measured_service_ranking` — catalog self-correction. The first three are now called **through the wrapper**, not directly.
 - `ops_snapshot(interval)` — one JSONB blob powering both the Telegram digest and `/stats`.
 
 ### HeroSMS API — what cost us time (probed live 2026-07-30)
@@ -1267,6 +1268,83 @@ the rounded `success_rate`, because an off-by-one in "worked N times" discredits
 the whole label. **Colour still carries confidence**: `.notTested` is always
 muted; green/amber/red are reserved for measured records.
 
+### Evidence must describe the provider that serves the NEXT order
+
+Two bugs, both silent, both fixed 2026-07-30 (`20260730220000`, `20260730230000`).
+
+**1. Only one provider was ever measured.** The three refreshes scope every
+statement to `coalesce(p_provider, active_sms_provider())`, and
+`active_sms_provider()` votes by **active route count**. After the per-service
+split, and after `sync-herosms` hid what HeroSMS cannot serve, SMSPVA held
+**7,757** active routes against HeroSMS's **5,201** — so the vote returned the
+provider that had *stopped serving the demand*. HeroSMS routes could never gain
+a measured rate, `rate_source='measured'` was **0 rows catalog-wide**, every
+route rendered "Not tested", and the pre-registered 40-order rollback checkpoint
+for the switch could not be evaluated at all.
+
+Do **not** re-tune the vote. A vote by recent order count is unstable
+mid-cutover and keeps one provider's evidence hostage to another's row count.
+`refresh_evidence_all_providers()` instead runs the route + service refreshes
+**once per provider**, and country evidence **once** (a country is not owned by
+a provider). `sync-prices` calls only the wrapper.
+
+**2. Surviving evidence described a RETIRED provider.** `services` and
+`countries` have no provider column, so per-provider passes clobbered each
+other — and the winner was whoever ran last. Worse, facebook is served by
+HeroSMS while its evidence read 14 attempts / 6 codes, all **SMSPVA**, with 32
+smspool and 3 virtualsms orders sitting in the same 30-day window from providers
+we do not use at all.
+
+Both functions now require that an order's provider **still owns that service**
+(`exists (select 1 from routes r where r.service_id = … and r.provider = …
+and r.status='active')`), and only wipe rows belonging to the provider being
+refreshed. Retired providers drop out by construction.
+
+**Expect evidence to look emptier after a provider switch, and that is
+correct.** Applying this took facebook/instagram/whatsapp/leboncoin/tiktok to
+NULL, because HeroSMS has barely any orders yet. "Not tested" beats a retired
+provider's number, and it rebuilds within days at ~55 orders/week.
+
+### VoIP-only routes are hidden for services that reject VoIP
+
+`app_config.voip_strict_services` (seeded `["facebook","instagram","whatsapp"]`)
+is a hand-maintained list in the same shape as `blocked_routes`. `sync-herosms`
+hides any route for those services whose `physicalCount` is **0**.
+
+Why: measured 2026-07-30, facebook **16.3%** and instagram **8.3%** over 30 days
+— together ~50% of all order volume, against leboncoin 50%, tiktok 71%. Meta
+rejects VoIP ranges, which is the entire reason we moved to the one provider
+that reports real-SIM stock, and we had been recording `physicalCount` on 4,046
+routes and using it for nothing.
+
+First run hid **62** routes: facebook 69 → **47** active, instagram 69 → **48**,
+whatsapp 64 → **45**, and every remaining active route for those three has real
+SIMs. Non-strict services are untouched (leboncoin keeps 3 VoIP routes, tiktok
+18).
+
+This is "we cannot deliver this", the same category as `blocked_routes` — **not**
+a judgement on measured performance, so it does not contradict the standing
+"label, don't hide" rule, which governs outcomes we have actually observed.
+Two guards, both asserted after the run: a route whose service failed to price
+this run is skipped (never hidden), and `hit` is non-null at that branch so a
+zero is a real reading rather than a missing one.
+
+**It is a well-motivated GUESS until measured, so it was made falsifiable in the
+same change.** `orders.route_physical_count` records the route's real-SIM stock
+at reservation (null = not recorded, never zero). Settle it with:
+
+```sql
+select (route_physical_count > 0) as had_real_sims,
+       count(*) n, count(*) filter (where otp is not null) codes
+from public.orders
+where smspva_number is not null and provider = 'herosms'
+  and service_id in ('facebook','instagram','whatsapp')
+group by 1;
+```
+
+Rollback is `voip_strict_services = '[]'` — the next hourly run re-activates
+everything.
+
 ### Why a service reads "Unavailable" — the price ceiling
 
 `sync-prices` hides any route whose wholesale cost exceeds `MAX_WHOLESALE_CENTS`,
@@ -1549,21 +1627,21 @@ SMS provider again, walk this list:
   path, a stale constant copy, and a timer/hold interaction. All were caught by
   post-hoc review, two only by luck. Until something automated covers the order
   lifecycle and the money paths, assume a similar rate on the next batch.
-- 🔴 **`active_sms_provider()` returns the WRONG provider (`smspva`).** Highest-
-  value open item, because it is silent. It votes by active route count, and the
-  per-service split plus `sync-herosms` hiding unfulfillable rows left SMSPVA with
-  7,757 against HeroSMS's 5,198. All five `refresh_*` evidence functions scope to
-  it, so evidence is being gathered for the provider that is not serving demand,
-  and **HeroSMS can never accumulate route evidence** while this holds. Fix by
-  voting on orders served, or by making the evidence functions provider-agnostic.
-- 🔴 **All measured route evidence is gone — `rate_source='measured'` is 0 rows.**
-  Expected (the refresh functions scope by provider and the catalog was re-homed),
-  and the pre-cutover snapshot was taken, but until it rebuilds every route shows
-  "Not tested" and the steering tiers fall through to the untested path. The
-  `active_sms_provider()` bug above blocks the rebuild for HeroSMS.
-- ⚠️ **`physicalCount` is stored but unused.** 4,046 active HeroSMS routes have
-  real SIM stock and nothing steers on it. This is the lever for the Meta services
-  (~53% of order volume at ~12% delivery) — the reason HeroSMS was chosen at all.
+- ✅ **RESOLVED 2026-07-30: evidence is gathered for EVERY provider.**
+  `active_sms_provider()` still returns `smspva` and is still the wrong metric,
+  but it is no longer load-bearing: `refresh_evidence_all_providers()` runs the
+  route and service refreshes once per provider, country evidence once, and all
+  of it is scoped to the provider that still OWNS each service — so retired
+  providers (smspool, virtualsms) drop out too. See the section above.
+- ⚠️ **Route-level evidence is still 0 rows, now for an honest reason.** The
+  blocker is gone, but a route needs 3 conclusive attempts and HeroSMS has ~2
+  orders. Service and country evidence rebuild first. Nothing to do but let
+  volume accumulate — it is now *capable* of accumulating, which it was not.
+- ✅ **RESOLVED 2026-07-30: `physicalCount` now gates the Meta services.**
+  `voip_strict_services` + `sync-herosms` hid **62** VoIP-only routes; every
+  active facebook/instagram/whatsapp route now has real SIMs (69→47, 69→48,
+  64→45). Stamped on each order as `route_physical_count` so the effect is
+  measurable — **run that query in ~2 weeks before trusting the change.**
 - ⚠️ **HeroSMS is proven by exactly ONE order.** Delivery is 1/1. Do not treat
   that as a rate; the pre-registered rollback trigger was "conclusive delivery
   over the first 40 orders materially below SMSPVA's frozen baseline", and we are

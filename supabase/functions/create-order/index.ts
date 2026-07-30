@@ -147,7 +147,7 @@ Deno.serve(async (req) => {
 
   const { data: route, error: rErr } = await sb
     .from("routes")
-    .select("retail_credits, status, last_cost_cents, herosms_cost_cents, provider, smspool_pool, smspva_operator, smspva_operator_cents, premium_credits")
+    .select("retail_credits, status, last_cost_cents, herosms_cost_cents, herosms_physical_count, provider, smspool_pool, smspva_operator, smspva_operator_cents, premium_credits")
     .eq("service_id", service.id)
     .eq("country_id", country.id)
     .maybeSingle();
@@ -516,6 +516,12 @@ Deno.serve(async (req) => {
       smspva_number: reservation.number,   // generic: display number
       actual_cost_cents: usedCostUsd != null ? Math.round(usedCostUsd * 100) : null,
       smspool_pool: reservation.pool ?? null,
+      // Real-SIM stock on this route at the moment we reserved. Recorded so the
+      // VoIP hypothesis behind `voip_strict_services` can be TESTED rather than
+      // believed — without it we would hide inventory on a plausible story and
+      // never be able to tell whether it helped. Null means "not recorded",
+      // never "no real SIMs".
+      route_physical_count: (route.herosms_physical_count as number | null) ?? null,
       // Honour the provider's own hold window when it tells us one. The DB
       // default is a flat 8 minutes, but SMSPool's window is pool-dependent
       // (their docs show 1200s) — expiring first meant refunding and
