@@ -850,22 +850,28 @@ silently drop every service without a route here).
 
 ### Palette + Liquid Glass (2026-07-30)
 
-**The brand accent is BLUE `#0057FF`, and that was an accessibility fix, not a
-taste change.** White on the old brand green `#279400` measures **3.95:1** —
-below WCAG AA's 4.5:1 for normal text — so *every primary button in the app*
-failed. White on `#0057FF` measures **5.52:1**, and the accent on the background
-goes 3.54:1 → 5.15:1. Dark mode uses a lightened `#4C8DFF`, because `#0057FF`
-on black is only **3.81:1**; the `AccentColor` light/dark hex pair already
-existed for exactly this.
+**The brand accent is GREEN `#279400`** (owner decision, 2026-07-30). It was
+briefly switched to blue `#0057FF` and switched back; the blue remains available
+as the retuned `.blue` accent option.
 
-Light `bg` is warm paper `#F8F7F4` (was iOS's cool `#F2F2F7`) with `elev` left
-pure white, so cards read as genuinely raised. Dark mode is unchanged.
+**Known and accepted: white on `#279400` measures 3.95:1**, below WCAG AA's
+4.5:1 for normal text, so primary buttons do not pass AA. On the background the
+accent measures 3.68:1. This is a deliberate brand choice, not an oversight —
+do not "fix" it by silently changing the hex. If it is ever revisited,
+`#1F7A00` is the same green a few steps darker and measures **5.47:1** against
+white while still reading as the brand.
+
+Light `bg` is warm paper **`#F8F7F4`** (was iOS's cool `#F2F2F7`) with `elev`
+left pure white, so cards read as genuinely raised. Dark mode is unchanged. The
+warm background is kept independently of the accent.
 
 Three things that must move together, each a real trap:
-- **`AccentColor` default is set in TWO places** — `Theme.light/dark(_:)` and
-  `AuthGate`'s `@AppStorage`, plus a third `?? .blue` fallback in `AppState`'s
-  init. They must agree or the pre-sign-in screens render a different colour
-  from the app they lead into.
+- **The `AccentColor` default is declared in FOUR places** — `Theme.light(_:)`,
+  `Theme.dark(_:)`, `AuthGate`'s `@AppStorage` *and* its own
+  `?? .green` fallback, plus `AppState`'s init fallback. Missing one is not
+  hypothetical: the blue experiment changed three and left `AuthGate:28` on
+  green, so an unreadable preference would have resolved to a different colour
+  depending on which screen asked. Grep for all of them together.
 - **`Assets.xcassets/LaunchBackground.colorset` must match `theme.bg`.** It is
   the static launch screen, so a mismatch is a visible colour flash on every
   cold launch before SwiftUI has drawn anything.
@@ -887,12 +893,43 @@ cards — Apple's guidance is that glass belongs to the navigation layer, and on
 ordinary cards it puts text over unpredictable backgrounds while destroying the
 elevation hierarchy `theme.elev` already expresses.
 
+**`.glassEffect` RENDERS but is not HIT-TESTABLE — `GlassPanel` therefore always
+appends `.contentShape(shape)`, and that line is load-bearing.** The filled
+`.background(Capsule())` it replaced did contribute a touch surface; glass does
+not. So every gap the glass appeared to cover — the tab bar's 6pt padding, the
+4pt between its buttons — went transparent to touch and the tap fell through to
+whatever was behind. On the eSIM tab that is a full-bleed MapKit view which
+`.ignoresSafeArea(edges: .bottom)` extends *under* the tab bar, so a slightly
+misplaced tab tap silently panned the map instead. Reported as "the click
+registers behind it". Never apply `glassEffect` directly; go through
+`.glassPanel`.
+
+**`interactive` is only for glass that IS the control** (a single icon button).
+On a container that holds its own buttons — tab bar, resume bar — touch-reactive
+glass competes with the children for the gesture and reads as lag on first taps.
+
 **Glass over a saturated background is the failure case, and the eSIM tab is
-exactly that** (a full-bleed map, now the default view). Two consequences worth
-keeping in mind: inactive tab-bar icons are at their weakest over bright ocean,
-and the map's cluster bubbles needed an **opaque** ring in `theme.elev` — with
-the old translucent-white ring, a blue bubble on blue water was close to
-invisible the moment the accent stopped being green.
+exactly that** (a full-bleed map, the default view). Inactive tab-bar icons are
+at their weakest over bright ocean. The map's cluster bubbles also need an
+**opaque** ring in `theme.elev`: the original translucent-white ring let a
+bubble blend into whatever was under it — invisible as blue-on-ocean, and
+nearly as bad as green-on-Europe, since the landmass is green too.
+
+### The map's camera callback fires EVERY FRAME
+
+`.onMapCameraChange(frequency: .continuous)` fires per frame of a pan or pinch.
+`EsimMapView` derives `clusters` from `span`, so assigning `span` on every
+callback invalidated the computed property, re-bucketed all 66 pins, and made
+SwiftUI tear down and rebuild **every annotation — each containing a
+`CodeFlag` — at 60–120 fps**. That is a per-frame rebuild of the whole
+annotation set, and it is why the map felt slow and its taps unreliable while
+being dragged.
+
+`commit(_:)` now adopts a new span only when it differs by >15%, which is well
+below the ~1.6× step needed for the grid cell to regroup anything — so clusters
+still merge and split visibly during a pinch, while a pan (which does not change
+the span at all) rebuilds nothing. If you add anything else derived from the
+live camera, throttle it the same way.
 
 ### The eSIM store — why it shows FEWER plans than the catalog has
 

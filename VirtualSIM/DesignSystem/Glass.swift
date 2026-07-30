@@ -23,12 +23,33 @@ struct GlassPanel<S: Shape>: ViewModifier {
     @Environment(\.theme) private var theme
 
     let shape: S
-    /// `interactive` gives the glass Apple's touch-reactive highlight. Use it on
-    /// things that are tapped (buttons), not on passive containers.
+    /// Apple's touch-reactive glass highlight.
+    ///
+    /// Only for a surface that IS the control — a single icon button. On a
+    /// CONTAINER that holds its own buttons (the tab bar, the resume bar) the
+    /// glass becomes touch-reactive in its own right and competes with the
+    /// children for the gesture, which reads as lag on the first taps.
     var interactive: Bool = false
 
     @ViewBuilder
     func body(content: Content) -> some View {
+        glass(content)
+            // MANDATORY, and the reason it lives inside the modifier rather
+            // than at each call site.
+            //
+            // `.glassEffect` is a RENDERING effect — unlike the filled
+            // `.background(Capsule())` it replaced, it contributes no
+            // hit-testable surface. So every gap the glass appeared to cover
+            // (the tab bar's 6pt padding, the 4pt between its buttons) became
+            // transparent to touch, and the tap fell through to whatever was
+            // behind. On the eSIM tab that is a full-bleed MapKit view which
+            // `.ignoresSafeArea(edges: .bottom)` extends *under* the tab bar,
+            // so a mistapped tab silently panned the map instead.
+            .contentShape(shape)
+    }
+
+    @ViewBuilder
+    private func glass(_ content: Content) -> some View {
         if #available(iOS 26.0, *) {
             content.glassEffect(interactive ? .regular.interactive() : .regular,
                                 in: shape)

@@ -133,7 +133,7 @@ struct Theme: Equatable {
 
     /// `live`/`liveSoft` stay the semantic success green at every accent — see
     /// the note on `AccentColor`.
-    static func light(_ accent: AccentColor = .blue) -> Theme {
+    static func light(_ accent: AccentColor = .green) -> Theme {
         let a = accent.lightHex
         return Theme(
             // Warm paper rather than iOS's cool `0xF2F2F7`. Pure-white `elev`
@@ -162,7 +162,7 @@ struct Theme: Equatable {
         )
     }
 
-    static func dark(_ accent: AccentColor = .blue) -> Theme {
+    static func dark(_ accent: AccentColor = .green) -> Theme {
         let a = accent.darkHex
         return Theme(
             bg:        Color(hex: 0x000000),

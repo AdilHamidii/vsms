@@ -18,7 +18,7 @@ struct AuthGate: View {
     // explicit Light/Dark choice is honoured here too instead of being ignored
     // until the app proper loads.
     @AppStorage(PrefKey.appearance) private var appearanceRaw = ""
-    @AppStorage(PrefKey.accent) private var prefAccent = AccentColor.blue.rawValue
+    @AppStorage(PrefKey.accent) private var prefAccent = AccentColor.green.rawValue
     @Environment(\.colorScheme) private var colorScheme
 
     private var appearance: AppearanceMode {

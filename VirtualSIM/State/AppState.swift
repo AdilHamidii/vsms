@@ -356,7 +356,7 @@ final class AppState {
         // from the app they lead into.
         self.accent = AccentColor(
             rawValue: defaults.string(forKey: PrefKey.accent) ?? ""
-        ) ?? .blue
+        ) ?? .green
         self.waitingAnimation = WaitingAnimation(
             rawValue: defaults.string(forKey: PrefKey.waitingAnimation) ?? ""
         ) ?? .pulse

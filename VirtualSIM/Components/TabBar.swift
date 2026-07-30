@@ -45,7 +45,7 @@ struct TabBar: View {
         .padding(6)
         // Liquid Glass on iOS 26, the previous frosted treatment below it —
         // see `GlassPanel`, which owns the availability guard.
-        .glassPanel(Capsule(), interactive: true)
+        .glassPanel(Capsule())
         .shadow(color: .black.opacity(0.10), radius: 15, x: 0, y: 8)
         .shadow(color: .black.opacity(0.06), radius: 3, x: 0, y: 2)
     }

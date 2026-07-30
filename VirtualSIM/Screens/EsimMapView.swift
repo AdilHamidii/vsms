@@ -117,7 +117,7 @@ struct EsimMapView: View {
                                 showsTraffic: false))
             .mapControlVisibility(.hidden)
             .onMapCameraChange(frequency: .continuous) { ctx in
-                span = ctx.region.span
+                commit(ctx.region.span)
             }
             .ignoresSafeArea(edges: .bottom)
 
@@ -214,8 +214,7 @@ struct EsimMapView: View {
                     .font(.system(size: 13, weight: .semibold)).foregroundStyle(theme.text3)
             }
             .padding(14)
-            .glassPanel(RoundedRectangle(cornerRadius: 18, style: .continuous),
-                        interactive: true)
+            .glassPanel(RoundedRectangle(cornerRadius: 18, style: .continuous))
             .shadow(color: .black.opacity(0.16), radius: 12, y: 4)
         }
         .buttonStyle(.plain)
@@ -250,6 +249,26 @@ struct EsimMapView: View {
     }
 
     // MARK: - Camera
+
+    /// Adopt a new camera span only when it changes the clustering meaningfully.
+    ///
+    /// `frequency: .continuous` fires on **every frame** of a pan or pinch.
+    /// Assigning `span` each time invalidates `clusters`, which re-buckets all
+    /// 66 pins and makes SwiftUI tear down and rebuild every annotation — each
+    /// one containing a `CodeFlag` — at 60–120 fps. That is a per-frame rebuild
+    /// of the entire annotation set, and it is why the map felt slow and its
+    /// taps unreliable while being dragged.
+    ///
+    /// A 15% threshold is well below the ~1.6× step it takes for the grid cell
+    /// to actually regroup anything, so clusters still visibly merge and split
+    /// during a pinch — but a pan, which does not change the span at all, now
+    /// rebuilds nothing.
+    private func commit(_ new: MKCoordinateSpan) {
+        let changed =
+            abs(new.latitudeDelta  - span.latitudeDelta)  > span.latitudeDelta  * 0.15 ||
+            abs(new.longitudeDelta - span.longitudeDelta) > span.longitudeDelta * 0.15
+        if changed { span = new }
+    }
 
     private func fly(to coord: CLLocationCoordinate2D, span: MKCoordinateSpan) {
         withAnimation(RMotion.camera) {

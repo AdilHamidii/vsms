@@ -52,7 +52,15 @@ struct EsimStoreScreen: View {
             }
         }
         .task {
-            await state.loadEsimCatalog(using: EsimPlansAPI(client: api))
+            // Switching tabs destroys and rebuilds this view, so this `.task`
+            // runs on EVERY visit — and cold start already fetched the catalog.
+            // Refetching 1,081 plans each time the user taps the eSIM tab is
+            // pure latency on a screen that then has to lay out a map. Orders
+            // are a handful of rows and DO refresh, since the user may have
+            // bought one since they last looked.
+            if state.esimPlans.isEmpty {
+                await state.loadEsimCatalog(using: EsimPlansAPI(client: api))
+            }
             await state.loadEsimOrders(using: EsimOrdersAPI(client: api))
             withAnimation(RMotion.content) { appeared = true }
         }
