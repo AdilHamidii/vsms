@@ -18,9 +18,13 @@ interface Snapshot {
   purchases?: { count?: number; credits?: number };
   orders?: {
     placed?: number; received?: number; failed?: number; pct?: number | null;
+    /** Charged-and-refunded attempts that never reserved a number. Excluded
+     *  from `placed` so they cannot masquerade as delivery failures. */
+    numberless?: number;
     by_provider?: ProviderRow[];
   };
   esims?: { count?: number; credits?: number };
+  herosms_usd?: number | null;
   smspva_usd?: number | null;
   smspool_usd?: number | null;
 }
@@ -113,6 +117,63 @@ function periodLabel(s: RevenueSnapshot): string {
   if (h <= 24) return `last ${Math.round(h)}h`;
   const d = Math.round(h / 24);
   return d === 7 ? "last 7 days" : d === 30 ? "last 30 days" : `last ${d} days`;
+}
+
+/** `/revenue` — what customers actually PAID, in USD. Nothing derived.
+ *
+ *  Deliberately separate from formatRevenue (`/profit`), which nets off Apple's
+ *  cut and provider wholesale to reach a profit figure. Those are estimates
+ *  built on a fixed 15% commission and partially-recorded costs; this is not.
+ *  Every number here comes from `iap_receipts.raw_jws` — the price Apple
+ *  reports for the transaction — summed per currency.
+ *
+ *  The ONE piece of arithmetic that cannot be avoided is FX: Apple bills each
+ *  buyer in their own storefront currency, and there is no single "total in
+ *  USD" without converting. So the native amounts are always printed alongside,
+ *  and any currency missing from FX_TO_USD is listed rather than folded in at
+ *  1.0 — silently treating 149 SEK as $149 would overstate revenue by 10x. */
+export function formatGross(raw: Record<string, unknown>): string {
+  const s = raw as RevenueSnapshot;
+  const r = s.revenue ?? {};
+
+  let grossUsd = 0;
+  const native: string[] = [];
+  const unconverted: string[] = [];
+  for (const cur of r.by_currency ?? []) {
+    const code = (cur.currency ?? "?").toUpperCase();
+    const amount = (cur.gross_milli ?? 0) / 1000;
+    native.push(`${esc(code)} ${amount.toFixed(2)}`);
+    const rate = FX_TO_USD[code];
+    if (rate == null) unconverted.push(`${esc(code)} ${amount.toFixed(2)}`);
+    else grossUsd += amount * rate;
+  }
+
+  const purchases = r.purchases ?? 0;
+  if (purchases === 0) {
+    return `💵 <b>Revenue — ${esc(periodLabel(s))}</b>\n\nNo purchases in this period.`;
+  }
+
+  const lines: string[] = [];
+  lines.push(`💵 <b>Revenue — ${esc(periodLabel(s))}</b>`);
+  lines.push("");
+  lines.push(`<b>${esc(usd(grossUsd))}</b> paid by customers`);
+  lines.push("");
+  lines.push(`${esc(purchases)} purchases · ${esc(r.buyers ?? 0)} buyers · ` +
+             `${esc(r.credits ?? 0)} credits`);
+
+  // Always show what was actually billed, so the USD figure is auditable
+  // rather than a number the bot asserts.
+  if (native.length) lines.push(`💱 ${native.join(" + ")}`);
+
+  if (unconverted.length) {
+    lines.push(`⚠️ <b>NOT included</b> (no FX rate): ${unconverted.join(" + ")}`);
+  }
+
+  const packs = (r.by_product ?? [])
+    .map((p) => `${esc(p.product ?? "?")} ×${esc(p.count ?? 0)}`).join(" · ");
+  if (packs) lines.push(`📦 ${packs}`);
+
+  return lines.join("\n");
 }
 
 export function formatRevenue(raw: Record<string, unknown>): string {
@@ -234,10 +295,22 @@ export function formatDigest(raw: Record<string, unknown>): string {
     lines.push(`📱 Numbers: none ordered`);
   }
 
+  // Orders that never got a number: charged and instantly refunded because the
+  // price cleared our ceiling, the route was dry, or the provider errored.
+  // These are NOT delivery failures and are excluded from the rate above — but
+  // they must be visible, because a provider whose prices drift above our
+  // margin gate produces them in volume and it looks like nothing at all.
+  const numberless = o.numberless ?? 0;
+  if (numberless > 0) {
+    lines.push(`   ⚠️ ${numberless} never got a number (price/stock, refunded)`);
+  }
+
   const e = s.esims ?? {};
   lines.push(`🌍 eSIMs: <b>${e.count ?? 0}</b>${(e.count ?? 0) > 0 ? ` · ${e.credits} credits` : ""}`);
 
   lines.push("");
+  // HeroSMS first — it serves SMS for the services carrying 99.4% of volume.
+  lines.push(balanceLine("HeroSMS", s.herosms_usd));
   lines.push(balanceLine("SMSPVA", s.smspva_usd));
   lines.push(balanceLine("SMSPool", s.smspool_usd));
 

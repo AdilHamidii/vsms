@@ -22,7 +22,7 @@ import { admin } from "../_shared/supabaseAdmin.ts";
 // complaint, so /balance THREW ReferenceError on every call in production
 // while every other command worked. Keep imports in lockstep with usage.
 import { sendMessage, ownerChatId, esc } from "../_shared/telegram.ts";
-import { formatDigest, formatRevenue, balanceLine } from "../_shared/opsFormat.ts";
+import { formatDigest, formatRevenue, formatGross, balanceLine } from "../_shared/opsFormat.ts";
 
 const HELP = [
   "🤖 <b>vSMS ops</b>",
@@ -31,8 +31,9 @@ const HELP = [
   "/today — last 24 hours",
   "/week — last 7 days",
   "/balance — provider balances + watchdog",
-  "/revenue — money in, money out, profit",
-  "     <i>/revenue [24h|7d|30d|90d|all]</i> · default: all",
+  "/revenue — money customers actually paid (USD)",
+  "/profit — revenue minus Apple's cut and wholesale",
+  "     <i>[24h|7d|30d|90d|all]</i> · default: all",
 ].join("\n");
 
 /** Accepted /revenue periods -> the interval passed to revenue_snapshot.
@@ -90,9 +91,14 @@ Deno.serve(async (req) => {
       const { data: snap, error } = await sb.rpc("revenue_snapshot", {
         p_window: PERIODS[arg],
       });
+      // /revenue answers "how much did customers pay", full stop — no Apple
+      // cut, no wholesale, no profit. /profit is where the derived P&L lives.
+      // They used to be aliases for the same P&L, which meant there was no way
+      // to ask the bot for plain takings.
+      const fmt = cmd === "/revenue" ? formatGross : formatRevenue;
       reply = error || !snap
         ? "⚠️ Couldn't read revenue right now."
-        : formatRevenue(snap as Record<string, unknown>);
+        : fmt(snap as Record<string, unknown>);
       if (error) console.error("revenue_snapshot failed:", error.message);
     }
   } else if (cmd === "/stats" || cmd === "/today" || cmd === "/week") {
