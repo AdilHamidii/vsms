@@ -82,8 +82,25 @@ struct Service: Identifiable, Hashable, Codable {
         case unknown        // too little traffic to say anything honest
     }
 
-    /// Minimum conclusive attempts before we make any claim at all.
+    /// Minimum attempts before we assign a CONFIDENCE tier (good/mixed/poor).
+    /// Deliberately higher than the evidence floor below — a coloured
+    /// "this one rarely works" headline is a strong claim.
     private static let minSample = 8
+
+    /// Minimum attempts before we state the raw record. Much lower, because
+    /// "1 of the last 7 attempts got a code" is not a claim about a rate — it
+    /// IS the sample, and it carries its own uncertainty.
+    ///
+    /// At the old single floor of 8 the services with the worst first-order
+    /// record showed nothing at all: whatsapp (1 of 7), telegram (0 of 0) and
+    /// discord (0 of 2) took **9 first orders and produced 0 codes** while
+    /// rendering the same generic "codes don't always arrive" as everything
+    /// else. Silence reads as fine — the exact failure already fixed at the
+    /// route level, still live one layer up.
+    ///
+    /// It also suppressed the POSITIVE signal: tiktok is **5 of 7**, the best
+    /// first-order service in the app, and said nothing.
+    private static let minEvidenceSample = 3
 
     var deliveryOdds: DeliveryOdds {
         guard let attempts = observedAttempts, let codes = observedCodes,
@@ -99,9 +116,18 @@ struct Service: Identifiable, Hashable, Codable {
     /// bare percentage, so the claim is falsifiable and doesn't overstate.
     var deliveryEvidence: String? {
         guard let attempts = observedAttempts, let codes = observedCodes,
-              attempts >= Self.minSample
+              attempts >= Self.minEvidenceSample
         else { return nil }
         return String(localized: "\(codes) of the last \(attempts) attempts got a code")
+    }
+
+    /// Measured delivery ratio over whatever sample exists, or nil with none.
+    /// Used to colour `deliveryEvidence` when the sample is too small for a
+    /// confidence tier — otherwise a GOOD record (tiktok, 5 of 7) inherits the
+    /// warning accent and reads as a warning.
+    var observedRatio: Double? {
+        guard let a = observedAttempts, a > 0, let c = observedCodes else { return nil }
+        return Double(c) / Double(a)
     }
 
     /// Cascading list of logo sources, in priority order.
