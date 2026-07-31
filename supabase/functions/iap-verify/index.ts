@@ -124,7 +124,10 @@ Deno.serve(async (req) => {
       product_id: tx.productId,
       bundle_id: tx.bundleId,
       environment: tx.environment,
-      granted_credits: isProduction ? credits : 0,
+      // Always 0 here. credit_iap_purchase writes the real figure inside the
+      // same transaction as the wallet move, so this column can never claim
+      // credits that a later failure stopped from landing.
+      granted_credits: 0,
       purchase_date_ms: tx.purchaseDate,
       raw_jws: body.jws,
     })
@@ -136,21 +139,47 @@ Deno.serve(async (req) => {
     if (insertErr.code === "23505") {
       // A duplicate submit is only genuinely "already credited" if the credits
       // LANDED. StoreKit runs two paths into here (Transaction.updates and the
-      // Transaction.unfinished sweep), so both can carry the same JWS: if the
-      // winner's wallet_credit then failed, this branch previously told the
-      // loser "ok" and the client called finish() — retiring the transaction
-      // forever on a payment that granted nothing.
+      // Transaction.unfinished sweep), so both can carry the same JWS, and the
+      // first attempt may have died after persisting the receipt and before
+      // moving the wallet.
+      //
+      // The guard that used to live here checked the ledger only when
+      // granted_credits > 0 — while the failure path it existed to catch SET
+      // granted_credits = 0. The two conditions were mutually exclusive, so
+      // the exact case it was written for fell straight through to
+      // already_credited, the client called finish(), and a payment worth up
+      // to $59.99 was retired having granted nothing.
+      //
+      // credit_iap_purchase is idempotent against its own tombstone, so
+      // calling it again IS both the duplicate check and the recovery: it
+      // credits if and only if this transaction has never been granted.
       const { data: prior } = await sb
-        .from("iap_receipts").select("id, granted_credits, environment")
+        .from("iap_receipts").select("id, environment")
         .eq("transaction_id", tx.transactionId).maybeSingle();
-      if (prior && prior.environment === "Production" && (prior.granted_credits ?? 0) > 0) {
-        const { count } = await sb
-          .from("wallet_transactions")
-          .select("id", { count: "exact", head: true })
-          .eq("iap_receipt_id", prior.id).eq("reason", "purchase");
-        if (!count) {
-          console.error(`iap-verify: receipt ${prior.id} exists but has NO credit row — not finishing`);
+      if (prior && prior.environment === "Production") {
+        const { data: outcome, error: recErr } = await sb.rpc("credit_iap_purchase", {
+          p_user: userId,
+          p_receipt: prior.id,
+          p_amount: credits,
+          p_transaction_id: tx.transactionId,
+          p_original_transaction_id: tx.originalTransactionId,
+        });
+        if (recErr) {
+          // Do NOT confirm. finish() would stop the redelivery that is the
+          // only thing still driving a retry.
+          console.error(`iap-verify: recovery credit FAILED tx=${tx.transactionId}`, recErr);
           return json({ error: "credit_pending" }, { status: 409 });
+        }
+        if (outcome === "granted") {
+          console.error(`iap-verify: RECOVERED a lost payment user=${userId} tx=${tx.transactionId}`);
+          try {
+            EdgeRuntime.waitUntil(notifySafe(
+              `✅ <b>Recovered a lost IAP credit</b>\n` +
+              `user ${esc(userId)} · ${credits} credits (${esc(tx.productId)})\n` +
+              `<i>An earlier attempt persisted the receipt but never moved the wallet.</i>`,
+            ));
+          } catch { /* alerting must never mask the response */ }
+          return json({ ok: true, credits, balance_changed: true, recovered: true });
         }
       }
       return json({ ok: true, already_credited: true });
@@ -159,45 +188,55 @@ Deno.serve(async (req) => {
   }
 
   if (isProduction) {
-    const { error: creditErr } = await sb.rpc("wallet_credit", {
+    const { data: outcome, error: creditErr } = await sb.rpc("credit_iap_purchase", {
       p_user: userId,
-      p_amount: credits,
-      p_reason: "purchase",
-      p_order: null,
       p_receipt: inserted?.id ?? null,
+      p_amount: credits,
+      p_transaction_id: tx.transactionId,
+      p_original_transaction_id: tx.originalTransactionId,
     });
     if (creditErr) {
-      // The receipt row exists but the wallet did NOT move. Returning ok here
-      // would make the client finish() the transaction — and the replay path
-      // above would answer already_credited forever after: the buyer's money
-      // would be permanently eaten by a transient DB error. Instead, delete
-      // the receipt so StoreKit's automatic redelivery retries the whole
-      // grant, fail the request, and page the owner either way.
-      // ZERO the receipt rather than DELETE it.
+      // The receipt row exists but the wallet did NOT move. No rollback is
+      // needed any more: granted_credits was inserted as 0 and only
+      // credit_iap_purchase sets it, and the tombstone insert rolled back
+      // inside the same failed transaction. So the receipt correctly reads
+      // "took a payment, granted nothing" and stays RECOVERABLE — StoreKit
+      // redelivers, the duplicate branch above calls the same function, and it
+      // credits because no tombstone exists.
       //
-      // Deleting was meant to let StoreKit redeliver — but the transaction_id
-      // is the only replay guard, and dropping the row also drops the audit
-      // trail of a payment we took. Worse, a concurrent duplicate submit may
-      // already have been told `already_credited` and called finish(), so the
-      // redelivery being relied on will never come. Keeping the row at
-      // granted_credits = 0 preserves the evidence, keeps the guard, and the
-      // 23505 branch above now refuses to confirm a receipt with no credit row.
-      console.error(`CRITICAL: wallet_credit failed after receipt persist user=${userId}`, creditErr);
-      const { error: delErr } = inserted?.id != null
-        ? await sb.from("iap_receipts")
-            .update({ granted_credits: 0 }).eq("id", inserted.id)
-        : { error: { message: "receipt id unknown — rollback skipped" } };
+      // Do not return ok here. finish() would retire the transaction and stop
+      // the only retry mechanism there is.
+      console.error(`CRITICAL: credit_iap_purchase failed after receipt persist user=${userId}`, creditErr);
       try {
         EdgeRuntime.waitUntil(notifySafe(
           `🚨 <b>IAP credit FAILED after payment</b>\n` +
           `user ${esc(userId)} paid for ${credits} credits (${esc(tx.productId)})\n` +
-          `wallet_credit error: ${esc(creditErr.message)}\n` +
-          (delErr
-            ? `⚠️ receipt row could NOT be rolled back (${esc(delErr.message)}) — credit MANUALLY, StoreKit will not retry.`
-            : `receipt rolled back — StoreKit retries automatically; this resolves itself unless it repeats.`),
+          `error: ${esc(creditErr.message)}\n` +
+          `<i>Receipt kept at 0 credits and recoverable — StoreKit retries and the retry now credits it.</i>`,
         ));
       } catch { /* alerting must never mask the response */ }
       return json({ error: "credit_failed" }, { status: 500 });
+    }
+    if (outcome === "already_granted") {
+      // This transaction was credited before, under an account that no longer
+      // exists. Delete Account CASCADEs iap_receipts, which is exactly why the
+      // insert above SUCCEEDED instead of hitting the unique constraint —
+      // there is no receipt row left to collide with. Apple re-verifies the
+      // JWS perfectly: the signature proves the purchase is genuine, never
+      // that it is unspent. Only the tombstone knows.
+      //
+      // Answer ok so the client finishes and StoreKit stops redelivering, but
+      // move no money and report it honestly rather than claiming credits.
+      console.error(`iap-verify: REPLAY blocked user=${userId} tx=${tx.transactionId}`);
+      try {
+        EdgeRuntime.waitUntil(notifySafe(
+          `⚠️ <b>IAP replay blocked</b>\n` +
+          `user ${esc(userId)} re-submitted ${esc(tx.productId)}\n` +
+          `tx ${esc(tx.transactionId)}\n` +
+          `<i>Already granted previously — no credits issued.</i>`,
+        ));
+      } catch { /* alerting must never mask the response */ }
+      return json({ ok: true, credits: 0, balance_changed: false, already_credited: true });
     }
   } else {
     console.warn(`iap: ${tx.environment} receipt persisted WITHOUT credit — user=${userId} product=${tx.productId}`);
@@ -210,9 +249,14 @@ Deno.serve(async (req) => {
   // 5-credit payout to an inviter either.
   if (isProduction) {
     try {
-      await sb.rpc("apply_referral_reward", { p_referee: userId });
+      // supabase-js RETURNS errors, it does not throw — so this try/catch on
+      // its own caught nothing, and a failed payout silently cost the referrer
+      // their 5 credits with no trace anywhere. The catch stays as a backstop
+      // for a synchronous throw; the destructure is what actually reports.
+      const { error: refErr } = await sb.rpc("apply_referral_reward", { p_referee: userId });
+      if (refErr) console.error("apply_referral_reward FAILED for", userId, refErr);
     } catch (e) {
-      console.error("apply_referral_reward failed for", userId, e);
+      console.error("apply_referral_reward threw for", userId, e);
     }
   }
 

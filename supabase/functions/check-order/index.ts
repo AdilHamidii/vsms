@@ -38,7 +38,12 @@ Deno.serve(async (req) => {
   }
 
   if (new Date(order.expires_at) <= new Date()) {
-    await sb.rpc("expire_order", { p_order: order.id });
+    // supabase-js RETURNS errors. Discarding this one is survivable — the
+    // minutely sweep re-expires and refunds the order — but it made a failure
+    // here invisible, so a systematic problem would only surface as orders
+    // mysteriously staying `waiting`.
+    const { error: expErr } = await sb.rpc("expire_order", { p_order: order.id });
+    if (expErr) console.error(`check-order: expire_order FAILED order=${order.id}`, expErr);
     // expire_order is plain SQL and cannot talk to the provider — ban + close
     // the dead number here so SMSPVA doesn't re-issue it (their docs require
     // the ban; the request id is otherwise retained ~10 min). Best-effort.

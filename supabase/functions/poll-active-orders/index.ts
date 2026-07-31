@@ -9,7 +9,7 @@ import { getBalanceUsd } from "../_shared/smspool.ts";
 import { getBalanceUsd as getHeroBalanceUsd } from "../_shared/herosms.ts";
 import { getBalance as getSmspvaBalance, isOk } from "../_shared/smspva.ts";
 import { sendPush } from "../_shared/apns.ts";
-import { notifySafe } from "../_shared/telegram.ts";
+import { notifySafe, esc } from "../_shared/telegram.ts";
 
 // The most a single order can cost us, in dollars — MUST track
 // MAX_WHOLESALE_CENTS in sync-prices (750 as of 2026-07-27).
@@ -260,6 +260,32 @@ Deno.serve(async (req) => {
       if (refundErr) {
         console.error(`poll: REFUND FAILED order=${row.id} user=${row.user_id} ` +
                       `credits=${row.cost_credits}: ${refundErr.message}`);
+        // Revert the claim so the next sweep retries. cancel-order, check-order
+        // and create-order all do this, each with a comment giving the reason:
+        // a terminal row is never revisited, so leaving it `expired` makes the
+        // charge permanently unrefundable. This was the one terminal writer
+        // that just logged and moved on — and it is the highest-traffic close
+        // path in the product.
+        const { error: revertErr } = await sb
+          .from("orders")
+          .update({ status: "waiting", closed_at: null })
+          .eq("id", row.id)
+          .eq("status", "expired");
+        if (revertErr) {
+          console.error(`poll: CLAIM REVERT FAILED order=${row.id} — credits are stuck`, revertErr);
+        }
+        // A refund that keeps failing now retries every minute in silence, so
+        // page instead of letting it loop unseen.
+        try {
+          EdgeRuntime.waitUntil(notifySafe(
+            `🚨 <b>Refund failed on expiry</b>\n` +
+            `order ${esc(row.id)} · user ${esc(row.user_id)} · ${row.cost_credits} credits\n` +
+            `${esc(refundErr.message)}\n` +
+            (revertErr
+              ? `⚠️ claim could NOT be reverted — refund MANUALLY.`
+              : `<i>Reverted to waiting; the next sweep retries.</i>`),
+          ));
+        } catch { /* alerting must never mask the sweep */ }
         continue;   // no count, and above all no "you were refunded" push
       }
       expired++;

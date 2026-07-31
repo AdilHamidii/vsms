@@ -241,6 +241,7 @@ VirtualSIM/
 **Key SQL functions** (all `SECURITY DEFINER`, all revoked from `anon`/`authenticated` — clients reach them only through edge functions on the service role):
 - `begin_order(user, service, country, credits)` — dedupe + insert order + charge, in ONE transaction under `pg_advisory_xact_lock(user)`. See the gotcha below; do not go back to charging before the row exists.
 - `wallet_spend` / `wallet_credit` — atomic single-statement balance moves. Always pass `p_order` so the ledger reconciles.
+- `credit_iap_purchase(user, receipt, amount, transaction_id, original_transaction_id)` — **the only way to credit an Apple purchase.** Tombstones `transaction_id` in `iap_grants` and credits in ONE transaction under an advisory lock, returning `granted` / `already_granted` / `invalid_amount`. Idempotent, so a caller that is unsure whether a previous attempt landed simply calls it again — that is both the duplicate check and the recovery. Never call `wallet_credit` directly for an IAP; it has no replay guard.
 - `active_sms_provider()` — returns whichever provider owns the most `active` routes. Maintenance functions default to it so a provider switch can't silently orphan them again. **⚠️ It is WRONG as of 2026-07-30 and returns `smspva`.** It was written for a winner-take-all world; the HeroSMS cutover deliberately made the catalog a per-service *split*, and then `sync-herosms` hid 4,849 routes HeroSMS cannot serve — so SMSPVA now owns **7,757** active routes against HeroSMS's **5,198** and wins a vote it should not be in. It is still the wrong metric. **This file claimed on 2026-07-30 that it was "no longer load-bearing". That was FALSE, and the audit on 2026-07-31 found two live consumers it had missed** — `refresh_evidence_all_providers()` fixed only the three refreshes it wraps:
   - **`refresh_arrival_timing`** is a SEPARATE entry in `sync-prices`' maintenance list, outside the wrapper. It measured SMSPVA only (38 of 46 arrivals) and stamped that band onto all 268 services, so every "most codes arrive within N" quote in the app described the retired provider. Fixed in `20260731070000`/`20260731080000`.
   - **`recent_sms_delivery_rate()`** still scopes to the vote, returned NULL on a 4-order SMSPVA sample, and through it `stranded_credit_candidates` was permanently empty. Fixed by deleting that cohort's gate; **the rate function itself still uses the vote and is still wrong** — it is only no longer load-bearing because nothing gates on it now. If you add a consumer, scope it per-provider.
@@ -1873,7 +1874,7 @@ then `smoothed_cost_cents > MAX_WHOLESALE_CENTS`, then measured-zero auto-hide.
 - **A one-line refactor that changes a watchdog threshold is a monitoring outage.** Rebuilding `run_watchdog` for unrelated coverage silently narrowed the delivery check from 24h/≥10 to 6h/≥8 **and deleted its second branch** (≥20 conclusive at <10%). Measured: the max conclusive orders in ANY 6h window over 30 days is 8, against a gate of 8 — the check became effectively unreachable, leaving zero delivery-outcome coverage. When you re-create a function from `pg_get_functiondef`, diff it against the prior definition clause by clause; the dump is also **truncated** by most tooling, which is how a nonexistent `url` column on `net._http_response` got invented in the same rewrite.
 - **A constant duplicated across files WILL drift.** `MAX_WHOLESALE_CENTS` lives in three sync functions (and as `MAX_ORDER_COST_USD` in `poll-active-orders`, and as `LOW_BALANCE_USD` in `_shared/opsFormat.ts`). Changing it in one place on 2026-07-27 stripped 1,432 routes of their carrier pin and premium price, and left the digest warning at $20 while the pager fired at $37.50. Same for `CREDIT_DIVISOR` (**two** copies since `sync-smspool` was deleted — `sync-prices` and `sync-smspva-operators`) and `ESIM_MARGIN`/`CREDIT_VALUE_USD` (two each). `MAX_WHOLESALE_CENTS`'s three syncs are now `sync-prices`, `sync-smspva-operators` and `sync-herosms`. Change them in one commit or consolidate them into `_shared/`.
 - **Deleting an IAP receipt to force StoreKit redelivery can eat the payment.** `iap-verify` used to delete the row when `wallet_credit` failed, assuming StoreKit would retry. But the client runs **two** paths into that endpoint (`Transaction.updates` and the `Transaction.unfinished` sweep), so a concurrent duplicate may already have been answered `already_credited` and called `finish()` — retiring the transaction forever. It now zeroes `granted_credits` (keeping both the audit trail and the replay guard), and the duplicate branch refuses to confirm a receipt that has no matching `wallet_transactions` row.
-- **The signup bonus was farmable through account deletion.** Everything user-scoped cascades from `auth.users`, so delete → sign in again minted a fresh grant (+3, plus a fresh +2 referral because `referred_by` resets). `public.signup_grants` is a tombstone keyed on a **hash of the email**, living outside that cascade — Apple's private-relay address is stable per (user, app), so it survives deletion while storing no address. It fails **open** on a null email: a missed grant on a real signup costs more than a rare duplicate.
+- **EVERY credit grant is farmable through account deletion unless it is tombstoned OUTSIDE the `auth.users` cascade.** This is the single most repeated money bug in this codebase — it has now been found three times, once per grant. Everything user-scoped cascades, so delete → sign in again erases our only record and mints the grant afresh. Apple *mandates* the Delete Account button, so this is not an edge case. The three grants and their tombstones: **signup +3** → `signup_grants` (hash of the email); **referral +2** → `signup_grants.referral_redeemed_at` (same key); **IAP purchases** → `public.iap_grants` (keyed on Apple's `transaction_id`). Each tombstone table must have **no foreign key to `auth.users`** — a reference there is precisely what deletes the row with the account. The email hash works because Apple's private-relay address is stable per (user, app), so it survives deletion while storing no address; all three fail **open** on a null email, because a missed grant on a real signup costs more than a rare duplicate. **If you add a fourth grant, it needs a tombstone in the same commit.**
 - **APNs `aps-environment` is `production`** in the entitlements file (flipped for archiving; set `APNS_ENV=production` secret to match). Flip back to `development` if you need to test push against a dev-token build from Xcode.
 - **`Secrets.swift` is gitignored.** Template in `supabase/README.md`. Just `supabaseURL` + `supabaseAnonKey`. The publishable key (`sb_publishable_*`) is fine in client code — it's the new name for the anon key.
 - **Logo loading cascades** in `ServiceLogo`: DuckDuckGo ip3 (`icons.duckduckgo.com/ip3/<domain>.ico`) → Google FaviconV2 → SF Symbol on tinted background. URLCache caches across launches. **Clearbit (`logo.clearbit.com`) was removed** — HubSpot sunset the free Logo API on 2025-12-01 and its host no longer resolves; leaving it as source #1 made every logo eat a DNS failure before falling through. Do not re-add it.
@@ -2021,7 +2022,7 @@ from 2026-07-30), which is Apple's per-platform cap.
   charge-and-forfeit bug in `providers.ts` fixed.
 - **Codebase**: `MARKETING_VERSION 1.7`, `CURRENT_PROJECT_VERSION 20`, iOS min
   **18.0**, **96** Swift sources (Release BUILD SUCCEEDED on iPhone 17 Pro /
-  iOS 26.5, zero warnings), **115** migration files, **24** edge functions.
+  iOS 26.5, zero warnings), **116** migration files, **24** edge functions.
   Localizable.xcstrings: 342 strings, **0 untranslated** across all 6 locales.
 - **Catalog**: 18,492 routes, **12,900 active**. **HeroSMS 5,143 / SMSPVA 7,757**.
   Only **3 measured routes** — HeroSMS volume is still tiny, see Known-open. 265
@@ -2049,51 +2050,64 @@ from 2026-07-30), which is Apple's per-platform cap.
 
 ### Known-open
 
-**Money paths — found by the 2026-07-31 red-team audit, deliberately NOT fixed
-in that pass** (they modify wallet/receipt logic, which is an owner decision).
-The ledger itself is clean: `sum(wallet_transactions.delta)` equals
-`wallets.balance` for **all 204 wallets**, zero double refunds, zero
-terminal-unrefunded orders. None of the below has ever been exploited — no
-account in the DB has been deleted and recreated.
+✅ **RESOLVED 2026-07-31 — all six money-path findings from the red-team audit
+are fixed and deployed** (`20260731130000`, plus `iap-verify` / `check-order` /
+`poll-active-orders` redeployed). The ledger reconciles exactly:
+`sum(wallet_transactions.delta) = wallets.balance` for **all 204 wallets**, zero
+double refunds, zero terminal-unrefunded orders on any of the three product
+lines. None of these was ever exploited — no account in the DB has been deleted
+and recreated, and 0 receipts are orphaned from a deleted user.
 
-- 🔴 **One purchase can be replayed forever by deleting the account.**
-  `iap_receipts_user_id_fkey` is **ON DELETE CASCADE** from `auth.users`, and the
-  ONLY replay guard is the unique constraint on `transaction_id`. The receipt is
-  bound to no user (`_shared/iap.ts` never reads `appAccountToken`) and never
-  ages out (cert validity is checked at `signedDate`). A user reads their own
-  `raw_jws` — `authenticated` holds SELECT on that column — buys once, spends,
-  taps the Apple-mandated Delete Account, signs in again, and resubmits. It
-  re-verifies against Apple perfectly. `signup_grants` exists *precisely* because
-  deletion is a farming vector; the reasoning was never extended to receipts.
-  **Fix:** a `transaction_id` tombstone table outside the cascade (mirroring
-  `signup_grants`), written in the same transaction as `wallet_credit`.
-- 🔴 **`iap-verify`'s payment-recovery branch is self-defeating and can eat a
-  real payment.** The rollback sets `granted_credits = 0`; the retry guard only
-  inspects receipts where `granted_credits > 0`. Mutually exclusive. So after a
-  failed credit, StoreKit's redelivery hits 23505, skips the ledger check, and
-  returns `already_credited` — the client calls `finish()` and a purchase of up
-  to $59.99 is retired having granted nothing. The mirror case (worker dies
-  after insert, before credit) yields a permanent 409 loop that nothing retries.
-  The in-code comment asserts the opposite of what the code does.
-- ⚠️ **The referral bonus is not tombstoned.** `redeem_referral` gates only on
-  `profiles.referred_by is not null`, and `profiles` cascades — so delete and
-  re-signup redeems again, +2 per cycle. This file previously described BOTH
-  halves of that bug as fixed; only the +3 signup half was. Verified live:
-  `signup_grants` is not referenced anywhere in `redeem_referral`'s body.
-- ⚠️ **`poll-active-orders` is the only terminal writer with no refund-failure
-  rollback.** `cancel-order`, `check-order` and `create-order` all revert the row
-  to `waiting` so the sweep retries, each with a comment explaining that leaving
-  it terminal makes the charge permanently unrefundable. The expiry sweep — the
-  highest-traffic close path in the product — just logs and `continue`s.
-- ⚠️ **One real user is owed 4 credits.** eSIM order
-  `916b16a0-ce19-4e3e-9cac-08b9958f4c7c`, 2026-07-26, `status='failed'`, no
-  refund row of any kind. Pre-`20260727160000`, when an eSIM refund went through
-  `wallet_credit(p_order=<esim id>)` and died on the FK with the error
-  discarded. The code is fixed; the debt was never paid. It is the only such row.
-- ⚠️ Two `sb.rpc` sites still discard `{ error }`: `check-order/index.ts:41`
-  (`expire_order` — self-heals via the minutely cron) and
-  `iap-verify/index.ts:213` (`apply_referral_reward` — the referrer's 5 credits
-  are silently lost). All 11 other money-moving rpc sites are correct.
+**The governing principle, because it will recur with the next grant:**
+everything user-scoped cascades from `auth.users`, which is correct for user
+data and *wrong for "have we already paid this out?"*. Apple mandates Delete
+Account, so a user can always erase our only record of a grant and present the
+same evidence again. Any new credit grant needs a tombstone **outside that
+cascade** — `signup_grants` was the first, and its reasoning had simply never
+been extended to the other two.
+
+- **IAP replay via account deletion** — `iap_receipts` is ON DELETE CASCADE and
+  unique(`transaction_id`) *on that table* was the only guard, so delete →
+  re-signin → resubmit re-credited the same purchase forever (the JWS
+  re-verifies perfectly; it is genuine, just not new). Now
+  **`public.iap_grants`**, keyed on `transaction_id`, **with no FK to
+  `auth.users`** — a reference there is exactly what would delete the row with
+  the account. Backfilled from all 30 credited production receipts, so purchases
+  made before today are covered too. `grant_count` above 1 records a **replay
+  attempt**, which is the signal that this defence is load-bearing rather than
+  theoretical.
+- **`iap-verify` could eat a real payment.** The rollback set
+  `granted_credits = 0` while the retry guard only checked receipts where
+  `granted_credits > 0` — mutually exclusive, so the exact case it was written
+  for fell through to `already_credited`, the client called `finish()`, and a
+  purchase worth up to $59.99 was retired having granted nothing. Both the fresh
+  and duplicate paths now go through **`credit_iap_purchase()`**, which is
+  idempotent against the tombstone: calling it again *is* both the duplicate
+  check and the recovery. The receipt is inserted at `granted_credits = 0` and
+  only that function sets it, so the column can never claim credits that never
+  landed, and a failed credit rolls the tombstone back with it — leaving the
+  payment recoverable by construction rather than by a TypeScript rollback that
+  contradicted its own guard.
+- **The referral bonus is tombstoned**, on the same `md5(lower(email))` identity
+  as `handle_new_user`, via `signup_grants.referral_redeemed_at`. Fails **open**
+  on a null email, matching the documented policy. (Note `profiles.referred_by`
+  is currently **0 rows** — the referral feature has never once been used.)
+- **`poll-active-orders` reverts the expiry claim** when the refund fails,
+  matching `cancel-order` / `check-order` / `create-order`, and pages — a
+  terminal row is never revisited, so leaving it `expired` made the charge
+  permanently unrefundable, on the highest-traffic close path in the product.
+- **The 4-credit debt is paid.** eSIM order
+  `916b16a0-ce19-4e3e-9cac-08b9958f4c7c` (2026-07-26) was refunded via
+  `wallet_move_esim` and moved `failed` → `refunded`; it was the only such row.
+- **Both discarded `{ error }` sites destructured** — `check-order`'s
+  `expire_order` and `iap-verify`'s `apply_referral_reward`. The latter's
+  `try/catch` caught nothing, because **supabase-js returns errors rather than
+  throwing**, so the referrer's 5 credits were lost with no trace.
+
+Verified behaviourally, not just by deploy: a scripted replay inside a
+rolled-back transaction returns `granted` → balance +7 → `already_granted` →
+balance unchanged, one ledger row, replay attempt counted, and a zero amount
+refused.
 
 - 🔴 **LIVE INCIDENT (2026-07-31): the Meta services have ONE bookable route
   each.** Gating `real_sim_only_sellable = false` to protect build 18 from the
