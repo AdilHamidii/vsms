@@ -59,11 +59,4 @@ struct CountryRank: Codable, Hashable {
         self.vendorPercent = vendorPercent
         self.vendorRank = vendorRank
     }
-
-    /// Always attributed, never bare. "43%" alone reads as the app's own
-    /// measurement; this cannot.
-    var attributedLabel: String {
-        String(format: NSLocalizedString("Provider reports %d%%", comment: "vendor success rate"),
-               Int(vendorPercent.rounded()))
-    }
 }
