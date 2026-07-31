@@ -16,6 +16,14 @@ import { markSuccess, poll, type OrderProvider } from "../_shared/providers.ts";
 // same.
 const MIN_HOLD_SECONDS = 180;
 
+// Grace during which an order that has NOT yet been given a number cannot be
+// cancelled at all — see the unconditional guard below. Sized to create-order's
+// worst-case provider phase (30s buy timeout + operator price lookup + up to
+// two duplicate-number redraws), NOT to user behaviour: no legitimate client
+// can see such an order, because create-order only returns once the number
+// exists.
+const PRE_RESERVATION_GRACE_MS = 90_000;
+
 // `enforce_min_hold` is sent ONLY by clients that know about the rule.
 //
 // It is opt-in for a specific, non-obvious reason. Shipped 1.4's
@@ -68,6 +76,41 @@ Deno.serve(async (req) => {
       return json({
         error: "cancel_too_early",
         retry_after_seconds: Math.max(1, Math.ceil(MIN_HOLD_SECONDS - heldSeconds)),
+      }, { status: 429 });
+    }
+  }
+
+  // A cancel BEFORE the number exists is refused unconditionally — the
+  // enforce_min_hold flag does not gate this one.
+  //
+  // begin_order commits the 'waiting' row and the charge before the provider
+  // loop runs, and RLS makes that row readable over PostgREST immediately. So a
+  // script can create an order, poll /rest/v1/orders until the id appears
+  // (sub-second), and cancel while smspva_id is still null. Three things then
+  // compose against us: the refund lands in full, `late_watch_until` is set to
+  // null because there is no number yet (so the rescue sweep never revisits the
+  // row), and create-order — finishing its reservation moments later — loses
+  // the status claim and calls release() milliseconds after the buy, inside
+  // HeroSMS's ~2-minute EARLY_CANCEL_DENIED window. heroRelease logs that as
+  // "retryable, wholesale forfeited for now" and nothing retries it. Net: the
+  // caller pays nothing and we forfeit $0.10-$7.50 per cycle against a live
+  // provider balance of ~$10.
+  //
+  // Gating this on enforce_min_hold would leave it wide open, since the flag is
+  // client-supplied. Doing it unconditionally is safe for shipped 1.4/1.5:
+  // those builds only ever cancel an order they are already displaying a number
+  // for (both the ✕ and reroll act on a live number, and resumeInFlightOrder
+  // restores only orders that have one), so a legitimate client cannot reach
+  // this branch. The 90s window covers create-order's worst case — a 30s buy
+  // timeout plus an operator-rotation price lookup plus up to two duplicate
+  // redraws — and a genuinely stranded row is still closed and refunded by the
+  // minutely expiry sweep.
+  if (!order.smspva_id) {
+    const ageMs = Date.now() - new Date(order.created_at as string).getTime();
+    if (ageMs < PRE_RESERVATION_GRACE_MS) {
+      return json({
+        error: "cancel_too_early",
+        retry_after_seconds: Math.max(1, Math.ceil((PRE_RESERVATION_GRACE_MS - ageMs) / 1000)),
       }, { status: 429 });
     }
   }

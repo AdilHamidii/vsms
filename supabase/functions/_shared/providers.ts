@@ -255,6 +255,27 @@ export async function reserve(
  */
 function classifySmspvaFault(raw: string): ProviderErrorType | undefined {
   const t = raw.toUpperCase();
+  // FIRST, because these are OUR sentinels, not SMSPVA's vocabulary. smspva.ts
+  // manufactures UPSTREAM_TIMEOUT (fetch threw, or the 10s AbortSignal fired)
+  // and UPSTREAM_NON_JSON itself. Neither matched any regex below, so both fell
+  // through to `undefined` — and the reserve() retry gate reads `undefined` as
+  // "the pinned carrier is dry, retry unpinned" and immediately buys a SECOND
+  // number while SMSPVA has already allocated and billed the first. We never
+  // learn the first one's id, so nothing ever reclaims it: up to $7.50 of
+  // wholesale spent twice, one number held to natural expiry, and no log line.
+  //
+  // Live on the whole SMSPVA catalog, because all 7,757 active SMSPVA routes
+  // carry an operator to pin, and pinStrict is false for every standard order.
+  //
+  // Classifying as TRANSPORT_ERROR fixes three things at once: the retry gate
+  // no longer fires (TRANSPORT_ERROR is neither `undefined` nor OUT_OF_STOCK),
+  // create-order's "possible orphaned paid reservation" console.error — which
+  // is gated on exactly this type and therefore never fired on the SMSPVA path
+  // it was written for — starts working, and the user is told the provider is
+  // unreachable instead of being sent to try another country.
+  if (/UPSTREAM_TIMEOUT|UPSTREAM_NON_JSON|ABORT|ECONNRESET/.test(t)) {
+    return "TRANSPORT_ERROR";
+  }
   if (/BALANCE|FUND|MONEY|DEPOSIT|PAYMENT/.test(t)) return "BALANCE_ERROR";
   if (/APIKEY|API_KEY|AUTH|TOKEN|FORBID|DENIED/.test(t)) return "AUTH_ERROR";
   if (/LIMIT|FREQUENT|TOO_MANY|FLOOD|THROTTL/.test(t)) return "RATE_LIMITED";
