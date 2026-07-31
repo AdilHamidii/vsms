@@ -38,9 +38,32 @@
   // twelve cover 88%, so the valuable part lands in the opening minutes.
   const INTERVAL_SECONDS = 30;
 
-  const INTERVAL_HOURS = 24;      // longer window than the panel's 12h default
-  const SUCCESS_COUNT  = "medium"; // the ">50 successful" filter
-  const STORE_KEY      = "hero_deliverability_v1";
+  // ── Window + threshold ────────────────────────────────────────────────────
+  // The first full run used interval=24 / successCount=medium (the panel's
+  // ">50 successful" filter) and 67 of 147 services came back with an EMPTY
+  // list — not because they deliver badly, but because no country of theirs
+  // saw 50+ successful activations in a 24-hour window. Only 80 services ended
+  // up with any ranking at all.
+  //
+  // So the run now NEGOTIATES the loosest parameters the API will accept
+  // instead of assuming. The ladder is tried once at startup against a
+  // high-volume service; whichever combination first returns rows is then used
+  // for every service. Loosest first, because a longer window and a lower
+  // threshold are exactly what the thin services need.
+  //
+  // Guessing the vocabulary here would be the mistake this codebase keeps
+  // paying for (see the eSIM status literal that was not in the enum). Only
+  // `24`/`medium` is CONFIRMED working — everything above it in this list is a
+  // candidate, and a 4xx simply drops to the next rung.
+  const PARAM_LADDER = [
+    { interval: 168, successCount: "low" },
+    { interval: 168, successCount: "medium" },
+    { interval: 72,  successCount: "low" },
+    { interval: 24,  successCount: "low" },
+    { interval: 24,  successCount: "medium" },   // known-good, always last
+  ];
+  let PARAMS = PARAM_LADDER[PARAM_LADDER.length - 1];
+  const STORE_KEY = "hero_deliverability_v2";
 
   // Every visible service with a HeroSMS code, ordered by OUR order volume so
   // an interrupted run has already covered what matters. Regenerate with:
@@ -70,9 +93,9 @@
   const sqlQuote = (s) => "'" + String(s).replace(/'/g, "''") + "'";
   const pending = () => QUEUE.filter((c) => !results[c]);
 
-  async function pull(code) {
+  async function pull(code, p = PARAMS) {
     const params = new URLSearchParams({
-      service: code, interval: String(INTERVAL_HOURS), successCount: SUCCESS_COUNT,
+      service: code, interval: String(p.interval), successCount: p.successCount,
     });
     // credentials:"include" is the point — it reuses the logged-in session.
     const res = await fetch(`/api/v1/stats/deliverability?${params}`, {
@@ -135,10 +158,35 @@
     },
   };
 
+  /// Find the loosest parameters the API accepts that actually return rows.
+  /// Probed against `fb` (highest volume, so if anything has data it does).
+  /// One extra request per rung, once — not per service.
+  async function negotiateParams() {
+    for (const p of PARAM_LADDER) {
+      try {
+        const r = await pull("fb", p);
+        const n = Array.isArray(r.payload?.data) ? r.payload.data.length : 0;
+        if (n > 0) {
+          PARAMS = p;
+          console.log(`%c[hero] using interval=${p.interval}h successCount=${p.successCount} (fb returned ${n} countries)`,
+                      "color:#279400;font-weight:bold");
+          return;
+        }
+        console.log(`[hero] probe interval=${p.interval} ${p.successCount}: accepted but empty, trying next`);
+      } catch (e) {
+        console.log(`[hero] probe interval=${p.interval} ${p.successCount}: rejected (${e.message}), trying next`);
+      }
+      await new Promise((r) => setTimeout(r, 2000));
+    }
+    console.warn("[hero] no rung returned rows — falling back to the known-good 24h/medium");
+  }
+
   const have = Object.keys(results).length;
   console.log(`%c[hero] ${QUEUE.length} services, ${have} already collected, one per ${INTERVAL_SECONDS}s (~${Math.round((QUEUE.length - have) * INTERVAL_SECONDS / 60)} min).`,
               "color:#279400;font-weight:bold;font-size:14px");
   console.log("[hero] progress saves after each service — closing the tab is safe. HERO.status() / HERO.sql() / HERO.stop()");
-  step();
-  timer = setInterval(step, INTERVAL_SECONDS * 1000);
+  negotiateParams().then(() => {
+    step();
+    timer = setInterval(step, INTERVAL_SECONDS * 1000);
+  });
 })();

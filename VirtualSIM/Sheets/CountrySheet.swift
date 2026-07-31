@@ -68,18 +68,31 @@ struct CountrySheet: View {
             // almost every service — which is Colombia, and its two measured
             // routes read 1 of 3 and 0 of 2. A sort literally labelled "Best
             // success" was leading with the bargain bin.
-            func key(_ c: Country) -> (Int, Int, Int) {
+            // Since 1.7 the provider's reported rate ranks the untested block,
+            // ahead of the country's record and ahead of price. It is specific
+            // to THIS (service, country) pair, where countryRatio is that
+            // country's record across every service — so it is the better
+            // signal wherever we have it, and it is the reason this sort now
+            // leads with countries that actually deliver rather than with
+            // whatever happens to be cheapest.
+            //
+            // Our OWN measurement still wins outright (tier 0 / tier 4 below):
+            // a third party's aggregate never outranks orders we placed.
+            // A missing vendor rate scores 0 — neutral, never a penalty, since
+            // the source is a top-10 list and absence carries no information.
+            func key(_ c: Country) -> (Int, Int, Int, Int) {
                 let price = state.cost(for: currentService, country: c) ?? .max
                 let avail = state.cost(for: currentService, country: c) != nil ? 0 : 1
+                let vendor = -Int((state.rank(for: currentService, country: c)?.vendorPercent ?? 0).rounded())
                 guard let ratio = state.deliveryRecord(for: currentService, country: c).ratio else {
                     guard let cr = state.countryRatio(c) else {
-                        return (avail, 2, price)          // nothing known at all
+                        return (avail, 2, vendor, price)          // nothing measured
                     }
-                    return cr > 0 ? (avail, 1, -Int(cr * 100))   // country delivers
-                                  : (avail, 3, price)            // country measured 0
+                    return cr > 0 ? (avail, 1, vendor, -Int(cr * 100))   // country delivers
+                                  : (avail, 3, vendor, price)            // country measured 0
                 }
                 // Percent as a negative so higher delivery sorts first.
-                return ratio > 0 ? (avail, 0, -Int(ratio * 100)) : (avail, 4, price)
+                return ratio > 0 ? (avail, 0, 0, -Int(ratio * 100)) : (avail, 4, 0, price)
             }
             list.sort { key($0) < key($1) }
         }
@@ -133,7 +146,7 @@ struct CountrySheet: View {
         let top = state.topRankedCountries(for: currentService)
         if !top.isEmpty {
             VStack(alignment: .leading, spacing: 0) {
-                Text("Provider's best countries")
+                Text("Top success rates")
                     .font(RFont.text(13, weight: .semibold))
                     .foregroundStyle(theme.text)
                 Text("Reported by our supplier across all their customers, last 24h — not our own delivery record. Countries not listed haven't been ranked, which isn't a mark against them.")
