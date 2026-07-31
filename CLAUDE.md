@@ -274,7 +274,30 @@ Runs SMS-Activate's `handler_api` protocol. Base is
   `physicalCount` is the real-SIM signal and the reason we moved.
 - **`getTopCountriesByService`** works and returns 194 rows of
   `{country, price, retail_price, count}` per service. That is stock and price,
-  **not** delivery success.
+  **not** delivery success. It is now marked **Deprecated** in their docs, which
+  point to `GET activations/offers` instead. Its response is an ORDERED map
+  (`{"0":{…},"1":{…}}`), and that ordinal is sorted by neither price nor stock —
+  which makes it look like the dashboard's quality ranking. **It is not.**
+  Decoded for `go` (Google) it reads Indonesia → Colombia → UK → Brazil →
+  Philippines → Turkey → Chile, while the dashboard's own "by quality" sort for
+  the same service reads Finland → Portugal → Colombia → Chile → Spain. It ranks
+  **Indonesia first**, and we have measured google/id at **0 of 4**. Treat the
+  ordering as popularity/volume; using it as a quality signal would steer
+  straight into routes we know deliver nothing.
+- **`/api/v1/activations/offers` WORKS with `Authorization: ApiKey <key>`**
+  (verified 2026-07-31). This contradicts the note below, which concluded the
+  whole `/api/v1/activations` namespace is session-only — that is true of
+  `/api/v1/activations` itself but **not** of this sub-path, so a targeted retry
+  is worth it when a specific endpoint is known. It returns strictly more than
+  `getPrices`: per (service, country) `counts.{total,physical,defaultPrice}`,
+  `prices.{default,retail,min}`, and a price→stock `map`. `prices.min` plus that
+  map is a real margin lever — `sync-herosms` currently buys at the default
+  price when cheaper stock may exist. Not yet wired up.
+- **There IS a rate limit** (`{"title":"RATE_LIMIT"}`), hit after roughly a dozen
+  rapid calls on 2026-07-31. This file previously said there was no per-second
+  limit because 25 rapid calls all returned 200. Note `sync-herosms` makes ~148
+  sequential fetches at `CALL_SPACING_MS = 150` and shares the key with the
+  minutely poller — do not probe casually against the production key.
 
 **The per-(service, country) SUCCESS RATES in HeroSMS's dashboard are NOT
 available by API — do not go looking again.** Searched exhaustively 2026-07-30:
@@ -283,10 +306,30 @@ available by API — do not go looking again.** Searched exhaustively 2026-07-30
 page (a pure client-side loader with no SSR content); Nuxt `_payload.json`
 (empty); all 50 JS chunks for any spec reference; 13 conventional OpenAPI paths
 on both the site and their CDN. `/fr/*` is Cloudflare-challenged, so scraping is
-out too. The decisive test: the **same key and `ApiKey` scheme that returns data
-from `/api/v1/emails` is rejected by `/api/v1/activations`** — those are
-dashboard-session endpoints, and the statistics live in that tier. Asking the
-vendor to expose it is the only route.
+out too. The "decisive test" recorded here was that the **same key and `ApiKey`
+scheme that returns data from `/api/v1/emails` is rejected by
+`/api/v1/activations`**, concluding the whole namespace is dashboard-session.
+**That inference was too broad** — `/api/v1/activations/offers` authenticates
+fine with `ApiKey` (see above). The bare collection path is session-only; its
+sub-paths are not. So the negative result is "these ~45 specific paths do not
+exist", not "the namespace is closed".
+
+Re-probed 2026-07-31 with five more targeted paths now that `offers` was known
+to work — `activations/{statistics,top-countries,ranking}`,
+`statistics/activations`, `activations/offers/statistics` — all
+`ROUTE_NOT_FOUND`. **Stop guessing; the path is not discoverable by enumeration.**
+
+**The one cheap way in that has NOT been tried: open the dashboard's Statistics
+panel with DevTools on Network/XHR and press its "Request" button.** That panel
+already computes exactly what we want (filters: service, ranking, minimum
+successful activations, interval; output: per-country % of successful
+activations). Reading the request it fires answers both questions at once — the
+real path, and whether it takes `ApiKey` or a login-scoped bearer/cookie. If it
+takes `ApiKey`, no vendor cooperation is needed at all.
+
+Asked the vendor directly 2026-07-31 (Jivo chat, ticket `5207504-97969`).
+Response was *"I will forward your request"* — acknowledged, no commitment and
+no timeline. Do not block anything on it.
 
 And if it ever IS exposed: it would be **steering input, never a badge**. It is
 their aggregate across all customers, not our delivery — the same class of number
