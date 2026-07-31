@@ -85,8 +85,32 @@
     "qj", "bo", "ama", "mb", "zh",
   ])];
 
-  const load = () => { try { return JSON.parse(localStorage.getItem(STORE_KEY)) || {}; } catch { return {}; } };
-  const save = (d) => { try { localStorage.setItem(STORE_KEY, JSON.stringify(d)); } catch (e) { console.warn("[hero] localStorage full:", e.message); } };
+  // Saved progress EXPIRES. Intended cadence is a full re-run about weekly, and
+  // without this the second run would find last week's results still in
+  // localStorage, mark all 147 services "already collected", and exit having
+  // fetched nothing — looking exactly like a successful run. Anything older
+  // than the refresh interval is dropped so a re-paste starts clean.
+  const STALE_AFTER_DAYS = 6;
+  const load = () => {
+    try {
+      const raw = JSON.parse(localStorage.getItem(STORE_KEY));
+      if (!raw || !raw.startedAt) return {};
+      const ageDays = (Date.now() - raw.startedAt) / 86400000;
+      if (ageDays > STALE_AFTER_DAYS) {
+        console.log(`[hero] previous run is ${ageDays.toFixed(1)} days old — starting fresh`);
+        return {};
+      }
+      return raw.results || {};
+    } catch { return {}; }
+  };
+  const save = (d) => {
+    try {
+      const prev = JSON.parse(localStorage.getItem(STORE_KEY) || "null");
+      localStorage.setItem(STORE_KEY, JSON.stringify({
+        startedAt: (prev && prev.startedAt) || Date.now(), results: d,
+      }));
+    } catch (e) { console.warn("[hero] localStorage full:", e.message); }
+  };
 
   let results = load();
   let timer = null, shownShape = false;
@@ -149,12 +173,22 @@
       console.log(`[hero] ${have}/${QUEUE.length} collected, ~${mins} min remaining at ${INTERVAL_SECONDS}s spacing`);
       return { collected: have, total: QUEUE.length, remaining: pending() };
     },
-    /** Merge SQL for everything collected so far. Safe to run repeatedly. */
+    /** Merge SQL for everything collected so far. Safe to run repeatedly.
+     *
+     *  ALWAYS ends with refresh_service_country_ranks(). merge_… only stores
+     *  the raw payload; service_country_ranks is the projection the APP reads,
+     *  and it is rebuilt only by that call. Without it you would load a fresh
+     *  week of data, see every merge return ok, and the app would keep serving
+     *  last week's ranking — a silent no-op with a success message, which is
+     *  the failure mode this codebase keeps paying for. */
     sql() {
-      return Object.entries(results).map(([code, r]) =>
+      const merges = Object.entries(results).map(([code, r]) =>
         `select public.merge_vendor_deliverability(${sqlQuote(code)}, ` +
         `${sqlQuote(JSON.stringify(r.params))}::jsonb, ` +
-        `${sqlQuote(JSON.stringify(r.payload))}::jsonb);`).join("\n");
+        `${sqlQuote(JSON.stringify(r.payload))}::jsonb);`);
+      merges.push("", "-- Rebuild the projection the app reads. Required, not optional.",
+                  "select public.refresh_service_country_ranks();");
+      return merges.join("\n");
     },
   };
 

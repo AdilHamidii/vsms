@@ -347,6 +347,34 @@ Asked the vendor 2026-07-31 (Jivo chat, ticket `5207504-97969`) before the path
 was known. Response: *"I will forward your request"* — acknowledged, no
 commitment, no timeline. **Do not block anything on it.**
 
+**Until they answer, the data is collected BY HAND, roughly weekly.** The loop,
+in full, because half of it is easy to forget:
+
+1. Log in to hero-sms.com, open the Statistics page, DevTools → Console, paste
+   `scripts/collect-herosms-deliverability.js`. ~74 min for 147 services at
+   30s spacing. It negotiates the loosest interval/threshold the API accepts,
+   saves after every service, and resumes if the tab closes.
+2. `copy(HERO.sql())` → run against the DB.
+
+**Step 2's SQL ends with `refresh_service_country_ranks()` and that call is
+mandatory.** `merge_vendor_deliverability` only stores the RAW payload;
+`service_country_ranks` is the projection the app actually reads and is rebuilt
+only by that function. Skip it and you load a fresh week of data, watch every
+merge return `ok`, and the app keeps serving last week's ranking — a silent
+no-op wearing a success message. `HERO.sql()` appends it for exactly that reason.
+
+Saved progress **expires after 6 days**, so a weekly re-paste starts clean.
+Without that the second run would find the previous results in localStorage,
+mark all 147 services already-collected, fetch nothing, and look like it worked.
+
+**"Top 10" is a CAP, not a quota.** Measured on the first full run
+(24h / `successCount=medium`), only **22 of 147** services returned ten
+countries; **69 returned none** and 32 returned one or two. leboncoin returned 2
+against 33 active routes — not because 31 routes are bad, but because only two
+countries saw 50+ successful leboncoin activations in a day. This is why
+absence must stay neutral everywhere it is consumed. A longer window and a lower
+threshold are what fill the thin services in, which is what the ladder probes.
+
 Replaying the dashboard's session cookie from an edge function would work
 technically and is a bad idea: it expires, it carries XSRF, it would fail
 silently, and it is the kind of thing that gets an account closed. If a manual
