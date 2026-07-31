@@ -1,9 +1,16 @@
 // Sync HeroSMS wholesale cost + real-SIM stock onto the routes it serves, and
 // make availability honest.
 //
-// WHAT THIS DELIBERATELY DOES NOT DO: touch `retail_credits`. Repricing is a
-// separate, owner-gated decision. This function exists to stop us SELLING WHAT
-// WE CANNOT DELIVER, which is a correctness bug, not a pricing one.
+// AS OF 2026-07-31 THIS FUNCTION ALSO SETS `retail_credits`, at a HeroSMS-only
+// divisor of 0.025 (12x). It is therefore a retail-setting sync and carries the
+// ratchet, like sync-prices and sync-esim-plans. sync-prices still skips
+// non-SMSPVA rows, so the two never write the same route's price.
+//
+// Until that change every HeroSMS route was SOLD at the price SMSPVA's
+// wholesale implied while being BOUGHT at HeroSMS's — a mean realised margin of
+// 97x, a median retail of 15 credits against a policy price of 6, and the
+// single biggest reason a new user with the 3-credit signup grant could reach
+// only 506 of 12,564 active routes.
 //
 // The bug: after the 2026-07-30 cutover, HeroSMS routes still carry SMSPVA's
 // frozen `last_cost_cents` (sync-prices skips non-SMSPVA rows by design). For
@@ -19,9 +26,51 @@ import { handleCors, json } from "../_shared/cors.ts";
 import { admin } from "../_shared/supabaseAdmin.ts";
 import { getPricesForService, type HeroPrice, getNumbersStatus, getOperators } from "../_shared/herosms.ts";
 
-/** Same ceiling as sync-prices: above this the route is not worth selling at
- *  any credit price we offer. Kept in lockstep with MAX_WHOLESALE_CENTS there. */
-const MAX_WHOLESALE_CENTS = 750;
+// ── Pricing (added 2026-07-31; this function now SETS retail) ───────────────
+//
+// HeroSMS is priced at 12×, SMSPVA stays at 6×. That asymmetry is deliberate
+// and was measured, not assumed. Applying 0.025 globally — the original plan —
+// also doubles every SMSPVA route: SMSPVA is 7,757 of the 12,564 active routes
+// and currently the BETTER-delivering provider (34% vs HeroSMS 21% on orders
+// that got a number), and doubling it takes its 3-credit reach from 729 routes
+// to 16. That is the same shape as the 2026-07-25 divisor change, which cut
+// 1-credit reach from 971 routes to 24 and produced a 24h funnel of 11 signups
+// → 2 orders → 0 codes → 0 purchases. Modelled over the live catalog:
+//
+//   option                        reach @3cr   routes in the 2-8cr band
+//   hero 12x / smspva 6x  (this)   1,235→2,259    3,692→4,999
+//   uniform 12x                    1,235→1,546    3,692→3,848
+//   status quo                         1,235          3,692
+//
+// (2-8cr is where measured delivery is 46-59%; 9+cr is 19%, 1cr is 18%.)
+//
+// LOCKSTEP, and it is the whole ballgame: create-order's ceiling is
+// `credits * NET_USD_PER_CREDIT / MIN_MARGIN`, which must equal this divisor
+// EXACTLY. 0.30/12 = 0.025. create-order therefore resolves MIN_MARGIN per
+// provider — see marginFor() there. Change one without the other and you either
+// refuse honest routes at checkout (ceiling too low) or leak margin.
+const CREDIT_DIVISOR = 0.025;
+const MIN_CREDITS = 1;
+const MAX_CREDITS = 999;
+
+/** Weight on the new quote when the cost FALLS. Matches sync-prices. */
+const SMOOTH_ALPHA = 0.5;
+
+/** Price ceiling, on the same rule as sync-prices — "hide only what a user
+ *  literally cannot buy" — but recomputed for THIS divisor: the largest credit
+ *  pack is 150, and 150 × $0.025 = $3.75. At 750 (sync-prices' value, which is
+ *  150 × $0.05) a HeroSMS route would price at up to 300 credits, which no
+ *  combination of packs can afford, so listing it could only ever dead-end.
+ *  Hides 8 routes beyond the old value. */
+const MAX_WHOLESALE_CENTS = 375;
+
+/** cents → credits at the HeroSMS divisor. Mirrors sync-prices' priceToCredits
+ *  exactly, including the clamps, so the two providers round identically. */
+function priceToCredits(priceUsd: number): number {
+  if (!Number.isFinite(priceUsd) || priceUsd <= 0) return MIN_CREDITS;
+  const raw = Math.ceil(priceUsd / CREDIT_DIVISOR);
+  return Math.max(MIN_CREDITS, Math.min(MAX_CREDITS, raw));
+}
 
 /** Pace between provider calls. There is NO documented per-second limit (25/25
  *  rapid calls returned 200 on 2026-07-30), but the account has a
@@ -54,7 +103,11 @@ Deno.serve(async (req) => {
   // Destructure EVERY read error. A silently-empty routes list here would make
   // the stale-guard below hide the entire HeroSMS catalog.
   const { data: routes, error: rtErr } = await sb
-    .from("routes").select("service_id, country_id, status, retail_credits, herosms_real_operator, herosms_real_count")
+    // Keep this a single string LITERAL — supabase-js parses it with template
+    // literal types, so splitting it across a `+` concatenation collapses the
+    // row type to GenericStringError and every field access below fails to
+    // type-check.
+    .from("routes").select("service_id, country_id, status, retail_credits, herosms_real_operator, herosms_real_count, herosms_smoothed_cost_cents")
     .eq("provider", "herosms");
   if (rtErr) return json({ error: "routes_read_failed", detail: rtErr.message }, { status: 500 });
   if (!routes?.length) return json({ error: "no_herosms_routes" }, { status: 500 });
@@ -203,10 +256,11 @@ Deno.serve(async (req) => {
     herosms_total_count: number | null; herosms_checked_at: string; status: string;
     herosms_real_operator: string | null; herosms_real_count: number | null;
     premium_credits: number | null; real_sim_only: boolean;
+    herosms_smoothed_cost_cents: number | null; retail_credits: number | null;
   };
   const updates: Row[] = [];
   let unfulfillable = 0, tooExpensive = 0, blockedCount = 0, sellable = 0, physical = 0;
-  let voipOnly = 0, realOnly = 0, withRealTier = 0, realOnlyGated = 0;
+  let voipOnly = 0, realOnly = 0, withRealTier = 0, realOnlyGated = 0, repriced = 0;
 
   for (const r of routes) {
     const key = `${r.service_id}|${r.country_id}`;
@@ -254,10 +308,42 @@ Deno.serve(async (req) => {
       status = "hidden"; realOnlyGated++;
     }
 
+    // ── Price it ───────────────────────────────────────────────────────────
+    // Until 2026-07-31 this function deliberately left `retail_credits` alone,
+    // so every HeroSMS route still carried the price SMSPVA's wholesale implied
+    // while being BOUGHT at HeroSMS's. Measured across 4,807 active routes that
+    // was a mean realised margin of 97× and a median retail of 15 credits for
+    // inventory whose policy price is 6 — which is the single biggest reason a
+    // new user with the 3-credit grant could reach only 506 routes.
+    //
+    // RATCHET, not a symmetric EWMA: a RISE applies immediately and only FALLS
+    // are damped. Averaging a rise against yesterday's cheaper price sets retail
+    // below what we are about to pay — that shipped once on sync-prices and put
+    // 4,384 routes under wholesale in one run.
+    const prevSmoothed = r.herosms_smoothed_cost_cents as number | null;
+    const rawCents = hit ? Math.round(hit.cost * 100) : null;
+    const smoothedCents = rawCents == null
+      ? prevSmoothed
+      : prevSmoothed == null || rawCents > prevSmoothed
+        ? rawCents
+        : Math.round(SMOOTH_ALPHA * rawCents + (1 - SMOOTH_ALPHA) * prevSmoothed);
+
+    // Keep the existing price when this run could not quote the route: a
+    // transient fetch failure must never reprice the catalog to a guess. Routes
+    // whose code failed were already `continue`d above; this covers a code that
+    // fetched fine but returned no row for this country.
+    const retail = smoothedCents != null
+      ? priceToCredits(smoothedCents / 100)
+      : (r.retail_credits as number | null);
+    if (smoothedCents != null && retail !== (r.retail_credits as number | null)) repriced++;
+
     // +20% uplift, floored at the standard price so the tier can never be the
     // cheaper of the two. Null when there is no carrier to pin: `create-order`
     // and the checkout chips both key off this being non-null.
-    const retail = r.retail_credits as number | null;
+    //
+    // Derived from the retail computed just above, NOT from the stored one —
+    // otherwise a repriced route would keep a premium price anchored to the old
+    // standard, and the "+20%" chip would read as 3x on screen.
     const premium = realOp != null && retail != null
       ? Math.max(retail, Math.ceil(retail * 1.2))
       : null;
@@ -275,6 +361,8 @@ Deno.serve(async (req) => {
       herosms_real_count: realN,
       premium_credits: premium,
       real_sim_only: realOnlyHere,
+      herosms_smoothed_cost_cents: smoothedCents,
+      retail_credits: retail,
     });
   }
 
@@ -323,6 +411,11 @@ Deno.serve(async (req) => {
     hidden_real_sim_only_gated: realOnlyGated,
     real_sim_only_sellable: realSimOnlySellable,
     routes_with_real_tier: withRealTier,
+    // Routes whose retail_credits CHANGED this run. Expect a large first number
+    // (the whole HeroSMS catalog moving off SMSPVA-derived prices) and near-zero
+    // afterwards — a persistently high count means the ratchet is oscillating.
+    repriced,
+    credit_divisor: CREDIT_DIVISOR,
     operator_probes: operatorProbes,
     countries_probed: slice.map((c) => c.id),
     cursor_next: nextCursor,

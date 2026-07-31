@@ -530,18 +530,53 @@ A plain `0.5*new + 0.5*prev` averages a rise against yesterday's cheaper price a
 
 **eSIM** plans (`sync-esim-plans`) are priced **separately** at 4× wholesale (raised 3× → 4× on 2026-07-25) — `ESIM_MARGIN = 4`, `CREDIT_VALUE_USD = 0.48`, `retail_credits = ceil(usd * 4 / 0.48)` — NOT via `CREDIT_DIVISOR`, so the two product lines never collide. Inverted, the order-time ceiling in `create-esim-order` is `credits * 0.12`: SMSPool's `/esim/purchase` accepts no price cap and its response reports **no cost at all**, so the function takes a fresh `/esim/plans` quote, blocks above the ceiling, and writes that real number into `actual_cost_cents`. It fails **closed** on a bad price and **open** on a failed lookup — an unreachable SMSPool must not make eSIMs unbuyable. (Before this, `actual_cost_cents` echoed the cached catalog price, so margin analysis over it was circular and could never reveal drift.)
 
-**HeroSMS routes are NOT repriced yet, and that is deliberate.** `sync-prices`
-skips non-SMSPVA rows by design, so every HeroSMS route still carries the retail
-price derived from **SMSPVA's** wholesale while being *bought* at HeroSMS's,
-which is far cheaper. Realised margin on the first HeroSMS order was **12.0×**
-(4 credits = $1.20 net against **$0.10** wholesale) even though `MIN_MARGIN` is
-still **6.0**. The agreed repricing — `CREDIT_DIVISOR` 0.05 → **0.025** with
-`MIN_MARGIN` 6.0 → **12.0** in lockstep — is **owner-deferred, not forgotten**.
-Until it lands, do not read 12× as a guarantee: the enforced ceiling is
-`credits × $0.30 / 6.0 + $0.10`, so a 4-credit order may legitimately clear at
-**4×**. When you do change the divisor, re-read the two warnings above it —
-`premium_credits` needs an immediate backfill, and every FIXED credit grant
-silently buys half as much.
+**The divisor is PER PROVIDER as of 2026-07-31 — HeroSMS 0.025 (12×), SMSPVA
+0.05 (6×) — and `sync-herosms` now sets `retail_credits`.**
+
+| provider | priced by | divisor | `MIN_MARGIN` | `0.30 / MARGIN` |
+|---|---|---|---|---|
+| herosms | `sync-herosms` | **0.025** | **12.0** | 0.025 ✓ |
+| smspva | `sync-prices` | 0.05 | 6.0 | 0.05 ✓ |
+
+`create-order` resolves it via `marginFor(route.provider)`
+(`MIN_MARGIN_BY_PROVIDER`), falling back to the **strictest** value so an
+unknown provider under-spends rather than overpaying on a route nobody priced.
+The lockstep rule is unchanged and absolute: the order-time ceiling
+`credits × NET / MIN_MARGIN` must equal the divisor the route was priced with,
+exactly.
+
+*Why not the uniform 0.025 originally agreed.* It was modelled against the live
+catalog first, and it doubles **SMSPVA** too — 7,757 of 12,564 active routes,
+and the better-delivering provider (34% vs HeroSMS 21% on orders that got a
+number). Its 3-credit reach would have gone **729 → 16 routes**, the same shape
+as the 2026-07-25 divisor change that cut 1-credit reach from 971 to 24 and
+produced a 24h funnel of 11 signups → 2 orders → 0 codes → 0 purchases:
+
+| option | reach @3 cr | routes in the 2–8 cr band |
+|---|---|---|
+| hero 12× / smspva 6× (**shipped**) | 1,235 → **2,267** | 3,692 → **5,037** |
+| uniform 12× | 1,235 → 1,546 | 3,692 → 3,848 |
+| status quo | 1,235 | 3,692 |
+
+(2–8 cr is where measured delivery is 46–59%; 9+ cr is 19%, 1 cr is 18%.)
+
+Measured after the run: HeroSMS median retail **15 → 6 credits**, mean realised
+margin **97× → 14×**, SMSPVA untouched at a median of 17. Asserted zero rows for
+each of: priced below wholesale, `premium_credits < retail_credits`, and
+order-time ceiling below the route's own cost.
+
+Two hazards this file warns about did **not** apply, because SMSPVA's divisor
+never moved — but re-read them before touching it: `sync-smspva-operators` still
+uses 0.05, so `premium_credits` needed **no backfill**, and every FIXED grant now
+buys *more*, not less (1 cr reaches 461 routes, up from 24; the 3-credit signup
+grant reaches **2,267 routes across 225 of 265 services**).
+
+**`sync-herosms` is now a retail-setting sync and carries the RATCHET**, into its
+own `herosms_smoothed_cost_cents` column. `herosms_cost_cents` stays **raw**,
+because that is what the order-time margin gate reads and smoothing it would
+only hide drift. Its `MAX_WHOLESALE_CENTS` is **375**, not sync-prices' 750 —
+same "hide only what a user literally cannot buy" rule, recomputed for this
+divisor (150 credits × $0.025).
 
 ### Why `sync-herosms` exists (hourly :37)
 

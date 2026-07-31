@@ -18,16 +18,44 @@ interface Body {
 // MIN_MARGIN× that cost. Runs per candidate provider so we never lose money on
 // a price spike, and we skip a provider (falling back) rather than overpay.
 //
-// NET_USD_PER_CREDIT: conservative net revenue per credit — the largest pack
-// (30 cr / $12.99 ≈ $0.433) after Apple's cut. With the 6× retail model
-// (credits = ceil(cost/0.05)) this clears comfortably.
-// 6× floor: the credits charged must be worth at least 6× the wholesale cost,
-// valued at the most conservative pack. This makes the order-time ceiling
-// (credits * NET / MIN_MARGIN = credits * $0.05) exactly the sync formula's
-// implied cost line (credits = ceil(cost / 0.05)) — honestly-priced routes
-// always clear, anything pricier than what we charged is capped or refused.
-// Raising one without the other either blocks honest routes or leaks margin.
-const MIN_MARGIN = 6.0;
+// NET_USD_PER_CREDIT: conservative net revenue per credit — the 30-credit pack
+// ($12.99 ≈ $0.433) after Apple's cut, which is the least favourable rung of the
+// live ladder. Deliberately pessimistic: valuing a credit high here would let a
+// route clear the margin gate on revenue we might not actually collect.
+//
+// The floor itself is the credits charged being worth at least MARGIN× the
+// wholesale cost. That makes the order-time ceiling exactly the pricing sync's
+// implied cost line, so honestly-priced routes always clear and anything
+// pricier than what we charged is capped or refused. Moving one without the
+// other either blocks honest routes or leaks margin.
+// PER-PROVIDER since 2026-07-31. The ceiling below is `credits * NET / MARGIN`
+// and MUST equal the divisor the route was PRICED with, exactly:
+//
+//   provider   priced by            divisor    MIN_MARGIN   0.30 / MARGIN
+//   herosms    sync-herosms           0.025        12.0         0.025  ✓
+//   smspva     sync-prices            0.05          6.0         0.05   ✓
+//
+// A single global constant cannot express this any more, and getting it wrong
+// is silent in the worst direction: too low and every honestly-priced route is
+// refused with margin_too_low — charged and instantly refunded — until the next
+// sync repriced it, which is exactly what produced 11 of 22 orders in 24h
+// closing in under a second with no number on 2026-07-27.
+//
+// Why the two differ at all: HeroSMS wholesale is far cheaper, so at a shared
+// 0.05 its routes would price into the 1-credit band, which measures 18%
+// delivery against 46-59% for 2-8 credits. Applying 0.025 to BOTH instead would
+// double SMSPVA — 60% of the catalog, and the better-delivering provider — and
+// take its 3-credit reach from 729 routes to 16. See the block in sync-herosms.
+const MIN_MARGIN_BY_PROVIDER: Record<string, number> = {
+  herosms: 12.0,
+  smspva: 6.0,
+};
+/** Falls back to the strictest value we use, never to the loosest: an unknown
+ *  provider must under-spend rather than overpay on a route nobody priced. */
+const MIN_MARGIN_FALLBACK = 12.0;
+const marginFor = (provider: string | null | undefined): number =>
+  MIN_MARGIN_BY_PROVIDER[provider ?? ""] ?? MIN_MARGIN_FALLBACK;
+
 const NET_USD_PER_CREDIT = 0.30;
 
 // Absolute slack added to the order-time ceiling so a trivial provider price
@@ -343,7 +371,13 @@ Deno.serve(async (req) => {
   // produced 11 of 22 orders in 24h closing in <1s with no number, and it also
   // fed the auto-hide (see 20260727120000) which removed TikTok/Netherlands
   // from the catalog on 8 orders that never got a number.
-  const maxCostUsd = (cost * NET_USD_PER_CREDIT) / MIN_MARGIN + CEILING_HEADROOM_USD;
+  //
+  // Resolved from the route's OWN provider, because the two are priced at
+  // different divisors — see MIN_MARGIN_BY_PROVIDER. `route.provider` is the
+  // right source: providerOrder() returns exactly one provider per service and
+  // there is no cross-provider fallback, so the row we priced is the row we buy.
+  const minMargin = marginFor(route.provider as string | null);
+  const maxCostUsd = (cost * NET_USD_PER_CREDIT) / minMargin + CEILING_HEADROOM_USD;
 
   // ── Real-SIM carrier ─────────────────────────────────────────────────────
   //
