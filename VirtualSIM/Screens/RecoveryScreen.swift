@@ -17,6 +17,17 @@ struct RecoveryScreen: View {
         state.bestMeasuredCountry(for: context.service)
     }
 
+    /// Fallback when we have measured nothing for this service — which is the
+    /// common case, since route-level evidence covers a handful of routes.
+    /// Only consulted when `suggestion` is nil: our own delivery always wins
+    /// over a third party's, because it describes orders we actually placed.
+    ///
+    /// Never offers the country that just failed.
+    private var rankedSuggestion: (country: Country, rank: CountryRank, price: Int)? {
+        guard suggestion == nil else { return nil }
+        return state.bestRankedCountry(for: context.service, excluding: context.failedCountry)
+    }
+
     private var headline: String {
         switch context.reason {
         case .expired:  String(localized: "No code arrived")
@@ -104,14 +115,44 @@ struct RecoveryScreen: View {
                     .padding(.horizontal, 20)
                 }
 
+                // Deliberately styled apart from the measured chip above: that
+                // one states what OUR orders did, this one relays what the
+                // provider reports across all of their customers. Same screen,
+                // two different kinds of claim, so the wording attributes it
+                // every time and the colour does not borrow `theme.live`, which
+                // means "measured success" everywhere else in the app.
+                if let ranked = rankedSuggestion {
+                    HStack(spacing: 8) {
+                        FlagCircle(country: ranked.country, size: 24)
+                        Text("Our provider ranks \(ranked.country.name) highest for \(context.service.name) — they report \(Int(ranked.rank.vendorPercent.rounded()))% there in the last 24h. We haven't tested it ourselves yet.")
+                            .font(RFont.text(13, weight: .medium))
+                            .foregroundStyle(theme.text)
+                            .multilineTextAlignment(.leading)
+                    }
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 12)
+                    .background(theme.chipBg, in: .rect(cornerRadius: 14))
+                    .padding(.top, 18)
+                    .padding(.horizontal, 20)
+                }
+
                 PrimaryButton(
                     label: suggestion.map { String(localized: "Try \($0.country.name)") }
+                        ?? rankedSuggestion.map { String(localized: "Try \($0.country.name)") }
                         ?? String(localized: "Try again"),
                     sub: suggestion.flatMap { state.cost(for: context.service, country: $0.country) }
                         .map { "\($0) cr" }
+                        ?? rankedSuggestion.map { "\($0.price) cr" }
                         ?? String(localized: "Fresh number"),
                     icon: RIcon.refresh
                 ) {
+                    // Move the selection to the ranked country before retrying;
+                    // otherwise the button would name one country and reorder
+                    // the one that just failed. `retryFromRecovery` already
+                    // handles the measured case internally.
+                    if suggestion == nil, let ranked = rankedSuggestion {
+                        state.lastCountry = ranked.country
+                    }
                     state.retryFromRecovery()
                 }
                 .padding(.top, 22)

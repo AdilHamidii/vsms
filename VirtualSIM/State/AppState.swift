@@ -95,6 +95,20 @@ final class AppState {
     /// don't linear-scan 17k+ rows on every cost() call.
     @ObservationIgnored
     private var routeIndex: [String: Route] = [:]
+
+    /// The provider's own top-10 success rates per service. NOT our delivery —
+    /// see `CountryRank`. Steering input and an attributed display; never a badge.
+    var countryRanks: [CountryRank] = []
+    /// `"serviceId|countryId"` -> rank, for O(1) lookup during steering.
+    @ObservationIgnored
+    private var rankIndex: [String: CountryRank] = [:]
+    /// `serviceId` -> that service's ranks, best first, for the "Top countries"
+    /// list. Derived ONCE here rather than filtered per body evaluation:
+    /// `AppState` is `@Observable`, so a computed property that filters 390 rows
+    /// re-runs on every redraw of every view that reads it — the same trap that
+    /// made the eSIM map rebuild all 66 annotations per frame.
+    @ObservationIgnored
+    private(set) var ranksByService: [String: [CountryRank]] = [:]
     /// Guards one-time first-run selection seeding (see applyStartupSelection).
     @ObservationIgnored
     private var didSeedStartupSelection = false
@@ -504,6 +518,14 @@ final class AppState {
         }
         step()
 
+        // Must precede applyStartupSelection below, which is what picks the
+        // country a first-run user lands on — the single decision this data
+        // exists to improve. ~390 rows / ~25 KB against the catalog's 3.5 MB,
+        // so this is one more round-trip's latency, not payload, on a chain
+        // that already has six. It swallows its own failure, so a slow or dead
+        // response costs the ranking and nothing else.
+        await loadCountryRanks(using: CatalogAPI(client: api))
+
         await refreshWallet(using: WalletAPI(client: api));   step()
         await refreshProfile(using: ProfileAPI(client: api)); step()
         await loadOrders(using: OrdersAPI(client: api));      step()
@@ -654,6 +676,87 @@ final class AppState {
                          : (2, 0, price)                    // country measured 0
     }
 
+    /// As `untestedKey`, but with the PROVIDER's ranking inserted ahead of
+    /// price. Used wherever we are choosing between routes we have never sold.
+    ///
+    /// Ordering is (country tier, vendor score, country score, price). Vendor
+    /// data outranks price and outranks a country-level record, because it is
+    /// specific to THIS (service, country) pair while `countryRatio` is that
+    /// country's record across every service.
+    ///
+    /// Measured 2026-07-31, and this is the whole reason it exists: for
+    /// `google` the cheapest bookable route was Kenya at 1 credit, which has
+    /// delivered 0 of 9. Cameroon costs 2 credits and the provider reports
+    /// 59.3%. Price picked Kenya every time.
+    ///
+    /// A missing rank scores 0 — NEUTRAL, never a penalty. The source is a
+    /// top-10 list gated at 50+ activations, so absence carries no information
+    /// and must not push a route below one that merely happens to be listed.
+    private func rankedUntestedKey(_ service: Service, _ country: Country, price: Int) -> (Int, Int, Int, Int) {
+        let vendor = -Int((rank(for: service, country: country)?.vendorPercent ?? 0).rounded())
+        let base = untestedKey(country, price: price)
+        return (base.0, vendor, base.1, price)
+    }
+
+    /// The provider's rate for one pair, or nil when it is not in their top 10.
+    func rank(for service: Service, country: Country) -> CountryRank? {
+        rankIndex["\(service.id)|\(country.id)"]
+    }
+
+    /// Best provider-ranked country for a RETRY: highest reported rate,
+    /// bookable, affordable on the current balance, and never the country that
+    /// just failed.
+    ///
+    /// Used only when we have no measurement of our own — our evidence always
+    /// wins, because it describes orders we actually placed. Excluding
+    /// `failedCountry` is the point: a retry that hands back the same pool the
+    /// user just lost an order on is the dead end this whole screen exists to
+    /// replace, and the backend's fresh-number guarantee only changes the
+    /// number, not the country.
+    func bestRankedCountry(for service: Service,
+                           excluding failed: Country?) -> (country: Country, rank: CountryRank, price: Int)? {
+        topRankedCountries(for: service)
+            .filter { $0.country.id != failed?.id && $0.price <= balance }
+            .max { a, b in a.rank.vendorPercent < b.rank.vendorPercent }
+            .map { (country: $0.country, rank: $0.rank, price: $0.price) }
+    }
+
+    /// A service's ranked countries, best first, restricted to ones we can
+    /// actually sell. A row the user cannot buy is worse than no row — it
+    /// advertises inventory and then dead-ends.
+    func topRankedCountries(for service: Service) -> [(rank: CountryRank, country: Country, price: Int)] {
+        (ranksByService[service.id] ?? []).compactMap { r in
+            guard let c = countries.first(where: { $0.id == r.countryId }),
+                  let p = cost(for: service, country: c) else { return nil }
+            return (r, c, p)
+        }
+    }
+
+    /// Fetch the provider's rankings. SWALLOWS its own failure on purpose: this
+    /// is a steering enhancement, and Home, checkout and every price render
+    /// correctly without it. Letting it fail the launch chain would trade a
+    /// working app for a nicer sort.
+    @MainActor
+    func loadCountryRanks(using api: CatalogAPI) async {
+        guard let fetched = try? await api.fetchCountryRanks() else { return }
+        countryRanks = fetched
+        var idx: [String: CountryRank] = [:]
+        idx.reserveCapacity(fetched.count)
+        var byService: [String: [CountryRank]] = [:]
+        for r in fetched {
+            idx["\(r.serviceId)|\(r.countryId)"] = r
+            byService[r.serviceId, default: []].append(r)
+        }
+        // The server already orders by rank, but sort defensively: the display
+        // promises "best first" and must not depend on a query's ORDER BY
+        // surviving a future edit.
+        for (k, v) in byService {
+            byService[k] = v.sorted { $0.vendorRank < $1.vendorRank }
+        }
+        rankIndex = idx
+        ranksByService = byService
+    }
+
     /// The country to land on when the user picks `service`. Ranks by
     /// evidence, but NEVER silently swaps a working selection:
     ///  1. A country we've measured delivering wins — real steering.
@@ -703,7 +806,8 @@ final class AppState {
         //    Colombia, the cheapest of all 69 countries.
         let untested = bookable.filter { deliveryRecord(for: service, country: $0) == .notTested }
         if let pick = untested.min(by: {
-            untestedKey($0, price: priceOf($0)) < untestedKey($1, price: priceOf($1))
+            rankedUntestedKey(service, $0, price: priceOf($0))
+                < rankedUntestedKey(service, $1, price: priceOf($1))
         }) { return pick }
 
         // 4) Everything left is measured-failing; give back the cheapest.
@@ -869,21 +973,30 @@ final class AppState {
     /// inventory is a pricing question (grant size vs route price), not a
     /// ranking one.
     private func affordableFallbackCountry(for service: Service) -> Country? {
-        var best: (country: Country, key: (Int, Int, Int))?
+        var best: (country: Country, key: (Int, Int, Int, Int))?
         for c in countries {
             guard let price = cost(for: service, country: c), price <= balance else { continue }
-            let key: (Int, Int, Int)
+            let key: (Int, Int, Int, Int)
             if let ratio = deliveryRecord(for: service, country: c).ratio {
                 // Route-level zero is stronger evidence than country-level
                 // zero, so it sorts BELOW an untested route in a bad country.
-                key = ratio > 0 ? (0, -Int(ratio * 100), price)   // proven
-                                : (4, 0, price)                   // proven-bad
+                // Our OWN measurement always outranks the provider's, so the
+                // vendor slot is neutral here — these two branches are decided
+                // by orders we actually placed.
+                key = ratio > 0 ? (0, 0, -Int(ratio * 100), price)   // proven
+                                : (4, 0, 0, price)                   // proven-bad
             } else {
-                // Untested: fall back to the country's own record rather than
-                // to price. Offset by 1 so a route with NO record can never
-                // outrank one we have measured delivering.
-                let k = untestedKey(c, price: price)
-                key = (k.0 + 1, k.1, k.2)
+                // Untested: the provider's ranking first, then the country's
+                // own record, then price. Offset by 1 so a route with NO record
+                // can never outrank one we have measured delivering.
+                //
+                // This is the branch that matters: at the 3-credit grant the
+                // affordable set is almost entirely untested, so before this
+                // existed price decided by default — which is how a new user
+                // reached google/ke (1 cr, 0 of 9) instead of google/cm (2 cr,
+                // provider reports 59.3%).
+                let k = rankedUntestedKey(service, c, price: price)
+                key = (k.0 + 1, k.1, k.2, k.3)
             }
             if best == nil || key < best!.key { best = (c, key) }
         }

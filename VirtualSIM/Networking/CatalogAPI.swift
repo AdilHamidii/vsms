@@ -71,4 +71,26 @@ struct CatalogAPI {
                        countries: try await ctyTask,
                        routes:    try await rtsTask)
     }
+
+    /// The provider's own top-10 success rates per service (~390 rows).
+    ///
+    /// AUTHENTICATED, unlike everything above. `service_country_ranks` grants
+    /// SELECT to `authenticated` only and has no anon policy — this is a
+    /// provider's quality book, and there is no reason to serve it to a caller
+    /// who has not signed in. (Contrast `routes`, which carries a `public read`
+    /// policy and is readable with no account at all.)
+    ///
+    /// Deliberately a SEPARATE call rather than a fourth leg of `fetch()`: it
+    /// is an enhancement, not a prerequisite. Home renders correctly without
+    /// it, so a failure here must not be able to fail the catalog — see
+    /// `AppState.loadCountryRanks`, which swallows.
+    func fetchCountryRanks() async throws -> [CountryRank] {
+        try await client.request(
+            .get, path: "rest/v1/service_country_ranks",
+            query: [URLQueryItem(name: "select",
+                                 value: "service_id,country_id,vendor_percent,vendor_rank"),
+                    URLQueryItem(name: "order", value: "service_id.asc,vendor_rank.asc")],
+            authenticated: true
+        )
+    }
 }

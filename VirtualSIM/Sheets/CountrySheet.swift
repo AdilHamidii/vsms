@@ -91,6 +91,7 @@ struct CountrySheet: View {
             SheetHeader(title: "Choose a country")
             sortRow
             ScrollView {
+                providerTopCountries
                 Card {
                     LazyVStack(spacing: 0) {
                         ForEach(Array(sorted.enumerated()), id: \.element.id) { idx, c in
@@ -111,6 +112,73 @@ struct CountrySheet: View {
             }
         }
         .background(theme.bg)
+    }
+
+    /// The provider's own top countries for this service.
+    ///
+    /// ⚠️ This is NOT the app's delivery record and is never drawn as one. The
+    /// list below keeps rendering `DeliveryRecord` ("Not tested" / "Worked 3 of
+    /// 7 times"), which describes orders WE placed. This section relays what
+    /// our supplier reports across all of their customers — a different claim,
+    /// from a different party, so it is separated, captioned, and worded as
+    /// reported rather than measured. Collapsing the two is precisely what made
+    /// SMSPVA's seeded grade rank never-sold routes as "proven".
+    ///
+    /// The caption also has to say what absence means, because the source is a
+    /// top-10 gated at 50+ activations: a country missing here has NOT been
+    /// judged badly, it simply did not rank or lacked the traffic to score.
+    /// Without that line, a short list reads as "everything else is bad".
+    @ViewBuilder
+    private var providerTopCountries: some View {
+        let top = state.topRankedCountries(for: currentService)
+        if !top.isEmpty {
+            VStack(alignment: .leading, spacing: 0) {
+                Text("Provider's best countries")
+                    .font(RFont.text(13, weight: .semibold))
+                    .foregroundStyle(theme.text)
+                Text("Reported by our supplier across all their customers, last 24h — not our own delivery record. Countries not listed haven't been ranked, which isn't a mark against them.")
+                    .font(RFont.text(11))
+                    .foregroundStyle(theme.text2)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.top, 3)
+
+                Card {
+                    LazyVStack(spacing: 0) {
+                        ForEach(Array(top.enumerated()), id: \.element.country.id) { idx, entry in
+                            Button {
+                                onPick(entry.country)
+                                dismiss()
+                            } label: {
+                                HStack(spacing: 10) {
+                                    FlagCircle(country: entry.country, size: 26)
+                                    Text(entry.country.name)
+                                        .font(RFont.text(14, weight: .medium))
+                                        .foregroundStyle(theme.text)
+                                    Spacer(minLength: 8)
+                                    // "reports" every time. A bare "36%" on this
+                                    // row would read as the app's own number.
+                                    Text("reports \(Int(entry.rank.vendorPercent.rounded()))%")
+                                        .font(RFont.text(12, weight: .medium))
+                                        .foregroundStyle(theme.text2)
+                                    Text("\(entry.price) cr")
+                                        .font(RFont.text(13, weight: .semibold))
+                                        .foregroundStyle(entry.price <= state.balance ? theme.text : theme.text2)
+                                }
+                                .padding(.vertical, 11)
+                                .padding(.horizontal, 14)
+                                .contentShape(.rect)
+                            }
+                            .buttonStyle(.plain)
+                            if idx < top.count - 1 { Divider().opacity(0.35) }
+                        }
+                    }
+                }
+                .padding(.top, 8)
+            }
+            .padding(.horizontal, 16)
+            .padding(.top, 8)
+            .padding(.bottom, 4)
+        }
     }
 
     private var sortRow: some View {
