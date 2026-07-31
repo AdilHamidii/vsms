@@ -16,10 +16,19 @@ struct CreditPack: Identifiable, Hashable {
 
 extension CreditPack {
     // Prices form a strictly improving per-credit ladder so a larger pack always
-    // beats buying a smaller one repeatedly (e.g. 60 for $22.99 vs 2×30 = $25.98;
-    // 150 for $49.99 vs 5×30 = $64.95). "BEST VALUE" sits on the genuinely lowest
+    // beats buying a smaller one repeatedly (60 for $24.99 vs 2×30 = $25.98;
+    // 150 for $59.99 vs 5×30 = $64.95). "BEST VALUE" sits on the genuinely lowest
     // per-credit pack. NOTE: production prices are set per-product in App Store
     // Connect — keep those tiers in sync with these fallbacks.
+    //
+    // As of 2026-07-31 these fallbacks match the LIVE US prices exactly. They did
+    // not before: the US billed $4.99 / $11.99 for the 12- and 30-packs because
+    // those products were anchored to FRA and their dollar price was *derived*
+    // from the euro one, while 60/150 were anchored to USA. That drift inverted
+    // the ladder — 30 cr worked out at $0.3997/credit against the 60-pack's
+    // $0.4165, so two 30-packs bought 60 credits for $23.98 and strictly beat the
+    // $24.99 60-pack, our top revenue product. USD is now realigned to the EUR
+    // figures and the ladder improves monotonically again.
     static let all: [CreditPack] = [
         .init(id: "sm", productId: "com.anthersystems.VirtualSIM.credits.5",
               credits: 5,   price: "$2.99",  perCredit: "$0.60 / cr", badge: nil),

@@ -558,16 +558,38 @@ for steering — that is the open lever for the Meta services.
 
 **Credit packs** (`Models/CreditPack.swift` + `Products.storekit` + `_shared/iap.ts` `PRODUCT_TO_CREDITS`): 5/$2.99, 12/$5.99 (MOST POPULAR), 30/$12.99, 60/**$24.99**, 150/**$59.99** (BEST VALUE) — a strictly improving per-credit ladder (each pack beats stacking smaller ones): $0.598 → $0.499 → $0.433 → $0.417 → $0.400. The per-credit label is computed **live** from the StoreKit price in `IAPStore.perCredit`, so it never drifts; production prices must be set to match in App Store Connect.
 
-**Those figures are the EUR tier, not what a US buyer pays** — measured
-2026-07-27 from the signed `price`/`currency` in every stored Apple receipt
-(`raw_jws`), i.e. amounts actually billed, not a guess. The US storefront bills
-**$2.99 / $4.99 / $11.99** for the 5/12/30 packs while EUR territories bill
-**€2.99 / €5.99 / €12.99** (normal Apple tier mapping — EUR prices carry VAT).
-So the real US per-credit ladder is **$0.598 → $0.416 → $0.400**, not
-$0.598 → $0.499 → $0.433. Still strictly improving, but the 12-pack is a much
-better deal in the US than this file implied, and any margin arithmetic done
-off the $5.99/$12.99 numbers is ~17% optimistic for US sales. Confirm against
-`/v1/apps/6774768570/inAppPurchasesV2` price points before acting on either set.
+**USD and EUR were realigned on 2026-07-31 (owner decision) — the numbers above
+are now what BOTH storefronts bill.** Until then the US paid *less*: `credits.12`
+was **$4.99** against €5.99 and `credits.30` **$11.99** against €12.99.
+
+The cause was the base territory, and it is worth knowing because it will
+recur: `credits.5/12/30` were anchored to **FRA**, so their dollar price was
+*derived* from the euro one; `credits.60/150` were anchored to **USA**. Mixing
+anchors across a single ladder is what let it drift. Fixed by adding an explicit
+USA manual price to 12 and 30 while leaving FRA the base — so only USD moved and
+every other territory (DEU/ESP €5.99, GBR £4.99, CAN $6.99, AUS $7.99, JPN ¥800)
+is untouched. Verified after the write.
+
+**That drift had inverted the ladder in the US, on the top revenue product.**
+At $11.99/30 and $24.99/60 the 30-pack was **$0.3997**/credit and the 60-pack
+**$0.4165** — so two 30-packs bought 60 credits for **$23.98**, beating the
+$24.99 60-pack. The 60-pack was strictly dominated. The US ladder is now
+strictly improving again and identical to the EUR one:
+
+| pack | US price | per credit |
+|---|---|---|
+| 5 | $2.99 | $0.598 |
+| 12 | $5.99 | $0.499 |
+| 30 | $12.99 | $0.433 |
+| 60 | $24.99 | $0.417 |
+| 150 | $59.99 | $0.400 |
+
+Apple proceeds went $4.24 → **$5.09** on the 12-pack and $10.19 → **$11.04** on
+the 30-pack. A price change needs no review and takes effect immediately, but
+**`revenue_snapshot` reads the signed `price` out of each receipt**, so
+historical rows keep the old amounts and are still correct — do not "fix" them.
+Confirm against `/v1/inAppPurchasePriceSchedules/<iap-id>/{manual,automatic}Prices`
+before acting on any of these numbers; this file has been wrong about them twice.
 
 **The 60 and 150 packs are the LIVE ASC prices, read back from the API on
 2026-07-25 — this file previously claimed $22.99/$49.99, which was never what

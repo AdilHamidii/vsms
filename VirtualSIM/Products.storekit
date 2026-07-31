@@ -48,7 +48,7 @@
       "type" : "Consumable"
     },
     {
-      "displayPrice" : "22.99",
+      "displayPrice" : "24.99",
       "familyShareable" : false,
       "internalID" : "44444444-4444-4444-4444-444444444444",
       "localizations" : [
@@ -63,7 +63,7 @@
       "type" : "Consumable"
     },
     {
-      "displayPrice" : "49.99",
+      "displayPrice" : "59.99",
       "familyShareable" : false,
       "internalID" : "55555555-5555-5555-5555-555555555555",
       "localizations" : [
