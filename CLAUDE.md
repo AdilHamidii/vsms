@@ -1641,9 +1641,13 @@ SMS provider again, walk this list:
   `PurchaseIntent` replacing the `creditsShortfall` inference; email orders added
   to history (`loadEmailOrders` had had NO caller); and the `isOk(null)`
   charge-and-forfeit bug in `providers.ts` fixed.
-- **Codebase**: `MARKETING_VERSION 1.5`, `CURRENT_PROJECT_VERSION 18` (next build
-  is **19**), iOS min **18.0**, **92** Swift sources (BUILD SUCCEEDED on
-  iPhone 17 Pro / iOS 26.5), **100** migration files, **23** edge functions.
+- **1.5 (build 18) is `READY_FOR_SALE`** — verified against the ASC API
+  2026-07-31, not inferred. So build 19 CANNOT be a 1.5 build: a released
+  version will not take another build. The repo is therefore bumped to
+  **`MARKETING_VERSION 1.6` / `CURRENT_PROJECT_VERSION 19`**.
+- **Codebase**: `MARKETING_VERSION 1.6`, `CURRENT_PROJECT_VERSION 19`, iOS min
+  **18.0**, **92** Swift sources (Release BUILD SUCCEEDED on iPhone 17 Pro /
+  iOS 26.5, zero warnings), **101** migration files, **23** edge functions.
 - **Catalog**: 18,492 routes, **12,955 active** (down from 17,804 — `sync-herosms`
   hid what HeroSMS cannot serve). **HeroSMS 5,198 active / SMSPVA 7,757**;
   **4,046** HeroSMS routes have physical SIMs. **0 measured routes** — the cutover
@@ -1664,6 +1668,23 @@ SMS provider again, walk this list:
 
 - ⚠️ **Build 19 not cut.** Until it ships and is adopted, none of the client
   fixes above exist for users.
+- ⚠️ **Real-SIM-ONLY routes are GATED OFF until build 19 is adopted**
+  (`app_config.real_sim_only_sellable = false`, migration `20260731040000`).
+  This is the same client-first rule as the two column revokes below, and it
+  was fixing a bug that was **already live**: the released build 18 has no
+  `real_sim_only` in its Route model, so it renders the Standard chip AND
+  preselects it, `create-order` refuses with `real_sim_required`, and build 18
+  has no case for that code — so the user read the generic 409 copy, *"Not
+  available right now. Try a different option."* That copy steers to another
+  COUNTRY, often another real-SIM-only route, while the Real SIM chip that
+  would have worked sat unexplained on the same screen. It hit
+  facebook/instagram/whatsapp — ~50% of order volume — on 49 routes including
+  facebook/us and instagram/us. **No money was at risk**: the refusal precedes
+  `begin_order`, so nothing was charged. `sync-herosms` still WRITES
+  `real_sim_only`, so the flip is a config write, not a deploy:
+  `update app_config set value='true'::jsonb where key='real_sim_only_sellable';`
+  Verified after the first gated run: 61 routes gated, **0 active
+  `real_sim_only`**, flag still set on all 62.
 - ⚠️ **`20260725130000_hide_route_cost_columns` deliberately NOT applied.**
   Postgres needs SELECT on every column to answer `select=*`, and the shipped
   `CatalogAPI` still sends it — applying this before build 19 is *adopted* makes
@@ -1798,7 +1819,7 @@ Never display raw API errors. AppState's catch blocks call `APIError.userMessage
 
 vSMS is a single-target app, so only one `Info.plist` needs patching. The real fixes are building on stable macOS or Xcode Cloud; patch is the interim path while on the beta.
 
-**Submitting is fully headless via the App Store Connect API** (no Xcode Organizer) — see the `app-store-submission-asc` memory for the exact working pipeline: `xcodebuild archive` with `-allowProvisioningUpdates -authenticationKeyPath/-authenticationKeyID/-authenticationKeyIssuerID` (auto-provisions the Distribution cert; the Mac only has an *Apple Development* cert locally, which is fine) → patch `BuildMachineOSBuild` (above) → `xcodebuild -exportArchive` → `xcrun altool --upload-app` → ASC REST API (`POST /v1/appStoreVersions`, attach build, set `whatsNew`, `reviewSubmissions` submit). ASC API key lives at `~/.appstoreconnect/private_keys/AuthKey_R5ZVLBTUR6.p8` (key id `R5ZVLBTUR6`); app id `6774768570`. **The issuer id IS available: `4644ed13-4d98-489e-a94b-687f63946f46`** — an earlier note here claimed the machine had no issuer id and that API checks return `NO_ISSUER_ID`. That was wrong, and it cost real time: every "verify in ASC first" instruction was being skipped as impossible when the whole REST pipeline in fact works headlessly. The repo is at **`MARKETING_VERSION 1.5` / `CURRENT_PROJECT_VERSION 18`**; the next build is **19** (bump `CURRENT_PROJECT_VERSION`, and `MARKETING_VERSION` too if the version changes, in `project.pbxproj`). **Always verify live store state via the API before submitting** — the notes here drift within hours. Historical: 1.3 (build 12) released; 1.4 (build 13) submitted 2026-07-19; build 16 shipped as 1.5 in `a9b92c0` (which lowered the iOS floor to 18.0); build 17 submitted then cancelled 2026-07-25; build 18 submitted 2026-07-25.
+**Submitting is fully headless via the App Store Connect API** (no Xcode Organizer) — see the `app-store-submission-asc` memory for the exact working pipeline: `xcodebuild archive` with `-allowProvisioningUpdates -authenticationKeyPath/-authenticationKeyID/-authenticationKeyIssuerID` (auto-provisions the Distribution cert; the Mac only has an *Apple Development* cert locally, which is fine) → patch `BuildMachineOSBuild` (above) → `xcodebuild -exportArchive` → `xcrun altool --upload-app` → ASC REST API (`POST /v1/appStoreVersions`, attach build, set `whatsNew`, `reviewSubmissions` submit). ASC API key lives at `~/.appstoreconnect/private_keys/AuthKey_R5ZVLBTUR6.p8` (key id `R5ZVLBTUR6`); app id `6774768570`. **The issuer id IS available: `4644ed13-4d98-489e-a94b-687f63946f46`** — an earlier note here claimed the machine had no issuer id and that API checks return `NO_ISSUER_ID`. That was wrong, and it cost real time: every "verify in ASC first" instruction was being skipped as impossible when the whole REST pipeline in fact works headlessly. The repo is at **`MARKETING_VERSION 1.6` / `CURRENT_PROJECT_VERSION 19`** (bumped 2026-07-31, because **1.5 went `READY_FOR_SALE` and a released version will not accept another build** — build 19 must therefore ship as a new version, not as 1.5). **Always verify live store state via the API before submitting** — the notes here drift within hours. Historical: 1.3 (build 12) released; 1.4 (build 13) submitted 2026-07-19; build 16 shipped as 1.5 in `a9b92c0` (which lowered the iOS floor to 18.0); build 17 submitted then cancelled 2026-07-25; build 18 submitted 2026-07-25.
 
 **Finding a just-uploaded build:** use `GET /v1/builds?filter[app]=<id>&filter[version]=<n>`. The version→build *relationship* endpoint reports nothing useful while the build is still processing, which reads as "stuck" and invites a pointless re-upload. Ingestion takes ~2 min before the build is even visible, then `processingState` goes `PROCESSING` → `VALID`.
 

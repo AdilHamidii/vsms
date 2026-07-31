@@ -310,6 +310,88 @@
         }
       }
     },
+    "%@ often rejects standard numbers. We recommend Real SIM.": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ lehnt Standardnummern häufig ab. Wir empfehlen Echte SIM."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ suele rechazar los números estándar. Recomendamos SIM real."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ refuse souvent les numéros standard. Nous recommandons la SIM réelle."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ rifiuta spesso i numeri standard. Consigliamo SIM reale."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@は標準番号を拒否することがよくあります。実SIMをおすすめします。"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ costuma recusar números padrão. Recomendamos SIM real."
+          }
+        }
+      }
+    },
+    "%@ rejects internet numbers, so only Real SIM works here.": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ lehnt Internetnummern ab, daher funktioniert hier nur Echte SIM."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ rechaza los números de internet, así que aquí solo funciona SIM real."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ refuse les numéros Internet : seule la SIM réelle fonctionne ici."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ rifiuta i numeri Internet, quindi qui funziona solo SIM reale."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@はインターネット番号を拒否するため、ここでは実SIMのみ利用できます。"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ recusa números de internet, então aqui só funciona SIM real."
+          }
+        }
+      }
+    },
     "%@ typical": {
       "localizations": {
         "de": {

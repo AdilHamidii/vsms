@@ -125,6 +125,28 @@ Deno.serve(async (req) => {
     if (anyOk) realOperator.set(c.id as string, best);
   }
 
+  // Whether a Real-SIM-ONLY route may be SOLD yet. Client-first, exactly like
+  // the two deferred column revokes.
+  //
+  // The released build (1.5 / build 18) has no `real_sim_only` in its Route
+  // model, so it renders the Standard chip AND preselects it (`checkoutPremium`
+  // defaults to false; `defaultPremium` ships in build 19). create-order then
+  // refuses with `real_sim_required` — a code that build has no case for — so
+  // the user reads the generic 409 copy, "Not available right now. Try a
+  // different option.", on facebook/instagram/whatsapp, i.e. ~50% of order
+  // volume. Worse, that copy steers them to another COUNTRY, which is likely
+  // another real-SIM-only route, while the Real SIM chip that would have
+  // worked sits unexplained on the same screen. No money is lost (the refusal
+  // precedes begin_order) — it is purely a dead-ended funnel.
+  //
+  // So until build 19 is adopted these stay hidden, which is exactly the state
+  // they were in before the tier existed and which was deliberate. Flip this to
+  // true then; it is a config write, not a deploy. Absent key => false, so it
+  // fails to the safe side.
+  const { data: rsoCfg } = await sb
+    .from("app_config").select("value").eq("key", "real_sim_only_sellable").maybeSingle();
+  const realSimOnlySellable = rsoCfg?.value === true;
+
   // HeroSMS numeric country id -> our country id. Several of our countries can
   // never collide here: the mapping is 1:1 and was built from HeroSMS's own
   // getCountries.
@@ -184,7 +206,7 @@ Deno.serve(async (req) => {
   };
   const updates: Row[] = [];
   let unfulfillable = 0, tooExpensive = 0, blockedCount = 0, sellable = 0, physical = 0;
-  let voipOnly = 0, realOnly = 0, withRealTier = 0;
+  let voipOnly = 0, realOnly = 0, withRealTier = 0, realOnlyGated = 0;
 
   for (const r of routes) {
     const key = `${r.service_id}|${r.country_id}`;
@@ -224,6 +246,12 @@ Deno.serve(async (req) => {
     const carrierKnown = realN != null;
     if (strict && realOp == null && carrierKnown && status === "active") {
       status = "hidden"; voipOnly++;
+    }
+    // Sellable only once a client exists that can express "Standard is not an
+    // option here" — see realSimOnlySellable above. `real_sim_only` is still
+    // written either way, so flipping the flag alone brings them live.
+    if (realOnlyHere && !realSimOnlySellable && status === "active") {
+      status = "hidden"; realOnlyGated++;
     }
 
     // +20% uplift, floored at the standard price so the tier can never be the
@@ -290,6 +318,10 @@ Deno.serve(async (req) => {
     // stock, and those need very different responses.
     hidden_voip_only: voipOnly,
     real_sim_only_routes: realOnly,
+    // Held back because the released client cannot express the constraint.
+    // Should fall to 0 the moment `real_sim_only_sellable` is flipped true.
+    hidden_real_sim_only_gated: realOnlyGated,
+    real_sim_only_sellable: realSimOnlySellable,
     routes_with_real_tier: withRealTier,
     operator_probes: operatorProbes,
     countries_probed: slice.map((c) => c.id),
