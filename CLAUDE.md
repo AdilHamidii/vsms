@@ -98,7 +98,7 @@ supabase db query --linked "select count(*) from public.routes;"
 #   relay-sync-smspva-conversions 49 * * * *  relay-sync-esim-plans 0 2 * * *
 #   relay-sync-smspva-operators 30,32,34,36,38,40 4 * * *  (6 chunked slots)
 #   relay-winback             0 15 * * *    relay-daily-credit     11 16 * * *
-#   expire-esim-orders        */15 * * * *
+#   expire-esim-orders        */15 * * * *  expire-email-orders    */5 * * * *
 #   relay-smspva-operators-maint-up 29 4  / -down 43 4  (maintenance screen)
 #   purge-job-run-details 7 3 * * *       telegram-events-prune 30 4 * * *
 supabase db query --linked "
@@ -233,7 +233,11 @@ VirtualSIM/
 **Key SQL functions** (all `SECURITY DEFINER`, all revoked from `anon`/`authenticated` — clients reach them only through edge functions on the service role):
 - `begin_order(user, service, country, credits)` — dedupe + insert order + charge, in ONE transaction under `pg_advisory_xact_lock(user)`. See the gotcha below; do not go back to charging before the row exists.
 - `wallet_spend` / `wallet_credit` — atomic single-statement balance moves. Always pass `p_order` so the ledger reconciles.
-- `active_sms_provider()` — returns whichever provider owns the most `active` routes. Maintenance functions default to it so a provider switch can't silently orphan them again. **⚠️ It is WRONG as of 2026-07-30 and returns `smspva`.** It was written for a winner-take-all world; the HeroSMS cutover deliberately made the catalog a per-service *split*, and then `sync-herosms` hid 4,849 routes HeroSMS cannot serve — so SMSPVA now owns **7,757** active routes against HeroSMS's **5,198** and wins a vote it should not be in. It is still the wrong metric, but **as of 2026-07-30 it is no longer load-bearing**: `sync-prices` calls `refresh_evidence_all_providers()`, which runs the refreshes once per provider instead of trusting this vote. Do not wire anything new to it.
+- `active_sms_provider()` — returns whichever provider owns the most `active` routes. Maintenance functions default to it so a provider switch can't silently orphan them again. **⚠️ It is WRONG as of 2026-07-30 and returns `smspva`.** It was written for a winner-take-all world; the HeroSMS cutover deliberately made the catalog a per-service *split*, and then `sync-herosms` hid 4,849 routes HeroSMS cannot serve — so SMSPVA now owns **7,757** active routes against HeroSMS's **5,198** and wins a vote it should not be in. It is still the wrong metric. **This file claimed on 2026-07-30 that it was "no longer load-bearing". That was FALSE, and the audit on 2026-07-31 found two live consumers it had missed** — `refresh_evidence_all_providers()` fixed only the three refreshes it wraps:
+  - **`refresh_arrival_timing`** is a SEPARATE entry in `sync-prices`' maintenance list, outside the wrapper. It measured SMSPVA only (38 of 46 arrivals) and stamped that band onto all 268 services, so every "most codes arrive within N" quote in the app described the retired provider. Fixed in `20260731070000`/`20260731080000`.
+  - **`recent_sms_delivery_rate()`** still scopes to the vote, returned NULL on a 4-order SMSPVA sample, and through it `stranded_credit_candidates` was permanently empty. Fixed by deleting that cohort's gate; **the rate function itself still uses the vote and is still wrong** — it is only no longer load-bearing because nothing gates on it now. If you add a consumer, scope it per-provider.
+
+  Before assuming a consumer is safe, grep for it: `select proname from pg_proc where prosrc like '%active_sms_provider%'`. Do not wire anything new to it.
 - `refresh_evidence_all_providers()` — **the only evidence entry point `sync-prices` calls.** Runs the route + service refreshes once per provider that owns active routes, then country evidence once. See "Evidence must describe the provider that serves the NEXT order" below.
 - `refresh_route_observed_success` / `refresh_service_delivery` / `refresh_country_delivery` / `sync_service_visibility` / `apply_measured_service_ranking` — catalog self-correction. The first three are now called **through the wrapper**, not directly.
 - `ops_snapshot(interval)` — one JSONB blob powering both the Telegram digest and `/stats`.
@@ -325,6 +329,18 @@ Three cohorts, all in `winback` (cron `relay-winback`, daily):
   **could never open**. Replaced with a liveness check (provider balance,
   watchdog fresh **and** clean), and the unprovable "delivery just got a big
   upgrade" copy — which is what forced the gate to exist — was deleted.
+  **⚠️ That replacement only ever landed in TypeScript.** The audit on
+  2026-07-31 found a SECOND gate still live in the SQL —
+  `coalesce(recent_sms_delivery_rate(), 0) >= 40` — so the two ran in series and
+  the SQL one was shut: that function scopes to `active_sms_provider()`, which
+  returned NULL on a 4-order SMSPVA sample while HeroSMS served the traffic, and
+  `0 >= 40` is false forever. The cohort had selected **zero** users since the
+  cutover and could not reopen, because SMSPVA's share only shrinks. Deleted in
+  `20260731070000`; `claimSafe` in `winback/index.ts` is the intended and
+  sufficient guard. **The lesson generalises: when you "replace" a SQL predicate
+  with an edge-function check, delete the predicate in the same commit** — this
+  is now the second cohort-killing gate found by reading `prosrc` rather than
+  the migration that supposedly removed it.
 - `reorder_candidates` — **users who succeeded.** They were excluded from every
   nudge in the product by construction, despite being the only cohort with proven
   fit. Fires at 3–14 days, inside the observed repeat window.
@@ -1808,6 +1824,88 @@ SMS provider again, walk this list:
 
 ### Known-open
 
+**Money paths — found by the 2026-07-31 red-team audit, deliberately NOT fixed
+in that pass** (they modify wallet/receipt logic, which is an owner decision).
+The ledger itself is clean: `sum(wallet_transactions.delta)` equals
+`wallets.balance` for **all 204 wallets**, zero double refunds, zero
+terminal-unrefunded orders. None of the below has ever been exploited — no
+account in the DB has been deleted and recreated.
+
+- 🔴 **One purchase can be replayed forever by deleting the account.**
+  `iap_receipts_user_id_fkey` is **ON DELETE CASCADE** from `auth.users`, and the
+  ONLY replay guard is the unique constraint on `transaction_id`. The receipt is
+  bound to no user (`_shared/iap.ts` never reads `appAccountToken`) and never
+  ages out (cert validity is checked at `signedDate`). A user reads their own
+  `raw_jws` — `authenticated` holds SELECT on that column — buys once, spends,
+  taps the Apple-mandated Delete Account, signs in again, and resubmits. It
+  re-verifies against Apple perfectly. `signup_grants` exists *precisely* because
+  deletion is a farming vector; the reasoning was never extended to receipts.
+  **Fix:** a `transaction_id` tombstone table outside the cascade (mirroring
+  `signup_grants`), written in the same transaction as `wallet_credit`.
+- 🔴 **`iap-verify`'s payment-recovery branch is self-defeating and can eat a
+  real payment.** The rollback sets `granted_credits = 0`; the retry guard only
+  inspects receipts where `granted_credits > 0`. Mutually exclusive. So after a
+  failed credit, StoreKit's redelivery hits 23505, skips the ledger check, and
+  returns `already_credited` — the client calls `finish()` and a purchase of up
+  to $59.99 is retired having granted nothing. The mirror case (worker dies
+  after insert, before credit) yields a permanent 409 loop that nothing retries.
+  The in-code comment asserts the opposite of what the code does.
+- ⚠️ **The referral bonus is not tombstoned.** `redeem_referral` gates only on
+  `profiles.referred_by is not null`, and `profiles` cascades — so delete and
+  re-signup redeems again, +2 per cycle. This file previously described BOTH
+  halves of that bug as fixed; only the +3 signup half was. Verified live:
+  `signup_grants` is not referenced anywhere in `redeem_referral`'s body.
+- ⚠️ **`poll-active-orders` is the only terminal writer with no refund-failure
+  rollback.** `cancel-order`, `check-order` and `create-order` all revert the row
+  to `waiting` so the sweep retries, each with a comment explaining that leaving
+  it terminal makes the charge permanently unrefundable. The expiry sweep — the
+  highest-traffic close path in the product — just logs and `continue`s.
+- ⚠️ **One real user is owed 4 credits.** eSIM order
+  `916b16a0-ce19-4e3e-9cac-08b9958f4c7c`, 2026-07-26, `status='failed'`, no
+  refund row of any kind. Pre-`20260727160000`, when an eSIM refund went through
+  `wallet_credit(p_order=<esim id>)` and died on the FK with the error
+  discarded. The code is fixed; the debt was never paid. It is the only such row.
+- ⚠️ Two `sb.rpc` sites still discard `{ error }`: `check-order/index.ts:41`
+  (`expire_order` — self-heals via the minutely cron) and
+  `iap-verify/index.ts:213` (`apply_referral_reward` — the referrer's 5 credits
+  are silently lost). All 11 other money-moving rpc sites are correct.
+
+- 🔴 **LIVE INCIDENT (2026-07-31): the Meta services have ONE bookable route
+  each.** Gating `real_sim_only_sellable = false` to protect build 18 from the
+  `real_sim_required` dead-end had a side effect nobody measured: facebook is
+  **1 active route at 38 credits** (47 gated), instagram **1 at 10 cr** (48
+  gated), whatsapp **1 at 149 cr** (50 gated). Those three are **85 of 190
+  orders ever — ~45% of all demand** — and a new user with the 3-credit grant
+  cannot order any of them. WhatsApp at 149 credits exceeds the largest
+  *approved* pack (60), so it needs three stacked purchases. The gated routes
+  carry 56–153× margin, so there is no cost reason for the price.
+  **The fix that does not wait for build 19 adoption:** in `create-order`, when
+  `real_sim_only` is true and the client sends `standard`, pin the real carrier
+  **strictly** and charge `retail_credits` — premium behaviour at the standard
+  price, trivially affordable at that margin — then flip the flag. That is a
+  pricing decision, hence not taken unilaterally. Revert is one UPDATE; the next
+  hourly `sync-herosms` re-hides.
+
+- 🔴 **Build 19's e-mail waiting screen never exits on a terminal order.**
+  `AppState.refreshEmailOrder` transitions on `hasCode` only — there is no branch
+  for expired/failed/canceled, and `EmailWaitingScreen`'s poll loop is gated on
+  `flow == .emailWaiting`, which nothing else clears. So when an e-mail order
+  times out the server does everything right (expires it, refunds the credit) and
+  the app renders "Waiting for the code" forever; the only exit is the ✕. This is
+  the SMS `apply()` rule — "never write a status switch here without covering all
+  cases" — not applied to the e-mail path. **Ships in 1.6**, which was already in
+  review when this was found. The new `expire_email_orders` sweep confines the
+  damage to that one screen (previously `ResumeBar` re-advertised the dead order
+  app-wide, forever), but the screen itself needs 1.7.
+- ⚠️ **Build 19 tells users to pick iCloud when the free cap is hit** —
+  `APIError.swift:103` and a stale doc comment in `EmailAPI.swift:25`. iCloud was
+  removed from both `PRICING` maps on 2026-07-31, so `create-email-order` now
+  refuses it with `domain_unavailable`. The instruction is unfollowable. Also
+  unmapped: `unknown_order` (emitted by `check-email-order`), while a
+  `order_not_found` case that nothing emits sits in the map.
+- ⚠️ **`margin_too_low` tells an e-mail buyer to "try another country".** There
+  is no country in the e-mail product. Needs its own copy or its own error code.
+
 - ⚠️ **Build 19 not cut.** Until it ships and is adopted, none of the client
   fixes above exist for users.
 - ⚠️ **Real-SIM-ONLY routes are GATED OFF until build 19 is adopted**
@@ -1842,9 +1940,13 @@ SMS provider again, walk this list:
 - ⚠️ **`supabase_admin` default privileges not revoked** — needs membership in
   that role. Covers objects created via the dashboard rather than migrations.
   Statements in `20260727211000_default_privileges.sql`.
-- ⚠️ **The late-code rescue has never executed in production** (0 rows with
-  `late_watch_until`). Deployed and unproven; one deliberate cancel would confirm
-  it end-to-end.
+- ✅ **RESOLVED — the late-code rescue HAS executed in production.** This file
+  said it never had; two independent audits found the same counter-example on
+  2026-07-31. Order `ea7c0ddb-3331-41cf-be3c-420a1809e10d`, SMSPVA, cancelled
+  2026-07-28 21:50:47Z, OTP `377647` written onto the `canceled` row **14
+  seconds later** and pushed. It works exactly as designed. Zero rows currently
+  carry `late_watch_until`, which means the sweep is draining, not that it has
+  never fired — do not read an empty column as "unproven" again.
 - ⚠️ **Migration drift: a fresh deploy would NOT reproduce production.**
   Re-measured 2026-07-30 and **unchanged**: 110 versions recorded in the DB
   against 97 local files — **43** recorded versions have no local file and **29**
@@ -1859,12 +1961,49 @@ SMS provider again, walk this list:
   path, a stale constant copy, and a timer/hold interaction. All were caught by
   post-hoc review, two only by luck. Until something automated covers the order
   lifecycle and the money paths, assume a similar rate on the next batch.
-- ✅ **RESOLVED 2026-07-30: evidence is gathered for EVERY provider.**
-  `active_sms_provider()` still returns `smspva` and is still the wrong metric,
-  but it is no longer load-bearing: `refresh_evidence_all_providers()` runs the
-  route and service refreshes once per provider, country evidence once, and all
-  of it is scoped to the provider that still OWNS each service — so retired
-  providers (smspool, virtualsms) drop out too. See the section above.
+- ⚠️ **PARTIALLY RESOLVED: evidence is gathered for every provider, but the
+  2026-07-30 claim that `active_sms_provider()` is "no longer load-bearing" was
+  FALSE.** `refresh_evidence_all_providers()` fixed only the three refreshes it
+  wraps. The 2026-07-31 audit found two consumers still on the bad vote —
+  `refresh_arrival_timing` (a separate maintenance entry, outside the wrapper)
+  and `recent_sms_delivery_rate()`. Both are described above; both are fixed or
+  defused, and the function itself is still wrong. Grep `pg_proc.prosrc` before
+  trusting any statement about who calls it.
+
+- ⚠️ **The deferred column-revoke migration `20260725130000` is a NO-OP as
+  written, and would silently change nothing when finally applied.** It revokes
+  SELECT on three cost columns from `anon`/`authenticated`, but `routes` carries
+  a **table-level** SELECT grant (`anon=rxtm`) and has zero column-level ACLs — a
+  column REVOKE only edits `pg_attribute.attacl` and cannot subtract from
+  `pg_class.relacl`. Same shape as the PUBLIC-execute trap, one layer down. The
+  proof it is the right diagnosis is `profiles`, where column restriction DOES
+  work precisely because the table grant never included UPDATE. The fix is
+  `revoke select on public.routes from anon, authenticated;` followed by an
+  explicit `grant select (<columns>)`. Two further defects in the same file: it
+  predates the cutover so it never revokes **`herosms_cost_cents`** (the current
+  provider's wholesale, readable by `anon` today), and its re-grant list omits
+  `success_codes` and `real_sim_only`, so applying it verbatim breaks build 19.
+  Note also that `routes` and `esim_plans` both carry a **`public read`** RLS
+  policy, so the cost book reads with **no account at all**, not merely with the
+  publishable key.
+
+- ⚠️ **`orders.actual_cost_cents` ships per-order wholesale to the buyer.**
+  `orders`, `esim_orders` and `email_orders` all carry it, all three client
+  fetches use `select=*`, and RLS self-read grants the row — while **no Swift
+  model decodes it**. A pure leak. Fixing it needs the client to name its columns
+  first, so it is a two-phase rollout like the others; it missed build 19.
+
+- ⚠️ **`telegram-setup` is in neither deploy list** in this file, and the claim
+  at the top that those lists cover "every directory … (19 functions total)" is
+  wrong on both counts — there are 24 directories. It fails closed, so there is
+  no exposure, but **rotating `TELEGRAM_WEBHOOK_SECRET` requires re-running it**.
+
+- ⚠️ **`relay-poll-active-orders` has `timeout_milliseconds := 30000`**, while
+  every budget comment in `poll-active-orders` reasons about the ~150s edge
+  limit and sizes `limit(200)`/`limit(50)`/`limit(50)` against it. A 5×
+  mismatch with the caller. Not biting yet (peak concurrent numbered orders in
+  the product's history is 4), but the row limits are sized for a budget the
+  relay does not grant.
 - ⚠️ **Route-level evidence is still 0 rows, now for an honest reason.** The
   blocker is gone, but a route needs 3 conclusive attempts and HeroSMS has ~2
   orders. Service and country evidence rebuild first. Nothing to do but let
@@ -1889,10 +2028,26 @@ SMS provider again, walk this list:
   only. The email money path is proven at SQL level and one activation was
   bought via the API; the support round trip (send → Accept → reply → push) has
   **never run**, because it needs `TELEGRAM_BOT_TOKEN` / `TELEGRAM_WEBHOOK_SECRET`.
-- ⚠️ **No cron expiry sweep for `email_orders`.** Narrow but real: the vendor
-  auto-expires and refunds *us*, and `check-email-order` refunds the *user*
-  whenever the app polls — but someone who buys a paid address and never reopens
-  the app waits for their credit. `expire_esim_orders()` is the pattern.
+- ✅ **RESOLVED 2026-07-31: `expire_email_orders()` (pg_cron `*/5`).** The gap
+  was worse than "the refund waits for a poll", which is why it is worth
+  recording how it actually failed: `check-email-order` deliberately refuses to
+  invent a terminal state on a provider fault and delegates expiry to "the cron
+  sweep" — so for an activation the provider had already forgotten (404), the
+  local 22-minute expiry sat BEHIND a successful provider read and was
+  unreachable for exactly the rows that needed it. Meanwhile `ResumeBar`'s email
+  branch has no age bound (the SMS branch does), so one abandoned order pinned
+  "Waiting for a code" above the tab bar on every tab, forever.
+
+  Two things that would have made a copied `expire_esim_orders()` look like a
+  working deploy while matching nothing: **`email_orders.expires_at` is a dead
+  column** — nothing has ever written it, so keying on it matches zero rows —
+  and the terminal status must be **cast** (`::email_status`), because a CASE
+  yields `text` and the UPDATE raises 42804 without it. Both were hit for real.
+  It keys on `created_at + 22 minutes` (== `EMAIL_WINDOW_SECONDS`), promotes
+  `code is not null` to `received` and never refunds it, refunds only paid
+  codeless rows, and writes `app_config.email_expiry_heartbeat` so the watchdog
+  can see it. It calls no provider: HeroSMS auto-refunds us at ~21 min, so there
+  is nothing to reclaim and no reason to make it an edge function.
 - ⚠️ **Email is absent from `ops_snapshot` / `revenue_snapshot` /
   `_shared/opsFormat.ts`.** Per the third-product-line checklist it must be added
   to all three or it is invisible in the digest, `/stats` and `/profit`.
