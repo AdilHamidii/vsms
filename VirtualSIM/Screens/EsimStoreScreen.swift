@@ -87,7 +87,39 @@ struct EsimStoreScreen: View {
 
     // MARK: - Store
 
+    /// An empty catalog must SAY it is empty. A search field, a map/list toggle
+    /// and an empty country list render as a near-blank screen, and blankness
+    /// reads as "this app is broken" rather than "there is nothing on sale" —
+    /// the same silence-reads-as-fine failure the delivery badges were rebuilt
+    /// to avoid.
     private var store: some View {
+        Group {
+            if state.esimPlans.isEmpty { emptyCatalog } else { catalogBrowser }
+        }
+    }
+
+    /// Deliberately does NOT name a cause. The catalog is empty both when the
+    /// line is paused server-side (`set_esim_paused(true)`, used while eSIM
+    /// providers are switched) and when the fetch simply failed — and asserting
+    /// a provider switch in the second case would be a guess dressed as fact.
+    /// What it CAN say without guessing is that bought eSIMs are unaffected,
+    /// which is true either way: they are provisioned on the device and their
+    /// usage is read from the order row, not from this catalog.
+    private var emptyCatalog: some View {
+        VStack(spacing: 8) {
+            Image(systemName: "globe")
+                .font(.system(size: 34)).foregroundStyle(theme.text3)
+            Text("No data plans right now")
+                .font(RFont.display(17, weight: .semibold)).foregroundStyle(theme.text)
+            Text("Travel eSIMs are temporarily off sale. Any eSIM you already bought keeps working — find it under My eSIMs.")
+                .font(RFont.text(13)).foregroundStyle(theme.text2)
+                .multilineTextAlignment(.center)
+        }
+        .padding(.horizontal, 40)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private var catalogBrowser: some View {
         VStack(spacing: 0) {
             HStack(spacing: 8) {
                 HStack(spacing: 8) {

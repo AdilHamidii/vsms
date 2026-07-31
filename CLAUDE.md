@@ -999,6 +999,57 @@ applies to every descendant, so an unrelated state change animates MapKit's own
 layout. `SegmentedTabs` and the browse toggle already wrap their state changes
 in `withAnimation`, which the branch `.transition`s pick up.
 
+### Pausing the eSIM line (backend only, no build) — 2026-07-31
+
+**eSIMs are PAUSED as of 2026-07-31** while the owner switches eSIM providers.
+
+```sql
+select public.set_esim_paused(true);   -- off the shelf
+select public.set_esim_paused(false);  -- back on
+```
+
+Both return `{paused, plans_changed, plans_active}` — **read it**. Resuming a
+catalog whose provider is gone re-activates **0** plans, and that has to be
+visible rather than looking like success.
+
+The lever is `esim_plans.status`, chosen because both halves already key on it
+and therefore needed **no app change** — which was the requirement, since the
+released build 18 cannot be modified:
+- the client fetches `esim_plans?status=eq.active` (true of build 18 **and** 19),
+- `create-esim-order` already refuses a non-`active` plan with
+  `plan_unavailable`, so a client holding a **cached** catalog still cannot buy.
+  That guard predates the pause; it is reused rather than duplicated.
+
+Three things that keep working, verified before building this:
+- **The 12 live eSIMs.** `check-esim-usage` looks plans up by id with **no**
+  status filter, so usage, expiry stamping and the QR are unaffected. All 12
+  also carry their own `data_total_mb`, so the gauges read from the ORDER row.
+- `expire-esim-orders` — untouched.
+- `sync-esim-plans` keeps RUNNING while paused, writing `status: 'hidden'`. That
+  is deliberate: it refreshes `last_checked_at`, which is the signal resume uses
+  to decide what may come back. Blanket-activating every hidden row would
+  resurrect exactly the plans the sync retires as delisted.
+
+**The watchdog's eSIM-catalog freshness check is skipped while paused.** Pausing
+means the old provider stops being synced by design, so without this the owner
+is paged every 6h about a staleness they chose — and alert fatigue on the only
+monitoring channel is how a real outage later gets missed. The function was
+regenerated from `pg_get_functiondef` and diffed clause by clause: **exactly one
+hunk differs**, every other check byte-identical (see the "one-line refactor is
+a monitoring outage" gotcha — this is the procedure it demands).
+
+Accepted cosmetic cost: the client resolves an order's plan out of the fetched
+catalog (`EsimOrder(server:plan:)`), so while paused a live eSIM shows the
+fallback name **"eSIM"** instead of its plan name. Usage and data totals are
+unaffected. 12 users, for the length of the switch.
+
+**Build 18 shows a near-blank eSIM tab while paused** — its store renders an
+empty `Card` with no empty state, and blankness reads as "broken". Nothing can
+fix that without shipping. **1.6 adds a real empty state** (`emptyCatalog` in
+`EsimStoreScreen`) which deliberately does **not** name a cause: the catalog is
+equally empty when the line is paused and when the fetch merely failed, and
+asserting a provider switch in the second case would be a guess dressed as fact.
+
 ### The eSIM store — why it shows FEWER plans than the catalog has
 
 The store used to render every active plan for a country in one price-ascending

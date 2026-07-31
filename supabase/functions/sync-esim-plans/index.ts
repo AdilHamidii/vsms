@@ -82,6 +82,19 @@ Deno.serve(async (req) => {
   const sb = admin();
   const runStart = new Date().toISOString();
 
+  // The eSIM line can be paused from the backend while providers are switched
+  // (`select set_esim_paused(true)`). This run must NOT undo that: without the
+  // gate the daily cron re-activates the whole catalog and the product silently
+  // comes back on sale. Same client-first shape as `real_sim_only_sellable`.
+  //
+  // The sync deliberately keeps RUNNING while paused — it refreshes
+  // `last_checked_at`, which is the signal `set_esim_paused(false)` uses to
+  // decide what may be re-activated. If the provider is gone the sync fails,
+  // nothing stays fresh, and resuming correctly re-activates nothing.
+  const { data: pausedCfg } = await sb
+    .from("app_config").select("value").eq("key", "esim_paused").maybeSingle();
+  const paused = pausedCfg?.value === true;
+
   const { data: countries } = await sb.from("countries").select("id, name");
   if (!countries) return json({ error: "countries_load_failed" }, { status: 500 });
 
@@ -127,7 +140,7 @@ Deno.serve(async (req) => {
         retail_credits: retailCredits(smoothed / 100),
         last_cost_cents: cents,
         smoothed_cost_cents: smoothed,
-        status: "active",
+        status: paused ? "hidden" : "active",
         last_checked_at: runStart,
         sort_order: sortSeed++,
       });
@@ -151,5 +164,5 @@ Deno.serve(async (req) => {
     hidden = count ?? 0;
   }
 
-  return json({ apiCalls, countriesWithPlans, plansUpserted: upserted, hidden });
+  return json({ apiCalls, countriesWithPlans, plansUpserted: upserted, hidden, paused });
 });
