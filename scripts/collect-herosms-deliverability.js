@@ -26,15 +26,17 @@
 
 (() => {
   // ── Pace ──────────────────────────────────────────────────────────────────
-  // 150 services, so the interval decides how long this takes:
-  //     600s (10 min) -> ~25 hours      120s -> ~5 hours      60s -> ~2.5 hours
+  // 147 services, so the interval decides how long this takes:
+  //     600s -> ~25 h      120s -> ~5 h      60s -> ~2.5 h      30s -> ~74 min
   // For calibration: a person exploring that panel — changing service, interval
   // and the successCount filter — fires a request per interaction, easily 10-20
-  // in a couple of minutes. 60s is well inside normal human usage; 600s is very
-  // conservative. The FIRST FOUR services cover 64% of every order you have
-  // ever taken and the first twelve cover 88%, so the head of the queue is done
-  // within the first hour at any of these settings.
-  const INTERVAL_SECONDS = 600;
+  // in a couple of minutes. 30s (2/min) is slower than active browsing, but it
+  // is SUSTAINED for over an hour, which is a different signature from a burst.
+  // If anything starts 429ing or challenging, raise this rather than retrying:
+  // the account serves ~all SMS volume and is worth more than the data.
+  // The FIRST FOUR services cover 64% of every order ever taken and the first
+  // twelve cover 88%, so the valuable part lands in the opening minutes.
+  const INTERVAL_SECONDS = 30;
 
   const INTERVAL_HOURS = 24;      // longer window than the panel's 12h default
   const SUCCESS_COUNT  = "medium"; // the ">50 successful" filter
