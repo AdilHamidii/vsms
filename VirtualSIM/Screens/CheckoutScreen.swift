@@ -16,6 +16,25 @@ struct CheckoutScreen: View {
     private var country: Country { state.configuringCountry }
     private var standardCost: Int? { state.cost(for: service, country: country) }
     private var premiumCost: Int? { state.premiumCost(for: service, country: country) }
+    private var realSimOnly: Bool { state.realSimOnly(for: service, country: country) }
+
+    /// Why Real SIM is preselected here. Shown ONLY on measured evidence — the
+    /// same rule the delivery badges follow. It says what was observed, not
+    /// what Real SIM will achieve: we have never sold a premium order on this
+    /// provider, so a rate promise would be unearned.
+    private var tierAdvice: String? {
+        if realSimOnly {
+            return String(localized: "\(service.name) rejects internet numbers, so only Real SIM works here.")
+        }
+        guard premiumCost != nil else { return nil }
+        if country.deliversPoorly {
+            return String(localized: "Standard numbers in \(country.name) have been failing. We recommend Real SIM.")
+        }
+        if service.deliversPoorly {
+            return String(localized: "\(service.name) often rejects standard numbers. We recommend Real SIM.")
+        }
+        return nil
+    }
     /// Price of the tier currently selected. Premium is only selectable when
     /// the route carries a premium price, so the fallback never actually
     /// charges standard for a premium pick — it just keeps the receipt sane
@@ -111,14 +130,19 @@ struct CheckoutScreen: View {
                         ReceiptIconBox(symbol: RIcon.shield)
                     }, trailing: {
                         HStack(spacing: 6) {
-                            TierChip(title: "Standard",
-                                     price: standardCost,
-                                     selected: !state.checkoutPremium) {
-                                state.checkoutPremium = false
+                            // Standard is omitted entirely where the service
+                            // refuses VoIP — offering a tier that cannot
+                            // deliver is worse than offering one option.
+                            if !realSimOnly {
+                                TierChip(title: "Standard",
+                                         price: standardCost,
+                                         selected: !state.checkoutPremium) {
+                                    state.checkoutPremium = false
+                                }
                             }
                             TierChip(title: "Real SIM",
                                      price: premiumCost,
-                                     selected: state.checkoutPremium) {
+                                     selected: state.checkoutPremium || realSimOnly) {
                                 state.checkoutPremium = true
                             }
                         }
@@ -127,6 +151,14 @@ struct CheckoutScreen: View {
                     // been standard tier, so there is no measured evidence that
                     // Real SIM delivers better. State what it actually buys.
                     .accessibilityHint(Text("Real SIM costs \(premiumCost) credits instead of \(standardCost ?? premiumCost). It uses a named mobile carrier instead of any available number, and refunds instead of substituting one if that carrier is unavailable."))
+                    if let advice = tierAdvice {
+                        Text(advice)
+                            .font(RFont.text(12))
+                            .foregroundStyle(theme.warn)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.horizontal, 16)
+                            .padding(.top, -4)
+                    }
                 }
                 // Only render the wait row when it's MEASURED. With no sample
                 // there is nothing honest to put here, and the refund promise

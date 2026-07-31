@@ -49,6 +49,11 @@ enum APIError: Error, LocalizedError {
                     return "No numbers available for this combination right now. Try another country or service."
                 case "premium_unavailable":
                     return "Real-SIM numbers just sold out here. Try Standard, or another country."
+                // This service refuses VoIP numbers, so only Real SIM is sold
+                // here. Shipped clients that predate the Real-SIM-only routes
+                // would otherwise fall through to the generic 4xx text.
+                case "real_sim_required":
+                    return "This service only works with a Real SIM number. Pick Real SIM to continue."
                 case "smspva_error":
                     return "Numbers aren't available right now. Please try a different country or service."
                 // The backend sends `provider_unreachable` (not the older

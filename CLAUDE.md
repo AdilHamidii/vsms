@@ -1345,6 +1345,40 @@ group by 1;
 Rollback is `voip_strict_services = '[]'` — the next hourly run re-activates
 everything.
 
+### The Real SIM tier on HeroSMS (VoIP vs real carrier, +20%)
+
+Checkout has rendered **Standard / Real SIM** chips at a **+20%** uplift since
+`859fa29`, and that UI is in the **1.5** archive — so the choice appears as soon
+as 1.5 clears review, with no client change, purely from `premium_credits` being
+non-null. `create-order` used to refuse the tier on HeroSMS because there was no
+carrier to pin; `routes.herosms_real_operator` now supplies one.
+
+- **Carrier resolution is CHUNKED**, 8 countries per hourly `sync-herosms` run
+  with a cursor in `app_config.herosms_operator_cursor` — ~8 operators × 69
+  countries is ~550 probes, far past the ~150s edge budget in one go. Candidates
+  come from `getOperators` (no api key) minus `app_config.voip_operators`.
+- **`herosms_real_count is NULL` means "never probed"; 0 means "probed, none
+  there".** That distinction is load-bearing: hiding a VoIP-strict route on
+  "not probed yet" briefly took facebook/instagram/whatsapp from 62 hidden
+  routes to **185** — punishing the highest-volume services for our own backlog.
+- **`real_sim_only` replaces hiding.** A VoIP-rejecting service with a real
+  carrier is now sold Real-SIM-only rather than rendered "Unavailable"; the
+  Standard chip is omitted and `create-order` refuses `tier: standard` with
+  `real_sim_required`. Only a strict service with **no** carrier stays hidden.
+- **Two mirrored dead-ends, both closed.** Never send `premium` to a route with
+  no premium price (the Standard chip is the only visible escape), and never
+  send `standard` to a real-sim-only route (the Standard chip is not rendered
+  at all). `effectiveCheckoutPremium` handles both.
+- **`defaultPremium` is evidence-driven, not a hardcoded country.**
+  `Country.deliversPoorly` mirrors `Service.deliversPoorly` and reads
+  `countries.observed_*`, so the US preselection follows measurement and
+  corrects itself.
+- **The tier promises a NAMED CARRIER, never a rate.** No premium order has ever
+  been sold on HeroSMS. Operator classification is by exclusion (an operator
+  absent from `voip_operators` is assumed real), which is the weakest part of
+  the feature — `orders.route_physical_count` is what will settle whether it
+  helps.
+
 ### Forcing a REAL SIM: `physic` is a pool, not a synonym for "physical"
 
 `app_config.force_physical_operator` maps country_id → an **ordered list** of

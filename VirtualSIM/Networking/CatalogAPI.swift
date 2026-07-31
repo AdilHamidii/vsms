@@ -10,6 +10,10 @@ struct Route: Codable, Hashable {
     let successSample: Int?  // conclusive orders behind successRate; nil = seeded
     let successCodes: Int?   // codes delivered — the numerator of "worked X of Y"
     let premiumCredits: Int? // real-SIM tier price; nil = no premium option
+    /// Service refuses VoIP numbers here, so ONLY the Real SIM tier is sold.
+    /// Optional because clients predating the column decode a missing key as
+    /// nil — `Codable` drops unknown keys, but a non-optional Bool would throw.
+    let realSimOnly: Bool?
 
     // `lastCostCents` was decoded here and never read by a single call site —
     // it only ever served to publish our wholesale cost. See the explicit
@@ -58,7 +62,7 @@ struct CatalogAPI {
             .get, path: "rest/v1/routes",
             query: [
                 URLQueryItem(name: "select",
-                             value: "service_id,country_id,retail_credits,status,success_rate,rate_source,success_sample,success_codes,premium_credits"),
+                             value: "service_id,country_id,retail_credits,status,success_rate,rate_source,success_sample,success_codes,premium_credits,real_sim_only"),
                 URLQueryItem(name: "or", value: "(retail_credits.not.is.null,status.neq.active,success_rate.not.is.null)"),
             ],
             authenticated: false

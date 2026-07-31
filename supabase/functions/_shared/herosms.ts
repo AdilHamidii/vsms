@@ -307,6 +307,21 @@ export interface HeroPrice {
  *  Returns null on any failure, so callers can tell "no stock" from "we could
  *  not ask" — hiding a catalog on a failed fetch is the mistake this codebase
  *  has already made once. */
+/** Operator names offered for a country. Needs NO api key.
+ *
+ *  Used to derive real-carrier candidates per country instead of hand-writing a
+ *  list for each of the 69 we sell in. Returns [] on failure, which callers must
+ *  treat as "could not ask", never as "this country has no carriers". */
+export async function getOperators(country: string | number): Promise<string[]> {
+  const r = await call("getOperators", { country });
+  if (r.kind !== "json" || errorTokenOf(r)) return [];
+  const d = (r.data as { countryOperators?: Record<string, string[]> }).countryOperators;
+  if (!d) return [];
+  const all: string[] = [];
+  for (const list of Object.values(d)) if (Array.isArray(list)) all.push(...list);
+  return all;
+}
+
 export async function getNumbersStatus(
   country: string | number,
   operator?: string | null,

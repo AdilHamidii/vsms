@@ -207,6 +207,14 @@ final class AppState {
     /// and the Standard chip is hidden in exactly that case — a dead end.
     func defaultPremium(for service: Service, country: Country) -> Bool {
         guard premiumCost(for: service, country: country) != nil else { return false }
+        // Real-SIM-only routes have no other option to open on.
+        if realSimOnly(for: service, country: country) { return true }
+        // The COUNTRY can be the problem rather than the service. Measured
+        // 2026-07-31, the US pool is ~96% `textnow` (a VoIP texting service)
+        // and US VoIP orders returned 0 codes on 5 attempts, 175 of the 198
+        // credits charged that day. Driven by measured country evidence, not a
+        // hardcoded "us", so it corrects itself as the data moves.
+        if country.deliversPoorly { return true }
         return service.deliversPoorly
     }
 
@@ -218,6 +226,11 @@ final class AppState {
     /// pickers also reset the flag (ContentView), but this makes it impossible
     /// for a catalog refresh under an open checkout to strand the user.
     var effectiveCheckoutPremium: Bool {
+        // The mirror of the guard below: on a real-SIM-only route the Standard
+        // chip is not rendered, so a user who never taps anything would send
+        // `tier: standard` and be refused with `real_sim_required` — a dead end
+        // with no visible control to escape it.
+        if realSimOnly(for: configuringService, country: configuringCountry) { return true }
         guard checkoutPremium else { return false }
         return premiumCost(for: configuringService, country: configuringCountry) != nil
     }
@@ -484,6 +497,18 @@ final class AppState {
     /// tier choice entirely in that case. Never falls back to the standard
     /// price: a nil here means "not sellable as premium", same contract as
     /// cost(for:country:).
+    /// This service refuses VoIP numbers here, so the Standard tier must not be
+    /// offered. Mirrors `premiumCost` deliberately: both read the SAME route,
+    /// so the chips and the tier rules can never disagree about which route
+    /// they describe.
+    func realSimOnly(for service: Service, country: Country) -> Bool {
+        guard let route = routeIndex["\(service.id)|\(country.id)"],
+              route.status == "active" else { return false }
+        // Only meaningful when there is a Real SIM tier to fall back on —
+        // otherwise it would hide Standard and leave nothing selectable.
+        return route.realSimOnly == true && route.premiumCredits != nil
+    }
+
     func premiumCost(for service: Service, country: Country) -> Int? {
         guard let route = routeIndex["\(service.id)|\(country.id)"],
               route.status == "active",

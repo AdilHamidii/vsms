@@ -147,7 +147,7 @@ Deno.serve(async (req) => {
 
   const { data: route, error: rErr } = await sb
     .from("routes")
-    .select("retail_credits, status, last_cost_cents, herosms_cost_cents, herosms_physical_count, herosms_real_operator, provider, smspool_pool, smspva_operator, smspva_operator_cents, premium_credits")
+    .select("retail_credits, status, last_cost_cents, herosms_cost_cents, herosms_physical_count, herosms_real_operator, real_sim_only, provider, smspool_pool, smspva_operator, smspva_operator_cents, premium_credits")
     .eq("service_id", service.id)
     .eq("country_id", country.id)
     .maybeSingle();
@@ -155,28 +155,30 @@ Deno.serve(async (req) => {
   if (!route || route.status !== "active" || route.retail_credits == null) {
     return json({ error: "route_unavailable" }, { status: 409 });
   }
-  // Premium exists only where sync-smspva-operators found a real-SIM carrier
-  // it could price. The app hides the option when premium_credits is null, so
-  // hitting this means a stale client cache — same remedy as a dead route.
+  // Premium = "pin a NAMED carrier", and each provider names one differently:
+  // SMSPVA via sync-smspva-operators (`smspva_operator`), HeroSMS via the
+  // per-country operator probe (`herosms_real_operator`). Either way the route
+  // must carry a `premium_credits` price, which is what the checkout chips key
+  // off — selling a tier the client cannot price is a dead end.
   //
-  // `smspva_operator` and `premium_credits` are written ONLY by
-  // sync-smspva-operators, i.e. they describe an SMSPVA carrier. Once SMS
-  // routes to HeroSMS there is no pin to apply: the operator string is
-  // meaningless to a different provider, so the tier would charge the 20-50%
-  // uplift and reserve exactly the same number the standard tier does. Refuse
-  // it rather than sell nothing.
-  //
-  // This is deliberately a HARD refusal, not a silent downgrade to standard:
-  // downgrading would charge premium credits for a standard fill. HeroSMS does
-  // expose per-country operators AND a physicalCount of real-SIM stock, so the
-  // tier can be rebuilt on it properly — but that is a separate change, and
-  // until then it must not be sellable.
-  const heroRouted = service.herosms_code != null && country.herosms_id != null;
-  if (tier === "premium" && heroRouted) {
+  // HeroSMS used to be refused outright here because there was no pin to apply;
+  // there is now, so the refusal is gone. It remains a HARD refusal when the
+  // route has no carrier: downgrading silently would charge the 20% uplift and
+  // reserve exactly the standard fill.
+  const premiumPin = route.provider === "smspva"
+    ? (route.smspva_operator as string | null)
+    : route.provider === "herosms"
+      ? (route.herosms_real_operator as string | null)
+      : null;
+  if (tier === "premium" && (premiumPin == null || route.premium_credits == null)) {
     return json({ error: "premium_unavailable" }, { status: 409 });
   }
-  if (tier === "premium" && (route.smspva_operator == null || route.premium_credits == null)) {
-    return json({ error: "premium_unavailable" }, { status: 409 });
+
+  // The mirror case: services that reject VoIP are sold ONLY as Real SIM, so a
+  // standard order on such a route would knowingly hand back a number the
+  // service will refuse. Refuse it instead of taking the money.
+  if (tier !== "premium" && route.real_sim_only === true) {
+    return json({ error: "real_sim_required" }, { status: 409 });
   }
 
   // Idempotency backstop against a double-submit (fast double-tap, a retry, or
@@ -342,14 +344,10 @@ Deno.serve(async (req) => {
   // no-op that still reads as enabled.
   const { data: fpCfg } = await sb
     .from("app_config").select("value").eq("key", "force_physical_operator").maybeSingle();
-  const forcePhysicalHere =
-    fpCfg?.value && typeof fpCfg.value === "object" && !Array.isArray(fpCfg.value) &&
-    (fpCfg.value as Record<string, unknown>)[country.id] != null;
-  // The carrier is chosen per ROUTE by sync-herosms (the one with the most
-  // stock among the configured real operators), not fixed globally: `physic`
-  // is empty for many services that have thousands on verizon or tmobile.
-  const forcedOperator = forcePhysicalHere
-    ? ((route.herosms_real_operator as string | null) ?? null)
+  // Premium pins the route's named carrier. Standard leaves HeroSMS unpinned:
+  // the whole point of the two tiers is that the cheap one is the general pool.
+  const forcedOperator = tier === "premium"
+    ? (route.herosms_real_operator as string | null)
     : null;
 
   // Standard orders pin the route's real-SIM carrier too, whenever it fits

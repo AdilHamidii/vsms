@@ -29,6 +29,17 @@ struct Country: Identifiable, Hashable, Codable {
     var observedAttempts: Int?
     var observedCodes: Int?
 
+    /// Delivery here is measurably bad, so checkout should open on Real SIM.
+    ///
+    /// Same shape as `Service.deliversPoorly` on purpose — one rule, two
+    /// scopes. Requires real evidence: nil observations return false rather
+    /// than steering on a guess.
+    var deliversPoorly: Bool {
+        guard let a = observedAttempts, let c = observedCodes else { return false }
+        if c == 0 && a >= 2 { return true }
+        return a >= Self.minDeliverySample && Double(c) / Double(a) < 0.20
+    }
+
     /// Minimum conclusive orders before a country's rate is worth steering on.
     /// Matches `p_min_sample` in `refresh_route_observed_success`.
     static let minDeliverySample = 3
