@@ -1933,6 +1933,65 @@ Never display raw API errors. AppState's catch blocks call `APIError.userMessage
 3. `curl` PostgREST directly with the publishable key — if curl returns the data, iOS decoding is the issue. Check the row **count** too, not just the shape (see the `max_rows` truncation gotcha).
 4. Function logs in Supabase dashboard → Functions → pick function → Logs.
 
+## ASO — search is the ENTIRE acquisition channel (2026-07-31)
+
+Measured over 15 days: **20,884 impressions and all 143 downloads came from App
+Store search.** Zero browse, zero referral, zero ads. There is no other channel,
+so listing metadata is not a marketing nicety here — it is the funnel.
+
+Full study: **`docs/aso-study-2026-07-31.md`**. Exact strings to paste:
+**`docs/app-store-listing.md`** — and note that file had *drifted from the live
+listing* (it documented a name and keywords that were never live). **Read ASC
+before trusting it**: `GET /v1/appInfos/{id}/appInfoLocalizations` for
+name+subtitle, `GET /v1/appStoreVersions/{id}/appStoreVersionLocalizations` for
+keywords and description.
+
+The funnel, US, 6 matched days: 7,107 impressions → 174 taps (**2.45%**) → 119
+installs (**68.4% tap→install**). **The product page converts well; the search
+result does not.** That is icon/title/subtitle/first-screenshots — so screenshot
+work outranks description work. Non-US: **2,629 impressions → 0 taps, 0
+downloads**, with an en-US-only listing.
+
+**Strategy, from the owner: SMS is the revenue product, temp email is an
+acquisition hook that "won't generate much revenue".** So email reaches the index
+through *additive* surfaces — the keyword field and extra localizations — and
+never by displacing SMS terms from the name. Changed for 1.6:
+
+| field | from | to |
+|---|---|---|
+| name | `vSMS: Temp Number, Receive SMS` | unchanged (30/30) |
+| subtitle | `Second Phone Number & eSIM` | `Temp Mail & Phone Verification` (30/30) |
+
+`Temp Mail` is intact by owner decision — it duplicates `Temp` from the name at a
+cost of 5 characters, deliberately, because an exact phrase in a high-weight
+field beats the same words composed from atoms. The old subtitle targeted a
+cluster owned by TextNow (913k ratings) *and* advertised a paused product.
+
+**`anonymous` was removed from the keyword field and must not come back.** Sign
+in with Apple is mandatory and 203 of 204 accounts carry an email address, so it
+is an unverifiable claim under 2.3.7. Also dropped: `privacy`/`private` (owned by
+VPNs and password managers) and `data` (eSIM paused).
+
+**The biggest remaining lever is localization, and it is unused.** The listing is
+**en-US only** — one 160-character indexed surface (30 name + 30 subtitle + 100
+keywords). Apple indexes *every* localization listed for a storefront. Adding
+**Spanish (Mexico)** gives a second full keyword field **in the US storefront**;
+**English (U.K.)** is Apple's additional language for most non-English
+storefronts and the default in India. Two corrections to common ASO advice,
+checked against Apple's own table: en-GB/en-AU/en-CA do **nothing** for the US,
+and India's default is English (U.K.), not Hindi.
+
+**Apple exposes no per-query search terms** (`Source Info` is empty on all 650
+analytics rows), so keyword attribution is before/after inference only. Change
+one layer at a time and allow 7–14 days.
+
+**Ratings cap position; keywords only buy eligibility.** The US storefront shows
+**0 ratings** (3 reviews exist, FR/POL). That is why `shouldRequestReview` now
+fires on the **first** delivered code — only 7 users in the app's history ever
+reached two, and those 7 produced all 3 reviews.
+
+⚠️ **Never let email keywords go live ahead of the build that ships email.**
+
 ## Release prep
 
 **Beta-macOS build gotcha (ITMS-90111).** This Mac runs a beta macOS (e.g. `26A5368g`). Every `xcodebuild archive` embeds the host OS build in `BuildMachineOSBuild`, and App Store validation **rejects binaries built on beta macOS** — "Invalid Binary" / ITMS-90111 — regardless of Xcode/SDK (the installed Xcode 26.6 + iOS 26.5 SDK are fine; the `DTSDKBuild` seed suffix is NOT the cause). Established workaround: after `archive`, patch the app `Info.plist` in the `.xcarchive` to a **stable** macOS build before `-exportArchive` (export re-signs, so signatures stay valid):

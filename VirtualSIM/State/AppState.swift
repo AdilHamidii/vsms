@@ -439,7 +439,20 @@ final class AppState {
 
         let count = d.integer(forKey: PrefKey.successfulCodes) + 1
         d.set(count, forKey: PrefKey.successfulCodes)
-        guard count >= 2 else { return false }
+        // Fires on the FIRST delivered code, lowered from the second on
+        // 2026-07-31. Ratings are what decide App Store search POSITION —
+        // keywords only decide which queries you are eligible for — and the US
+        // storefront shows 0 ratings. Measured the same day: 20 users have ever
+        // received a code but only 7 ever reached two, and those 7 produced all
+        // 3 reviews the app has (~43%). The prompt was working; the eligible
+        // pool was the constraint, so the threshold was the thing to move.
+        //
+        // Still compliant with App Store 5.6.4 — this is Apple's native prompt,
+        // nothing is rewarded for leaving a review, and there is no custom UI or
+        // App Store deep link. It stays gated to once per app version and
+        // de-duped per order above, and Apple independently caps its own prompt
+        // at three per year.
+        guard count >= 1 else { return false }
 
         let version = Bundle.main
             .object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? ""

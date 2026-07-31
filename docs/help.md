@@ -12,15 +12,19 @@
 
 ## How long is the number reserved?
 
-20 minutes. If no code arrives in that window, the credit is refunded
+8 minutes. If no code arrives in that window, the credits are refunded
 automatically.
+
+A temporary **email address** is different — it runs for about 20 minutes,
+and the free outlook.com / hotmail.com addresses cost nothing whether a
+code arrives or not.
 
 ## My code isn't arriving — what can I do?
 
 - Tap **Check now** on the Waiting screen to ping our provider directly.
 - Make sure the target service actually sent the SMS — sometimes they
   silently drop messages from temporary numbers.
-- If 20 minutes pass with no code, your credit is refunded and you can
+- If 8 minutes pass with no code, your credits are refunded and you can
   try a different service or country.
 
 ## How do I buy credits?

@@ -14,82 +14,136 @@ budget).
 ## Name & subtitle
 
 ```
-Name (30 chars):       vSMS: Temp SMS & Verify Codes
-Subtitle (30 chars):   Receive OTP, Codes & Texts
+LIVE NOW (read from ASC 2026-07-31):
+  Name      (30/30):   vSMS: Temp Number, Receive SMS
+  Subtitle  (26/30):   Second Phone Number & eSIM
+
+PROPOSED for 1.6:
+  Name      (30/30):   vSMS: Temp Number, Receive SMS      ← unchanged
+  Subtitle  (30/30):   Temp Mail & Phone Verification      ← replaces the above
 ```
 
-Char counts: name 29, subtitle 26 — both well under the 30 cap.
+⚠️ **This file had drifted from the live listing.** It previously documented a
+name and keyword set that were never live. Always read ASC before trusting it:
+`GET /v1/appInfos/{id}/appInfoLocalizations` for name+subtitle,
+`GET /v1/appStoreVersions/{id}/appStoreVersionLocalizations` for keywords.
 
-**Indexed via these two surfaces** (anything searchable here doesn't
-need to be in the keywords field):
-`vsms · temp · sms · verify · codes · receive · otp · code · texts`
+**Indexed atoms across name + subtitle** (Apple composes phrases across the two,
+so none of these need repeating in the keyword field):
+`vsms · temp · number · receive · sms · mail · phone · verification`
 
-**Why this beats your draft:** "Verification" is the long form of the
-verb users actually search ("verify"), and "Codes" matches both
-"code" (singular) and "codes" (plural). Adding "OTP" to the subtitle
-captures one of the highest-volume queries in the category without
-spending characters in the keywords field.
+**Why the subtitle changes.** `Second Phone Number & eSIM` spent the app's
+second-heaviest ranking field on the two worst possible targets: "second phone
+number" is owned by TextNow (913,221 US ratings), Text Free (594,098) and Text Me
+(667,853) — users who want a *permanent* line they can send from, which this app
+cannot do — and eSIM is a **paused** product returning zero purchasable plans.
+
+**Why `Temp Mail` intact.** Owner decision. It duplicates `Temp` from the name,
+costing 5 characters, and that is the deliberate price of an exact phrase in a
+high-weight field: practitioner consensus is that an intact phrase outranks the
+same words composed from scattered atoms. `Phone` + the name's `Number` composes
+*temp phone number* / *phone number* (18,100/mo US each), and `Verification` is
+the highest-frequency term in competitor SMS subtitles that the name lacks.
+
+**Strategy note:** SMS is the revenue product; temp email is an acquisition hook.
+The name therefore stays 100% SMS, and the rest of the email vocabulary goes into
+the keyword field and additional localizations — surfaces that are *additive*
+rather than displacing terms that already earn.
 
 ---
 
 ## Keywords (100 chars, comma-separated, NO spaces around commas)
 
 ```
-number,virtual,burner,2fa,phone,private,signup,inbox,online,international,anonymous,sim,activation
+LIVE NOW (100/100):
+burner,otp,code,verification,virtual,disposable,privacy,private,text,online,data,temporary,anonymous
+
+PROPOSED for 1.6 (100/100):
+email,virtual,disposable,temporary,online,otp,code,inbox,fake,spam,burner,signup,text,verify,address
 ```
 
-Char count: 99.
+**Added:** `email` (composes *temp email*, *burner email*, *disposable email*,
+*email verification* — and with `Mail` in the subtitle, *temp mail*), `inbox`,
+`fake`, `spam`, `signup`, `verify`, `address`.
 
-**Indexed via this field** (chosen to complement Name + Subtitle):
-- `number` — covers "phone number", "virtual number", "temp number"
-- `virtual` — pairs with "number", high-volume
-- `burner` — category synonym, captures search intent
-- `2fa` — top-tier query, short
-- `phone` — pairs with "verify", "number"
-- `private` — privacy-positioning query
-- `signup` — captures "sign up sms", "signup verification"
-- `inbox` — captures "sms inbox"
-- `online` — pairs with "sms" for "receive sms online"
-- `international` — captures global-numbers searches
-- `anonymous` — pairs with "number"
-- `sim` — captures "second sim", "virtual sim"
-- `activation` — captures "account activation"
+**Dropped, with reasons:**
+- ❌ `privacy` + `private` (14 chars) — head terms owned by VPNs and password
+  managers; Proton Mail (46,010 US ratings) owns "private email". Unwinnable at
+  0 ratings, and wrong-user traffic hurts the per-query conversion Apple weights.
+- ❌ `data` — eSIM is paused. Composes *data recovery / data usage / data plan*.
+- ❌ `anonymous` — **not defensible as a claim.** Sign in with Apple is mandatory
+  and 203 of 204 accounts carry an email address; every order is stored against a
+  `user_id` with the number and the message body. Guideline 2.3.7 targets
+  unverifiable claims. "Private — keeps your real number off the form" is
+  defensible; "anonymous" is not.
+- ❌ `verification` — promoted into the subtitle, so repeating it here is waste.
 
-**Deliberately NOT included** (covered elsewhere or risky):
-- ❌ `sms`, `otp`, `verify`, `verification`, `code`, `codes`, `receive`, `temp` — already in Name or Subtitle
-- ❌ `whatsapp`, `telegram`, `tinder`, etc. — brand-name keywords get rejected under 5.2.1
-- ❌ `fake` — signals fraud, increases rejection risk under 4.3
-- ❌ `free` — app isn't free, dilutes conversion
+**Deliberately NOT included:**
+- ❌ Words already in Name or Subtitle (`sms`, `temp`, `number`, `receive`,
+  `mail`, `phone`, `verification`). Apple explicitly says not to repeat them, and
+  it composes across the three fields anyway.
+- ❌ `whatsapp`, `telegram`, `tinder`, `textnow` and any other brand — banned in
+  three separate places (App Store Search "improper keyword use", 2.3.7, 5.2.1),
+  and independently a trademark exposure. Safe in screenshots and description.
+- ❌ `free` — the app is free to download, but the claim dilutes conversion and
+  invites the free-unlimited-inbox expectation that our credit pricing breaks.
+- ❌ `esim` — paused.
+
+**Format rules (Apple-documented):** comma-separated, **no spaces after commas**
+(every one is a wasted indexed character), one grammatical form per term, no
+stop words, no category name (indexed separately), no app or developer name.
 
 ---
 
 ## Promotional text (170 chars — editable any time without resubmit)
 
 ```
-Rent a temporary phone number, receive your verification SMS in seconds, done. 60+ countries. Pay only for what you use — credits never expire.
+LIVE NOW — inaccurate, replace immediately:
+Get a temporary number in seconds and receive your verification code with a push notification. Now with eSIM data plans.
+
+USE UNTIL BUILD 19 SHIPS (SMS only — no email claim yet):
+Get a temporary phone number for any signup that needs an SMS code. Most codes arrive within 3 minutes, and you are only charged if one does.
+
+USE ONCE BUILD 19 IS LIVE (adds email):
+Temporary phone numbers and temporary email addresses for signup codes. Most SMS codes arrive within 3 minutes, and you are only charged if a code arrives.
 ```
 
-Char count: 145.
+**This field is editable WITHOUT a new version or a review** — it is the one
+fast-iteration lever on the whole listing, so never waste it on keywords (it is
+not indexed).
 
-Promotional text appears at the very top of the description, above the
-"more" fold. Use it for time-sensitive callouts later (e.g.,
-"Now supporting xx countries", "Holiday discount", etc.).
+**Why the live text must change now.** It advertises **eSIM data plans**, which
+are paused (`app_config.esim_paused = true`, 0 of 1,081 plans active) — a live
+Guideline 2.3 exposure. It also promises delivery "in seconds": measured p50 is
+58s but p90 is 131s, and the app's own copy correctly says "within 3 min". The
+house rule is to quote p90 next to a running clock, never p50.
+
+⚠️ **Do not add the email sentence before build 19 is the live build.** The
+released 1.5 has no email UI; advertising temp email that the shipped binary
+cannot deliver is exactly the misleading-metadata case under 2.3.
 
 ---
 
 ## Description (4000 chars max — first ~170 chars visible without "more" tap)
 
 ```
-vSMS gives you a clean, calm iOS app for receiving SMS verification codes on temporary phone numbers — without giving up your real number.
+vSMS gives you a temporary phone number for SMS verification codes — and a temporary email address when a site wants the code by email instead. Without giving up your real number.
 
-Protect your real number from spam, data breaches, and marketing lists. Get a fresh number for any service that accepts SMS, receive the code in seconds, and move on.
+Protect your real number from spam, data breaches, and marketing lists. Get a fresh number for any service that accepts SMS, receive the code, and move on. Most codes arrive within 3 minutes.
 
 WHAT IT DOES
-• Pick a country and service from a curated list of 200+ destinations
-• Tap once to rent a fresh number — no setup, no commitments
+• Pick a service and country — 265 services across 69 countries
+• Tap once to get a fresh number — no setup, no commitments
 • Receive your SMS automatically — one-tap copy
 • See exactly how long is left before the number expires
-• Auto-refund in credits if no code arrives within 20 minutes
+• Auto-refund in credits if no code arrives within 8 minutes
+
+TEMPORARY EMAIL, TOO
+• Need an email code instead? Get a temporary address on gmail.com,
+  icloud.com, outlook.com or hotmail.com
+• outlook.com and hotmail.com are free — up to 3 a day
+• gmail.com and icloud.com cost 1 credit
+• The code appears in the app the moment it arrives
 
 HOW IT WORKS
 • Sign in with Apple — no email forms, no passwords
@@ -109,10 +163,12 @@ vSMS is for people who want a temporary number for short-term, lawful purposes �
 
 CREDIT PACKS
 • 5 credits — $2.99
-• 12 credits — $5.99 (best value per credit)
+• 12 credits — $5.99
 • 30 credits — $12.99
+• 60 credits — $24.99
+• 150 credits — $59.99 (best value per credit)
 
-Different routes cost different amounts of credits depending on the service and country (1 credit for popular routes, up to 100+ for premium long-haul numbers). The exact cost is shown before you confirm — never charged a hidden fee.
+Different routes cost different amounts depending on the service and country — most sit in the low tens of credits, a few cost more. The exact cost is always shown before you confirm, and you are never charged a hidden fee.
 
 PRIVACY FIRST
 We do not collect your contacts, your real number, your location, or any device data beyond what's needed to deliver the service. Full Privacy Policy and Terms of Use are linked inside the app under Account → Legal.
@@ -154,29 +210,46 @@ Email:          adil.hamidii123@gmail.com
 Demo Account:
   Apple ID:     N/A — app uses Sign in with Apple.
                 The reviewer can sign in with any Apple ID. Each new
-                account is automatically granted 1 free credit, which
+                account is automatically granted 3 free credits, which
                 is enough to complete a low-cost route end-to-end
                 without an in-app purchase.
 
 Review Notes:
-  vSMS rents temporary phone numbers and delivers SMS verification
-  codes via the SMSPVA infrastructure provider. The full flow can be
-  tested with the free signup credit.
+  vSMS provides temporary phone numbers for receiving SMS verification
+  codes, and temporary email addresses for receiving email codes.
+  Numbers are supplied by two infrastructure providers (HeroSMS and
+  SMSPVA) depending on the service. The full flow can be tested with
+  the free signup credits, or with no credits at all via the free
+  email tier.
 
-  TO TEST WITHOUT PAYING:
+  EASIEST PATH — NO CREDITS NEEDED (temporary email):
   1. Tap "Sign in with Apple" on the welcome screen.
-  2. You will receive 1 free credit automatically.
-  3. On the Home tab, tap the Service picker, then pick any service
-     priced at 1 credit (most services in low-cost countries qualify
-     — try Discord + Indonesia, for example).
-  4. Tap "Get number" in Checkout.
-  5. The Waiting screen displays the assigned phone number with a
-     live 20-minute reservation timer.
-  6. To exercise the SMS-receive path, text any code from another
-     device to the displayed number. Within ~1 minute the OTP
-     screen will appear with the received code. Alternatively, tap
-     "Check now" repeatedly.
-  7. If no SMS arrives in 20 min, the credit is auto-refunded.
+  2. On the Home tab, switch the toggle from "Numbers" to "E-mails".
+  3. Pick any service, then choose the outlook.com or hotmail.com
+     domain — both are FREE (up to 3 per day, per account).
+  4. Tap to create the address. It is usable immediately.
+  5. Use that address to sign up on the corresponding website. The
+     verification code appears in the app when it arrives.
+
+  SMS PATH (uses the free signup credits):
+  1. On the Home tab, keep the toggle on "Numbers".
+  2. Tap the Service picker and choose a 1-credit route — current
+     examples: TikTok + Philippines, Twitter/X + Colombia, or
+     LinkedIn + Indonesia.
+  3. Tap "Get number" in Checkout.
+  4. The Waiting screen shows the assigned phone number with a live
+     8-minute reservation timer.
+  5. To exercise the receive path, text any code from another device
+     to the displayed number; the OTP screen appears with the code.
+     Alternatively tap "Check now".
+  6. If no SMS arrives within 8 minutes, the credits are refunded
+     automatically. Cancelling is available after a 3-minute hold,
+     and also refunds.
+
+  NOTE ON DELIVERY: these are real third-party numbers, so a given
+  service may decline a given number and no code arrives. That is the
+  expected failure mode and it is always refunded — it is not a bug in
+  the app. If one route does not deliver, please try another.
 
   TO TEST IN-APP PURCHASE (sandbox):
   Account tab → Top up → pick a pack → confirm purchase with a
