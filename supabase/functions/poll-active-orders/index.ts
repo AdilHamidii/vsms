@@ -241,53 +241,38 @@ Deno.serve(async (req) => {
 
   for (const row of expiredCandidates ?? []) {
     try {
-      const { data: claimed, error: cErr } = await sb
-        .from("orders")
-        .update({ status: "expired", closed_at: new Date().toISOString() })
-        .eq("id", row.id)
-        .eq("status", "waiting")
-        .select("id");
-      if (cErr) { console.error("expire claim failed for order", row.id, cErr); continue; }
-      if (!claimed || claimed.length === 0) continue; // another run handled it
-
-      // supabase-js RETURNS errors, it does not throw, and wallet_credit raises
-      // on a non-positive amount or a missing wallet row. Discarding this meant
-      // the claim committed, the money never moved, `expired++` still counted
-      // it, and we pushed "N credits refunded" to a user who wasn't.
-      const { error: refundErr } = await sb.rpc("wallet_credit", {
-        p_user: row.user_id, p_amount: row.cost_credits, p_reason: "refund", p_order: row.id,
-      });
-      if (refundErr) {
-        console.error(`poll: REFUND FAILED order=${row.id} user=${row.user_id} ` +
-                      `credits=${row.cost_credits}: ${refundErr.message}`);
-        // Revert the claim so the next sweep retries. cancel-order, check-order
-        // and create-order all do this, each with a comment giving the reason:
-        // a terminal row is never revisited, so leaving it `expired` makes the
-        // charge permanently unrefundable. This was the one terminal writer
-        // that just logged and moved on — and it is the highest-traffic close
-        // path in the product.
-        const { error: revertErr } = await sb
-          .from("orders")
-          .update({ status: "waiting", closed_at: null })
-          .eq("id", row.id)
-          .eq("status", "expired");
-        if (revertErr) {
-          console.error(`poll: CLAIM REVERT FAILED order=${row.id} — credits are stuck`, revertErr);
-        }
-        // A refund that keeps failing now retries every minute in silence, so
-        // page instead of letting it loop unseen.
+      // Claim the row terminal AND refund it in ONE transaction.
+      //
+      // These used to be two separate round-trips, and this function really
+      // does get killed between them: the relay caps it (120s now, 30s until
+      // 20260731140000) while the limits above are sized for the ~150s edge
+      // budget. A kill in that window left the order `expired` with the charge
+      // never refunded — and terminal rows are never revisited, so nothing
+      // would ever retry it. A TypeScript-level rollback cannot cover that,
+      // because the process is gone.
+      //
+      // Inside expire_order_claim a failed wallet_credit RAISES, which aborts
+      // the status flip too, so the row returns to `waiting` and the next sweep
+      // tries again. false = another run claimed it, or it already closed.
+      const { data: didExpire, error: expErr } = await sb
+        .rpc("expire_order_claim", { p_order: row.id });
+      if (expErr) {
+        // Nothing committed — the whole transaction rolled back.
+        console.error(`poll: EXPIRE FAILED order=${row.id} user=${row.user_id} ` +
+                      `credits=${row.cost_credits}: ${expErr.message}`);
+        // A refund that keeps failing retries every minute in silence, so page
+        // instead of letting it loop unseen.
         try {
           EdgeRuntime.waitUntil(notifySafe(
-            `🚨 <b>Refund failed on expiry</b>\n` +
+            `🚨 <b>Expiry refund failed</b>\n` +
             `order ${esc(row.id)} · user ${esc(row.user_id)} · ${row.cost_credits} credits\n` +
-            `${esc(refundErr.message)}\n` +
-            (revertErr
-              ? `⚠️ claim could NOT be reverted — refund MANUALLY.`
-              : `<i>Reverted to waiting; the next sweep retries.</i>`),
+            `${esc(expErr.message)}\n` +
+            `<i>Rolled back to waiting; the next sweep retries.</i>`,
           ));
         } catch { /* alerting must never mask the sweep */ }
         continue;   // no count, and above all no "you were refunded" push
       }
+      if (!didExpire) continue;
       expired++;
 
       // Ban + close at the provider. Before this, an expired order was never

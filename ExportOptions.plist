@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Export options for `xcodebuild -exportArchive`.
+
+  teamID is the load-bearing value. A wrong one fails with the useless pair
+  "No Account for Team X" + "No profiles for 'com.anthersystems.VirtualSIM'
+  were found", which reads like a provisioning problem and is not. Read the
+  real value out of an archive if ever in doubt:
+
+    /usr/libexec/PlistBuddy -c "Print :ApplicationProperties:Team" \
+      <archive>/Info.plist
+
+  The archive is signed *Apple Development* locally and re-signed for
+  distribution on export — that is expected, not a fault. The Distribution
+  certificate is auto-provisioned by the -authenticationKey* flags on archive.
+-->
+<plist version="1.0">
+<dict>
+    <key>method</key>
+    <string>app-store-connect</string>
+    <key>teamID</key>
+    <string>UDMK379475</string>
+    <key>signingStyle</key>
+    <string>automatic</string>
+    <key>uploadSymbols</key>
+    <true/>
+    <key>destination</key>
+    <string>export</string>
+</dict>
+</plist>

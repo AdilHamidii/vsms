@@ -2039,9 +2039,9 @@ from 2026-07-30), which is Apple's per-platform cap.
   `PurchaseIntent` replacing the `creditsShortfall` inference; email orders added
   to history (`loadEmailOrders` had had NO caller); and the `isOk(null)`
   charge-and-forfeit bug in `providers.ts` fixed.
-- **Codebase**: `MARKETING_VERSION 1.7`, `CURRENT_PROJECT_VERSION 20`, iOS min
+- **Codebase**: `MARKETING_VERSION 1.7`, `CURRENT_PROJECT_VERSION 21`, iOS min
   **18.0**, **96** Swift sources (Release BUILD SUCCEEDED on iPhone 17 Pro /
-  iOS 26.5, zero warnings), **116** migration files, **24** edge functions.
+  iOS 26.5, zero warnings), **117** migration files, **24** edge functions.
   Localizable.xcstrings: 342 strings, **0 untranslated** across all 6 locales.
 - **Catalog**: 18,492 routes, **12,900 active**. **HeroSMS 5,143 / SMSPVA 7,757**.
   Only **3 measured routes** — HeroSMS volume is still tiny, see Known-open. 265
@@ -2257,12 +2257,34 @@ refused.
   wrong on both counts — there are 24 directories. It fails closed, so there is
   no exposure, but **rotating `TELEGRAM_WEBHOOK_SECRET` requires re-running it**.
 
-- ⚠️ **`relay-poll-active-orders` has `timeout_milliseconds := 30000`**, while
-  every budget comment in `poll-active-orders` reasons about the ~150s edge
-  limit and sizes `limit(200)`/`limit(50)`/`limit(50)` against it. A 5×
-  mismatch with the caller. Not biting yet (peak concurrent numbered orders in
-  the product's history is 4), but the row limits are sized for a budget the
-  relay does not grant.
+- ✅ **RESOLVED 2026-07-31: the relay/function budget mismatch WAS biting, and
+  it could strand a refund.** `relay-poll-active-orders` granted 30s while
+  `poll-active-orders` sizes `limit(200)`/`limit(50)`/`limit(50)` against the
+  ~150s edge limit. Found by chasing a watchdog `relay-http` alert: **2 pg_net
+  timeouts in 6 hours against 739 successful relays, both exactly 30000 ms**,
+  after five clean hours — so it is rare, real, and was invisible until the
+  watchdog said so.
+
+  The rate was not the problem. The **expiry sweep claimed the order terminal
+  and refunded it in two separate round-trips**, and a worker killed between
+  them left the order `expired` with the charge never refunded — terminal rows
+  are never revisited, so nothing would ever retry it. A TypeScript rollback
+  cannot cover that case, because the process is gone. `check-order` already
+  had it right: `expire_order()` locks the row, re-checks `waiting`, flips the
+  status and refunds in ONE transaction.
+
+  Fixed in `20260731140000`: **`expire_order_claim(uuid) returns boolean`** holds
+  the single implementation and the sweep calls it (it needs the boolean to push
+  and count exactly once); `expire_order(uuid) returns void` is now a thin
+  wrapper so `check-order` is untouched and the two bodies cannot drift. Relay
+  timeout raised **30000 → 120000**, matching `daily-credit` and
+  `sync-esim-plans` and staying under the ~150s ceiling. Overlapping runs were
+  already safe — every status write is an atomic claim, which the function's own
+  comments give as the reason two sweeps cannot both refund one order.
+
+  **The general rule:** a status claim and its refund must be ONE transaction,
+  never two round-trips. Anywhere those are split, a killed worker is an
+  unrefundable charge, and no timeout value fixes it.
 - ⚠️ **Route-level evidence is 3 rows, for an honest reason.** A route needs 3
   conclusive attempts and HeroSMS has ~24 orders total. Service and country
   evidence rebuild first. Nothing to do but let volume accumulate — it is now
@@ -2445,9 +2467,9 @@ reached two, and those 7 produced all 3 reviews.
 
 vSMS is a single-target app, so only one `Info.plist` needs patching. The real fixes are building on stable macOS or Xcode Cloud; patch is the interim path while on the beta.
 
-**Submitting is fully headless via the App Store Connect API** (no Xcode Organizer) — see the `app-store-submission-asc` memory for the exact working pipeline: `xcodebuild archive` with `-allowProvisioningUpdates -authenticationKeyPath/-authenticationKeyID/-authenticationKeyIssuerID` (auto-provisions the Distribution cert; the Mac only has an *Apple Development* cert locally, which is fine) → patch `BuildMachineOSBuild` (above) → `xcodebuild -exportArchive` → `xcrun altool --upload-app` → ASC REST API (`POST /v1/appStoreVersions`, attach build, set `whatsNew`, `reviewSubmissions` submit). ASC API key lives at `~/.appstoreconnect/private_keys/AuthKey_R5ZVLBTUR6.p8` (key id `R5ZVLBTUR6`); app id `6774768570`. **The issuer id IS available: `4644ed13-4d98-489e-a94b-687f63946f46`** — an earlier note here claimed the machine had no issuer id and that API checks return `NO_ISSUER_ID`. That was wrong, and it cost real time: every "verify in ASC first" instruction was being skipped as impossible when the whole REST pipeline in fact works headlessly. The repo is at **`MARKETING_VERSION 1.7` / `CURRENT_PROJECT_VERSION 20`**. **Always verify live store state via the API before submitting** — the notes here drift within hours, and did twice on 2026-07-31 alone. Historical: 1.3 (build 12) released; 1.4 (build 13) submitted 2026-07-19; build 16 shipped as 1.5 in `a9b92c0` (which lowered the iOS floor to 18.0); build 17 submitted then cancelled 2026-07-25; build 18 submitted 2026-07-25 and released as **1.5**; build 19 submitted 2026-07-31 13:56Z and released as **1.6** the same day; build 20 submitted 2026-07-31 20:05Z as **1.7**.
+**Submitting is fully headless via the App Store Connect API** (no Xcode Organizer) — see the `app-store-submission-asc` memory for the exact working pipeline: `xcodebuild archive` with `-allowProvisioningUpdates -authenticationKeyPath/-authenticationKeyID/-authenticationKeyIssuerID` (auto-provisions the Distribution cert; the Mac only has an *Apple Development* cert locally, which is fine) → patch `BuildMachineOSBuild` (above) → `xcodebuild -exportArchive` → `xcrun altool --upload-app` → ASC REST API (`POST /v1/appStoreVersions`, attach build, set `whatsNew`, `reviewSubmissions` submit). ASC API key lives at `~/.appstoreconnect/private_keys/AuthKey_R5ZVLBTUR6.p8` (key id `R5ZVLBTUR6`); app id `6774768570`. **The issuer id IS available: `4644ed13-4d98-489e-a94b-687f63946f46`** — an earlier note here claimed the machine had no issuer id and that API checks return `NO_ISSUER_ID`. That was wrong, and it cost real time: every "verify in ASC first" instruction was being skipped as impossible when the whole REST pipeline in fact works headlessly. The repo is at **`MARKETING_VERSION 1.7` / `CURRENT_PROJECT_VERSION 21`**. **Always verify live store state via the API before submitting** — the notes here drift within hours, and did twice on 2026-07-31 alone. Historical: 1.3 (build 12) released; 1.4 (build 13) submitted 2026-07-19; build 16 shipped as 1.5 in `a9b92c0` (which lowered the iOS floor to 18.0); build 17 submitted then cancelled 2026-07-25; build 18 submitted 2026-07-25 and released as **1.5**; build 19 submitted 2026-07-31 13:56Z and released as **1.6** the same day; build 20 submitted 2026-07-31 20:05Z as **1.7**, then **cancelled and replaced by build 21** (submitted 21:26Z) to strip the word "supplier" from shipped copy — cancelling an app-version submission is NOT the one-way door an IAP cancellation is: the version simply goes `DEVELOPER_REJECTED`, and re-attaching a build plus a fresh `reviewSubmission` recovers it in about a minute.
 
-**Use the committed `ExportOptions.plist`; do NOT hand-write one.** `-exportArchive` needs `teamID = UDMK379475` and fails with the useless pair *"No Account for Team X"* + *"No profiles for 'com.anthersystems.VirtualSIM' were found"* when it is wrong — which reads like a signing/provisioning problem and is not. Read the real value from the archive if ever in doubt: `PlistBuddy -c "Print :ApplicationProperties:Team" <archive>/Info.plist`. Note the archive is signed *Apple Development* locally and re-signed for distribution on export; that is expected, not a fault.
+**Use the committed `ExportOptions.plist`; do NOT hand-write one.** (It genuinely is committed as of 2026-07-31 — this line previously said so while the file existed in no commit and no checkout, so the first export after a fresh clone had to invent one.) `-exportArchive` needs `teamID = UDMK379475` and fails with the useless pair *"No Account for Team X"* + *"No profiles for 'com.anthersystems.VirtualSIM' were found"* when it is wrong — which reads like a signing/provisioning problem and is not. Read the real value from the archive if ever in doubt: `PlistBuddy -c "Print :ApplicationProperties:Team" <archive>/Info.plist`. Note the archive is signed *Apple Development* locally and re-signed for distribution on export; that is expected, not a fault.
 
 **Run `xcodebuild -exportLocalizations` before submitting anything with new UI strings.** SwiftUI compiles interpolated literals into forms you will not guess — a sentence with two `\(…)` and a percent becomes `%1$@ / %2$@ / %3$lld` positional, and `Text("reports \(n)%")` becomes `reports %lld%%`. Guessing the key silently yields an English fallback; guessing the SPECIFIERS is a runtime crash. Export, then translate against the real keys, then verify the specifier multiset per locale (normalise positional form first — a translation may legitimately reorder arguments, as the Japanese strings do).
 
