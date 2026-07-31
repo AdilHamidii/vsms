@@ -156,6 +156,11 @@ struct ContentView: View {
                     // Re-fetch catalog too so server-side sync-prices runs
                     // show up without an app reinstall / force-quit.
                     await state.refreshMaintenance(using: MaintenanceAPI(client: api))
+                    // Foreground too, not just cold launch — an announcement is
+                    // posted to reach people who are ALREADY using the app, and
+                    // a notice that only lands on the next cold start is useless
+                    // during the outage it was written for.
+                    await state.refreshAppStatus(using: AppStatusAPI(client: api))
                     // Throttled: the routes payload is ~3 MB and prices move
                     // hourly at most, so refetching on every foreground burned
                     // the user's data plan for nothing.

@@ -388,6 +388,59 @@ revenue but its **provider spend is subtracted on its own line** ($4.01 lifetime
 does **not** filter environment, so the digest counts the one Sandbox receipt
 (12 credits, $0 paid) as a purchase; `revenue_snapshot` does not repeat that.
 
+### Announcement banner + `/announce`, `/esim` (2026-07-31)
+
+A small owner-written banner on **Home**, posted from Telegram. Ships in 1.6.
+
+```
+/announce Your message          → live, info (accent)
+/announce warn Your message     → live, amber
+/announce off                   → clears it
+/announce                       → shows what is currently live
+/esim on | /esim off            → set_esim_paused() from the phone
+/esim                           → reports which way it is set
+```
+
+**`app_config` is RLS-restricted to an explicit key WHITELIST, and that is the
+only safe way to widen it.** The table also holds `herosms_health` /
+`smspva_health` (balances), `watchdog`, `blocked_routes` and sync cursors. The
+policy is now:
+
+```sql
+app_config_read: SELECT to authenticated
+  using (key = any (array['maintenance','announcement','esim_paused']))
+```
+
+**Never** replace that with `using (true)` — it would publish the balances and
+the watchdog verdict to anyone holding the publishable key. Verified after the
+change: `anon` reads `herosms_health` → `[]`. `anon` has a table SELECT grant
+but **no policy**, so it reads nothing; the app is past `AuthGate` and reads as
+`authenticated`.
+
+Three details that are load-bearing:
+
+- **`/announce` reads the RAW message text, not the parsed one.** The webhook
+  does `const text = raw.toLowerCase()` before dispatch, so building the
+  announcement from `text` would deliver *"esims are back"* to every user.
+- **Dismissal is keyed on the announcement's `id`, which changes on every
+  post.** Storing a bare "dismissed" Bool would mean the next thing the owner
+  writes is invisible to everyone who waved the previous one away — a broadcast
+  channel that silently stops broadcasting to exactly the people who have used
+  it before.
+- **The text is never localized.** It is a human's words rendered verbatim;
+  machine-translating it would put words in the owner's mouth. Only the chrome
+  around it (dismiss label) is localized. It is also styled distinctly from the
+  app's own measured statements — `kind` picks a colour and asserts nothing.
+
+`MAX_ANNOUNCE = 280`, and over-length is **refused rather than truncated**:
+truncating would let the owner send a message whose ending nobody reads.
+
+**`telegram-webhook` MUST be deployed `--no-verify-jwt`** (Telegram sends no
+Authorization header, and `config.toml` has no entry for it, so the flag is the
+only control). Deploying it without the flag 401s every update and kills the bot
+silently. Assert with an unauthenticated POST: it must return **200** (the
+function's own silent rejection), never 401.
+
 ### Pricing model
 
 `AppState.cost(for:country:) -> Int?` uses an O(1) `routeIndex` dict (keyed `"serviceId|countryId"`) built in `loadCatalog`. Returns `nil` when the pair has no active route with a `retail_credits` price — meaning **unavailable to book**; UI shows "Unavailable" (see ServiceSheet/CountrySheet) and disables the Get-number button. It deliberately does **NOT** fall back to the seed `service.cost`, since undercharging vs the live provider price burns margin per order. **Do not** linear-scan `routes` (~17k rows after sync-prices) — that froze the country picker before the index was added.

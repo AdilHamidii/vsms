@@ -98,20 +98,31 @@ struct EsimStoreScreen: View {
         }
     }
 
-    /// Deliberately does NOT name a cause. The catalog is empty both when the
-    /// line is paused server-side (`set_esim_paused(true)`, used while eSIM
-    /// providers are switched) and when the fetch simply failed — and asserting
-    /// a provider switch in the second case would be a guess dressed as fact.
-    /// What it CAN say without guessing is that bought eSIMs are unaffected,
-    /// which is true either way: they are provisioned on the device and their
-    /// usage is read from the order row, not from this catalog.
+    /// Two different messages, because an empty catalog has two very different
+    /// causes and only ONE of them is something we know.
+    ///
+    /// When the server says the line is paused (`app_config.esim_paused`, set by
+    /// `set_esim_paused()`), we can state it outright. When the catalog is
+    /// merely empty — a failed fetch looks identical — we say only what is
+    /// observable and claim no reason. Asserting "we're switching providers"
+    /// off an empty array would be a guess presented as fact, which is the same
+    /// error as rendering a seeded success rate as a measurement.
+    ///
+    /// Both branches can honestly say bought eSIMs are unaffected: they are
+    /// provisioned on the device and their usage is read from the order row,
+    /// not from this catalog.
     private var emptyCatalog: some View {
         VStack(spacing: 8) {
-            Image(systemName: "globe")
+            Image(systemName: state.esimPaused ? "pause.circle" : "globe")
                 .font(.system(size: 34)).foregroundStyle(theme.text3)
-            Text("No data plans right now")
+            Text(state.esimPaused
+                 ? "eSIMs are unavailable right now"
+                 : "No data plans right now")
                 .font(RFont.display(17, weight: .semibold)).foregroundStyle(theme.text)
-            Text("Travel eSIMs are temporarily off sale. Any eSIM you already bought keeps working — find it under My eSIMs.")
+                .multilineTextAlignment(.center)
+            Text(state.esimPaused
+                 ? "We've paused data plans while we move to a new provider. Any eSIM you already bought keeps working — find it under My eSIMs."
+                 : "Travel eSIMs are temporarily off sale. Any eSIM you already bought keeps working — find it under My eSIMs.")
                 .font(RFont.text(13)).foregroundStyle(theme.text2)
                 .multilineTextAlignment(.center)
         }

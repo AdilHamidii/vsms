@@ -22,6 +22,18 @@ struct HomeScreen: View {
                     .padding(.horizontal, 20)
                     .padding(.top, 6)
 
+                // Above the daily credit on purpose: an announcement is the
+                // owner telling users something about the service right now
+                // (an outage, a provider switch), which outranks a reward.
+                if let announcement = state.visibleAnnouncement {
+                    AnnouncementBanner(announcement: announcement) {
+                        state.dismissAnnouncement()
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.top, 14)
+                    .transition(.move(edge: .top).combined(with: .opacity))
+                }
+
                 // Today's credit, claimed by an explicit tap. Sits above the
                 // hero so it's the first thing a returning user sees.
                 if let daily = state.dailyCredit, daily.available {

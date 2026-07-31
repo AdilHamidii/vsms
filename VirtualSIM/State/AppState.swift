@@ -70,6 +70,11 @@ enum PrefKey {
     static let otpAnimation     = "pref.otpAnimation"
     static let showMetrics      = "pref.showMetrics"
 
+    /// The `id` of the announcement this user waved away. Stored as the id and
+    /// not a Bool so the NEXT announcement still shows — see
+    /// `AppState.visibleAnnouncement`.
+    static let dismissedAnnounce = "announce.dismissedId"
+
     // Review-prompt gating (App Store 5.6.4: native prompt, no incentive).
     static let successfulCodes  = "review.successfulCodes"
     static let lastCountedOrder = "review.lastCountedOrder"
@@ -126,6 +131,44 @@ final class AppState {
         return String(localized: "Get a private temporary number for verification codes on vSMS — join with my code \(code) and start with \(Self.inviteJoinerCredits) free credits: https://apps.apple.com/app/id6774768570")
     }
     var maintenance: MaintenanceStatus = .off
+
+    /// Deliberately-published slice of `app_config` — the owner's announcement
+    /// and whether the eSIM line is paused.
+    var appStatus: AppStatus = .unknown
+
+    /// Whether eSIMs are off sale server-side. Lets the eSIM tab STATE that,
+    /// instead of inferring it from an empty catalog — which is also what an
+    /// ordinary failed fetch looks like.
+    var esimPaused: Bool { appStatus.esimPaused }
+
+    private var dismissedAnnouncementId: String =
+        UserDefaults.standard.string(forKey: PrefKey.dismissedAnnounce) ?? "" {
+        didSet {
+            UserDefaults.standard.set(dismissedAnnouncementId,
+                                      forKey: PrefKey.dismissedAnnounce)
+        }
+    }
+
+    /// The banner to show, or nil. Dismissal is keyed on the announcement's own
+    /// `id`, so waving one away does NOT silence the channel: the next thing the
+    /// owner posts carries a new id and shows again.
+    var visibleAnnouncement: Announcement? {
+        guard let a = appStatus.announcement, a.isLive else { return nil }
+        return a.id == dismissedAnnouncementId ? nil : a
+    }
+
+    func dismissAnnouncement() {
+        guard let a = appStatus.announcement else { return }
+        dismissedAnnouncementId = a.id
+    }
+
+    /// Swallows its own failure on purpose. A banner is additive: failing to
+    /// fetch it must never disturb a screen that is otherwise fine, and the
+    /// previous value staying put is better than blanking a live notice
+    /// because one request timed out.
+    func refreshAppStatus(using api: AppStatusAPI) async {
+        if let s = try? await api.fetch() { appStatus = s }
+    }
 
     /// Clearing the checkout draft here is load-bearing — see
     /// `configuringService`. `flow` is assigned from a dozen call sites
@@ -463,6 +506,11 @@ final class AppState {
         applyStartupSelection()
         bootPhase = .ready
 
+        // Behind the reveal: a banner is additive, and holding a correct Home
+        // screen behind one more round-trip to fetch it would be the exact
+        // trade `coldStart` exists to avoid. Runs BEFORE the eSIM loads because
+        // `esimPaused` decides what the eSIM tab says when the catalog is empty.
+        await refreshAppStatus(using: AppStatusAPI(client: api))
         await loadEsimCatalog(using: EsimPlansAPI(client: api))
         await loadEsimOrders(using: EsimOrdersAPI(client: api))
         // Behind the reveal like the eSIM loads: history is not needed to render

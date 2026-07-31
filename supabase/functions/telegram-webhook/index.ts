@@ -39,7 +39,17 @@ const HELP = [
   "/revenue — money customers actually paid (USD)",
   "/profit — revenue minus Apple's cut and wholesale",
   "     <i>[24h|7d|30d|90d|all]</i> · default: all",
+  "",
+  "/announce <i>message</i> — banner on Home for everyone",
+  "     <code>/announce warn …</code> amber · <code>/announce off</code> clears",
+  "     <code>/announce</code> alone shows what is live",
+  "/esim <i>on|off</i> — put eSIMs on or off sale",
 ].join("\n");
+
+/** Announcement ceiling. The banner is two or three lines on a phone; anything
+ *  longer is silently truncated by the layout, which would let the owner send a
+ *  message whose end nobody ever reads. Refuse instead of truncating. */
+const MAX_ANNOUNCE = 280;
 
 /** Accepted /revenue periods -> the interval passed to revenue_snapshot.
  *  null means lifetime (the function reads p_window null as no lower bound).
@@ -212,6 +222,78 @@ Deno.serve(async (req) => {
         : "🟢 watchdog: all jobs healthy",
       checked ? `\n<i>checked ${esc(checked)}</i>` : "",
     ].filter(Boolean).join("\n");
+  } else if (cmd === "/announce") {
+    // Read `raw`, NOT `text`. The parser lowercases every incoming command, and
+    // an announcement is shown to users VERBATIM — "eSIMs are back" must not
+    // reach them as "esims are back".
+    const body = raw.replace(/^\/announce(@\S+)?\s*/i, "").trim();
+    const { data: cur } = await sb
+      .from("app_config").select("value").eq("key", "announcement").maybeSingle();
+    const curVal = (cur?.value ?? {}) as { active?: boolean; text?: string; kind?: string };
+
+    if (body === "") {
+      reply = curVal.active
+        ? `📣 Live now:\n\n<b>${esc(curVal.text ?? "")}</b>\n\n` +
+          `<code>/announce off</code> to clear it.`
+        : "📣 Nothing is showing.\n\n" +
+          "<code>/announce Your message</code>\n" +
+          "<code>/announce warn Your message</code> — amber";
+    } else if (body.toLowerCase() === "off") {
+      const { error } = await sb.from("app_config")
+        .update({ value: { active: false, text: "", kind: "info", id: "" } })
+        .eq("key", "announcement");
+      reply = error ? `⚠️ Couldn't clear it: ${esc(error.message)}` : "📣 Cleared.";
+    } else {
+      const warn = /^warn\s+/i.test(body);
+      const msg = warn ? body.replace(/^warn\s+/i, "").trim() : body;
+      if (msg.length === 0) {
+        reply = "⚠️ Nothing to post — give it some text after <code>warn</code>.";
+      } else if (msg.length > MAX_ANNOUNCE) {
+        reply = `⚠️ Too long: ${msg.length} characters, limit ${MAX_ANNOUNCE}. ` +
+                `Truncating would hide the end of your own message, so it is refused instead.`;
+      } else {
+        // A fresh `id` per post is what makes a DISMISSED banner come back for
+        // the NEXT announcement. Without it the client can only remember
+        // "dismissed", and every later message is invisible to whoever waved
+        // the first one away — a broadcast channel that quietly stops
+        // broadcasting to exactly the people who have used it before.
+        const { error } = await sb.from("app_config")
+          .update({
+            value: {
+              active: true, text: msg,
+              kind: warn ? "warn" : "info",
+              id: new Date().toISOString(),
+            },
+          })
+          .eq("key", "announcement");
+        reply = error
+          ? `⚠️ Couldn't post it: ${esc(error.message)}`
+          : `📣 Live${warn ? " (amber)" : ""}:\n\n<b>${esc(msg)}</b>\n\n` +
+            `<i>On Home for everyone running 1.6+. Dismissible — a new one shows again.</i>`;
+      }
+    }
+  } else if (cmd === "/esim") {
+    if (arg !== "on" && arg !== "off") {
+      const { data: p } = await sb
+        .from("app_config").select("value").eq("key", "esim_paused").maybeSingle();
+      reply = `🌐 eSIMs are <b>${p?.value === true ? "OFF sale" : "on sale"}</b>.\n\n` +
+              `<code>/esim off</code> · <code>/esim on</code>`;
+    } else {
+      const pausing = arg === "off";
+      // Destructure the error. set_esim_paused reports how many plans it moved,
+      // and resuming a catalog whose provider is gone legitimately restores 0 —
+      // that has to be shown, not read as success.
+      const { data, error } = await sb.rpc("set_esim_paused", { p_paused: pausing });
+      const d = (data ?? {}) as { plans_active?: number; plans_changed?: number };
+      reply = error
+        ? `⚠️ Couldn't change it: ${esc(error.message)}`
+        : `🌐 eSIMs ${pausing ? "are now OFF sale" : "are back on sale"}.\n` +
+          `${d.plans_changed ?? 0} plans changed · ${d.plans_active ?? 0} now on sale` +
+          (!pausing && (d.plans_active ?? 0) === 0
+            ? `\n\n⚠️ Nothing came back — the catalog has not been synced recently, ` +
+              `so there is nothing to put on sale. Wire the new provider's sync first.`
+            : "");
+    }
   }
 
   await sendMessage(reply);

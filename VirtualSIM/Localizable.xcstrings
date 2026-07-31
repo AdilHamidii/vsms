@@ -7189,6 +7189,129 @@
         }
       }
     },
+    "Dismiss announcement": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ankündigung schließen"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cerrar aviso"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Fermer l'annonce"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Chiudi annuncio"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "お知らせを閉じる"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dispensar aviso"
+          }
+        }
+      }
+    },
+    "eSIMs are unavailable right now": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "eSIMs sind derzeit nicht verfügbar"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Las eSIM no están disponibles ahora"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Les eSIM sont indisponibles pour le moment"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Le eSIM non sono disponibili al momento"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "現在eSIMはご利用いただけません"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "As eSIMs estão indisponíveis no momento"
+          }
+        }
+      }
+    },
+    "We've paused data plans while we move to a new provider. Any eSIM you already bought keeps working — find it under My eSIMs.": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Wir haben Datentarife pausiert, während wir zu einem neuen Anbieter wechseln. Bereits gekaufte eSIMs funktionieren weiterhin – du findest sie unter „Meine eSIMs“."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hemos pausado los planes de datos mientras cambiamos de proveedor. Cualquier eSIM que ya hayas comprado sigue funcionando: la encontrarás en «Mis eSIM»."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nous avons suspendu les forfaits data le temps de changer de fournisseur. Toute eSIM déjà achetée continue de fonctionner — retrouvez-la dans « Mes eSIM »."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Abbiamo sospeso i piani dati mentre passiamo a un nuovo operatore. Le eSIM già acquistate continuano a funzionare: le trovi in «Le mie eSIM»."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "新しいプロバイダへの移行のため、データプランを一時停止しています。購入済みのeSIMは引き続きご利用いただけます。「マイeSIM」からご確認ください。"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pausamos os planos de dados enquanto mudamos de provedor. Qualquer eSIM que você já comprou continua funcionando — encontre-a em «Meus eSIMs»."
+          }
+        }
+      }
+    },
     "No data plans right now": {
       "extractionState": "manual",
       "localizations": {
