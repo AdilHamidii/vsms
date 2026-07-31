@@ -1345,6 +1345,41 @@ group by 1;
 Rollback is `voip_strict_services = '[]'` — the next hourly run re-activates
 everything.
 
+### Forcing a REAL SIM: `physic` is a pool, not a synonym for "physical"
+
+`app_config.force_physical_operator` maps country_id → an **ordered list** of
+acceptable real carriers. Seeded for `us` with verizon, tmobile, at_t, physic
+and ten more. `sync-herosms` probes
+`getNumbersStatus?country=<id>&operator=<name>` per operator and records the one
+with the most stock on each route (`routes.herosms_real_operator` /
+`herosms_real_count`); `create-order` pins that carrier **strictly**, so a dry
+pool fails and refunds rather than silently handing back the VoIP number the
+setting exists to prevent.
+
+**The trap, and it cost a wrong deploy on 2026-07-31.** HeroSMS lists an
+operator literally named `physic`, which reads like "all physical SIMs". It is
+not — it is one narrow pool, frequently empty for services that have thousands
+of real numbers elsewhere. Measured for badoo/us:
+
+| operator | stock |
+|---|---|
+| `physic` | **0** |
+| at_t | 131 |
+| tmobile | 4,179 |
+| **verizon** | **14,224** |
+| **textnow** (VoIP) | **458,985** |
+
+Pinning `physic` alone hid **71** US routes that were perfectly serviceable.
+Note also that `textnow` — a VoIP texting service — is ~96% of the US pool on
+its own: the VoIP problem is one operator, not the absence of `physic`.
+
+`getPrices`' `physicalCount` is a THIRD number again and matches neither
+(3,829 for badoo/us). Do not treat the three as interchangeable, and do not
+infer operator-level stock from `getPrices` — it accepts an `operator` param
+and **silently ignores it**. `getNumbersStatus` is the only per-operator view;
+a service ABSENT from its result has no stock on that operator, which is
+different from a zero.
+
 ### Why a service reads "Unavailable" — the price ceiling
 
 `sync-prices` hides any route whose wholesale cost exceeds `MAX_WHOLESALE_CENTS`,
