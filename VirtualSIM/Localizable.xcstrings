@@ -310,6 +310,53 @@
         }
       }
     },
+    "%@ ranks highest for %@ network-wide — %lld%% in the last 24h. We haven't tested it ourselves yet.": {
+      "extractionState": "stale",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@ ranks highest for %2$@ network-wide — %3$lld%% in the last 24h. We haven't tested it ourselves yet."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@ liegt für %2$@ netzwerkweit vorn – %3$lld %% in den letzten 24 Std. Wir haben es selbst noch nicht getestet."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@ es el mejor para %2$@ en toda la red: un %3$lld %% en las últimas 24 h. Aún no lo hemos probado nosotros."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@ arrive en tête pour %2$@ à l’échelle du réseau — %3$lld %% sur les dernières 24 h. Nous ne l’avons pas encore testé nous-mêmes."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@ è il migliore per %2$@ sull’intera rete: %3$lld%% nelle ultime 24 h. Non l’abbiamo ancora testato di persona."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%2$@ ではネットワーク全体で %1$@ が最上位で、過去24時間で %3$lld%% です。当社ではまだ検証していません。"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@ lidera para %2$@ em toda a rede — %3$lld%% nas últimas 24 h. Ainda não testamos por conta própria."
+          }
+        }
+      }
+    },
     "%@ rejected it": {
       "extractionState": "manual",
       "localizations": {
@@ -6746,6 +6793,47 @@
         }
       }
     },
+    "Network-wide rates from the last 24h — not our own delivery record. Countries not listed haven't been ranked, which isn't a mark against them.": {
+      "extractionState": "stale",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Netzwerkweite Raten der letzten 24 Std. – nicht unsere eigene Zustellrate. Nicht gelistete Länder wurden nicht bewertet, was kein Nachteil für sie ist."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tasas de toda la red en las últimas 24 h: no es nuestro propio registro de entrega. Los países no listados no se han clasificado, lo que no es un punto en su contra."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Taux à l’échelle du réseau sur les dernières 24 h — ce n’est pas notre propre taux de livraison. Les pays non listés n’ont pas été classés, ce qui n’est pas un mauvais signe."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tassi sull’intera rete nelle ultime 24 h — non è il nostro dato di consegna. I paesi non elencati non sono stati classificati, il che non è un giudizio negativo."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ネットワーク全体での過去24時間の数値です。当社自身の配信実績ではありません。掲載のない国は評価対象外というだけで、悪いという意味ではありません。"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Taxas de toda a rede nas últimas 24 h — não é o nosso próprio histórico de entrega. Países não listados não foram classificados, o que não é um ponto negativo."
+          }
+        }
+      }
+    },
     "No active eSIMs": {
       "localizations": {
         "de": {
@@ -7961,52 +8049,6 @@
         }
       }
     },
-    "Our provider ranks %@ highest for %@ — they report %lld%% there in the last 24h. We haven't tested it ourselves yet.": {
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Unser Anbieter bewertet %1$@ für %2$@ am besten – dort werden %3$lld %% in den letzten 24 Std. gemeldet. Wir haben es selbst noch nicht getestet."
-          }
-        },
-        "en": {
-          "stringUnit": {
-            "state": "new",
-            "value": "Our provider ranks %1$@ highest for %2$@ — they report %3$lld%% there in the last 24h. We haven't tested it ourselves yet."
-          }
-        },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Nuestro proveedor sitúa %1$@ como el mejor para %2$@: informa un %3$lld %% allí en las últimas 24 h. Aún no lo hemos probado nosotros."
-          }
-        },
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Notre fournisseur classe %1$@ en tête pour %2$@ — il y indique %3$lld %% sur les dernières 24 h. Nous ne l’avons pas encore testé nous-mêmes."
-          }
-        },
-        "it": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Il nostro fornitore indica %1$@ come miglior paese per %2$@: riporta %3$lld%% nelle ultime 24 h. Non l’abbiamo ancora testato di persona."
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "当社のプロバイダは %2$@ について %1$@ を最上位としており、過去24時間で %3$lld%% と報告しています。当社ではまだ検証していません。"
-          }
-        },
-        "pt-BR": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Nosso fornecedor coloca %1$@ em primeiro para %2$@ — informa %3$lld%% lá nas últimas 24 h. Ainda não testamos por conta própria."
-          }
-        }
-      }
-    },
     "Out of stock right now": {
       "localizations": {
         "de": {
@@ -8987,46 +9029,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Alugue um número descartável, receba o SMS de verificação aqui mesmo e mantenha seu número real fora de todos os cadastros."
-          }
-        }
-      }
-    },
-    "Reported by our supplier across all their customers, last 24h — not our own delivery record. Countries not listed haven't been ranked, which isn't a mark against them.": {
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Von unserem Anbieter über alle seine Kunden gemeldet, letzte 24 Std. – nicht unsere eigene Zustellrate. Nicht gelistete Länder wurden nicht bewertet, was kein Nachteil für sie ist."
-          }
-        },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Datos de nuestro proveedor sobre todos sus clientes, últimas 24 h: no es nuestro propio registro de entrega. Los países no listados no se han clasificado, lo que no es un punto en su contra."
-          }
-        },
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Communiqué par notre fournisseur pour l’ensemble de ses clients, dernières 24 h — ce n’est pas notre propre taux de livraison. Les pays non listés n’ont pas été classés, ce qui n’est pas un mauvais signe."
-          }
-        },
-        "it": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Riportato dal nostro fornitore su tutti i suoi clienti, ultime 24 h — non è il nostro dato di consegna. I paesi non elencati non sono stati classificati, il che non è un giudizio negativo."
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "当社のプロバイダが全顧客を対象に報告した過去24時間の数値です。当社自身の配信実績ではありません。掲載のない国は評価対象外というだけで、悪いという意味ではありません。"
-          }
-        },
-        "pt-BR": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Informado pelo nosso fornecedor com base em todos os clientes dele, últimas 24 h — não é o nosso próprio histórico de entrega. Países não listados não foram classificados, o que não é um ponto negativo."
           }
         }
       }
@@ -11865,83 +11867,84 @@
         }
       }
     },
-    "We're updating live prices across all providers. Ordering is paused for a few minutes.": {
+    "We're updating live prices. Ordering is paused for a few minutes.": {
+      "extractionState": "stale",
       "localizations": {
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Wir aktualisieren gerade die Live-Preise aller Anbieter. Bestellungen sind für einige Minuten pausiert."
+            "value": "Wir aktualisieren gerade die Live-Preise. Bestellungen sind für einige Minuten pausiert."
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "Estamos actualizando los precios en vivo de todos los proveedores. Los pedidos están en pausa unos minutos."
+            "value": "Estamos actualizando los precios en vivo. Los pedidos están en pausa unos minutos."
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Nous mettons à jour les prix en direct de tous les fournisseurs. Les commandes sont suspendues quelques minutes."
+            "value": "Nous mettons à jour les prix en direct. Les commandes sont suspendues quelques minutes."
           }
         },
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "Stiamo aggiornando i prezzi live di tutti i provider. Gli ordini sono in pausa per qualche minuto."
+            "value": "Stiamo aggiornando i prezzi live. Gli ordini sono in pausa per qualche minuto."
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "全プロバイダーの最新価格を更新中です。注文は数分間停止しています。"
+            "value": "最新価格を更新中です。注文は数分間停止しています。"
           }
         },
         "pt-BR": {
           "stringUnit": {
             "state": "translated",
-            "value": "Estamos atualizando os preços de todos os provedores. Os pedidos estão pausados por alguns minutos."
+            "value": "Estamos atualizando os preços. Os pedidos estão pausados por alguns minutos."
           }
         }
       }
     },
-    "We've paused data plans while we move to a new provider. Any eSIM you already bought keeps working — find it under My eSIMs.": {
+    "We've paused data plans while we make some improvements. Any eSIM you already bought keeps working — find it under My eSIMs.": {
       "extractionState": "manual",
       "localizations": {
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Wir haben Datentarife pausiert, während wir zu einem neuen Anbieter wechseln. Bereits gekaufte eSIMs funktionieren weiterhin – du findest sie unter „Meine eSIMs“."
+            "value": "Wir haben Datentarife pausiert, während wir einige Verbesserungen vornehmen. Bereits gekaufte eSIMs funktionieren weiterhin – du findest sie unter „Meine eSIMs“."
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "Hemos pausado los planes de datos mientras cambiamos de proveedor. Cualquier eSIM que ya hayas comprado sigue funcionando: la encontrarás en «Mis eSIM»."
+            "value": "Hemos pausado los planes de datos mientras hacemos algunas mejoras. Cualquier eSIM que ya hayas comprado sigue funcionando: la encontrarás en Mis eSIM."
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Nous avons suspendu les forfaits data le temps de changer de fournisseur. Toute eSIM déjà achetée continue de fonctionner — retrouvez-la dans « Mes eSIM »."
+            "value": "Nous avons suspendu les forfaits data le temps d’apporter quelques améliorations. Toute eSIM déjà achetée continue de fonctionner — retrouvez-la dans « Mes eSIM »."
           }
         },
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "Abbiamo sospeso i piani dati mentre passiamo a un nuovo operatore. Le eSIM già acquistate continuano a funzionare: le trovi in «Le mie eSIM»."
+            "value": "Abbiamo messo in pausa i piani dati mentre apportiamo alcuni miglioramenti. Le eSIM già acquistate continuano a funzionare: le trovi in Le mie eSIM."
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "新しいプロバイダへの移行のため、データプランを一時停止しています。購入済みのeSIMは引き続きご利用いただけます。「マイeSIM」からご確認ください。"
+            "value": "改善作業のため、データプランを一時停止しています。購入済みのeSIMは引き続きご利用いただけます（「マイeSIM」からご確認ください）。"
           }
         },
         "pt-BR": {
           "stringUnit": {
             "state": "translated",
-            "value": "Pausamos os planos de dados enquanto mudamos de provedor. Qualquer eSIM que você já comprou continua funcionando — encontre-a em «Meus eSIMs»."
+            "value": "Pausamos os planos de dados enquanto fazemos algumas melhorias. Qualquer eSIM que você já comprou continua funcionando — encontre em Meus eSIMs."
           }
         }
       }

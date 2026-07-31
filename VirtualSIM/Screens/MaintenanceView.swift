@@ -28,7 +28,7 @@ struct MaintenanceView: View {
                         .font(RFont.display(22, weight: .bold))
                         .tracking(-0.5)
                         .foregroundStyle(theme.text)
-                    Text("We're updating live prices across all providers. Ordering is paused for a few minutes.")
+                    Text("We're updating live prices. Ordering is paused for a few minutes.")
                         .font(RFont.text(14))
                         .multilineTextAlignment(.center)
                         .foregroundStyle(theme.text2)

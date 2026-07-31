@@ -121,7 +121,7 @@ struct EsimStoreScreen: View {
                 .font(RFont.display(17, weight: .semibold)).foregroundStyle(theme.text)
                 .multilineTextAlignment(.center)
             Text(state.esimPaused
-                 ? "We've paused data plans while we move to a new provider. Any eSIM you already bought keeps working — find it under My eSIMs."
+                 ? "We've paused data plans while we make some improvements. Any eSIM you already bought keeps working — find it under My eSIMs."
                  : "Travel eSIMs are temporarily off sale. Any eSIM you already bought keeps working — find it under My eSIMs.")
                 .font(RFont.text(13)).foregroundStyle(theme.text2)
                 .multilineTextAlignment(.center)

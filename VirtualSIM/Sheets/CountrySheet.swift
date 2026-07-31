@@ -131,11 +131,18 @@ struct CountrySheet: View {
     ///
     /// ⚠️ This is NOT the app's delivery record and is never drawn as one. The
     /// list below keeps rendering `DeliveryRecord` ("Not tested" / "Worked 3 of
-    /// 7 times"), which describes orders WE placed. This section relays what
-    /// our supplier reports across all of their customers — a different claim,
-    /// from a different party, so it is separated, captioned, and worded as
-    /// reported rather than measured. Collapsing the two is precisely what made
-    /// SMSPVA's seeded grade rank never-sold routes as "proven".
+    /// 7 times"), which describes orders WE placed. This section relays a
+    /// network-wide aggregate across all traffic on the underlying carrier
+    /// network — a different claim, about a different population, so it is
+    /// separated, captioned, and worded as reported rather than measured.
+    /// Collapsing the two is precisely what made SMSPVA's seeded grade rank
+    /// never-sold routes as "proven".
+    ///
+    /// The copy deliberately says "network-wide" and never names or alludes to
+    /// a supplier (owner decision, 2026-07-31): the app should not advertise
+    /// that it resells someone else's inventory. The honesty requirement is
+    /// only that this is visibly NOT our own measurement — which "network-wide
+    /// … not our own delivery record" carries without the commercial reveal.
     ///
     /// The caption also has to say what absence means, because the source is a
     /// top-10 gated at 50+ activations: a country missing here has NOT been
@@ -149,7 +156,7 @@ struct CountrySheet: View {
                 Text("Top success rates")
                     .font(RFont.text(13, weight: .semibold))
                     .foregroundStyle(theme.text)
-                Text("Reported by our supplier across all their customers, last 24h — not our own delivery record. Countries not listed haven't been ranked, which isn't a mark against them.")
+                Text("Network-wide rates from the last 24h — not our own delivery record. Countries not listed haven't been ranked, which isn't a mark against them.")
                     .font(RFont.text(11))
                     .foregroundStyle(theme.text2)
                     .fixedSize(horizontal: false, vertical: true)

@@ -1029,6 +1029,25 @@ provider reports 59.3%**. Price picked Kenya every time.
   quality data to anyone holding the publishable key. Inherent to showing a
   number. Mitigated to four columns, and the table is `authenticated`-only with
   no anon policy — stricter than `routes`, which has a `public read` policy.
+- **NEVER name or allude to a supplier in user-facing copy** (owner decision,
+  2026-07-31). The app must not advertise that it resells someone else's
+  inventory. The caption shipped as *"Reported by our supplier across all their
+  customers"* and was changed to **"Network-wide rates from the last 24h — not
+  our own delivery record"**; `RecoveryScreen` lost *"Our provider ranks…"* the
+  same way, and the maintenance and eSIM-pause screens lost "all providers" and
+  "moving to a new provider".
+
+  The two rules interact and both must hold: this data still has to be visibly
+  **not our own measurement**, so the wording carries "network-wide" plus an
+  explicit "not our own delivery record" / "We haven't tested it ourselves yet".
+  Dropping the attribution entirely to solve the naming problem would turn a
+  third party's aggregate into an implied claim of our own — the exact error
+  that demoted SMSPVA's seeded grade to `.notTested`.
+
+  **"Carrier" is fine and is not the same thing** — the Real SIM tier's "named
+  mobile carrier" means Verizon/T-Mobile, which is the product, not our
+  wholesaler. Grep before assuming a hit: `provider` appears legitimately in
+  `providerOrder()`, error codes and internal comments.
 
 ### Quote p90, never p50, next to a running clock
 

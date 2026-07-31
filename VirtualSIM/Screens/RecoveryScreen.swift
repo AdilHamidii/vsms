@@ -116,15 +116,20 @@ struct RecoveryScreen: View {
                 }
 
                 // Deliberately styled apart from the measured chip above: that
-                // one states what OUR orders did, this one relays what the
-                // provider reports across all of their customers. Same screen,
-                // two different kinds of claim, so the wording attributes it
-                // every time and the colour does not borrow `theme.live`, which
-                // means "measured success" everywhere else in the app.
+                // one states what OUR orders did, this one relays a
+                // network-wide aggregate over traffic that is not ours. Same
+                // screen, two different kinds of claim, so the wording marks
+                // the difference every time and the colour does not borrow
+                // `theme.live`, which means "measured success" everywhere else.
+                //
+                // "network-wide" rather than naming a supplier — see the note
+                // in CountrySheet.providerTopCountries. The distinguishing work
+                // is done by the closing sentence, which says plainly that we
+                // have not tested it.
                 if let ranked = rankedSuggestion {
                     HStack(spacing: 8) {
                         FlagCircle(country: ranked.country, size: 24)
-                        Text("Our provider ranks \(ranked.country.name) highest for \(context.service.name) — they report \(Int(ranked.rank.vendorPercent.rounded()))% there in the last 24h. We haven't tested it ourselves yet.")
+                        Text("\(ranked.country.name) ranks highest for \(context.service.name) network-wide — \(Int(ranked.rank.vendorPercent.rounded()))% in the last 24h. We haven't tested it ourselves yet.")
                             .font(RFont.text(13, weight: .medium))
                             .foregroundStyle(theme.text)
                             .multilineTextAlignment(.leading)
