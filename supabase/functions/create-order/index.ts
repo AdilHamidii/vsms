@@ -296,9 +296,27 @@ Deno.serve(async (req) => {
       console.warn(`failOrder: lost the claim for ${orderId} (reason=${reason}) — refund already issued elsewhere, skipping`);
       return;
     }
-    await sb.rpc("wallet_credit", {
+    // supabase-js RETURNS errors, it does not throw, and wallet_credit RAISES
+    // on a missing wallet row or non-positive amount. This is the busiest
+    // failure path in the order flow (margin_too_low, stockout and provider
+    // faults all land here) — discarding the error left the order terminal,
+    // the user charged, and the console.warn below looking identical to a
+    // clean refund. Mirrors the guard cancel-order already had.
+    const { error: refundErr } = await sb.rpc("wallet_credit", {
       p_user: userId, p_amount: cost, p_reason: "refund", p_order: orderId,
     });
+    if (refundErr) {
+      // Roll back to 'waiting' so the expiry sweep closes and refunds it a
+      // minute later — every recovery path requires status='waiting', so
+      // leaving it terminal makes the charge PERMANENTLY unrefundable.
+      // `wallet_transactions_refund_once_idx` makes the retry safe.
+      console.error(`create-order: REFUND FAILED order=${orderId} user=${userId} ` +
+                    `credits=${cost}: ${refundErr.message} — reverting to waiting`);
+      await sb.from("orders")
+        .update({ status: "waiting", closed_at: null })
+        .eq("id", orderId).eq("status", "canceled");
+      return;
+    }
     console.warn(`create-order failed svc=${service.id} cty=${country.id} reason=${reason} order=${orderId}`);
   };
 
@@ -327,28 +345,28 @@ Deno.serve(async (req) => {
   // from the catalog on 8 orders that never got a number.
   const maxCostUsd = (cost * NET_USD_PER_CREDIT) / MIN_MARGIN + CEILING_HEADROOM_USD;
 
-  // ── Force a REAL SIM in countries where the default pool is VoIP ─────────
+  // ── Real-SIM carrier ─────────────────────────────────────────────────────
   //
-  // `app_config.force_physical_operator` maps country_id -> a HeroSMS operator
-  // name. Seeded {"us": "physic"}, HeroSMS's own physical-SIM pool.
+  // `routes.herosms_real_operator` is the named carrier with the most stock for
+  // this route, resolved per country by `sync-herosms`. It replaced an earlier
+  // `app_config.force_physical_operator` that pinned the single operator
+  // `physic` for the whole of the US — which turned out to be one narrow pool,
+  // empty for services holding thousands of real numbers elsewhere (badoo/us:
+  // physic 0, verizon 14,224, textnow 458,985).
   //
-  // Why: probed 2026-07-31, the US pool is ~450,000 numbers of which ~113 per
-  // service are physical — about 0.03%. A random fill is therefore VoIP with
-  // near-certainty, and in the preceding 12h badoo/us and bumble/us took 175 of
-  // 198 credits charged and returned ZERO codes. `physicalCount > 0` on the
-  // route is far too weak a test when physical is a rounding error of the pool.
+  // Premium pins the route's named carrier STRICTLY (a dry carrier fails and
+  // refunds). Standard pins it OPPORTUNISTICALLY — same as the SMSPVA arm
+  // below — so a dry carrier, or one over the ceiling, falls back to the
+  // general pool instead of losing the sale.
   //
-  // The pin is STRICT (see the reserve call): if the physical pool is dry we
-  // fail the order and refund rather than quietly handing back the VoIP number
-  // this exists to avoid. Silently downgrading would make the whole setting a
-  // no-op that still reads as enabled.
-  const { data: fpCfg } = await sb
-    .from("app_config").select("value").eq("key", "force_physical_operator").maybeSingle();
-  // Premium pins the route's named carrier. Standard leaves HeroSMS unpinned:
-  // the whole point of the two tiers is that the cheap one is the general pool.
-  const forcedOperator = tier === "premium"
-    ? (route.herosms_real_operator as string | null)
-    : null;
+  // Standard must NOT be left unpinned. The tier chips that let a user choose
+  // are in the 1.5 archive still awaiting review, and `defaultPremium` is in
+  // build 19 — so every order a real user places today is `standard`. Leaving
+  // it unpinned put US orders straight back onto a pool that is ~99.97% VoIP
+  // (`textnow` alone is 458,985 of ~477,000 numbers), which took 175 of 198
+  // credits charged for ZERO codes in the 12h before this was first fixed.
+  // Opportunistic pinning costs nothing: the worst case is the old behaviour.
+  const heroCarrier = route.herosms_real_operator as string | null;
 
   // Standard orders pin the route's real-SIM carrier too, whenever it fits
   // the margin ceiling. Probed 2026-07-21: on all 16,320 active routes the
@@ -461,11 +479,14 @@ Deno.serve(async (req) => {
     // else-branch silently handed an SMSPool pool name to whatever provider
     // ran next.
     const pin = p === "smspva" ? smspvaPin
-              : p === "herosms" ? forcedOperator
+              : p === "herosms" ? heroCarrier
               : null;
     // Strict when the buyer paid for a specific real-SIM pool (premium), and
     // strict when policy forces one — both mean "this pool or nothing".
-    const strictPin = tier === "premium" || (p === "herosms" && forcedOperator != null);
+    // Strict only for premium: that buyer paid for THAT pool and must never
+    // be silently downgraded. Standard may fall back, which is exactly what
+    // makes the opportunistic pin free.
+    const strictPin = tier === "premium";
     // Fresh-number guarantee: SMSPVA re-issues a just-canceled number to the
     // same buyer. If the fill matches a number this user already drew for
     // this service in the last hour, release it and draw again — at most 3

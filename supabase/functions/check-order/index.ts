@@ -113,10 +113,21 @@ Deno.serve(async (req) => {
       .eq("status", "waiting")
       .select("id, cost_credits");
     if (claimed && claimed.length > 0) {
-      await sb.rpc("wallet_credit", {
+      // Same guard as cancel-order and poll-active-orders. A discarded error
+      // here leaves the order claimed to 'expired' with the money never moved —
+      // and this is the "Check now" path, which must never dead-end silently.
+      const { error: refundErr } = await sb.rpc("wallet_credit", {
         p_user: userId, p_amount: claimed[0].cost_credits,
         p_reason: "refund", p_order: order.id,
       });
+      if (refundErr) {
+        console.error(`check-order: REFUND FAILED order=${order.id} user=${userId} ` +
+                      `credits=${claimed[0].cost_credits}: ${refundErr.message} — reverting to waiting`);
+        await sb.from("orders")
+          .update({ status: "waiting", closed_at: null })
+          .eq("id", order.id).eq("status", "expired");
+        return json({ error: "refund_failed" }, { status: 500 });
+      }
     }
     const { data: fresh } = await sb.from("orders").select("*").eq("id", order.id).single();
     return json({ order: fresh, arrived: false, closed: true });

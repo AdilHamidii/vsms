@@ -444,12 +444,18 @@ Deno.serve(async (req) => {
     } else if (result.state === "expired" || result.state === "canceled") {
       // Provider-side close. Previously computed and ignored, so the order sat
       // "waiting" — and kept being polled — until our own timer caught up.
-      const { data: claimed } = await sb
+      const { data: claimed, error: claimErr } = await sb
         .from("orders")
         .update({ status: "expired", closed_at: new Date().toISOString() })
         .eq("id", o.id)
         .eq("status", "waiting")
         .select("id");
+      // Logged rather than swallowed. Impact is low — the order stays 'waiting'
+      // and the next minutely run retries — but a systematically failing claim
+      // is otherwise invisible, because the retry looks like a quiet loop. The
+      // expiry-sweep block above already destructures its error; this was the
+      // one place in the file that did not.
+      if (claimErr) console.error(`poll: expire claim failed order=${o.id}: ${claimErr.message}`);
       if (!claimed || claimed.length === 0) continue;
       // Check the refund result — see the note on the expiry sweep above.
       const { error: rErr } = await sb.rpc("wallet_credit", {

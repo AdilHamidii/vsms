@@ -131,7 +131,15 @@ struct EsimMapView: View {
             }
             .ignoresSafeArea(edges: .bottom)
             .onAppear { clusters = computeClusters() }
-            .onChange(of: span.latitudeDelta) { _, _ in clusters = computeClusters() }
+            // Observe the value clustering actually derives from — the grid cell
+            // is `max(latitudeDelta, longitudeDelta) / 7`. Watching latitude
+            // alone disagreed with `commit(_:)`, which accepts a change when
+            // EITHER axis moves: panning north/south alters longitudeDelta at
+            // constant zoom under Mercator, so the cell size went stale until
+            // something happened to move latitude.
+            .onChange(of: max(span.latitudeDelta, span.longitudeDelta)) { _, _ in
+                clusters = computeClusters()
+            }
             .onChange(of: countries) { _, _ in clusters = computeClusters() }
 
             VStack(spacing: 8) {
