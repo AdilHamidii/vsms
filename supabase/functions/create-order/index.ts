@@ -202,10 +202,33 @@ Deno.serve(async (req) => {
     return json({ error: "premium_unavailable" }, { status: 409 });
   }
 
-  // The mirror case: services that reject VoIP are sold ONLY as Real SIM, so a
-  // standard order on such a route would knowingly hand back a number the
-  // service will refuse. Refuse it instead of taking the money.
-  if (tier !== "premium" && route.real_sim_only === true) {
+  // The mirror case: services that reject VoIP are sold ONLY as Real SIM. A
+  // standard fill on such a route would knowingly hand back a number the
+  // service refuses.
+  //
+  // This used to be a hard 409 `real_sim_required`, and that was a dead end for
+  // every shipped client: build 18 has no `real_sim_only` in its Route model,
+  // so it renders the Standard chip, preselects it, and then cannot interpret
+  // the error code — the user just saw "Not available right now. Try a
+  // different option." Working around it by HIDING those routes
+  // (`real_sim_only_sellable = false`) was worse still: measured 2026-07-31,
+  // it removed 145 routes across facebook/instagram/whatsapp — 45% of all
+  // order volume — and HeroSMS's own deliverability data then showed the hidden
+  // set was specifically the BEST inventory: all nine of facebook's top-ten
+  // countries (US 43.4%, Portugal 42.0%, Germany 35.7% …), leaving one
+  // bookable route, Costa Rica, which the vendor does not rank at all.
+  //
+  // So serve it instead: pin the real carrier STRICTLY and charge the STANDARD
+  // price. That is premium behaviour at the standard price, which costs us the
+  // 20% uplift on routes running 56-153x margin — nothing, against losing the
+  // order outright. `realSimForced` carries the decision to the pin below;
+  // there is no client change and no new error code, so it works on the
+  // released build today.
+  const realSimForced = tier !== "premium" && route.real_sim_only === true;
+  if (realSimForced && premiumPin == null) {
+    // The genuinely unsellable case, and the only one left: a VoIP-rejecting
+    // service with no real carrier to pin. Refusing beats reserving a number
+    // the service is certain to reject.
     return json({ error: "real_sim_required" }, { status: 409 });
   }
 
@@ -512,15 +535,27 @@ Deno.serve(async (req) => {
     // Any future provider MUST get its own explicit arm here — the old
     // else-branch silently handed an SMSPool pool name to whatever provider
     // ran next.
-    const pin = p === "smspva" ? smspvaPin
+    //
+    // On a real_sim_only route the pin is MANDATORY, not opportunistic:
+    // `standardCarrier` is gated on the cached operator cost fitting the
+    // ceiling and goes null when it does not, which would leave the order
+    // unpinned — i.e. filled from the VoIP pool this route exists to avoid.
+    // `premiumPin` is the route's real carrier unconditionally, so force it.
+    const pin = realSimForced ? premiumPin
+              : p === "smspva" ? smspvaPin
               : p === "herosms" ? heroCarrier
               : null;
     // Strict when the buyer paid for a specific real-SIM pool (premium), and
     // strict when policy forces one — both mean "this pool or nothing".
-    // Strict only for premium: that buyer paid for THAT pool and must never
-    // be silently downgraded. Standard may fall back, which is exactly what
-    // makes the opportunistic pin free.
-    const strictPin = tier === "premium";
+    //
+    // realSimForced MUST be strict. A non-strict pin falls back to a random
+    // fill when the carrier is dry, and on a VoIP-rejecting service that fill
+    // is the exact number the service will refuse: we would charge for a
+    // number that cannot work, which is worse than failing as a stockout.
+    // Everything else keeps the old rule — premium is strict because that
+    // buyer paid for THAT pool, standard may fall back, which is what makes
+    // the opportunistic pin free.
+    const strictPin = tier === "premium" || realSimForced;
     // Fresh-number guarantee: SMSPVA re-issues a just-canceled number to the
     // same buyer. If the fill matches a number this user already drew for
     // this service in the last hour, release it and draw again — at most 3
