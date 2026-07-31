@@ -46,9 +46,9 @@ and three representative past orders. Phone numbers are Ofcom/ITU
 reserved-for-fiction ranges, and each one matches its country's dial code.
 
 For the two e-mail shots the domains and their prices are **real** — outlook.com
-and hotmail.com genuinely cost nothing (3/day), gmail.com and icloud.com
-genuinely cost 1 credit — and the stock figures are of the order actually
-returned by the provider. Staged: the balance, the address itself and the code.
+and hotmail.com genuinely cost nothing (3/day) and gmail.com genuinely costs
+1 credit — and the stock figures are of the order actually returned by the
+provider. (icloud.com was dropped on 2026-07-31 and appears in no shot.) Staged: the balance, the address itself and the code.
 The service is **Discord** rather than the seed default WhatsApp, because
 WhatsApp verifies by SMS and has no e-mail signup, so that pairing would have
 depicted a flow that cannot exist.

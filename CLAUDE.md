@@ -610,10 +610,26 @@ been wrong about it twice. (Product-level `state` is unreliable for
 
 ### Temporary EMAIL addresses — the third product line (2026-07-30)
 
-Temp mailboxes on four real consumer domains, from HeroSMS. **gmail.com and
-icloud.com cost 1 credit; outlook.com and hotmail.com are FREE.** Margins at
-those prices: gmail **7.5×** ($0.04 wholesale), icloud **15×** ($0.02). Both
-clear `MIN_MARGIN = 6.0`, so no pricing constant changed for this.
+Temp mailboxes on three real consumer domains, from HeroSMS. **outlook.com and
+hotmail.com are FREE and are the DEFAULT; gmail.com costs 1 credit** (7.5× at
+$0.04 wholesale, clearing `MIN_MARGIN = 6.0`, so no pricing constant changed).
+
+**icloud.com was REMOVED 2026-07-31 (owner decision)** — handing out throwaway
+addresses on Apple's own consumer domain, from an app distributed on Apple's
+store, is an avoidable review risk for a tier that earned nothing. It had **zero
+orders ever**, so nothing was stranded. The removal is enforced by deleting the
+key from `PRICING`: `create-email-order` rejects any domain absent from that map
+with `domain_unavailable`, so no separate blocklist exists. **`PRICING` is
+duplicated in `create-email-order` and `email-domains` — change both together**
+(this file's own standing warning about duplicated constants).
+
+**Render order is FREE first**, reversing the original "paid first" rule. That
+rule existed because the free pair is the scarcest inventory and leading with it
+risks a picker whose top row reads "Out of stock" — but the client defaults to
+`first(where: { $0.inStock })`, so an empty outlook.com already falls through to
+hotmail.com and then gmail.com. Free-first is correct because e-mail exists to
+**acquire users, not to earn**: the paid tier is 1 credit against an SMS median
+of 16.
 
 **It is a SECOND protocol on the same HeroSMS account**, sharing only the key and
 the balance — see `_shared/heromail.ts`:

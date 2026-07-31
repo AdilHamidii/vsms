@@ -139,10 +139,10 @@ WHAT IT DOES
 • Auto-refund in credits if no code arrives within 8 minutes
 
 TEMPORARY EMAIL, TOO
-• Need an email code instead? Get a temporary address on gmail.com,
-  icloud.com, outlook.com or hotmail.com
+• Need an email code instead? Get a temporary address on outlook.com,
+  hotmail.com or gmail.com
 • outlook.com and hotmail.com are free — up to 3 a day
-• gmail.com and icloud.com cost 1 credit
+• gmail.com costs 1 credit
 • The code appears in the app the moment it arrives
 
 HOW IT WORKS

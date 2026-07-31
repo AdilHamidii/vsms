@@ -18,16 +18,28 @@ interface Body { service_id: string; }
  *  actually charges, this is only what the picker renders. */
 const PRICING: Record<string, number> = {
   "gmail.com": 1,
-  "icloud.com": 1,
   "outlook.com": 0,
   "hotmail.com": 0,
 };
 
-/** Render order: paid first (they are the reliable, high-stock ones), then the
- *  free pair. Deliberately NOT sorted by price ascending — leading with the
- *  scarcest inventory is how you make a picker whose top entry is usually
- *  "Out of stock". */
-const ORDER = ["gmail.com", "icloud.com", "outlook.com", "hotmail.com"];
+/** Render order: FREE first (owner decision, 2026-07-31).
+ *
+ *  This reverses the original "paid first" rule, whose reasoning was that the
+ *  free pair is the scarcest inventory and leading with it makes a picker whose
+ *  top entry is often "Out of stock". That risk is real but already handled a
+ *  layer up: the client defaults to `first(where: { $0.inStock })`, so an empty
+ *  outlook.com falls through to hotmail.com and then gmail.com automatically.
+ *
+ *  Free-first is the right default because e-mail exists to ACQUIRE users, not
+ *  to earn — the paid tier is 1 credit against an SMS median of 16, so nothing
+ *  here is worth optimising for revenue at the cost of a first-run wall.
+ *
+ *  icloud.com was REMOVED 2026-07-31 (owner decision). Handing out throwaway
+ *  addresses on Apple's own consumer domain, from an app distributed on Apple's
+ *  store, is an avoidable review risk for a tier that earned nothing. Removing
+ *  it from PRICING is also the enforcement: create-email-order rejects any
+ *  domain missing from its own copy of the map with `domain_unavailable`. */
+const ORDER = ["outlook.com", "hotmail.com", "gmail.com"];
 
 Deno.serve(async (req) => {
   const cors = handleCors(req); if (cors) return cors;

@@ -6,8 +6,8 @@
 // live and never trusts a cached catalog — there is no email catalog table by
 // design.
 //
-// Pricing (owner, 2026-07-30): gmail.com and icloud.com cost 1 credit,
-// outlook.com and hotmail.com are FREE. The free tier is bounded server-side by
+// Pricing (owner, 2026-07-31): gmail.com costs 1 credit; outlook.com and
+// hotmail.com are FREE and are the DEFAULT. The free tier is bounded server-side by
 // begin_email_order's per-user daily cap, which is the only thing standing
 // between us and unbounded spend now that there is no credit gate.
 
@@ -22,9 +22,15 @@ interface Body { service_id: string; domain: string; }
 /** The four we resell, and what we charge. Anything else is refused outright:
  *  the provider also lists 19 Yandex TLDs that no Western site accepts, and
  *  selling them would be selling a guaranteed failure. */
+// icloud.com REMOVED 2026-07-31 (owner decision): issuing throwaway addresses on
+// Apple's own consumer domain, from an app on Apple's store, is an avoidable
+// review risk for a tier that earned nothing. This map is the ENFORCEMENT — the
+// guard below rejects any domain absent from it with `domain_unavailable`, so
+// removing the key is sufficient and no separate blocklist is needed. Existing
+// icloud.com orders already in flight are unaffected; only new ones are refused.
+// Keep in lockstep with email-domains' copy.
 const PRICING: Record<string, number> = {
   "gmail.com": 1,
-  "icloud.com": 1,
   "outlook.com": 0,
   "hotmail.com": 0,
 };
