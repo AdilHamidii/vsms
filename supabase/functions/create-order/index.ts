@@ -147,7 +147,7 @@ Deno.serve(async (req) => {
 
   const { data: route, error: rErr } = await sb
     .from("routes")
-    .select("retail_credits, status, last_cost_cents, herosms_cost_cents, herosms_physical_count, provider, smspool_pool, smspva_operator, smspva_operator_cents, premium_credits")
+    .select("retail_credits, status, last_cost_cents, herosms_cost_cents, herosms_physical_count, herosms_real_operator, provider, smspool_pool, smspva_operator, smspva_operator_cents, premium_credits")
     .eq("service_id", service.id)
     .eq("country_id", country.id)
     .maybeSingle();
@@ -325,6 +325,33 @@ Deno.serve(async (req) => {
   // from the catalog on 8 orders that never got a number.
   const maxCostUsd = (cost * NET_USD_PER_CREDIT) / MIN_MARGIN + CEILING_HEADROOM_USD;
 
+  // ── Force a REAL SIM in countries where the default pool is VoIP ─────────
+  //
+  // `app_config.force_physical_operator` maps country_id -> a HeroSMS operator
+  // name. Seeded {"us": "physic"}, HeroSMS's own physical-SIM pool.
+  //
+  // Why: probed 2026-07-31, the US pool is ~450,000 numbers of which ~113 per
+  // service are physical — about 0.03%. A random fill is therefore VoIP with
+  // near-certainty, and in the preceding 12h badoo/us and bumble/us took 175 of
+  // 198 credits charged and returned ZERO codes. `physicalCount > 0` on the
+  // route is far too weak a test when physical is a rounding error of the pool.
+  //
+  // The pin is STRICT (see the reserve call): if the physical pool is dry we
+  // fail the order and refund rather than quietly handing back the VoIP number
+  // this exists to avoid. Silently downgrading would make the whole setting a
+  // no-op that still reads as enabled.
+  const { data: fpCfg } = await sb
+    .from("app_config").select("value").eq("key", "force_physical_operator").maybeSingle();
+  const forcePhysicalHere =
+    fpCfg?.value && typeof fpCfg.value === "object" && !Array.isArray(fpCfg.value) &&
+    (fpCfg.value as Record<string, unknown>)[country.id] != null;
+  // The carrier is chosen per ROUTE by sync-herosms (the one with the most
+  // stock among the configured real operators), not fixed globally: `physic`
+  // is empty for many services that have thousands on verizon or tmobile.
+  const forcedOperator = forcePhysicalHere
+    ? ((route.herosms_real_operator as string | null) ?? null)
+    : null;
+
   // Standard orders pin the route's real-SIM carrier too, whenever it fits
   // the margin ceiling. Probed 2026-07-21: on all 16,320 active routes the
   // carrier costs the same or LESS than a random fill — random just means
@@ -432,7 +459,15 @@ Deno.serve(async (req) => {
     // This used to read `p === "smspva" ? smspvaPin : route.smspool_pool`. Any
     // future provider MUST get its own explicit arm here — the old else-branch
     // silently handed an SMSPool pool name to whatever provider ran next.
-    const pin = p === "smspva" ? smspvaPin : null;
+    // Any future provider MUST get its own explicit arm here — the old
+    // else-branch silently handed an SMSPool pool name to whatever provider
+    // ran next.
+    const pin = p === "smspva" ? smspvaPin
+              : p === "herosms" ? forcedOperator
+              : null;
+    // Strict when the buyer paid for a specific real-SIM pool (premium), and
+    // strict when policy forces one — both mean "this pool or nothing".
+    const strictPin = tier === "premium" || (p === "herosms" && forcedOperator != null);
     // Fresh-number guarantee: SMSPVA re-issues a just-canceled number to the
     // same buyer. If the fill matches a number this user already drew for
     // this service in the last hour, release it and draw again — at most 3
@@ -440,7 +475,7 @@ Deno.serve(async (req) => {
     // number. release() never throws (logged internally), and only a
     // SUCCESSFUL duplicate fill re-enters the loop — reserve errors take the
     // existing error path unchanged.
-    let res = await reserve(p, codes, maxCostUsd, pin, tier === "premium");
+    let res = await reserve(p, codes, maxCostUsd, pin, strictPin);
     for (
       let redraw = 0;
       redraw < 2 && res.ok && res.number && recentNumbers.has(res.number);
@@ -455,7 +490,7 @@ Deno.serve(async (req) => {
       // issuance. markDead bans first, then cancels, so the wholesale refund is
       // still attempted.
       if (res.orderId) await markDead(p, res.orderId);
-      res = await reserve(p, codes, maxCostUsd, pin, tier === "premium");
+      res = await reserve(p, codes, maxCostUsd, pin, strictPin);
     }
     if (res.ok) {
       if (res.costUsd != null && res.costUsd > maxCostUsd + 0.001) {

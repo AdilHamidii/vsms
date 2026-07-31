@@ -294,6 +294,35 @@ export interface HeroPrice {
 
 /** Prices for one service across every country, keyed by numeric country id.
  *  Wire form: JSON, `{"48":{"wa":{cost,count,physicalCount}}}`. */
+/** Per-service availability for one country, optionally restricted to a single
+ *  operator. `{ heroServiceCode: count }`.
+ *
+ *  This is the ONLY way to see stock for a specific operator: `getPrices`
+ *  accepts an `operator` param and silently ignores it, returning the whole
+ *  pool either way (probed 2026-07-31). A service ABSENT from the result has no
+ *  numbers on that operator at all — which is different from a zero, and is how
+ *  badoo/us was found to have no physical SIMs while reporting
+ *  physicalCount 3,829 for the country.
+ *
+ *  Returns null on any failure, so callers can tell "no stock" from "we could
+ *  not ask" — hiding a catalog on a failed fetch is the mistake this codebase
+ *  has already made once. */
+export async function getNumbersStatus(
+  country: string | number,
+  operator?: string | null,
+): Promise<Record<string, number> | null> {
+  const params: Record<string, string | number> = { country };
+  if (operator) params.operator = operator;
+  const r = await call("getNumbersStatus", params);
+  if (r.kind !== "json" || errorTokenOf(r)) return null;
+  const out: Record<string, number> = {};
+  for (const [k, v] of Object.entries(r.data as Record<string, unknown>)) {
+    const n = Number(v);
+    if (Number.isFinite(n)) out[k] = n;
+  }
+  return out;
+}
+
 export async function getPricesForService(
   service: string,
 ): Promise<Record<string, HeroPrice>> {

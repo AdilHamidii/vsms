@@ -17,7 +17,7 @@
 
 import { handleCors, json } from "../_shared/cors.ts";
 import { admin } from "../_shared/supabaseAdmin.ts";
-import { getPricesForService, type HeroPrice } from "../_shared/herosms.ts";
+import { getPricesForService, type HeroPrice, getNumbersStatus} from "../_shared/herosms.ts";
 
 /** Same ceiling as sync-prices: above this the route is not worth selling at
  *  any credit price we offer. Kept in lockstep with MAX_WHOLESALE_CENTS there. */
@@ -74,6 +74,43 @@ Deno.serve(async (req) => {
     Array.isArray(voipCfg?.value) ? (voipCfg.value as string[]) : [],
   );
 
+  // Countries where a REAL SIM is required: country_id -> ordered list of
+  // acceptable operator names. `physic` is only ONE such pool and is often
+  // empty while the named carriers are not — badoo/us had 0 on physic against
+  // 14,224 on verizon — so pinning a single name hid routes that were fine.
+  const { data: fpCfg } = await sb
+    .from("app_config").select("value").eq("key", "force_physical_operator").maybeSingle();
+  const forcePhysical: Record<string, string[]> = {};
+  if (fpCfg?.value && typeof fpCfg.value === "object" && !Array.isArray(fpCfg.value)) {
+    for (const [k, v] of Object.entries(fpCfg.value as Record<string, unknown>)) {
+      if (Array.isArray(v)) forcePhysical[k] = v as string[];
+      else if (typeof v === "string") forcePhysical[k] = [v];   // tolerate the old scalar shape
+    }
+  }
+
+  // For each configured country: heroServiceCode -> {operator, count} for the
+  // real carrier with the MOST stock. `null` for the whole country means the
+  // probe failed and nothing may be hidden on the strength of it.
+  const realOperator = new Map<string, Map<string, { op: string; n: number }> | null>();
+  for (const [countryId, operators] of Object.entries(forcePhysical)) {
+    const heroId = (countries ?? []).find((c) => c.id === countryId)?.herosms_id;
+    if (heroId == null) { realOperator.set(countryId, null); continue; }
+    const best = new Map<string, { op: string; n: number }>();
+    let anyOk = false;
+    for (const op of operators) {
+      const st = await getNumbersStatus(heroId as number, op);
+      await sleep(CALL_SPACING_MS);
+      if (!st) continue;                       // this operator failed; others may still answer
+      anyOk = true;
+      for (const [code, n] of Object.entries(st)) {
+        if (n <= 0) continue;
+        const cur = best.get(code);
+        if (!cur || n > cur.n) best.set(code, { op, n });
+      }
+    }
+    realOperator.set(countryId, anyOk ? best : null);
+  }
+
   // HeroSMS numeric country id -> our country id. Several of our countries can
   // never collide here: the mapping is 1:1 and was built from HeroSMS's own
   // getCountries.
@@ -128,10 +165,11 @@ Deno.serve(async (req) => {
     service_id: string; country_id: string;
     herosms_cost_cents: number | null; herosms_physical_count: number | null;
     herosms_total_count: number | null; herosms_checked_at: string; status: string;
+    herosms_real_operator: string | null; herosms_real_count: number | null;
   };
   const updates: Row[] = [];
   let unfulfillable = 0, tooExpensive = 0, blockedCount = 0, sellable = 0, physical = 0;
-  let voipOnly = 0;
+  let voipOnly = 0, noPhysical = 0;
 
   for (const r of routes) {
     const key = `${r.service_id}|${r.country_id}`;
@@ -160,6 +198,14 @@ Deno.serve(async (req) => {
     else if (voipStrict.has(r.service_id as string) && hit.physicalCount <= 0) {
       status = "hidden"; voipOnly++;
     }
+    // Forced-real-SIM country: hide only when NOT ONE configured real carrier
+    // has stock for this service. A null map means the probe failed — leave the
+    // route alone rather than hide a catalog on a failed fetch.
+    else if (
+      forcePhysical[r.country_id as string] != null &&
+      realOperator.get(r.country_id as string) != null &&
+      !realOperator.get(r.country_id as string)!.has(code ?? "")
+    ) { status = "hidden"; noPhysical++; }
     else if (Math.round(hit.cost * 100) > MAX_WHOLESALE_CENTS) { status = "hidden"; tooExpensive++; }
     else { status = "active"; sellable++; if (hit.physicalCount > 0) physical++; }
 
@@ -171,6 +217,8 @@ Deno.serve(async (req) => {
       herosms_total_count: hit?.count ?? null,
       herosms_checked_at: nowIso,
       status,
+      herosms_real_operator: realOperator.get(r.country_id as string)?.get(code ?? "")?.op ?? null,
+      herosms_real_count: realOperator.get(r.country_id as string)?.get(code ?? "")?.n ?? null,
     });
   }
 
@@ -207,6 +255,8 @@ Deno.serve(async (req) => {
     // a sudden jump means either the strict list grew or HeroSMS lost real-SIM
     // stock, and those need very different responses.
     hidden_voip_only: voipOnly,
+    hidden_no_physical_sim: noPhysical,
+    force_physical: forcePhysical,
     voip_strict_services: [...voipStrict],
   };
   console.log(`sync-herosms ${JSON.stringify(result)}`);
