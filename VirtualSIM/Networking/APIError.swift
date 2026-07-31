@@ -105,6 +105,14 @@ enum APIError: Error, LocalizedError {
                     return "That service isn't available anymore."
                 case "order_persist_failed":
                     return "Something went wrong saving that. Your credits are unchanged."
+                // Apple took the money and the credit did not land. The
+                // generic 409 text is "Not available right now. Try a different
+                // option." — which on a paid purchase reads as "pick another
+                // pack", the one thing that would charge them twice.
+                case "credit_pending":
+                    return "Your purchase went through and your credits are on their way. They'll appear shortly — no need to buy again."
+                case "credit_failed":
+                    return "Your purchase went through but we couldn't add the credits. Contact support and we'll sort it — don't buy again."
                 case "spend_failed", "refund_failed":
                     return "We couldn't complete that. Your credits are unchanged — please try again."
                 case "verification_failed":

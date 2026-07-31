@@ -1764,6 +1764,15 @@ actively wrong: a decode failure means the request **succeeded**. It sends the
 user to check their wifi and, worse, to retry an action the server already
 performed. It now says the action may have gone through.
 
+**`_shared/*` is bundled PER FUNCTION at deploy time.** Fixing a shared file
+changes nothing in production until **every consumer is redeployed** — a
+downloaded-bundle diff on 2026-07-31 found `check-order`, `cancel-order` and
+`poll-active-orders` still running a pre-fix copy of `providers.ts` weeks after
+the source was corrected. Harmless there (none of them call `reserve()`), but
+the failure mode is invisible: the repo and the deployed code disagree with no
+signal anywhere. After touching `_shared/`, redeploy every function that imports
+it, not just the one you were working on.
+
 ## Error UX rule
 
 Never display raw API errors. AppState's catch blocks call `APIError.userMessage`, which maps known business-logic codes (`insufficient_credits`, `no_numbers_available`, `route_unavailable`, `provider_unreachable`, `margin_too_low`, etc.) to plain English. `errorDescription` stays for the Xcode console only.

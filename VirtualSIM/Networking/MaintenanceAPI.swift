@@ -1,6 +1,6 @@
 import Foundation
 
-/// Server-driven maintenance banner. Set by the weekly virtualsms price sync
+/// Server-driven maintenance banner. Set by the `relay-smspva-operators-maint-up`/`-down` cron jobs around the nightly operator-sync window (the virtualsms sync that used to own it was deleted 2026-07-30)
 /// (app_config key='maintenance') so the app can pause ordering while prices
 /// refresh, with a countdown to the estimated finish.
 struct MaintenanceStatus: Codable, Hashable {
