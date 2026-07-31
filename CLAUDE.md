@@ -319,17 +319,40 @@ to work — `activations/{statistics,top-countries,ranking}`,
 `statistics/activations`, `activations/offers/statistics` — all
 `ROUTE_NOT_FOUND`. **Stop guessing; the path is not discoverable by enumeration.**
 
-**The one cheap way in that has NOT been tried: open the dashboard's Statistics
-panel with DevTools on Network/XHR and press its "Request" button.** That panel
-already computes exactly what we want (filters: service, ranking, minimum
-successful activations, interval; output: per-country % of successful
-activations). Reading the request it fires answers both questions at once — the
-real path, and whether it takes `ApiKey` or a login-scoped bearer/cookie. If it
-takes `ApiKey`, no vendor cooperation is needed at all.
+**FOUND 2026-07-31, by reading the request the dashboard's own Statistics panel
+fires (DevTools → Network → XHR). Enumeration never would have reached it:**
 
-Asked the vendor directly 2026-07-31 (Jivo chat, ticket `5207504-97969`).
-Response was *"I will forward your request"* — acknowledged, no commitment and
-no timeline. Do not block anything on it.
+```
+GET https://hero-sms.com/api/v1/stats/deliverability
+      ?service=go            # their service code
+      &interval=12           # hours
+      &successCount=medium   # the ">50 successful" filter
+```
+
+The earlier sweep tried the `/api/v1/stats` namespace but never
+`stats/deliverability`. Response is `application/json`, 200, behind Cloudflare.
+
+**It is NOT callable with our API key.** All four schemes return **401
+`{"title":"Unauthenticated."}`** — `Authorization: ApiKey`, `Bearer`,
+`X-Api-Key`, and `?api_key=`. Note that body is *not* `ROUTE_NOT_FOUND`, so the
+route genuinely exists and is simply scoped to a logged-in dashboard session.
+**Do not re-probe it; the answer is settled.**
+
+So the vendor is now the only route — but the ask is far smaller than it was,
+and should be made in these exact terms: *"please allow
+`GET /api/v1/stats/deliverability` to authenticate with an API key."* That is a
+middleware change on one existing endpoint, not a feature request.
+
+Asked the vendor 2026-07-31 (Jivo chat, ticket `5207504-97969`) before the path
+was known. Response: *"I will forward your request"* — acknowledged, no
+commitment, no timeline. **Do not block anything on it.**
+
+Replaying the dashboard's session cookie from an edge function would work
+technically and is a bad idea: it expires, it carries XSRF, it would fail
+silently, and it is the kind of thing that gets an account closed. If a manual
+pull is ever wanted, the honest shape is a hand-maintained per-service country
+allowlist in `app_config` — same category as `blocked_routes` and
+`voip_strict_services`, used as steering input for UNTESTED routes only.
 
 And if it ever IS exposed: it would be **steering input, never a badge**. It is
 their aggregate across all customers, not our delivery — the same class of number
