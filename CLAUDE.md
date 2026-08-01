@@ -2297,14 +2297,36 @@ refused.
   active facebook/instagram/whatsapp route now has real SIMs (69→47, 69→48,
   64→45). Stamped on each order as `route_physical_count` so the effect is
   measurable — **run that query in ~2 weeks before trusting the change.**
-- 🔴 **HeroSMS is at 5 of 24 (21%) and APPROACHING THE ROLLBACK CHECKPOINT.**
-  This file said "proven by exactly ONE order, 1/1" — that is stale. The
-  pre-registered trigger is *"conclusive delivery over the first 40 orders
-  materially below SMSPVA's frozen baseline"*; SMSPVA's baseline is **34%** and
-  HeroSMS is running **21%** at 24 orders. **Re-evaluate at 40.**
-  `providerOrder()` back to `["smspva"]` is still a one-line revert — but note
-  SMSPVA's balance is $5.26, below the single-order ceiling, so a rollback needs
-  a top-up first.
+- ⚠️ **DO NOT ROLL BACK HeroSMS on the raw rate — the checkpoint metric is
+  measuring user impatience, not the provider** (2026-08-01). Raw numbers look
+  damning: HeroSMS **5 of 27 (18.5%)** against SMSPVA **45 of 127 (35.4%)**, and
+  the pre-registered trigger is *"conclusive delivery over the first 40 orders
+  materially below SMSPVA's frozen baseline"*. It would have fired.
+
+  Split out **orders the user did not cancel** and the gap disappears entirely:
+
+  | provider | cancelled | delivery when NOT cancelled |
+  |---|---|---|
+  | herosms | **74%** (20/27) | **5 of 7 — 71.4%** |
+  | smspva  | 56% (67/120)    | 39 of 53 — **73.6%** |
+
+  Within noise of each other. The entire headline gap is *cancellation rate*,
+  not delivery. Over 30 days **87 of 147 numbered orders (59%) were cancelled by
+  the user and delivered 1.1%**, while `expired` orders (avg 772s) delivered
+  **0 of 16** — so a code either lands in the first couple of minutes or never.
+  HeroSMS's own n is only 7, so treat 71.4% as "not distinguishable from
+  SMSPVA", not as proof it is better.
+
+  **Re-register the checkpoint on non-cancelled delivery**, and only compare
+  windows where the same client versions are in the field. `providerOrder()` back
+  to `["smspva"]` remains a one-line revert if it is ever justified — but SMSPVA
+  is at $5.26, below the single-order ceiling, so a rollback needs a top-up first.
+
+  ⚠️ **The `delivery-collapse` watchdog check has the same flaw** and fired on
+  2026-08-01 ("14 conclusive orders in 24h, ZERO codes delivered"). It counts
+  cancels as delivery failures, and at a 59% cancel rate it will keep paging on
+  user behaviour rather than provider health — which is alert fatigue on the only
+  monitoring channel. Scope it to non-cancelled orders before trusting it again.
 - ✅ **RESOLVED 2026-07-31: repricing shipped, per-provider.** `CREDIT_DIVISOR`
   0.025 (12×) for HeroSMS via `sync-herosms`, 0.05 (6×) unchanged for SMSPVA via
   `sync-prices`, with `create-order` resolving `MIN_MARGIN` per provider. The
