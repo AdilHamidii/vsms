@@ -508,14 +508,36 @@ Deno.serve(async (req) => {
     // the cached operator price and the live base price — a broad live price
     // rise is caught immediately, the carrier premium is still respected.
     let liveCost: number | null;
-    if (tier === "premium" && (rotatedPinUsd != null || route.smspva_operator_cents != null)) {
-      const opUsd = rotatedPinUsd ?? (route.smspva_operator_cents as number) / 100;
-      // Was `p === "smspva" ? ... : null`, which meant any OTHER provider had
-      // its premium margin gate evaluated against a frozen SMSPVA operator
-      // price and never once looked at what it was actually about to be
-      // charged. livePriceUsd() is provider-generic; ask it.
+    // The pinned-carrier floor belongs to the provider that HAS that carrier.
+    // `smspva_operator_cents` is SMSPVA's price for SMSPVA's operator, written
+    // only by sync-smspva-operators. Applying it to any other provider prices
+    // a purchase we are not making.
+    //
+    // This was `p === "smspva" ? ... : null`, which under-checked non-SMSPVA
+    // premium. Making it provider-GENERIC over-corrected and took the product
+    // down: on a HeroSMS route the gate became max(SMSPVA carrier price, live
+    // HeroSMS price), and SMSPVA's carrier is far dearer — leboncoin/my is
+    // $3.00 at SMSPVA against $0.02 at HeroSMS, versus a $0.15 ceiling. So
+    // EVERY Real SIM order on 3,064 of 4,080 priced HeroSMS routes (75%) was
+    // refused margin_too_low, charged and instantly refunded. Measured
+    // 2026-08-02 after users reported not getting numbers.
+    //
+    // Scoped, not reverted: SMSPVA still gets its carrier floor (the bug the
+    // generic version was written for), and HeroSMS is checked against its own
+    // live price. HeroSMS exposes no per-operator PRICE — getNumbersStatus
+    // returns per-operator STOCK only — so there is no carrier floor to apply.
+    // The pin is still enforced strictly at reserve(), and the actual charged
+    // cost is re-checked against maxCostUsd below, so a dearer real fill is
+    // caught there rather than being sold under floor.
+    const carrierFloorUsd = p === "smspva"
+      ? (rotatedPinUsd ??
+        (route.smspva_operator_cents != null
+          ? (route.smspva_operator_cents as number) / 100
+          : null))
+      : null;
+    if (tier === "premium" && carrierFloorUsd != null) {
       const liveBase = await livePriceUsd(p, codes);
-      liveCost = liveBase != null ? Math.max(opUsd, liveBase) : opUsd;
+      liveCost = liveBase != null ? Math.max(carrierFloorUsd, liveBase) : carrierFloorUsd;
     } else {
       liveCost = await livePriceUsd(p, codes);
     }
