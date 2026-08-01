@@ -483,7 +483,7 @@ cannot double-grant.
 
 `telegram-notify` (cron, every minute) sweeps new signups / credit purchases /
 eSIM purchases and emits a 6-hourly digest; `telegram-webhook` answers `/stats`,
-`/today`, `/week`, `/balance`, `/revenue`. Exactly-once is a claim row in `telegram_events`
+`/today`, `/week`, `/balance`, `/revenue`, `/orders`. Exactly-once is a claim row in `telegram_events`
 (`kind`,`ref` PK) written *before* sending, so the instant path in `iap-verify`
 and the sweep can never double-send. Secrets: `TELEGRAM_BOT_TOKEN`,
 `TELEGRAM_CHAT_ID`, `TELEGRAM_WEBHOOK_SECRET`. The webhook is public and gated
@@ -527,6 +527,30 @@ revenue but its **provider spend is subtracted on its own line** ($4.01 lifetime
 — real cash out, not a cost of serving customers. Note `ops_snapshot`'s `buys`
 does **not** filter environment, so the digest counts the one Sandbox receipt
 (12 credits, $0 paid) as a purchase; `revenue_snapshot` does not repeat that.
+
+**`/orders [24h|7d|30d|90d|all]`** (default **24h**, not lifetime — it prints one
+line per order) answers "what happened to each order", which `/stats` cannot:
+route, provider, tier, credits charged, wholesale actually paid, and **how long
+the number was held**. Backed by `orders_recent(interval)`; rendered by
+`formatOrders` in `_shared/opsFormat.ts`.
+
+Four details that are load-bearing:
+- **The dev account is INCLUDED and flagged `dev`**, unlike every analytics
+  surface, which excludes it. This is an operational view — "did my test order
+  work" is precisely the question, and hiding it would look like the order
+  vanished.
+- **Outcome reads `otp is not null`, never `status = 'received'`.** A rescued
+  code lives on a `canceled` row, so status would report a delivered code as a
+  failure — the same rule as every other consumer of order outcomes.
+- **`held_s` is on every line** because it is the most diagnostic number here:
+  seeing `✖ … 8s` beside `✅ … 58s` makes cancel-before-arrival legible at a
+  glance. It is what exposed one user firing 13 google orders at Kenya and
+  Indonesia in seven minutes, every one cancelled inside 73 seconds.
+- **Orders that never held a number get their own count**, not a place in the
+  delivery rate — they died inside `create-order` (stockout, `margin_too_low`)
+  and never reserved anything. The rate is over `numbered`.
+- Rows are capped at 35 with an explicit *"… and N older, not shown"*. A
+  silently truncated list reads as "that was everything".
 
 ### Announcement banner + `/announce`, `/esim` (2026-07-31)
 
@@ -2069,7 +2093,7 @@ from 2026-07-30), which is Apple's per-platform cap.
   charge-and-forfeit bug in `providers.ts` fixed.
 - **Codebase**: `MARKETING_VERSION 1.7`, `CURRENT_PROJECT_VERSION 21`, iOS min
   **18.0**, **96** Swift sources (Release BUILD SUCCEEDED on iPhone 17 Pro /
-  iOS 26.5, zero warnings), **117** migration files, **24** edge functions.
+  iOS 26.5, zero warnings), **120** migration files, **24** edge functions.
   Localizable.xcstrings: 342 strings, **0 untranslated** across all 6 locales.
 - **Catalog**: 18,492 routes, **12,900 active**. **HeroSMS 5,143 / SMSPVA 7,757**.
   Only **3 measured routes** — HeroSMS volume is still tiny, see Known-open. 265
@@ -2350,11 +2374,24 @@ refused.
   to `["smspva"]` remains a one-line revert if it is ever justified — but SMSPVA
   is at $5.26, below the single-order ceiling, so a rollback needs a top-up first.
 
-  ⚠️ **The `delivery-collapse` watchdog check has the same flaw** and fired on
-  2026-08-01 ("14 conclusive orders in 24h, ZERO codes delivered"). It counts
-  cancels as delivery failures, and at a 59% cancel rate it will keep paging on
-  user behaviour rather than provider health — which is alert fatigue on the only
-  monitoring channel. Scope it to non-cancelled orders before trusting it again.
+  ✅ **FIXED 2026-08-01 (`20260801110000`): the `delivery-collapse` watchdog
+  check had the same flaw** and fired that morning ("14 conclusive orders in
+  24h, ZERO codes delivered") while non-cancelled delivery was ~73%. It counted
+  a cancel as conclusive whenever the user held 240s+ OR re-ordered the same
+  service within 10 minutes, so at a 59% cancel rate it measured impatience.
+  Both delivery checks now use `status in ('received','expired')` only.
+
+  **The thresholds were re-derived from measured reachability, not guessed**,
+  because this function has already shipped an unreachable gate once. With
+  cancels excluded, the max in ANY 24h window over 30 days is **10** — so the
+  old `>= 10` gate would have been effectively dead on arrival. Now:
+  collapse = **72h, >= 6, zero codes** (72h volume avg 6 / max 12; at a ~73%
+  baseline, zero in 6 is p ≈ 0.0004) and degraded = **7d, >= 12, < 30%** (7d
+  volume min 3 / avg 13 / max 21). Collapse deliberately uses the SHORT window
+  so a real outage is caught in hours; the rate check uses the long one, where
+  a rate is meaningful. Regenerated from `pg_get_functiondef` and diffed clause
+  by clause — exactly two hunks differ, all **15** checks still present, and it
+  returned `[]` immediately after.
 - ✅ **RESOLVED 2026-07-31: repricing shipped, per-provider.** `CREDIT_DIVISOR`
   0.025 (12×) for HeroSMS via `sync-herosms`, 0.05 (6×) unchanged for SMSPVA via
   `sync-prices`, with `create-order` resolving `MIN_MARGIN` per provider. The

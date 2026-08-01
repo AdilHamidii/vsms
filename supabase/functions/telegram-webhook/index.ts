@@ -24,7 +24,7 @@ import { admin } from "../_shared/supabaseAdmin.ts";
 import {
   sendMessage, ownerChatId, esc, sendMessageWithId, answerCallback,
 } from "../_shared/telegram.ts";
-import { formatDigest, formatRevenue, formatGross, balanceLine } from "../_shared/opsFormat.ts";
+import { formatDigest, formatRevenue, formatGross, balanceLine, formatOrders } from "../_shared/opsFormat.ts";
 // Support replies push to the user's device. Imported explicitly for the reason
 // in the note above — a free identifier here bundles fine and throws at runtime.
 import { sendPush } from "../_shared/apns.ts";
@@ -35,6 +35,8 @@ const HELP = [
   "/stats — last 6 hours",
   "/today — last 24 hours",
   "/week — last 7 days",
+  "/orders — every order, one line each, with its route",
+  "     <i>[24h|7d|30d|90d|all]</i> · default: 24h",
   "/balance — provider balances + watchdog",
   "/revenue — money customers actually paid (USD)",
   "/profit — revenue minus Apple's cut and wholesale",
@@ -161,6 +163,28 @@ Deno.serve(async (req) => {
         ? "⚠️ Couldn't read revenue right now."
         : fmt(snap as Record<string, unknown>);
       if (error) console.error("revenue_snapshot failed:", error.message);
+    }
+  } else if (cmd === "/orders") {
+    // Same period vocabulary as /revenue, with two deliberate differences:
+    //
+    //  * the DEFAULT is 24h, not lifetime. This prints one line per order, so
+    //    defaulting to "all" would dump the entire history into a chat message.
+    //  * a null period (all/lifetime) becomes a very long finite interval,
+    //    because orders_recent does `now() - p_window` and a NULL there yields
+    //    NULL, which would silently match no rows and read as "no orders".
+    //
+    // Object.hasOwn, not `in` and not truthiness — same reasoning as PERIODS.
+    if (arg !== "" && !Object.hasOwn(PERIODS, arg)) {
+      reply = `Unknown period <b>${esc(arg)}</b>.\n\n` +
+              `Try: <code>/orders</code> (24h), or ` +
+              `<code>7d</code> · <code>30d</code> · <code>90d</code> · <code>all</code>`;
+    } else {
+      const window = arg === "" ? "24 hours" : (PERIODS[arg] ?? "3650 days");
+      const { data: snap, error } = await sb.rpc("orders_recent", { p_window: window });
+      reply = error || !snap
+        ? "⚠️ Couldn't read orders right now."
+        : formatOrders(snap as Record<string, unknown>, arg === "" ? "24h" : (arg || "all"));
+      if (error) console.error("orders_recent failed:", error.message);
     }
   } else if (cmd === "/stats" || cmd === "/today" || cmd === "/week") {
     const window = cmd === "/stats" ? "6 hours" : cmd === "/today" ? "24 hours" : "7 days";

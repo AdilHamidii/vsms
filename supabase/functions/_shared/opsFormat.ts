@@ -316,3 +316,109 @@ export function formatDigest(raw: Record<string, unknown>): string {
 
   return lines.join("\n");
 }
+
+// ── /orders ─────────────────────────────────────────────────────────────────
+
+interface OrderRow {
+  created_at?: string;
+  status?: string;
+  service_id?: string;
+  country_id?: string;
+  provider?: string;
+  tier?: string;
+  cost_credits?: number;
+  actual_cost_cents?: number | null;
+  got_code?: boolean;
+  got_number?: boolean;
+  is_dev?: boolean;
+  held_s?: number;
+}
+
+/** Telegram hard-limits a message at 4096 chars. Cap the row list well under
+ *  that and SAY SO when rows are dropped — a silently truncated list reads as
+ *  "that was everything", which is the failure mode this codebase keeps
+ *  paying for elsewhere (see the no-silent-caps rule). */
+const MAX_ROWS = 35;
+
+/** One order per line: outcome, time, route, what we charged and paid.
+ *
+ *  Outcome is driven by `got_code` (i.e. `otp is not null`), never by
+ *  `status = 'received'` — a code rescued after a cancel lives on a `canceled`
+ *  row, and reading status would report a delivered code as a failure.
+ *
+ *  `held_s` is on every line because it is the single most diagnostic number
+ *  here: cancels cluster far below the p90 arrival, and seeing "✖ … 8s" next to
+ *  "✅ … 58s" makes the difference legible at a glance. */
+export function formatOrders(raw: Record<string, unknown>, windowLabel: string): string {
+  const s = raw as {
+    total?: number; numbered?: number; delivered?: number; waiting?: number;
+    cancelled?: number; expired?: number; no_number?: number;
+    spend_cents?: number; rows?: OrderRow[];
+    email?: { total?: number; received?: number };
+    esim?: { total?: number };
+  };
+  const rows = s.rows ?? [];
+  const total = s.total ?? 0;
+
+  const lines: string[] = [];
+  lines.push(`📋 <b>Orders · last ${esc(windowLabel)}</b>`);
+
+  if (total === 0) {
+    lines.push("");
+    lines.push("<i>No SMS orders in this window.</i>");
+  } else {
+    const numbered = s.numbered ?? 0;
+    const delivered = s.delivered ?? 0;
+    // Rate is over orders that actually HELD a number. Orders that died inside
+    // create-order never reserved anything, so counting them would understate
+    // the provider — they get their own line instead.
+    const pct = numbered > 0 ? Math.round((delivered / numbered) * 100) : null;
+
+    lines.push("");
+    lines.push(`<b>${total}</b> orders · <b>${numbered}</b> got a number · ` +
+               `<b>${delivered}</b> delivered${pct === null ? "" : ` (${pct}%)`}`);
+
+    const bits: string[] = [];
+    if ((s.cancelled ?? 0) > 0) bits.push(`${s.cancelled} cancelled`);
+    if ((s.expired ?? 0) > 0) bits.push(`${s.expired} expired`);
+    if ((s.waiting ?? 0) > 0) bits.push(`${s.waiting} still waiting`);
+    if ((s.no_number ?? 0) > 0) bits.push(`${s.no_number} never got a number`);
+    if (bits.length) lines.push(`<i>${esc(bits.join(" · "))}</i>`);
+
+    lines.push(`💸 Wholesale paid: <b>$${esc(((s.spend_cents ?? 0) / 100).toFixed(2))}</b>`);
+    lines.push("");
+
+    for (const r of rows.slice(0, MAX_ROWS)) {
+      const mark = r.got_code ? "✅" : r.status === "waiting" ? "⏳" : "✖";
+      const t = (r.created_at ?? "").slice(11, 16);            // HH:MM UTC
+      const route = `${r.service_id ?? "?"}·${r.country_id ?? "?"}`;
+      const paid = r.actual_cost_cents != null ? `/$${(r.actual_cost_cents / 100).toFixed(2)}` : "";
+      const extra: string[] = [];
+      if (!r.got_number) extra.push("no number");
+      else if (!r.got_code) extra.push(r.status === "canceled" ? "cancelled" : (r.status ?? ""));
+      if (r.tier === "premium") extra.push("real SIM");
+      if (r.is_dev) extra.push("dev");
+      const tail = extra.filter(Boolean).join(", ");
+      lines.push(`${mark} <code>${esc(t)}</code> ${esc(route)} · ` +
+                 `${r.cost_credits ?? 0}cr${esc(paid)} · ${r.held_s ?? 0}s` +
+                 (tail ? ` · <i>${esc(tail)}</i>` : ""));
+    }
+    if (rows.length > MAX_ROWS) {
+      lines.push(`<i>… and ${rows.length - MAX_ROWS} older, not shown</i>`);
+    }
+  }
+
+  // Other product lines get a count, not a row list — they have no route and
+  // no delivery semantics comparable to a number, and folding them into the
+  // rate above would blend three different products into one figure.
+  const em = s.email ?? {}, es = s.esim ?? {};
+  const otherBits: string[] = [];
+  if ((em.total ?? 0) > 0) otherBits.push(`📧 e-mail ${em.total} (${em.received ?? 0} received)`);
+  if ((es.total ?? 0) > 0) otherBits.push(`📶 eSIM ${es.total}`);
+  if (otherBits.length) {
+    lines.push("");
+    lines.push(otherBits.join(" · "));
+  }
+
+  return lines.join("\n");
+}
