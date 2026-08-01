@@ -24,16 +24,32 @@ const MIN_HOLD_SECONDS = 180;
 // exists.
 const PRE_RESERVATION_GRACE_MS = 90_000;
 
-// `enforce_min_hold` is sent ONLY by clients that know about the rule.
+// The hold is now enforced for EVERY client (2026-08-01). `enforce_min_hold` is
+// still accepted so existing callers keep working, but it no longer gates
+// anything.
 //
-// It is opt-in for a specific, non-obvious reason. Shipped 1.4's
-// `rerollNumber` does `if let server = try? await orders.cancel(...)` and then
-// creates the replacement order **regardless of whether the cancel
-// succeeded**. Enforcing unconditionally would therefore leave the original
-// order `waiting` AND charge for a second one — a double charge on the live
-// install base. So the server refuses early cancels only for clients that also
-// abort the reroll on failure and hide the button until the hold elapses.
-// Remove the flag once 1.4 is off the field.
+// It was opt-in because pre-1.6 `rerollNumber` does
+// `if let server = try? await orders.cancel(...)` and creates the replacement
+// REGARDLESS of whether the cancel succeeded — so enforcing for everyone would
+// leave the original `waiting` AND charge for a second order.
+//
+// Two measurements retired that objection:
+//
+//  1. `begin_order` deduped on (user, service, country, tier) already, so a
+//     same-country reroll was ALWAYS protected. Only a different-country reroll
+//     slipped through: 7 in 30 days across 3 users. `20260801100000` drops
+//     country from that predicate, closing it.
+//  2. Pre-1.6 `cancelWaiting` sets `flow = nil` in its catch — so a refused
+//     cancel still LEAVES the waiting screen while the order keeps running.
+//     That is precisely the non-destructive ✕ that 1.6 introduced, so old
+//     clients get the behaviour for free, and a delivered code still reaches
+//     them by push.
+//
+// Why this could not wait for adoption: over 30 days 87 of 147 numbered orders
+// (59%) were cancelled by the user and delivered 1.1%, against ~73% for orders
+// left alone. The hold is the single largest lever on delivery, and gating it
+// on client version left it switched off for essentially the whole install
+// base — 20 of 22 cancels in one 48h sample were under 180s, one at 4 seconds.
 interface Body { order_id: string; enforce_min_hold?: boolean; }
 
 Deno.serve(async (req) => {
@@ -70,7 +86,7 @@ Deno.serve(async (req) => {
   // please wait a moment and try again." That is very nearly the right message
   // by accident, whereas 409's "Not available right now" would be misleading.
   // Newer clients read `retry_after_seconds` and render an exact countdown.
-  if (body.enforce_min_hold) {
+  {
     const heldSeconds = (Date.now() - new Date(order.created_at as string).getTime()) / 1000;
     if (heldSeconds < MIN_HOLD_SECONDS) {
       return json({

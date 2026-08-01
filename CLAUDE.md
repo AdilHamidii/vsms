@@ -1506,12 +1506,40 @@ falls back on HTTP status, where 429 reads *"You're going a bit fast — please
 wait a moment and try again"* — nearly right by accident, where 409's *"Not
 available right now"* would mislead.
 
-**Enforcement is gated on `enforce_min_hold`, sent only by newer clients, and
-that gate is load-bearing.** Shipped 1.4's `rerollNumber` does
-`if let server = try? await orders.cancel(...)` and then creates the replacement
+**Enforcement is UNCONDITIONAL as of 2026-08-01.** `enforce_min_hold` is still
+accepted for compatibility but gates nothing.
+
+It used to be opt-in because pre-1.6 `rerollNumber` does
+`if let server = try? await orders.cancel(...)` and creates the replacement
 **regardless of whether the cancel succeeded** — so enforcing for everyone would
-leave the original `waiting` AND charge for a second order. Drop the flag only
-once 1.4 is off the field. (`rerollNumber` now aborts on a failed cancel.)
+leave the original `waiting` AND charge for a second order. Two measurements
+retired that objection:
+
+1. **`begin_order` already deduped** on (user, service, country, tier) within
+   15s, so a **same-country** reroll was always protected and charged nothing.
+   Only a different-country reroll slipped through — **7 in 30 days across 3
+   users**, against 23 same-country ones already caught. `20260801100000` drops
+   `country_id` from that predicate and closes it. That is a no-op for healthy
+   flows, because the match still requires the earlier order to be `waiting`:
+   a 1.6+ reroll either aborts client-side or cancels successfully first.
+2. **A refused cancel does not trap pre-1.6 users.** Their `cancelWaiting`
+   catch sets `flow = nil`, so they still LEAVE the waiting screen while the
+   order keeps running — which is exactly the non-destructive ✕ that 1.6
+   introduced. They get it for free, and a delivered code still reaches them by
+   push. (They have no `ResumeBar`, so they cannot navigate back; the push and
+   `resumeInFlightOrder()` on cold launch are the return paths.)
+
+**Why it could not wait for adoption.** Over 30 days **87 of 147 numbered
+orders (59%) were cancelled by the user and delivered 1.1%**, against ~73% for
+orders left alone; `expired` orders delivered **0 of 16**. Gating the hold on
+client version left the single largest lever on delivery switched off for
+essentially the entire install base — in one 48h sample **20 of 22 cancels were
+under 180s, one at 4 seconds**. Waiting for 1.6/1.7 adoption would have meant
+weeks of it.
+
+⚠️ Because 180s > `PRE_RESERVATION_GRACE_MS` (90s), the hold now subsumes the
+numberless-cancel guard for the first three minutes. That guard still matters
+after 180s and must not be removed.
 
 **2. `cancel-order` NO LONGER CALLS `release()`.** It refunds, stamps
 `orders.late_watch_until` = the original deadline, and leaves the number alive.
