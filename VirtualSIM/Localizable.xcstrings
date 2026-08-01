@@ -311,18 +311,17 @@
       }
     },
     "%@ ranks highest for %@ network-wide — %lld%% in the last 24h. We haven't tested it ourselves yet.": {
-      "extractionState": "stale",
       "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%1$@ ranks highest for %2$@ network-wide — %3$lld%% in the last 24h. We haven't tested it ourselves yet."
-          }
-        },
         "de": {
           "stringUnit": {
             "state": "translated",
             "value": "%1$@ liegt für %2$@ netzwerkweit vorn – %3$lld %% in den letzten 24 Std. Wir haben es selbst noch nicht getestet."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@ ranks highest for %2$@ network-wide — %3$lld%% in the last 24h. We haven't tested it ourselves yet."
           }
         },
         "es": {
@@ -394,6 +393,46 @@
           "stringUnit": {
             "state": "translated",
             "value": "%@ recusou"
+          }
+        }
+      }
+    },
+    "%@ rejected it — get another": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ hat sie abgelehnt – neue holen"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ lo rechazó: obtener otro"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ l’a refusé — en obtenir un autre"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ l’ha rifiutato: prendine un altro"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ に拒否されました — 別の番号を取得"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ recusou: obter outro"
           }
         }
       }
@@ -793,6 +832,46 @@
           "stringUnit": {
             "state": "translated",
             "value": "%lld fora do mapa — use a lista"
+          }
+        }
+      }
+    },
+    "%lld numbers waiting": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld Nummern warten"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld números esperando"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld numéros en attente"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld numeri in attesa"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld 件の番号が待機中"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld números aguardando"
           }
         }
       }
@@ -2282,6 +2361,7 @@
       }
     },
     "Cancel available in %lld seconds": {
+      "extractionState": "stale",
       "localizations": {
         "de": {
           "stringUnit": {
@@ -2322,6 +2402,7 @@
       }
     },
     "Cancel order": {
+      "extractionState": "stale",
       "localizations": {
         "de": {
           "stringUnit": {
@@ -2969,6 +3050,46 @@
         }
       }
     },
+    "Close — your number keeps running": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Schließen – deine Nummer läuft weiter"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cerrar: tu número sigue activo"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Fermer — votre numéro reste actif"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Chiudi: il tuo numero resta attivo"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "閉じる — 番号は有効なままです"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Fechar: seu número continua ativo"
+          }
+        }
+      }
+    },
     "Code received": {
       "extractionState": "manual",
       "localizations": {
@@ -3533,6 +3654,46 @@
           "stringUnit": {
             "state": "translated",
             "value": "Custo"
+          }
+        }
+      }
+    },
+    "Costs another %lld cr. This number keeps running and still refunds itself if no code arrives.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kostet weitere %lld Cr. Diese Nummer läuft weiter und wird weiterhin erstattet, wenn kein Code ankommt."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cuesta %lld cr más. Este número sigue activo y se reembolsa igualmente si no llega ningún código."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Coûte %lld cr de plus. Ce numéro reste actif et sera quand même remboursé si aucun code n’arrive."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Costa altri %lld cr. Questo numero resta attivo e viene comunque rimborsato se non arriva alcun codice."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "追加で %lld クレジットかかります。この番号は有効なままで、コードが届かなければ返金されます。"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Custa mais %lld cr. Este número continua ativo e ainda é reembolsado se nenhum código chegar."
           }
         }
       }
@@ -6794,7 +6955,6 @@
       }
     },
     "Network-wide rates from the last 24h — not our own delivery record. Countries not listed haven't been ranked, which isn't a mark against them.": {
-      "extractionState": "stale",
       "localizations": {
         "de": {
           "stringUnit": {
@@ -6830,6 +6990,46 @@
           "stringUnit": {
             "state": "translated",
             "value": "Taxas de toda a rede nas últimas 24 h — não é o nosso próprio histórico de entrega. Países não listados não foram classificados, o que não é um ponto negativo."
+          }
+        }
+      }
+    },
+    "Newest: %@": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Neueste: %@"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Más reciente: %@"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Plus récent : %@"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Più recente: %@"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "最新: %@"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mais recente: %@"
           }
         }
       }
@@ -11868,7 +12068,6 @@
       }
     },
     "We're updating live prices. Ordering is paused for a few minutes.": {
-      "extractionState": "stale",
       "localizations": {
         "de": {
           "stringUnit": {

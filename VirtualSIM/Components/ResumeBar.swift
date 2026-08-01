@@ -39,7 +39,7 @@ struct ResumeBar: View {
                         .fill(theme.live)
                         .frame(width: 7, height: 7)
                     VStack(alignment: .leading, spacing: 1) {
-                        Text("Waiting for a code")
+                        Text(title)
                             .font(RFont.text(13, weight: .semibold))
                             .foregroundStyle(theme.text)
                         Text(subtitle)
@@ -68,11 +68,32 @@ struct ResumeBar: View {
         }
     }
 
+    /// More than one number can now be live at once: when the site rejects a
+    /// number the user can order another WITHOUT releasing the first, because
+    /// the 180s hold forbids releasing it. Saying "Waiting for a code" while
+    /// silently representing only one of two would hide a paid order — the same
+    /// disappearance this bar exists to prevent.
+    private var waitingSmsCount: Int {
+        state.orders.filter { $0.status == .waiting && $0.server.smspvaNumber != nil }.count
+    }
+
+    private var title: String {
+        let n = waitingSmsCount
+        return n > 1 ? String(localized: "\(n) numbers waiting")
+                     : String(localized: "Waiting for a code")
+    }
+
     private var subtitle: String {
         if let mail = waitingEmail, waitingSms == nil {
             return mail.email ?? mail.domain
         }
-        if let sms = waitingSms { return sms.number }
+        if let sms = waitingSms {
+            // Name the one Resume actually opens, so the bar cannot promise one
+            // number and deliver another.
+            return waitingSmsCount > 1
+                ? String(localized: "Newest: \(sms.number)")
+                : sms.number
+        }
         return ""
     }
 

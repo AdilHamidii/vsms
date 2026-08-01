@@ -11,7 +11,25 @@ interface Body {
    *  "premium" (pinned to the route's real-SIM operator, fail-fast). Old
    *  clients never send this. */
   tier?: string;
+  /** The user DELIBERATELY wants a second live number for this service while
+   *  the first is still held — the site rejected the first one and the 180s
+   *  hold means it cannot be released yet.
+   *
+   *  Sent only by 1.8+, and that matters. `begin_order` dedupes on
+   *  (user, service, tier) for 15s specifically to stop a pre-1.6 reroll
+   *  double-charging: those clients cancel, ignore the refusal, and create
+   *  anyway. Honouring this flag for every client would re-open that.
+   *
+   *  It does not disable dedupe, it shortens it to 3s — still long enough to
+   *  swallow a genuine double-tap (~500ms), far too short to swallow a user
+   *  who has walked back through checkout. */
+  allow_concurrent?: boolean;
 }
+
+/** Dedupe windows in seconds: the default double-tap guard, and the shortened
+ *  one used when the client explicitly asks for a concurrent number. */
+const DEDUPE_DEFAULT_SECONDS = 15;
+const DEDUPE_CONCURRENT_SECONDS = 3;
 
 // Verify-then-charge guard. Before reserving a number we re-check the LIVE
 // provider price and refuse unless the credits we'd charge are worth at least
@@ -299,6 +317,9 @@ Deno.serve(async (req) => {
     p_country: country.id,
     p_credits: cost,
     p_tier: tier,
+    p_dedupe_seconds: body.allow_concurrent
+      ? DEDUPE_CONCURRENT_SECONDS
+      : DEDUPE_DEFAULT_SECONDS,
   });
   if (beginErr) {
     return json({ error: "spend_failed", detail: beginErr.message }, { status: 500 });

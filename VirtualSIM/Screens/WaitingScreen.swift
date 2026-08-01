@@ -129,25 +129,26 @@ struct WaitingScreen: View {
                 .tracking(-0.3)
                 .foregroundStyle(theme.text)
             Spacer()
-            // This used to fire cancelWaiting() straight away. It reads as
-            // "close/back", but it cancelled a PAID, in-flight order — and
-            // cancel-order does a last-chance provider poll, so it could throw
-            // away a code that was seconds from landing. Destroying something
-            // the user paid for now takes an explicit confirmation.
-            // Locked for the first 180s — see `holdRemaining`. Shows the
-            // countdown in place of the ✕ so the wait reads as deliberate
-            // rather than as a broken button.
-            // ✕ now LEAVES; it does not cancel.
+            // ✕ LEAVES; it does not cancel.
             //
             // It read as "back" and destroyed a paid, in-flight order — first
             // instantly, then behind a confirmation. Both were wrong: the user
             // has to go and paste the number into another app, and coming back
-            // is the normal path. Leaving is now free, the order keeps running,
-            // and `ResumeBar` above the tab bar brings them back — which is what
+            // is the normal path. Leaving is free, the order keeps running, and
+            // `ResumeBar` above the tab bar brings them back — which is what
             // makes non-destructive close honest rather than a disappearance.
             //
             // Cancelling is still available, as an explicit labelled action
             // lower down (`cancelAction`), still gated by the 180s hold.
+            //
+            // ⚠️ It must NOT be gated on `holdRemaining`. It was, until
+            // 2026-08-01 — a leftover from when this button was the cancel,
+            // and the single most user-hostile bug in the app: the ✕ no longer
+            // destroyed anything, yet it stayed dead for the first 180 seconds,
+            // so a user whose number had just been rejected by the site was
+            // trapped on this screen for three minutes with no way to go and
+            // order another. The hold exists to protect the ORDER from being
+            // destroyed early, not to protect the screen from being left.
             Button {
                 state.flow = nil
             } label: {
@@ -158,14 +159,12 @@ struct WaitingScreen: View {
                     .background(theme.chipBg, in: .circle)
             }
             .buttonStyle(.plain)
-            // isPlacingOrder too: leaving the ✕ live during a reroll let
+            // isPlacingOrder stays: leaving the ✕ live during a reroll let
             // cancelWaiting fire mid-reroll and null activeOrder after the
             // fresh one was installed, rendering an empty screen over a live
             // paid order.
-            .disabled(holdRemaining != nil || state.isPlacingOrder)
-            .accessibilityLabel(holdRemaining == nil
-                ? Text("Cancel order")
-                : Text("Cancel available in \(holdRemaining ?? 0) seconds"))
+            .disabled(state.isPlacingOrder)
+            .accessibilityLabel(Text("Close — your number keeps running"))
         }
         .padding(.horizontal, 16)
         .padding(.bottom, 8)
@@ -245,8 +244,25 @@ struct WaitingScreen: View {
                 }
                 .padding(.top, 16)
 
-                rerollActions
-                    .padding(.top, 10)
+                // During the hold the reroll buttons are dead, because a reroll
+                // RELEASES this number and that is what the hold forbids. But
+                // "the site rejected it" happens within ~20 seconds — squarely
+                // inside the hold — so the one moment the user most needs an
+                // out was the one moment the screen offered none.
+                //
+                // So inside the hold, offer the ADDITIVE path instead: a second
+                // number alongside this one. It costs another order's credits
+                // (stated on the button) and this number keeps running, keeps
+                // its hold, and still refunds itself on expiry. Once the hold
+                // lifts, the reroll is strictly better — it releases the first
+                // number and refunds it — so the buttons swap back.
+                if holdRemaining != nil {
+                    concurrentAction
+                        .padding(.top, 10)
+                } else {
+                    rerollActions
+                        .padding(.top, 10)
+                }
 
                 cancelAction
                     .frame(maxWidth: .infinity)
@@ -289,6 +305,45 @@ struct WaitingScreen: View {
             }
             .buttonStyle(.plain)
             .disabled(state.isPlacingOrder)
+        }
+    }
+
+    /// "Get another number" — additive, not a swap.
+    ///
+    /// Deliberately states the price. The reroll it stands in for is free (it
+    /// refunds the number it releases), so a button that silently charged again
+    /// would be the same shape of lie as a ✕ that destroyed a paid order.
+    ///
+    /// Leaving the screen is what makes this safe: the current number stays
+    /// live, `ResumeBar` keeps it reachable, and if a code lands on it the push
+    /// still arrives — so ordering a second number never forfeits the first.
+    @ViewBuilder
+    private var concurrentAction: some View {
+        VStack(spacing: 6) {
+            Button {
+                state.orderAnotherNumber()
+            } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: RIcon.refresh)
+                        .font(.system(size: 13, weight: .semibold))
+                    Text("\(order.service.name) rejected it — get another")
+                        .font(RFont.text(13, weight: .semibold))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.85)
+                }
+                .foregroundStyle(theme.text)
+                .frame(maxWidth: .infinity)
+                .frame(height: 44)
+                .background(theme.chipBg, in: .rect(cornerRadius: 14))
+            }
+            .buttonStyle(.plain)
+            .disabled(state.isPlacingOrder)
+
+            Text("Costs another \(order.costCredits) cr. This number keeps running and still refunds itself if no code arrives.")
+                .font(RFont.text(11))
+                .foregroundStyle(theme.text3)
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
         }
     }
 

@@ -34,12 +34,22 @@ struct OrdersAPI {
         )
     }
 
-    func create(serviceId: String, countryId: String, premium: Bool = false) async throws -> ServerOrder {
-        struct Body: Encodable { let service_id: String; let country_id: String; let tier: String }
+    /// `allowConcurrent` tells the server this is a DELIBERATE second live
+    /// number for the same service, not a double-tap — the site rejected the
+    /// first one and the 180s hold means it cannot be released yet. It shortens
+    /// `begin_order`'s dedupe window from 15s to 3s; without it, walking back
+    /// through checkout inside 15s silently hands back the SAME order.
+    func create(serviceId: String, countryId: String, premium: Bool = false,
+                allowConcurrent: Bool = false) async throws -> ServerOrder {
+        struct Body: Encodable {
+            let service_id: String; let country_id: String; let tier: String
+            let allow_concurrent: Bool
+        }
         let env: OrderEnvelope = try await client.request(
             .post, path: "functions/v1/create-order",
             body: Body(service_id: serviceId, country_id: countryId,
-                       tier: premium ? "premium" : "standard")
+                       tier: premium ? "premium" : "standard",
+                       allow_concurrent: allowConcurrent)
         )
         return env.order
     }

@@ -205,6 +205,11 @@ final class AppState {
             checkoutService = nil
             checkoutCountry = nil
             checkoutPremium = false
+            // Cleared with the rest of the draft. A concurrent-order intent that
+            // outlived its checkout would shorten the dedupe window on some
+            // unrelated later order — the same class of bug as the stale
+            // checkout draft and the stale `checkoutEsimPlan`.
+            wantsConcurrentOrder = false
         }
     }
 
@@ -1410,15 +1415,40 @@ final class AppState {
     /// can both read isPlacingOrder == false before either sets it, each placing
     /// a (charged) order. Pinning to the main actor makes guard+set atomic: the
     /// second tap runs only after the first has set the flag and suspended.
+    /// Leave the waiting screen and open checkout for ANOTHER number, without
+    /// touching the one already running.
+    ///
+    /// This is not a reroll. A reroll releases the current number first, so it
+    /// is destructive and correctly blocked by the 180s hold — which left a user
+    /// whose number the site had just rejected with nothing to do for three
+    /// minutes. This adds a second number alongside the first: the original
+    /// keeps running, keeps its hold, and still refunds on expiry if no code
+    /// arrives. Costs another order's credits, which is the honest trade and is
+    /// why the button states the price.
+    func orderAnotherNumber() {
+        guard let order = activeOrder else { return }
+        // Deliberately does NOT clear activeOrder — the order is still live and
+        // ResumeBar reads the list, so both remain reachable.
+        wantsConcurrentOrder = true
+        startCheckout(service: order.service, country: order.country)
+    }
+
+    /// Set by `orderAnotherNumber`, consumed by the next `confirmGetNumber`.
+    /// Cleared on every exit from checkout so it can never leak into an
+    /// unrelated order — the same failure mode as the stale checkout draft.
+    var wantsConcurrentOrder = false
+
     @MainActor
     func confirmGetNumber(using orders: OrdersAPI, wallet: WalletAPI) async {
         guard let svc = checkoutService, let cty = checkoutCountry else { return }
         guard !isPlacingOrder else { return }   // no double-charge on double-tap
         isPlacingOrder = true
         defer { isPlacingOrder = false }
+        let concurrent = wantsConcurrentOrder
         do {
             let server = try await orders.create(serviceId: svc.id, countryId: cty.id,
-                                                 premium: effectiveCheckoutPremium)
+                                                 premium: effectiveCheckoutPremium,
+                                                 allowConcurrent: concurrent)
             let order = resolve(server)
             lastService = svc
             lastCountry = cty
