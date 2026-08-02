@@ -113,7 +113,7 @@ Deno.serve(async (req) => {
     // literal types, so splitting it across a `+` concatenation collapses the
     // row type to GenericStringError and every field access below fails to
     // type-check.
-    .from("routes").select("service_id, country_id, status, retail_credits, herosms_real_operator, herosms_real_count, herosms_smoothed_cost_cents")
+    .from("routes").select("service_id, country_id, status, retail_credits, herosms_real_operator, herosms_real_operators, herosms_real_count, herosms_smoothed_cost_cents")
     .eq("provider", "herosms");
   if (rtErr) return json({ error: "routes_read_failed", detail: rtErr.message }, { status: 500 });
   if (!routes?.length) return json({ error: "no_herosms_routes" }, { status: 500 });
@@ -158,16 +158,24 @@ Deno.serve(async (req) => {
   const nextCursor = cursor + COUNTRIES_PER_RUN >= heroCountries.length
     ? 0 : cursor + COUNTRIES_PER_RUN;
 
-  // heroServiceCode -> {op, n} for the best real carrier, per country id.
-  // Absent country = not probed THIS run; its stored value stays untouched.
-  const realOperator = new Map<string, Map<string, { op: string; n: number }>>();
+  // heroServiceCode -> every real carrier WITH STOCK, most stock first, per
+  // country id. Absent country = not probed THIS run; stored values untouched.
+  //
+  // All of them, not just the maximum. The probe already measures each one;
+  // keeping only the best meant create-order pinned a single carrier and, when
+  // it was dry, fell back to the UNPINNED pool — which is overwhelmingly VoIP
+  // (badoo/us: verizon 14,224 real against textnow 458,985 VoIP). getNumberV2's
+  // `operator` param takes a comma-separated list, so naming all of them draws
+  // on the union of real stock instead, which is better on quality AND on
+  // availability than either the single pin or the fallback.
+  const realOperator = new Map<string, Map<string, { op: string; n: number }[]>>();
   let operatorProbes = 0;
   for (const c of slice) {
     const ops = (await getOperators(c.herosms_id as number))
       .filter((o) => !voipOperators.has(o.toLowerCase()));
     await sleep(CALL_SPACING_MS);
     if (!ops.length) continue;              // could not ask, or genuinely none
-    const best = new Map<string, { op: string; n: number }>();
+    const best = new Map<string, { op: string; n: number }[]>();
     let anyOk = false;
     for (const op of ops) {
       const st = await getNumbersStatus(c.herosms_id as number, op);
@@ -176,11 +184,14 @@ Deno.serve(async (req) => {
       if (!st) continue;                    // this operator failed; others may answer
       anyOk = true;
       for (const [code, n] of Object.entries(st)) {
-        if (n <= 0) continue;
-        const cur = best.get(code);
-        if (!cur || n > cur.n) best.set(code, { op, n });
+        if (n <= 0) continue;               // absent/zero = no stock on that carrier
+        (best.get(code) ?? best.set(code, []).get(code)!).push({ op, n });
       }
     }
+    // Most stock first, so the head of the list is still the single best
+    // carrier — `herosms_real_operator` keeps its exact previous meaning and
+    // the strict premium pin is unchanged.
+    for (const list of best.values()) list.sort((a, b) => b.n - a.n);
     if (anyOk) realOperator.set(c.id as string, best);
   }
 
@@ -299,7 +310,8 @@ Deno.serve(async (req) => {
     service_id: string; country_id: string;
     herosms_cost_cents: number | null; herosms_physical_count: number | null;
     herosms_total_count: number | null; herosms_checked_at: string; status: string;
-    herosms_real_operator: string | null; herosms_real_count: number | null;
+    herosms_real_operator: string | null; herosms_real_operators: string | null;
+    herosms_real_count: number | null;
     premium_credits: number | null; real_sim_only: boolean;
     herosms_smoothed_cost_cents: number | null; retail_credits: number | null;
   };
@@ -325,8 +337,15 @@ Deno.serve(async (req) => {
     // Real-carrier resolution is chunked, so a country not probed THIS run must
     // keep whatever it already had rather than being reset to null.
     const probed = realOperator.has(r.country_id as string);
-    const realHit = probed ? realOperator.get(r.country_id as string)!.get(code ?? "") : undefined;
+    const realList = probed ? realOperator.get(r.country_id as string)!.get(code ?? "") : undefined;
+    const realHit = realList?.[0];
     const realOp = probed ? (realHit?.op ?? null) : (r.herosms_real_operator as string | null);
+    // Comma-joined, no spaces — the exact wire form getNumberV2's `operator`
+    // param documents ("tele2,beeline"), so create-order can pass it straight
+    // through with no reformatting.
+    const realOps = probed
+      ? (realList && realList.length ? realList.map((x) => x.op).join(",") : null)
+      : (r.herosms_real_operators as string | null);
     // 0, not null, when probed and nothing found: `herosms_real_count is null`
     // is what distinguishes "never looked" from "looked, none there".
     const realN  = probed ? (realHit?.n ?? 0) : (r.herosms_real_count as number | null);
@@ -403,6 +422,7 @@ Deno.serve(async (req) => {
       herosms_checked_at: nowIso,
       status,
       herosms_real_operator: realOp,
+      herosms_real_operators: realOps,
       herosms_real_count: realN,
       premium_credits: premium,
       real_sim_only: realOnlyHere,

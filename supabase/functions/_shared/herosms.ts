@@ -498,6 +498,9 @@ export interface HeroBuyResult {
   costUsd?: number;
   /** Provider's own hold deadline, epoch seconds, when it reports one. */
   expiresAt?: number;
+  /** The carrier that actually filled this number ("any" when unpinned).
+   *  Only getNumberV2 reports it; the v1 text fallback cannot. */
+  operator?: string;
   error?: string;
   errorType?: ProviderErrorType;
 }
@@ -543,12 +546,21 @@ export async function buyNumber(
       const endsAt = typeof d.activationEndTime === "string"
         ? Math.floor(Date.parse(d.activationEndTime.replace(" ", "T") + "Z") / 1000)
         : undefined;
+      // `activationOperator` is the carrier that ACTUALLY filled — "any" when
+      // the fill was unpinned. It is the only per-order evidence of what the
+      // user got: routes.herosms_physical_count describes the route at sync
+      // time, not this number. Recording it is what finally makes "do real SIMs
+      // deliver better than VoIP?" answerable; the physicalCount experiment
+      // could not answer it because the comparison group had been hidden before
+      // any order could land on it.
+      const op = typeof d.activationOperator === "string" ? d.activationOperator : undefined;
       return {
         ok: true,
         orderId: String(id),
         phoneNumber: normalizeE164(String(phone)),
         costUsd: Number.isFinite(cost) ? cost : undefined,
         expiresAt: Number.isFinite(endsAt as number) ? endsAt : undefined,
+        operator: op,
       };
     }
   }

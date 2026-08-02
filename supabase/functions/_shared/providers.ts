@@ -167,7 +167,12 @@ export async function reserve(
         number: r.phoneNumber ?? "",
         costUsd: r.costUsd,
         expiresAt: r.expiresAt,
-        pool: pool ?? undefined,
+        // What ACTUALLY filled, not what we asked for. These differ in both
+        // directions now: an opportunistic pin can fall back to the general
+        // pool, and `pool` may be a comma-separated LIST of acceptable real
+        // carriers — which would be useless for attribution. Falls back to the
+        // request only when the provider does not say (the v1 text path).
+        pool: r.operator ?? pool ?? undefined,
       };
     }
     if (p === "smspva" && c.smsService && c.smsCountry) {

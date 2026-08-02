@@ -252,7 +252,7 @@ Deno.serve(async (req) => {
 
   const { data: route, error: rErr } = await sb
     .from("routes")
-    .select("retail_credits, status, last_cost_cents, herosms_cost_cents, herosms_physical_count, herosms_real_operator, real_sim_only, provider, smspool_pool, smspva_operator, smspva_operator_cents, premium_credits")
+    .select("retail_credits, status, last_cost_cents, herosms_cost_cents, herosms_physical_count, herosms_real_operator, herosms_real_operators, real_sim_only, provider, smspool_pool, smspva_operator, smspva_operator_cents, premium_credits")
     .eq("service_id", service.id)
     .eq("country_id", country.id)
     .maybeSingle();
@@ -565,7 +565,23 @@ Deno.serve(async (req) => {
   // (`textnow` alone is 458,985 of ~477,000 numbers), which took 175 of 198
   // credits charged for ZERO codes in the 12h before this was first fixed.
   // Opportunistic pinning costs nothing: the worst case is the old behaviour.
-  const heroCarrier = route.herosms_real_operator as string | null;
+  // EVERY real carrier with stock, comma-joined, not just the best one.
+  // getNumberV2's `operator` param takes a list ("tele2,beeline" per the spec),
+  // so this draws on the union of real-SIM stock instead of one carrier's.
+  //
+  // Why it matters: the pin here is OPPORTUNISTIC — a dry carrier falls back to
+  // the unpinned pool, which is overwhelmingly VoIP (badoo/us: verizon 14,224
+  // real numbers against textnow's 458,985, ~96% of the country on one VoIP
+  // operator). So the old single pin quietly degraded to the exact stock strict
+  // services reject, every time that one carrier ran dry. Naming them all makes
+  // that fallback far rarer without making it strict, i.e. without trading
+  // availability for quality.
+  //
+  // Falls back to the single carrier for routes probed before the list column
+  // existed, so behaviour is never worse than before while the hourly cursor
+  // (8 countries/run) fills it in.
+  const heroCarrier = (route.herosms_real_operators as string | null) ??
+    (route.herosms_real_operator as string | null);
 
   // Standard orders pin the route's real-SIM carrier too, whenever it fits
   // the margin ceiling. Probed 2026-07-21: on all 16,320 active routes the
@@ -809,6 +825,15 @@ Deno.serve(async (req) => {
       // never be able to tell whether it helped. Null means "not recorded",
       // never "no real SIMs".
       route_physical_count: (route.herosms_physical_count as number | null) ?? null,
+      // The carrier that ACTUALLY filled, straight from getNumberV2's
+      // `activationOperator` ("any" when unpinned). This is the control arm the
+      // VoIP hypothesis has never had: route_physical_count above describes the
+      // ROUTE at sync time, whereas this describes the NUMBER the user got. The
+      // physicalCount experiment was unfalsifiable because sync-herosms hid
+      // every zero-physical route on strict services before an order could land
+      // on one; per-order operator attribution sidesteps that entirely. Null
+      // means not recorded — never read it as "unpinned", which is "any".
+      operator_used: reservation.pool ?? null,
       // Honour the provider's own hold window when it tells us one. The DB
       // default is a flat 8 minutes, but SMSPool's window is pool-dependent
       // (their docs show 1200s) — expiring first meant refunding and
