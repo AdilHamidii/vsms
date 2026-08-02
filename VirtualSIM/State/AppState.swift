@@ -502,7 +502,7 @@ final class AppState {
         bootPhase = .loading
         bootProgress = 0
 
-        let total = 6.0
+        let total = 5.0
         var done = 0.0
         func step() {
             done += 1
@@ -534,11 +534,6 @@ final class AppState {
         await refreshWallet(using: WalletAPI(client: api));   step()
         await refreshProfile(using: ProfileAPI(client: api)); step()
         await loadOrders(using: OrdersAPI(client: api));      step()
-
-        // Before the reveal on purpose: it moves the balance, and a balance
-        // that jumps a beat after the splash lifts reads as a billing glitch.
-        await claimDailyCredit(using: WalletAPI(client: api))
-        step()
 
         // Both must run before the reveal — they decide WHICH screen and which
         // service/country the user lands on.
@@ -1015,10 +1010,6 @@ final class AppState {
         catch { /* keep current */ }
     }
 
-    /// Banner shown when today's free credit has just been granted.
-    /// Cleared by the UI once acknowledged.
-    var dailyCreditBanner: (credits: Int, streak: Int, next: Int?)?
-
     /// When the catalog was last successfully loaded.
     ///
     /// The routes payload is ~3 MB / 18.5k rows and took 4.2s measured against
@@ -1035,41 +1026,10 @@ final class AppState {
     /// successful buy was visually identical to a failed one.
     var creditPurchaseBanner: Int?
 
-    /// Today's unclaimed credit, if any — drives the Home claim button.
-    /// Nil until the status call returns.
-    var dailyCredit: DailyCreditStatus?
-
-    /// True while a claim is in flight, so the button can't be double-tapped.
-    var isClaimingDaily = false
-
-    /// Refresh whether today's credit is still available. Side-effect free:
-    /// the credit is granted only by an explicit tap, because a grant the user
-    /// never chose is invisible — the habit we want is "open the app and
-    /// collect", not "the balance quietly changed".
-    func refreshDailyCredit(using api: WalletAPI) async {
-        dailyCredit = try? await api.dailyCreditStatus()
-    }
-
-    /// Claim today's credit. Advisory-locked server-side, so a double-tap
-    /// cannot pay twice.
-    func claimDailyCredit(using api: WalletAPI) async {
-        guard !isClaimingDaily else { return }
-        isClaimingDaily = true
-        defer { isClaimingDaily = false }
-        do {
-            let r = try await api.claimDailyCredit()
-            if r.granted {
-                if let b = r.balance { balance = b }
-                dailyCreditBanner = (credits: r.credits ?? 1,
-                                     streak: r.streak ?? 1,
-                                     next: r.nextCredits)
-            }
-            // Re-read either way: on a lost race the button must disappear.
-            await refreshDailyCredit(using: api)
-        } catch {
-            lastError = "Couldn't claim today's credit. Please try again."
-        }
-    }
+    // The daily credit was REMOVED from the client on 2026-08-02. It had been
+    // disabled server-side (migration 20260801150000, owner decision) and the
+    // no-op daily_credit_status/claim_daily_credit RPCs stay in the DB only so
+    // 1.6/1.7 builds keep working; this build simply never calls them.
 
     func refreshProfile(using api: ProfileAPI) async {
         profile = try? await api.currentProfile()

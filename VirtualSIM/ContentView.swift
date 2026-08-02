@@ -196,10 +196,6 @@ struct ContentView: View {
                     await state.refreshWallet(using: WalletAPI(client: api))
                     await state.loadOrders(using: OrdersAPI(client: api))
                     await state.loadEmailOrders(using: EmailAPI(client: api))
-                    // A user who leaves the app open overnight, or taps the
-                    // daily push, crosses the UTC boundary without a cold
-                    // launch — so the claim has to run on foreground too.
-                    await state.claimDailyCredit(using: WalletAPI(client: api))
                 }
             }
         }

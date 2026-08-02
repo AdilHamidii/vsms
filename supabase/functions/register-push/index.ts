@@ -43,30 +43,10 @@ Deno.serve(async (req) => {
   // this (empty push_devices ⇒ registration path never reached) vs. failing.
   console.log(`register-push OK user=${userId} env=${body.environment} bundle=${body.bundle_id} token=${body.token.slice(0, 8)}…`);
 
-  // Grant the daily credit here, because opening the app IS the trigger.
-  //
-  // The design wanted "collect your credit" to be an explicit tap, but that
-  // button only exists in an unreleased build — so the daily push has gone out
-  // 95-104 times a day to zero claims, and repeats forever because its dedupe
-  // (`last_daily_credit_on = today`) is something the shipped app can never
-  // set. AuthGate calls this endpoint on every signed-in cold launch, so
-  // granting here preserves the intent exactly — pay people who came back, not
-  // people who didn't — and works on 1.4 today.
-  //
-  // Idempotent per UTC day and advisory-locked per user inside the function, so
-  // several launches in a day grant once. Best-effort: a failure here must
-  // never fail the push registration itself.
-  let dailyGranted: number | null = null;
-  try {
-    const { data: claim, error: claimErr } = await sb.rpc("claim_daily_credit_for", { p_user: userId });
-    if (claimErr) console.error(`register-push: daily credit failed user=${userId}: ${claimErr.message}`);
-    else if ((claim as { granted?: boolean; credits?: number } | null)?.granted) {
-      dailyGranted = (claim as { credits?: number }).credits ?? null;
-      console.log(`register-push: granted ${dailyGranted} daily credit(s) to ${userId}`);
-    }
-  } catch (e) {
-    console.error("register-push: daily credit threw (ignored):", e);
-  }
-
-  return json({ ok: true, daily_credits: dailyGranted });
+  // The daily credit was disabled (20260801150000) and then REMOVED
+  // (2026-08-02): the claim_daily_credit_for round-trip that used to live here
+  // was a guaranteed no-op costing every cold launch an RPC. The literal
+  // `daily_credits: null` stays in the response because shipped builds decode
+  // this shape, and null is exactly what they have received since the disable.
+  return json({ ok: true, daily_credits: null });
 });
