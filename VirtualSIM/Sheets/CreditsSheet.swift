@@ -19,10 +19,14 @@ struct CreditsSheet: View {
     }
 
     private var buttonLabel: String {
-        if purchasing { return "Processing…" }
-        if iap.isLoadingProducts && iap.products[pack.productId] == nil { return "Loading…" }
-        if iap.products[pack.productId] == nil { return "Unavailable" }
-        return "Buy \(pack.credits) credits"
+        // String(localized:) at the source: interpolation happens BEFORE
+        // PrimaryButton's LocalizedStringKey lookup, so "Buy 12 credits" as a
+        // key missed the catalog and the purchase button rendered English in
+        // all six locales. Localizing here makes the key "Buy %lld credits".
+        if purchasing { return String(localized: "Processing…") }
+        if iap.isLoadingProducts && iap.products[pack.productId] == nil { return String(localized: "Loading…") }
+        if iap.products[pack.productId] == nil { return String(localized: "Unavailable") }
+        return String(localized: "Buy \(pack.credits) credits")
     }
 
     var body: some View {
@@ -191,7 +195,7 @@ private struct PackRow: View {
                             .font(RFont.text(14))
                             .foregroundStyle(theme.text2)
                         if let badge = pack.badge {
-                            Text(badge)
+                            Text(LocalizedStringKey(badge))
                                 .font(RFont.text(11, weight: .semibold))
                                 .tracking(0.1)
                                 .foregroundStyle(theme.live)

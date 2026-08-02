@@ -38,9 +38,23 @@ struct OrdersScreen: View {
             case .email(let e):
                 // email_orders.created_at is an ISO string; distantPast keeps an
                 // unparseable one at the bottom rather than at "now".
-                ISO8601DateFormatter().date(from: e.createdAt ?? "") ?? .distantPast
+                // PostgREST emits timestamptz WITH fractional seconds, which a
+                // default ISO8601DateFormatter rejects — so every email row
+                // parsed nil and a minutes-old activation sorted below the
+                // oldest SMS order, i.e. it looked like the order vanished.
+                // Try the fractional form first, plain second (static: a
+                // formatter per comparison per body evaluation is real cost).
+                Self.isoFrac.date(from: e.createdAt ?? "")
+                    ?? Self.iso.date(from: e.createdAt ?? "")
+                    ?? .distantPast
             }
         }
+        private static let isoFrac: ISO8601DateFormatter = {
+            let f = ISO8601DateFormatter()
+            f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+            return f
+        }()
+        private static let iso = ISO8601DateFormatter()
     }
 
     private var allItems: [HistoryItem] {
@@ -103,6 +117,9 @@ struct OrdersScreen: View {
         .scrollIndicators(.hidden)
         .refreshable {
             await state.loadOrders(using: OrdersAPI(client: api))
+            // This screen renders BOTH products' history — pull-to-refresh
+            // skipping email meant a waiting email row never updated here.
+            await state.loadEmailOrders(using: EmailAPI(client: api))
             await state.refreshWallet(using: WalletAPI(client: api))
         }
     }
@@ -131,11 +148,17 @@ struct OrdersScreen: View {
     /// Same shape as `tap`, and the same rule: a code that EXISTS wins over the
     /// status, so a code delivered onto a closed row is still reachable.
     private func tapEmail(_ mail: ServerEmailOrder) {
-        state.activeEmailOrder = mail
-        state.intent = .email
+        // intent/activeEmailOrder are written ONLY on the branches that open a
+        // flow. Writing them unconditionally leaked `.email` intent from a tap
+        // on a dead row — no flow opened, so flow.didSet (the only clearer)
+        // never ran, and the credits sheet then sized for a 1-credit email.
         if mail.hasCode {
+            state.activeEmailOrder = mail
+            state.intent = .email
             state.flow = .emailCode
         } else if mail.status == .waiting {
+            state.activeEmailOrder = mail
+            state.intent = .email
             state.flow = .emailWaiting
         }
         // Terminal and codeless: nothing to reopen. Deliberately no "buy again"

@@ -63,9 +63,15 @@ enum APIError: Error, LocalizedError {
                 // told the user to retry into a wall.
                 case "provider_unreachable", "smspva_unreachable":
                     return "The number provider is unreachable. Please try again in a moment."
+                // Product-neutral on purpose: create-email-order and
+                // create-esim-order emit this too, and the old copy told an
+                // EMAIL buyer that a "number" costs too much and to try another
+                // "country" — neither exists in that product.
                 case "margin_too_low":
-                    return "That number costs more than expected right now. Try another country or service."
-                case "order_not_found":
+                    return "That costs more than expected right now. Please try a different option, or try again later."
+                // `unknown_order` is check-email-order's spelling of the same
+                // thing; unmapped it fell to the generic 404.
+                case "order_not_found", "unknown_order":
                     return "We couldn't find that order anymore."
                 case "not_cancelable":
                     return "This order can't be canceled."
@@ -99,8 +105,11 @@ enum APIError: Error, LocalizedError {
                     return "Email addresses aren't available for this service yet."
                 case "email_purchase_failed":
                     return "We couldn't get an address right now. Please try again."
+                // No iCloud here: icloud.com was removed from the product on
+                // 2026-07-31 and create-email-order refuses it — naming it sent
+                // users to an option the app itself rejects.
                 case "free_limit_reached":
-                    return "You've used today's free addresses. Try again tomorrow, or pick Gmail or iCloud."
+                    return "You've used today's free addresses. Try again tomorrow, or pick Gmail."
                 case "unknown_service":
                     return "That service isn't available anymore."
                 case "order_persist_failed":

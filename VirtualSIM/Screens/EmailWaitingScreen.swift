@@ -47,10 +47,14 @@ struct EmailWaitingScreen: View {
     private var header: some View {
         HStack {
             Button {
-                // Leaving does NOT cancel: the activation stays live and the
-                // poller keeps it, so a user who backs out still gets their code
-                // in history. Destroying a paid order on a back tap is the exact
-                // shape the SMS ✕ had to be guarded against.
+                // Leaving does NOT cancel: the activation stays live and
+                // ContentView's app-level email poll keeps fetching it (there
+                // is NO server cron for email codes — check-email-order is the
+                // only reader, so before that task existed this comment was
+                // false and backing out silently abandoned the code). A user
+                // who backs out still gets their code in history. Destroying a
+                // paid order on a back tap is the exact shape the SMS ✕ had to
+                // be guarded against.
                 state.flow = nil
             } label: {
                 Image(systemName: RIcon.close)

@@ -22,9 +22,9 @@ struct EmailAPI {
         )
     }
 
-    /// Buy one address. Charges 1 credit for gmail/icloud, nothing for
-    /// outlook/hotmail — the server is the authority on both the price and the
-    /// free-tier daily cap.
+    /// Buy one address. Charges 1 credit for gmail, nothing for
+    /// outlook/hotmail (icloud was removed 2026-07-31) — the server is the
+    /// authority on both the price and the free-tier daily cap.
     func create(serviceId: String, domain: String) async throws -> ServerEmailOrder {
         struct Body: Encodable { let service_id: String; let domain: String }
         let env: OrderEnvelope = try await client.request(

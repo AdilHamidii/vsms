@@ -138,12 +138,40 @@ struct ContentView: View {
             // before the splash lifts. See AppState.coldStart.
             await state.coldStart(api: api)
         }
+        // Keep polling a live email activation even when no screen shows it.
+        // check-email-order is the ONLY thing that ever fetches an email code
+        // from the provider — no server cron polls email and no push exists for
+        // it — so before this task, closing the waiting screen (or force-
+        // quitting) permanently abandoned a code the user had paid for: the
+        // provider auto-cancels at ~21 min and the code is gone. Keyed on
+        // "any waiting email order exists" so it costs nothing otherwise.
+        .task(id: state.emailOrders.contains { $0.status == .waiting }) {
+            guard state.emailOrders.contains(where: { $0.status == .waiting }) else { return }
+            while !Task.isCancelled {
+                if state.activeEmailOrder == nil || state.activeEmailOrder?.status.isTerminal == true {
+                    state.activeEmailOrder = state.emailOrders.first { $0.status == .waiting }
+                }
+                guard state.activeEmailOrder?.status == .waiting else { return }
+                await state.refreshEmailOrder(using: EmailAPI(client: api))
+                try? await Task.sleep(for: .seconds(10))
+            }
+        }
         // Stock is live and per (service, domain), so the picker has to be
         // re-quoted whenever either input changes — entering email mode, or
         // switching service while already in it. Cheap: one call, and only when
         // the user is actually looking at email.
         .onChange(of: state.emailMode) { _, on in
-            guard on else { return }
+            guard on else {
+                // Leaving email mode must clear the email draft. This scenario
+                // runs entirely at flow == nil, so flow's didSet — the only
+                // other place that clears intent — never fires, and a stale
+                // .email intent made creditsShortfall size the pack for a
+                // 1-credit address instead of the SMS route on screen (the
+                // third instance of the PurchaseIntent bug class).
+                state.emailDomain = nil
+                state.intent = .sms
+                return
+            }
             Task { await state.loadEmailDomains(using: EmailAPI(client: api)) }
         }
         .onChange(of: state.lastService.id) { _, _ in
@@ -181,6 +209,15 @@ struct ContentView: View {
             Task {
                 await state.loadOrders(using: OrdersAPI(client: api))
                 guard let order = state.orders.first(where: { $0.id == orderId }) else { return }
+                // `otp is not null` wins over status, always — a rescued code
+                // lives on a CANCELED row, and routing that row by status would
+                // land the user on the refund screen while their code sits one
+                // switch-case away. Same rule as onTapOrder and OrdersScreen.
+                if order.otp != nil {
+                    state.activeOrder = order
+                    state.flow = .otp
+                    return
+                }
                 switch order.status {
                 case .received:
                     state.activeOrder = order

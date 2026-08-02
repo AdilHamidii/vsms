@@ -7,7 +7,10 @@ struct SheetHeader: View {
 
     var body: some View {
         HStack {
-            Text(title)
+            // LocalizedStringKey, not the raw String — Text(String) never
+            // consults the catalog, so every sheet title shipped English to
+            // all six locales while its translation sat unused.
+            Text(LocalizedStringKey(title))
                 .font(RFont.display(20, weight: .bold))
                 .tracking(-0.4)
                 .foregroundStyle(theme.text)

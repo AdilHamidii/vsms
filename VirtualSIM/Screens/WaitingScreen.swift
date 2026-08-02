@@ -363,7 +363,7 @@ struct WaitingScreen: View {
     }
 
     // Reroll releases the number exactly like a cancel, so it is held for the
-    // same 120s. Without this the button would just surface a server error.
+    // same 180s. Without this the button would just surface a server error.
     private func rerollButton(title: String, icon: String,
                               differentCountry: Bool) -> some View {
         Button {
@@ -446,7 +446,7 @@ struct WaitingScreen: View {
 
     private func timerCell(label: String, seconds: Int) -> some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text(label)
+            Text(LocalizedStringKey(label))
                 .font(RFont.text(11, weight: .medium))
                 .tracking(0.2)
                 .foregroundStyle(theme.text2)
@@ -459,11 +459,11 @@ struct WaitingScreen: View {
     /// Same cell, non-numeric — used once the countdown has no meaning left.
     private func labelCell(label: String, text: String) -> some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text(label)
+            Text(LocalizedStringKey(label))
                 .font(RFont.text(11, weight: .medium))
                 .tracking(0.2)
                 .foregroundStyle(theme.text2)
-            Text(text)
+            Text(LocalizedStringKey(text))
                 .font(RFont.text(17, weight: .medium))
                 .foregroundStyle(theme.text2)
         }

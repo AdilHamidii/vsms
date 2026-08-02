@@ -195,7 +195,9 @@ struct HomeScreen: View {
     private var header: some View {
         HStack(alignment: .top) {
             VStack(alignment: .leading, spacing: 2) {
-                Text(greeting)
+                // LocalizedStringKey: "Good morning/afternoon/evening" have
+                // translations in the catalog that Text(String) never used.
+                Text(LocalizedStringKey(greeting))
                     .font(RFont.text(13))
                     .tracking(-0.1)
                     .foregroundStyle(theme.text2)
@@ -240,7 +242,7 @@ struct HomeScreen: View {
             if state.balance < routeCost {
                 PrimaryButton(
                     label: "Buy credits",
-                    sub: "Need \(routeCost - state.balance) more",
+                    sub: String(localized: "Need \(routeCost - state.balance) more"),
                     icon: RIcon.plus,
                     action: openCredits
                 )

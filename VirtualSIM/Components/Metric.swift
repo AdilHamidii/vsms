@@ -8,7 +8,9 @@ struct Metric: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
-            Text(label.uppercased())
+            // Localize FIRST, then uppercase — Text(String) skips the catalog,
+            // and .uppercased() on the key would also break the lookup.
+            Text(String(localized: String.LocalizationValue(label)).uppercased())
                 .font(RFont.text(11, weight: .medium))
                 .tracking(0.2)
                 .foregroundStyle(theme.text2)

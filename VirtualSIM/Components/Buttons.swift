@@ -80,7 +80,7 @@ struct GhostButton: View {
                     Image(systemName: icon)
                         .font(.system(size: 15, weight: .medium))
                 }
-                Text(label)
+                Text(LocalizedStringKey(label))
                     .font(RFont.text(15, weight: .medium))
                     .tracking(-0.2)
             }

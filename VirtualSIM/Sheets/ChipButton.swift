@@ -15,7 +15,10 @@ struct ChipButton: View {
                     Image(systemName: icon)
                         .font(.system(size: 12, weight: .semibold))
                 }
-                Text(label)
+                // LocalizedStringKey: chip labels ("Affordable", the sort
+                // names) have translations that Text(String) never used. DB
+                // data (category names) misses the lookup and renders as-is.
+                Text(LocalizedStringKey(label))
                     .font(RFont.text(13, weight: .medium))
                     .tracking(-0.2)
             }

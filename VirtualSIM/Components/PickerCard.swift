@@ -12,7 +12,7 @@ struct PickerCard<Icon: View>: View {
             VStack(alignment: .leading, spacing: 10) {
                 HStack(spacing: 10) {
                     icon
-                    Text(label.uppercased())
+                    Text(String(localized: String.LocalizationValue(label)).uppercased())
                         .font(RFont.text(12, weight: .medium))
                         .tracking(0.2)
                         .foregroundStyle(theme.text2)

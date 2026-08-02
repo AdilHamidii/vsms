@@ -24,7 +24,10 @@ struct MaintenanceView: View {
                         .foregroundStyle(theme.text2)
                 }
                 VStack(spacing: 6) {
-                    Text(message ?? "Refreshing prices")
+                    // The ?? made the whole thing a String, so the FALLBACK
+                    // never localized. A server-provided message still renders
+                    // verbatim (the key lookup misses), which is correct.
+                    Text(message.map { LocalizedStringKey($0) } ?? "Refreshing prices")
                         .font(RFont.display(22, weight: .bold))
                         .tracking(-0.5)
                         .foregroundStyle(theme.text)

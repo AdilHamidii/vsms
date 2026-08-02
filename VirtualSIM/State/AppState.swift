@@ -1308,6 +1308,16 @@ final class AppState {
             emailOrders[i] = fresh
         }
         if fresh.hasCode, flow == .emailWaiting { flow = .emailCode }
+        // Terminal without a code must EXIT, not spin forever. The server sweep
+        // expires and refunds the order; before this branch existed the screen
+        // kept rendering "Waiting for the code" with nothing left to wait for —
+        // the SMS apply() rule ("cover every terminal status") not applied here.
+        if fresh.status.isTerminal, !fresh.hasCode, flow == .emailWaiting {
+            lastError = fresh.wasRefunded
+                ? String(localized: "No code arrived — your \(fresh.costCredits) credits are back in your balance.")
+                : String(localized: "No code arrived for that address.")
+            flow = nil
+        }
     }
 
     func startEsimCheckout(_ plan: EsimPlan) {

@@ -258,7 +258,7 @@ struct CheckoutScreen: View {
                     if insufficient {
                         PrimaryButton(
                             label: "Buy credits",
-                            sub: "Need \(routeCost - state.balance) more",
+                            sub: String(localized: "Need \(routeCost - state.balance) more"),
                             icon: RIcon.plus,
                             action: openCredits
                         )

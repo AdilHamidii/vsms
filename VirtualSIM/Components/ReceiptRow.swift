@@ -84,12 +84,16 @@ struct ReceiptValue: View {
     var body: some View {
         HStack(spacing: 8) {
             VStack(alignment: .trailing, spacing: 1) {
-                Text(primary)
+                // LocalizedStringKey: the receipt's right column carries fixed
+                // phrases ("Only charged if a code arrives", "Not tested") with
+                // unused translations. Dynamic values (service names, prices)
+                // miss the lookup and render verbatim, which is correct.
+                Text(LocalizedStringKey(primary))
                     .font(RFont.display(15, weight: .semibold))
                     .tracking(-0.2)
                     .foregroundStyle(theme.text)
                 if let secondaryText {
-                    Text(secondaryText)
+                    Text(LocalizedStringKey(secondaryText))
                         .font(RFont.text(12))
                         .foregroundStyle(theme.text2)
                 } else if let secondaryContent {

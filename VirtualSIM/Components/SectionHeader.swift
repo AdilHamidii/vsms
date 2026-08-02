@@ -8,14 +8,15 @@ struct SectionHeader: View {
 
     var body: some View {
         HStack(alignment: .firstTextBaseline) {
-            Text(label.uppercased())
+            // Localize first, then uppercase — Text(String) skips the catalog.
+            Text(String(localized: String.LocalizationValue(label)).uppercased())
                 .font(RFont.display(13, weight: .semibold))
                 .tracking(0.3)
                 .foregroundStyle(theme.text2)
             Spacer()
             if let action {
                 Button(action: { onAction?() }) {
-                    Text(action)
+                    Text(LocalizedStringKey(action))
                         .font(RFont.text(14, weight: .medium))
                         .foregroundStyle(theme.text2)
                 }

@@ -17,7 +17,7 @@ struct StockPill: View {
     var body: some View {
         HStack(spacing: 6) {
             Circle().fill(color).frame(width: 5, height: 5)
-            Text(label)
+            Text(LocalizedStringKey(label))
                 .font(RFont.text(12, weight: .medium))
                 .tracking(-0.1)
                 .foregroundStyle(color)
@@ -72,7 +72,7 @@ struct StatusBadge: View {
                     .animation(.easeInOut(duration: 0.7).repeatForever(autoreverses: true), value: pulse)
                     .onAppear { pulse = true }
             }
-            Text(label)
+            Text(LocalizedStringKey(label))
                 .font(RFont.text(12, weight: .medium))
                 .tracking(-0.1)
                 .foregroundStyle(color)
