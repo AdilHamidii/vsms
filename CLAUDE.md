@@ -117,7 +117,7 @@ supabase db query --linked "
 ```
 
 There is no test suite. Verify iOS with the `swiftc -typecheck` command above
-(exit 0 = all 84 sources compile). It does NOT catch everything — a missing
+(exit 0 = all 96 sources compile as of 2026-08-02 — re-count before trusting). It does NOT catch everything — a missing
 `import StoreKit` type-checked fine and failed the real build, so prefer
 `xcodebuild` when you can afford it. Verify backend changes by re-deploying, then
 **checking the resulting DB state** — not by assuming the deploy worked. Several
@@ -663,7 +663,7 @@ function's own silent rejection), never 401.
 
 `AppState.cost(for:country:) -> Int?` uses an O(1) `routeIndex` dict (keyed `"serviceId|countryId"`) built in `loadCatalog`. Returns `nil` when the pair has no active route with a `retail_credits` price — meaning **unavailable to book**; UI shows "Unavailable" (see ServiceSheet/CountrySheet) and disables the Get-number button. It deliberately does **NOT** fall back to the seed `service.cost`, since undercharging vs the live provider price burns margin per order. **Do not** linear-scan `routes` (~17k rows after sync-prices) — that froze the country picker before the index was added.
 
-`sync-prices` formula: `credits = max(1, ceil(price / 0.05))` — 1 credit per started 5¢ of wholesale (`CREDIT_DIVISOR = 0.05`, duplicated in exactly **two** files as of 2026-07-30 — `sync-prices` and `sync-smspva-operators`, which prices the premium tier; tune it for global margin adjustment). Order-time enforcement matches: `create-order` has `MIN_MARGIN = 6.0` / `NET_USD_PER_CREDIT = 0.30`, so the max we pay a provider is `credits × $0.05` **plus `CEILING_HEADROOM_USD` ($0.10)**, enforced on the actual charged cost with cancel-and-fallback. Keep the divisor and the margin pair in lockstep; raising one alone either blocks honest routes or leaks margin.
+`sync-prices` formula: `credits = max(1, ceil(price / 0.05))` — 1 credit per started 5¢ of wholesale (`CREDIT_DIVISOR = 0.05`, duplicated in **two** files — `sync-prices` and `sync-smspva-operators`, which prices the premium tier — while `sync-herosms` defines its own, deliberately DIFFERENT `0.025`; see the per-provider table below. "Tuning the divisor" is a per-provider decision now, and the 0.05 pair must move together). Order-time enforcement matches: `create-order` has `MIN_MARGIN = 6.0` / `NET_USD_PER_CREDIT = 0.30`, so the max we pay a provider is `credits × $0.05` **plus `CEILING_HEADROOM_USD` ($0.10)**, enforced on the actual charged cost with cancel-and-fallback. Keep the divisor and the margin pair in lockstep; raising one alone either blocks honest routes or leaks margin.
 
 **The $0.10 headroom is load-bearing — do not "simplify" it away.** Without it the two formulas are exactly inverse (`credits*0.30/6.0 == credits*0.05`), so a route whose wholesale lands on an exact 5¢ boundary has an order-time cap equal to its cost **to the cent**. Measured 2026-07-27: **12,507 of 16,303 active routes (76.7%) sat at exactly zero headroom.** A one-cent rise at SMSPVA then made every order on that route fail `margin_too_low` — charged and instantly refunded — until the next hourly `sync-prices` repriced it. That produced **11 of 22 orders in 24h closing in under a second with no number**, and because those orders were also counted as delivery failures it auto-hid TikTok/Netherlands (see below). The headroom is flat, not proportional, so exposure is bounded at $0.10/order at any price point; the cost is margin on the cheapest routes (a 2-credit route may now pay up to $0.20 against $0.60 of revenue, 3× not 6×), which is strictly better than refunding the order. **SMS markup went 3× → 6× on 2026-07-25** (divisor 0.10 → 0.05); retail is recomputed from `smoothed_cost_cents` every run, so the whole catalog reprices on the next `sync-prices`.
 
@@ -926,10 +926,9 @@ verified 2026-07-30 both on `/v1/apps/6774768570/inAppPurchasesV2` and by two
 live `$24.99 USD` purchases within 20 minutes of each other. This file said it
 had "**never** been approved" and that the largest purchasable pack was 30
 credits; that is wrong, and it mattered — the 60-pack is now the **top revenue
-product**, out-earning everything else in the 24h to 2026-07-30. So four packs
-(`credits.5/12/30/60`) are live; only `credits.150` is not, and it was
-**submitted for review 2026-07-30 06:53Z** once `credits.60` cleared a slot in
-Apple's 2-in-flight cap.
+product**, out-earning everything else in the 24h to 2026-07-30. **All five packs now read
+`APPROVED` (verified 2026-08-02)** — `credits.150` cleared review after being
+submitted 2026-07-30 06:53Z, so the full ladder is purchasable.
 
 Check `state` on `/v1/apps/6774768570/inAppPurchasesV2` before assuming the
 ladder the code defines is the ladder a user sees — and note this file has now
@@ -2110,7 +2109,7 @@ then `smoothed_cost_cents > MAX_WHOLESALE_CENTS`, then measured-zero auto-hide.
 - **`revoke execute … from anon, authenticated` IS A NO-OP while PUBLIC holds the grant.** `CREATE FUNCTION` grants EXECUTE to PUBLIC by default, and anon/authenticated are members of PUBLIC — so the revoke line present on ~35 migrations changes nothing on its own, and the function stays callable at `/rest/v1/rpc/<name>`. Read the ACL, not the migration: a secured function is `postgres=X/postgres | service_role=X/postgres`, a leaking one has a **leading `=X/postgres`** (empty grantee = PUBLIC). Caught 2026-07-27 when `revenue_snapshot` — the first function created after the default-privileges hardening — shipped world-callable *with* its revoke line, exposing gross revenue, wholesale cost and profit to anyone holding the publishable key (SECURITY DEFINER, so RLS was no help). `20260727211000` revoked the *default* for anon/authenticated but **not for PUBLIC**, so every future function kept arriving public. Fixed in `20260727240000`: `alter default privileges in schema public revoke execute on functions from public`, plus explicit `from public, anon, authenticated` on the four affected functions. Assert with `has_function_privilege('anon', p.oid,'execute')` — it must be **0 rows** across `pg_proc` in `public`; a passing `revoke` statement proves nothing.
 - **`ALTER DEFAULT PRIVILEGES` grants `anon`/`authenticated` rights on every FUTURE object.** Until 2026-07-27 that was `arwdDxtm` on future tables and `EXECUTE` on future functions — so any new table missing `enable row level security` would have been world-**writable** at `/rest/v1/<table>`, and any new SECURITY DEFINER function missing its revoke callable at `/rest/v1/rpc/<name>`. That is how `run_watchdog` became public. The postgres-owned defaults are now revoked (SELECT retained; RLS still governs rows); **the `supabase_admin` half is NOT applied** — it needs membership in that role, which the CLI's postgres connection lacks. Statements are in `20260727211000_default_privileges.sql`. Note this is a backstop, not a licence to skip the explicit `revoke execute` on every new function.
 - **A one-line refactor that changes a watchdog threshold is a monitoring outage.** Rebuilding `run_watchdog` for unrelated coverage silently narrowed the delivery check from 24h/≥10 to 6h/≥8 **and deleted its second branch** (≥20 conclusive at <10%). Measured: the max conclusive orders in ANY 6h window over 30 days is 8, against a gate of 8 — the check became effectively unreachable, leaving zero delivery-outcome coverage. When you re-create a function from `pg_get_functiondef`, diff it against the prior definition clause by clause; the dump is also **truncated** by most tooling, which is how a nonexistent `url` column on `net._http_response` got invented in the same rewrite.
-- **A constant duplicated across files WILL drift.** `MAX_WHOLESALE_CENTS` lives in three sync functions (and as `MAX_ORDER_COST_USD` in `poll-active-orders`, and as `LOW_BALANCE_USD` in `_shared/opsFormat.ts`). Changing it in one place on 2026-07-27 stripped 1,432 routes of their carrier pin and premium price, and left the digest warning at $20 while the pager fired at $37.50. Same for `CREDIT_DIVISOR` (**two** copies since `sync-smspool` was deleted — `sync-prices` and `sync-smspva-operators`) and `ESIM_MARGIN`/`CREDIT_VALUE_USD` (two each). `MAX_WHOLESALE_CENTS`'s three syncs are now `sync-prices`, `sync-smspva-operators` and `sync-herosms`. Change them in one commit or consolidate them into `_shared/`.
+- **A constant duplicated across files WILL drift.** `MAX_WHOLESALE_CENTS` lives in three sync functions (and as `MAX_ORDER_COST_USD` in `poll-active-orders`, and as `LOW_BALANCE_USD` in `_shared/opsFormat.ts`). Changing it in one place on 2026-07-27 stripped 1,432 routes of their carrier pin and premium price, and left the digest warning at $20 while the pager fired at $37.50. Same for `CREDIT_DIVISOR` (the SMSPVA 0.05 is **two** copies — `sync-prices` and `sync-smspva-operators` — and `sync-herosms` carries a deliberately DIFFERENT 0.025, so "consolidating" the three into one constant would silently reprice a whole provider) and `ESIM_MARGIN`/`CREDIT_VALUE_USD` (two each). `MAX_WHOLESALE_CENTS`'s three syncs are now `sync-prices`, `sync-smspva-operators` and `sync-herosms`. Change them in one commit or consolidate them into `_shared/`.
 - **Deleting an IAP receipt to force StoreKit redelivery can eat the payment.** `iap-verify` used to delete the row when `wallet_credit` failed, assuming StoreKit would retry. But the client runs **two** paths into that endpoint (`Transaction.updates` and the `Transaction.unfinished` sweep), so a concurrent duplicate may already have been answered `already_credited` and called `finish()` — retiring the transaction forever. It now zeroes `granted_credits` (keeping both the audit trail and the replay guard), and the duplicate branch refuses to confirm a receipt that has no matching `wallet_transactions` row.
 - **EVERY credit grant is farmable through account deletion unless it is tombstoned OUTSIDE the `auth.users` cascade.** This is the single most repeated money bug in this codebase — it has now been found three times, once per grant. Everything user-scoped cascades, so delete → sign in again erases our only record and mints the grant afresh. Apple *mandates* the Delete Account button, so this is not an edge case. The three grants and their tombstones: **signup +3** → `signup_grants` (hash of the email); **referral +2** → `signup_grants.referral_redeemed_at` (same key); **IAP purchases** → `public.iap_grants` (keyed on Apple's `transaction_id`). Each tombstone table must have **no foreign key to `auth.users`** — a reference there is precisely what deletes the row with the account. The email hash works because Apple's private-relay address is stable per (user, app), so it survives deletion while storing no address; all three fail **open** on a null email, because a missed grant on a real signup costs more than a rare duplicate. **If you add a fourth grant, it needs a tombstone in the same commit.**
 - **APNs `aps-environment` is `production`** in the entitlements file (flipped for archiving; set `APNS_ENV=production` secret to match). Flip back to `development` if you need to test push against a dev-token build from Xcode.
@@ -2152,8 +2151,8 @@ then `smoothed_cost_cents > MAX_WHOLESALE_CENTS`, then measured-zero auto-hide.
   'Secrets' in scope` — which looks like your edit broke the build and is not.
   `cp /Users/adyl/Desktop/IOS_APPS/VirtualSIM/VirtualSIM/Networking/Secrets.swift
   VirtualSIM/Networking/Secrets.swift` first; it stays ignored, so it will not be
-  committed. (This is also why `find VirtualSIM -name '*.swift' | wc -l` reads 75
-  in a working checkout but 74 in a bare worktree.)
+  committed. (This is also why `find VirtualSIM -name '*.swift' | wc -l` reads one fewer
+  in a bare worktree — 95 vs 96 as of 2026-08-02.)
 - **`isOk()` from `_shared/smspva.ts` dereferences its argument and callers pass
   it `null`.** `providers.ts` does `smsGetBalance().catch(() => null)` and then
   `isOk(before)` / `isOk(after)`; `isOk` reads `r.statusCode`, so a thrown
@@ -2173,7 +2172,7 @@ then `smoothed_cost_cents > MAX_WHOLESALE_CENTS`, then measured-zero auto-hide.
   gitignored, so `supabase db query --linked` in a worktree dies with
   *"Cannot find project ref. Have you run supabase link?"* — which looks like a
   broken CLI or expired auth and is neither. Copy the link state in:
-  `cp -R /Users/adyl/Desktop/VirtualSIM/supabase/.temp supabase/.temp`. It stays
+  `cp -R /Users/adyl/Desktop/IOS_APPS/VirtualSIM/supabase/.temp supabase/.temp`. It stays
   ignored. Do **not** re-run `supabase link` in a worktree.
 - **Merging a worktree branch into `main` usually needs a real merge, not a
   fast-forward.** `main`'s tip is typically one of the `Merge: …` commits from a
@@ -2267,10 +2266,13 @@ the non-destructive ✕ + `ResumeBar`, `PurchaseIntent` and the `real_sim_only`
 Route field are all LIVE to users. The long backlog of "client-side work in no
 installable build" is finally cleared.
 
-**1.7 (build 20) is `WAITING_FOR_REVIEW`**, submitted 2026-07-31 20:05Z. It
-carries the provider-deliverability steering, the "Top success rates" list and
-the ranked retry prompt. Two review slots are used (1.7 + the `credits.150` IAP
-from 2026-07-30), which is Apple's per-platform cap.
+**1.7 (build 21) is `READY_FOR_SALE`** — verified against ASC 2026-08-02. This
+paragraph previously said "build 20, `WAITING_FOR_REVIEW`": build 20 was
+cancelled and replaced by build 21 the same evening (see Release prep), and the
+version has since been approved and released. So the provider-deliverability
+steering, the "Top success rates" list and the ranked retry prompt are all LIVE
+to users. **`credits.150` is `APPROVED` as well** — all five credit packs are
+purchasable and both review slots are free.
 
 ### What 2026-07-31 changed (all backend halves LIVE)
 
@@ -2322,10 +2324,11 @@ from 2026-07-30), which is Apple's per-platform cap.
   charge-and-forfeit bug in `providers.ts` fixed.
 - **Codebase**: `MARKETING_VERSION 1.7`, `CURRENT_PROJECT_VERSION 21`, iOS min
   **18.0**, **96** Swift sources (Release BUILD SUCCEEDED on iPhone 17 Pro /
-  iOS 26.5, zero warnings), **120** migration files, **24** edge functions.
-  Localizable.xcstrings: 342 strings, **0 untranslated** across all 6 locales.
+  iOS 26.5, zero warnings), **122** migration files, **24** edge functions.
+  Localizable.xcstrings: 347 strings, **0 untranslated** across all 6 locales
+  (counts re-verified 2026-08-02).
 - **Catalog**: 18,492 routes, **12,900 active**. **HeroSMS 5,143 / SMSPVA 7,757**.
-  Only **3 measured routes** — HeroSMS volume is still tiny, see Known-open. 265
+  **7 measured routes** as of 2026-08-02 (3 on 07-31 — evidence is accumulating again), see Known-open. 265
   visible services, 69 countries, 1,081 eSIM plans (all `hidden`, line paused).
   **15** pg_cron jobs, all active (relay-daily-credit unscheduled 2026-08-02). Watchdog `failing: []`.
   `service_country_ranks`: 387 rows / 80 services.
@@ -2504,8 +2507,9 @@ rolled-back transaction returns `granted` → balance +7 → `already_granted` �
 balance unchanged, one ledger row, replay attempt counted, and a zero amount
 refused.
 
-- 🔴 **LIVE INCIDENT (2026-07-31): the Meta services have ONE bookable route
-  each.** Gating `real_sim_only_sellable = false` to protect build 18 from the
+- ✅ **RESOLVED same day (2026-07-31), kept as history: the Meta services
+  briefly had ONE bookable route each.** The fix is the `real_sim_only` ✅
+  entry below; the numbers here explain why it could not wait. Gating `real_sim_only_sellable = false` to protect build 18 from the
   `real_sim_required` dead-end had a side effect nobody measured: facebook is
   **1 active route at 38 credits** (47 gated), instagram **1 at 10 cr** (48
   gated), whatsapp **1 at 149 cr** (50 gated). Those three are **85 of 190
@@ -2540,8 +2544,9 @@ refused.
 - ⚠️ **`margin_too_low` tells an e-mail buyer to "try another country".** There
   is no country in the e-mail product. Needs its own copy or its own error code.
 
-- ✅ **RESOLVED 2026-07-31: 1.6 (build 19) is `READY_FOR_SALE`** and 1.7 (build
-  20) is `WAITING_FOR_REVIEW`. The client backlog is cleared. Note the
+- ✅ **RESOLVED: 1.6 (build 19) and 1.7 (build 21) are both `READY_FOR_SALE`**
+  (1.7 verified 2026-08-02; it shipped as build 21 — build 20 was cancelled).
+  The client backlog is cleared. Note the
   distinction that still matters below: RELEASED is not ADOPTED — users on 1.4
   and 1.5 exist for weeks, which is what the deferred column revokes wait on.
 - ✅ **RESOLVED 2026-07-31: real_sim_only routes are SOLD, not gated.**
@@ -2661,7 +2666,7 @@ refused.
   **The general rule:** a status claim and its refund must be ONE transaction,
   never two round-trips. Anywhere those are split, a killed worker is an
   unrefundable charge, and no timeout value fixes it.
-- ⚠️ **Route-level evidence is 3 rows, for an honest reason.** A route needs 3
+- ⚠️ **Route-level evidence is 7 rows (2026-08-02; 3 on 07-31), for an honest reason.** A route needs 3
   conclusive attempts and HeroSMS has ~24 orders total. Service and country
   evidence rebuild first. Nothing to do but let volume accumulate — it is now
   *capable* of accumulating, which it was not. **This is exactly the gap the
@@ -2761,8 +2766,8 @@ refused.
   ×2 in one morning — the top revenue product). `credits.150` was submitted
   2026-07-30 06:53Z (`WAITING_FOR_REVIEW`, IOS) the moment `credits.60` freed a
   slot in the 2-in-flight cap. `MAX_WHOLESALE_CENTS = 750` is justified as
-  "150 credits × $0.05", so until 150 clears, routes in the 80–150 credit band
-  still need 2+ separate purchases.
+  "150 credits × $0.05", and **150 has since cleared — `APPROVED`, verified
+  2026-08-02** — so the 80–150 credit band is reachable in one purchase.
 - ⚠️ **Removable code — most of it is now gone.** `virtualsms.ts`,
   `sync-virtualsms/`, `sync-smspool/`, `smspool-catalog/` and `smspool.ts`'s SMS
   surface were all deleted 2026-07-30. Still outstanding: `AppState.routes`
@@ -2910,7 +2915,7 @@ reached two, and those 7 produced all 3 reviews.
 
 vSMS is a single-target app, so only one `Info.plist` needs patching. The real fixes are building on stable macOS or Xcode Cloud; patch is the interim path while on the beta.
 
-**Submitting is fully headless via the App Store Connect API** (no Xcode Organizer) — see the `app-store-submission-asc` memory for the exact working pipeline: `xcodebuild archive` with `-allowProvisioningUpdates -authenticationKeyPath/-authenticationKeyID/-authenticationKeyIssuerID` (auto-provisions the Distribution cert; the Mac only has an *Apple Development* cert locally, which is fine) → patch `BuildMachineOSBuild` (above) → `xcodebuild -exportArchive` → `xcrun altool --upload-app` → ASC REST API (`POST /v1/appStoreVersions`, attach build, set `whatsNew`, `reviewSubmissions` submit). ASC API key lives at `~/.appstoreconnect/private_keys/AuthKey_R5ZVLBTUR6.p8` (key id `R5ZVLBTUR6`); app id `6774768570`. **The issuer id IS available: `4644ed13-4d98-489e-a94b-687f63946f46`** — an earlier note here claimed the machine had no issuer id and that API checks return `NO_ISSUER_ID`. That was wrong, and it cost real time: every "verify in ASC first" instruction was being skipped as impossible when the whole REST pipeline in fact works headlessly. The repo is at **`MARKETING_VERSION 1.7` / `CURRENT_PROJECT_VERSION 21`**. **Always verify live store state via the API before submitting** — the notes here drift within hours, and did twice on 2026-07-31 alone. Historical: 1.3 (build 12) released; 1.4 (build 13) submitted 2026-07-19; build 16 shipped as 1.5 in `a9b92c0` (which lowered the iOS floor to 18.0); build 17 submitted then cancelled 2026-07-25; build 18 submitted 2026-07-25 and released as **1.5**; build 19 submitted 2026-07-31 13:56Z and released as **1.6** the same day; build 20 submitted 2026-07-31 20:05Z as **1.7**, then **cancelled and replaced by build 21** (submitted 21:26Z) to strip the word "supplier" from shipped copy — cancelling an app-version submission is NOT the one-way door an IAP cancellation is: the version simply goes `DEVELOPER_REJECTED`, and re-attaching a build plus a fresh `reviewSubmission` recovers it in about a minute.
+**Submitting is fully headless via the App Store Connect API** (no Xcode Organizer) — see the `app-store-submission-asc` memory for the exact working pipeline: `xcodebuild archive` with `-allowProvisioningUpdates -authenticationKeyPath/-authenticationKeyID/-authenticationKeyIssuerID` (auto-provisions the Distribution cert; the Mac only has an *Apple Development* cert locally, which is fine) → patch `BuildMachineOSBuild` (above) → `xcodebuild -exportArchive` → `xcrun altool --upload-app` → ASC REST API (`POST /v1/appStoreVersions`, attach build, set `whatsNew`, `reviewSubmissions` submit). ASC API key lives at `~/.appstoreconnect/private_keys/AuthKey_R5ZVLBTUR6.p8` (key id `R5ZVLBTUR6`); app id `6774768570`. **The issuer id IS available: `4644ed13-4d98-489e-a94b-687f63946f46`** — an earlier note here claimed the machine had no issuer id and that API checks return `NO_ISSUER_ID`. That was wrong, and it cost real time: every "verify in ASC first" instruction was being skipped as impossible when the whole REST pipeline in fact works headlessly. The repo is at **`MARKETING_VERSION 1.7` / `CURRENT_PROJECT_VERSION 21`**. **Always verify live store state via the API before submitting** — the notes here drift within hours, and did twice on 2026-07-31 alone. Historical: 1.3 (build 12) released; 1.4 (build 13) submitted 2026-07-19; build 16 shipped as 1.5 in `a9b92c0` (which lowered the iOS floor to 18.0); build 17 submitted then cancelled 2026-07-25; build 18 submitted 2026-07-25 and released as **1.5**; build 19 submitted 2026-07-31 13:56Z and released as **1.6** the same day; build 20 submitted 2026-07-31 20:05Z as **1.7**, then **cancelled and replaced by build 21** (submitted 21:26Z; build 21 released as **1.7**, `READY_FOR_SALE` verified 2026-08-02) to strip the word "supplier" from shipped copy — cancelling an app-version submission is NOT the one-way door an IAP cancellation is: the version simply goes `DEVELOPER_REJECTED`, and re-attaching a build plus a fresh `reviewSubmission` recovers it in about a minute.
 
 **Use the committed `ExportOptions.plist`; do NOT hand-write one.** (It genuinely is committed as of 2026-07-31 — this line previously said so while the file existed in no commit and no checkout, so the first export after a fresh clone had to invent one.) `-exportArchive` needs `teamID = UDMK379475` and fails with the useless pair *"No Account for Team X"* + *"No profiles for 'com.anthersystems.VirtualSIM' were found"* when it is wrong — which reads like a signing/provisioning problem and is not. Read the real value from the archive if ever in doubt: `PlistBuddy -c "Print :ApplicationProperties:Team" <archive>/Info.plist`. Note the archive is signed *Apple Development* locally and re-signed for distribution on export; that is expected, not a fault.
 
