@@ -99,16 +99,31 @@ const CEILING_HEADROOM_USD = 0.10;
  *  ratio of the SECOND-cheapest price tier to the cheapest — i.e. what we pay
  *  when the cheap pool empties between hourly syncs — is:
  *      p50 1.11x · p75 1.25x · p90 1.54x · p95 2.03x · p99 6.38x · max 36.8x
- *  2.0 therefore covers ~95% of pool-exhaustion events. Chasing the p99 tail
- *  would mean paying 6x for a number, which is where "lenient" stops being
- *  lenient and starts being a leak: 188 of those routes have fewer than 50
- *  numbers in the cheapest tier, so the tail is reachable, not theoretical.
+ *
+ *  But the stronger reason is HOW LITTLE STOCK the cheap tier holds. We do not
+ *  choose a pool; we pass maxPrice and the provider fills from the cheapest
+ *  thing under it — so this cap decides how much inventory we can even reach.
+ *  Measured over the same pairs, the share of a route's TOTAL stock reachable:
+ *      cheapest tier only  mean 10.6%  median  6.2%
+ *      1.1x (old ceiling)  mean 19.2%  median 13.6%
+ *      2.0x                mean 64.9%  median 65.8%
+ *      3.0x                mean 77.0%  median 83.6%
+ *  23% of routes hold fewer than 100 numbers in the cheapest tier. Capping just
+ *  above it means competing for the thinnest slice of the pool while the bulk
+ *  sits a few cents higher — a direct cause of "no numbers available" on routes
+ *  that demonstrably have hundreds of thousands of numbers.
+ *
+ *  Set to 3.0 rather than 2.0 because price does NOT predict delivery in our
+ *  own data (16% / 19% / 17% / 23% across <=5c, 6-15c, 16-40c, >40c bands,
+ *  n=32/69/23/40) — so the dearer stock is not worse stock, just more of it.
+ *  There is therefore no quality argument for staying near the floor, and the
+ *  only cost is margin, which MAX_REVENUE_FRACTION already bounds.
  *
  *  The flat CEILING_HEADROOM_USD stays ON TOP because the two solve different
  *  problems: the multiple covers a proportional price move, the flat term
  *  covers the exact-boundary rounding case that took 76.7% of the catalog to
  *  zero tolerance on 2026-07-27. */
-const CEILING_SLACK_MULTIPLE = 2.0;
+const CEILING_SLACK_MULTIPLE = 3.0;
 
 /** Hard backstop: never pay more than this fraction of what we charged. With
  *  NET_USD_PER_CREDIT deliberately conservative, half of revenue still leaves
