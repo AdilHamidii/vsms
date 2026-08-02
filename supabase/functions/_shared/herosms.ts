@@ -360,6 +360,120 @@ export async function getPricesForService(
   return out;
 }
 
+/** `/api/v1/activations/offers` — the price a number can ACTUALLY be bought at.
+ *
+ *  WHY THIS EXISTS, because `getPrices` looks like it already answers this.
+ *  `getPrices` returns a DEFAULT price and a TOTAL count, and those two numbers
+ *  are not about the same numbers. On many routes nothing whatsoever is
+ *  available at the default price.
+ *
+ *  Worked example — apple / Turkey (`wx`/62), which cost a paying customer
+ *  their entire session on 2026-08-01 (8 straight failures, then they left):
+ *      getPrices : cost 0.30, count 140211
+ *      offers    : counts.defaultPrice = 0, map = { "0.4177": 641003 }
+ *  Zero numbers at $0.30; all 641,003 cost $0.4177. sync-herosms stored $0.30,
+ *  which priced the route at 12 credits, which set create-order's ceiling at
+ *  $0.40 — 1.8 cents below the only stock in existence. Every attempt came back
+ *  WRONG_MAX_PRICE, was classified margin_too_low, and was charged and refunded.
+ *
+ *  Measured the same day over 1,554 (service,country) pairs across 10 services:
+ *  60 (4%) had ZERO stock at the advertised price, and 1,107 (71%) had stock
+ *  CHEAPER than it. So `getPrices.cost` is wrong in both directions and is only
+ *  a fallback now.
+ *
+ *  `prices.min` is NOT the answer either — it is "the lowest price you may bid",
+ *  and on wx/62 it reads 0.27 while the cheapest purchasable number is 0.4177.
+ *  Only the `map` (price -> count) says what exists. We take the cheapest key
+ *  with a non-zero count.
+ *
+ *  Auth is `Authorization: ApiKey <key>` (NOT the `?api_key=` the handler_api
+ *  side uses, and not Bearer). Verified live 2026-08-01. */
+export interface HeroOffers {
+  /** heroServiceCode -> heroCountryId -> price row. */
+  byCode: Record<string, Record<string, HeroPrice>>;
+  /** The provider reports another page. The endpoint documents ONLY `services`
+   *  and `countries`, yet the response carries page/size/total/hasMore — the
+   *  pagination PARAMS are undocumented, so we cannot fetch page 2. A caller
+   *  seeing this MUST treat the result as incomplete and fall back per service:
+   *  concluding "not served" from a truncated page would hide live routes. */
+  truncated: boolean;
+}
+
+export async function getOffers(
+  codes: string[],
+  timeoutMs: number = TIMEOUT_MS,
+): Promise<HeroOffers | null> {
+  if (codes.length === 0) return { byCode: {}, truncated: false };
+
+  const url = `https://hero-sms.com/api/v1/activations/offers?services=` +
+    encodeURIComponent(codes.join(","));
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), timeoutMs);
+  try {
+    const res = await fetch(url, {
+      signal: ctl.signal,
+      headers: {
+        authorization: `ApiKey ${apiKey()}`,
+        accept: "application/json, text/plain, */*",
+      },
+    });
+    const body = (await res.text()).trim();
+    // Same block rule as call(): status + HTML body, never content-type —
+    // HeroSMS serves everything as text/html including its JSON.
+    if (res.status === 403 || res.status === 429 ||
+        body.startsWith("<!DOCTYPE") || body.toLowerCase().startsWith("<html")) {
+      console.error(`herosms getOffers: blocked status=${res.status}`);
+      return null;
+    }
+    if (!body.startsWith("{")) {
+      console.error(`herosms getOffers: non-JSON body ${body.slice(0, 120)}`);
+      return null;
+    }
+    const parsed = JSON.parse(body) as {
+      data?: Record<string, Record<string, unknown>>;
+      meta?: { hasMore?: boolean };
+    };
+    if (!parsed.data) {
+      console.error(`herosms getOffers: no data key ${body.slice(0, 120)}`);
+      return null;
+    }
+
+    const byCode: Record<string, Record<string, HeroPrice>> = {};
+    for (const [code, byCountry] of Object.entries(parsed.data)) {
+      const out: Record<string, HeroPrice> = {};
+      for (const [countryId, raw] of Object.entries(byCountry ?? {})) {
+        const o = raw as {
+          counts?: { total?: number; physical?: number };
+          map?: Record<string, number>;
+        };
+        const map = o?.map ?? {};
+        // Cheapest price that has stock behind it. An entry with count 0 is a
+        // price point nobody can buy at — exactly the trap this function exists
+        // to avoid — so it must not win the min().
+        let cheapest: number | null = null;
+        for (const [priceStr, count] of Object.entries(map)) {
+          const price = Number(priceStr);
+          if (!Number.isFinite(price) || !(Number(count) > 0)) continue;
+          if (cheapest == null || price < cheapest) cheapest = price;
+        }
+        if (cheapest == null) continue; // no buyable stock at any price
+        out[countryId] = {
+          cost: cheapest,
+          count: Number(o?.counts?.total) || 0,
+          physicalCount: Number(o?.counts?.physical) || 0,
+        };
+      }
+      byCode[code] = out;
+    }
+    return { byCode, truncated: parsed.meta?.hasMore === true };
+  } catch (e) {
+    console.error(`herosms getOffers: ${String(e)}`);
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 /** Wholesale price for one (country, service), or null. */
 export async function getPrice(
   country: string | number,

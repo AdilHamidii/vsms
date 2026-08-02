@@ -24,7 +24,7 @@
 
 import { handleCors, json } from "../_shared/cors.ts";
 import { admin } from "../_shared/supabaseAdmin.ts";
-import { getPricesForService, type HeroPrice, getNumbersStatus, getOperators } from "../_shared/herosms.ts";
+import { getPricesForService, getOffers, type HeroPrice, getNumbersStatus, getOperators } from "../_shared/herosms.ts";
 
 // ── Pricing (added 2026-07-31; this function now SETS retail) ───────────────
 //
@@ -76,6 +76,12 @@ function priceToCredits(priceUsd: number): number {
  *  rapid calls returned 200 on 2026-07-30), but the account has a
  *  CHANNELS_LIMIT and we have no reason to hammer a vendor we just met. */
 const CALL_SPACING_MS = 150;
+/** Service codes per /activations/offers request. 10 codes returned 1,554
+ *  (service,country) pairs, so 40 is comfortably inside a sane response size
+ *  while cutting ~148 sequential calls to ~4. */
+const OFFERS_CHUNK = 40;
+/** Longer than the handler_api default: one offers call does the work of forty. */
+const OFFERS_TIMEOUT_MS = 30_000;
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -221,15 +227,55 @@ Deno.serve(async (req) => {
   let codesOk = 0, codesFailed = 0;
   const failedCodes: string[] = [];
 
-  for (const [code, serviceIds] of servicesByCode) {
-    let byCountry: Record<string, HeroPrice> = {};
-    try {
-      byCountry = await getPricesForService(code);
-    } catch (_e) { /* treated as failure below */ }
+  // Prefer /activations/offers: it reports the price stock ACTUALLY exists at,
+  // where getPrices reports a default price that on 4% of routes nothing can be
+  // bought at (and that is dearer than the real cheapest on 71%). See getOffers'
+  // header for the apple/Turkey case that made this urgent.
+  //
+  // It is also many fewer calls — one request covered 1,554 (service,country)
+  // pairs for 10 services — which matters because ~148 sequential getPrices
+  // fetches on a key shared with the minutely poller is most of our rate-limit
+  // exposure, and this IP has been Cloudflare-blocked once already.
+  //
+  // Chunked rather than one giant request: the URL grows with every code, and a
+  // single failure should cost one chunk, not the catalog.
+  let viaOffers = 0, viaGetPrices = 0, offersTruncated = 0;
+  const offered = new Map<string, Record<string, HeroPrice>>();
+  const allCodes = [...servicesByCode.keys()];
+  for (let i = 0; i < allCodes.length; i += OFFERS_CHUNK) {
+    const chunk = allCodes.slice(i, i + OFFERS_CHUNK);
+    const res = await getOffers(chunk, OFFERS_TIMEOUT_MS);
+    await sleep(CALL_SPACING_MS);
+    if (res == null) continue; // fall through to getPrices for this chunk
+    if (res.truncated) {
+      // hasMore with no documented way to ask for page 2. Treat the whole chunk
+      // as unanswered rather than acting on a partial page — a missing code here
+      // would otherwise be indistinguishable from "HeroSMS does not serve it".
+      offersTruncated += chunk.length;
+      console.warn(`sync-herosms: offers reported hasMore for ${chunk.length} codes — falling back per service`);
+      continue;
+    }
+    for (const [code, byCountry] of Object.entries(res.byCode)) {
+      if (Object.keys(byCountry).length > 0) offered.set(code, byCountry);
+    }
+  }
 
-    if (Object.keys(byCountry).length === 0) {
-      codesFailed++; failedCodes.push(code);
+  for (const [code, serviceIds] of servicesByCode) {
+    let byCountry = offered.get(code) ?? null;
+    if (byCountry) {
+      viaOffers++;
+    } else {
+      // Fallback, unchanged: the older, coarser price view. Still correct for
+      // routes whose default price does have stock, which is most of them.
+      try {
+        byCountry = await getPricesForService(code);
+      } catch (_e) { byCountry = null; }
+      if (byCountry && Object.keys(byCountry).length > 0) viaGetPrices++;
       await sleep(CALL_SPACING_MS);
+    }
+
+    if (!byCountry || Object.keys(byCountry).length === 0) {
+      codesFailed++; failedCodes.push(code);
       continue;
     }
     codesOk++;
@@ -238,7 +284,6 @@ Deno.serve(async (req) => {
       if (!ourCountry) continue;
       for (const sid of serviceIds) priced.set(`${sid}|${ourCountry}`, row);
     }
-    await sleep(CALL_SPACING_MS);
   }
 
   // A total wipeout means the provider or the key is broken. Writing nothing is
@@ -394,6 +439,12 @@ Deno.serve(async (req) => {
     codes_ok: codesOk,
     codes_failed: codesFailed,
     failed_codes: failedCodes.slice(0, 20),
+    // How each code got priced. `via_getprices` climbing towards codes_ok means
+    // the offers endpoint is degrading and we are silently back on the phantom
+    // default price — worth noticing before it costs another paying customer.
+    via_offers: viaOffers,
+    via_getprices: viaGetPrices,
+    offers_truncated_codes: offersTruncated,
     routes_seen: routes.length,
     routes_written: written,
     sellable,

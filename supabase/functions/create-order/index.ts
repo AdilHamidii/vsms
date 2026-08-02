@@ -85,6 +85,18 @@ const NET_USD_PER_CREDIT = 0.30;
 // losing the order outright — a refunded order earns nothing and burns trust.
 const CEILING_HEADROOM_USD = 0.10;
 
+/** Numberless attempts on one route, by one user, before we start requiring a
+ *  gap between tries. Three, because two in a row is plausibly transient — a
+ *  stockout that refills, a price that ticks back under the ceiling. */
+const FAIL_BREAKER_THRESHOLD = 3;
+/** How far back those attempts are counted. */
+const FAIL_BREAKER_WINDOW_MS = 10 * 60 * 1000;
+/** Once past the threshold, the minimum gap between attempts on that route.
+ *  60s is set from the observed storm — 7 orders in 24 seconds — and from the
+ *  two real recoveries it must NOT block: those came 4 seconds and 6 minutes
+ *  after the last failure, and only the 4-second one is worth refusing. */
+const FAIL_BREAKER_COOLDOWN_MS = 60 * 1000;
+
 // ── Failure paging. A total SMS outage used to be indistinguishable from a
 //    quiet day: every failed order refunded politely, console.error'd, and no
 //    human ever heard. Two channels, both deduped through app_config state:
@@ -278,15 +290,29 @@ Deno.serve(async (req) => {
   // error both sets stay empty and behavior is exactly today's.
   const recentNumbers = new Set<string>();
   const triedOperators = new Set<string>();
+  // Attempts on THIS route that never even reserved a number, and how long ago
+  // the most recent one was. See the brake below — gathered here to avoid a
+  // second round-trip on the order path.
+  let recentNumberless = 0;
+  let sinceLastNumberlessMs = Number.POSITIVE_INFINITY;
   try {
     const { data: recent } = await sb
       .from("orders")
-      .select("smspva_number, smspool_pool, country_id, provider, status, closed_at")
+      .select("smspva_number, smspool_pool, country_id, provider, status, closed_at, created_at")
       .eq("user_id", userId)
       .eq("service_id", service.id)
       .gte("created_at", new Date(Date.now() - 60 * 60 * 1000).toISOString());
     for (const r of recent ?? []) {
       if (r.smspva_number) recentNumbers.add(r.smspva_number as string);
+      if (
+        r.smspva_number == null && r.country_id === country.id && r.created_at
+      ) {
+        const age = Date.now() - new Date(r.created_at as string).getTime();
+        if (age <= FAIL_BREAKER_WINDOW_MS) {
+          recentNumberless++;
+          if (age < sinceLastNumberlessMs) sinceLastNumberlessMs = age;
+        }
+      }
       if (
         // 'expired' counts too: an order that held the full window with no SMS
         // is the STRONGEST evidence that carrier is dead, and rotation was
@@ -299,6 +325,46 @@ Deno.serve(async (req) => {
     }
   } catch (e) {
     console.warn("retry-context read failed (ignored):", e);
+  }
+
+  // ── Stop a user burning their session on a route that will not serve them ──
+  //
+  // An order that never reserves a number is charged and instantly refunded, so
+  // nothing stopped a user firing them as fast as they could tap. Measured
+  // 2026-08-01: one user placed SEVEN orders on apple-music/tr in 24 SECONDS
+  // and fourteen in eleven minutes, every one a charge-and-refund, and left
+  // without a single code — having bought 12 credits ninety seconds earlier.
+  // Two separate bugs caused those particular failures, but the absence of any
+  // brake is what turned each one into a dozen bad experiences instead of one.
+  //
+  // A COOLDOWN, not a circuit breaker, and that distinction came from replaying
+  // this against the real orders. A hard "3 strikes and the route is closed for
+  // 10 minutes" would have blocked 10 attempts in that window — but TWO of them
+  // (21:37:04 and 21:43:15, leboncoin/my) actually SUCCEEDED. The route had
+  // recovered and a breaker would have refused a working order and told the user
+  // to go elsewhere. So after 3 numberless attempts we only require breathing
+  // room between tries: the 24-second storm collapses to one attempt, while the
+  // patient retry six minutes later still goes through.
+  //
+  // Only NUMBERLESS attempts count. An order that held a number and expired or
+  // was cancelled is a different event — the route worked, delivery did not —
+  // and the retry steering above already handles that case.
+  //
+  // Fails OPEN: if the read above threw, the counter is 0 and behaviour is
+  // exactly as before. A brake that trips on its own DB blip would refuse orders
+  // the product could have served, which is worse than what it prevents.
+  //
+  // Reuses `no_numbers_available` deliberately rather than inventing a code:
+  // it is true (we could not get one, three times running), every shipped build
+  // already maps it, and its copy — "No numbers available for this combination
+  // right now. Try another country or service." — is the exact steer we want.
+  // A new code would render as a generic failure until an App Store release.
+  if (
+    recentNumberless >= FAIL_BREAKER_THRESHOLD &&
+    sinceLastNumberlessMs < FAIL_BREAKER_COOLDOWN_MS
+  ) {
+    console.warn(`fail_cooldown user=${userId} svc=${service.id} cty=${country.id} numberless=${recentNumberless} since_last_ms=${Math.round(sinceLastNumberlessMs)}`);
+    return json({ error: "no_numbers_available" }, { status: 503 });
   }
 
   // ONE provider, no fallback (owner decision 2026-07-30). `route.provider`
