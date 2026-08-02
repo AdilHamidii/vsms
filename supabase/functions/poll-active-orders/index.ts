@@ -231,7 +231,14 @@ Deno.serve(async (req) => {
     .eq("status", "waiting")
     .lt("expires_at", new Date().toISOString())
     .order("expires_at", { ascending: true })
-    .limit(200);   // cap the per-run batch; the minutely cadence drains any backlog
+    .limit(50);    // cap the per-run batch; the minutely cadence drains any backlog.
+                   // 50, not 200: each expiry is an RPC + up to two sequential
+                   // provider calls (markDead, 10s timeout each) + APNs, so a
+                   // mass-expiry minute at 200 could eat the whole 120s relay
+                   // budget before the POLLING loop below ever ran — starving
+                   // exactly the orders whose codes were about to arrive. At 50
+                   // a backlog drains in a few minutes while every run still
+                   // reaches the poll and rescue phases.
   // If this select fails, zero orders expire and zero refunds are issued — and
   // the run still returns 200 {expired: 0}, which is indistinguishable from a
   // quiet minute. Surface it.
@@ -453,30 +460,20 @@ Deno.serve(async (req) => {
         { orderId: o.id, otp: result.code },
       );
     } else if (result.state === "expired" || result.state === "canceled") {
-      // Provider-side close. Previously computed and ignored, so the order sat
-      // "waiting" — and kept being polled — until our own timer caught up.
-      const { data: claimed, error: claimErr } = await sb
-        .from("orders")
-        .update({ status: "expired", closed_at: new Date().toISOString() })
-        .eq("id", o.id)
-        .eq("status", "waiting")
-        .select("id");
-      // Logged rather than swallowed. Impact is low — the order stays 'waiting'
-      // and the next minutely run retries — but a systematically failing claim
-      // is otherwise invisible, because the retry looks like a quiet loop. The
-      // expiry-sweep block above already destructures its error; this was the
-      // one place in the file that did not.
-      if (claimErr) console.error(`poll: expire claim failed order=${o.id}: ${claimErr.message}`);
-      if (!claimed || claimed.length === 0) continue;
-      // Check the refund result — see the note on the expiry sweep above.
-      const { error: rErr } = await sb.rpc("wallet_credit", {
-        p_user: o.user_id, p_amount: o.cost_credits, p_reason: "refund", p_order: o.id,
+      // Provider-side close. The status flip and the refund must be ONE
+      // transaction — this used to be a claim + a separate wallet_credit, so a
+      // worker killed between the two (or a refund error) left a terminal row
+      // with the charge never returned, and no sweep revisits terminal rows.
+      // expire_order_claim locks, re-checks 'waiting', flips and refunds
+      // atomically; false means another worker already closed it.
+      const { data: didExpire, error: expErr } = await sb.rpc("expire_order_claim", {
+        p_order: o.id,
       });
-      if (rErr) {
-        console.error(`poll: REFUND FAILED (provider-close) order=${o.id} ` +
-                      `user=${o.user_id} credits=${o.cost_credits}: ${rErr.message}`);
-        continue;   // don't count it, and don't tell the user they were refunded
+      if (expErr) {
+        console.error(`poll: expire_order_claim failed (provider-close) order=${o.id}: ${expErr.message}`);
+        continue; // row stays 'waiting'; the next minutely run retries
       }
+      if (!didExpire) continue;
       expired++;
       const svc = o.service as { name: string } | null;
       pushSent += await notify(

@@ -433,6 +433,21 @@ export async function poll(p: OrderProvider, orderId: string): Promise<PollResul
   if (isOk(r) && r.data.sms?.code) {
     return { state: "received", code: r.data.sms.code, fullText: r.data.sms.fullText };
   }
+  // The envelope statusCode carries meaning we used to throw away (spec:
+  // docs/apidocs.pdf, getSms error table). 407 is the expensive one: SMSPVA
+  // HAS the SMS and is withholding it because our balance can't pay for it —
+  // treating that as "waiting" polls the order to expiry, refunds the user,
+  // records a delivery failure, and forfeits a code that a top-up releases.
+  const sc = (r as { statusCode?: number }).statusCode ?? 0;
+  if (sc === 407) {
+    console.error(
+      `smspva poll ${orderId}: 407 SMS RECEIVED BUT BALANCE TOO LOW — ` +
+        `the code exists and is withheld; top up SMSPVA to release it`,
+    );
+    return { state: "waiting" }; // keep alive: a top-up inside the window rescues it
+  }
+  if (sc === 406 || sc === 410) return { state: "expired" }; // order invalid/closed at provider
+  if (sc === 411) console.error(`smspva poll ${orderId}: 411 karma/rate-limit`);
   return { state: "waiting" };
 }
 

@@ -420,6 +420,68 @@ Deno.serve(async (req) => {
   const providers = providerOrder(codes);
   if (providers.length === 0) return json({ error: "route_unavailable" }, { status: 409 });
 
+  // The most we can pay and still keep MIN_MARGIN on what we charged. Passed
+  // to the provider as a purchase-time cap AND enforced on the actual charged
+  // cost — the live quote is per cheapest pool and does not bind the fill
+  // price (seen live: wechat/kg quoted 6¢, uncapped purchase filled at 79¢).
+  //
+  // + CEILING_HEADROOM_USD, because without it this ceiling has ZERO tolerance
+  // on most of the catalog. sync-prices sets retail = ceil(cost / 0.05) and
+  // this computes cost * 0.05, so whenever wholesale lands on an exact 5¢
+  // boundary the cap equals the cost to the cent — measured 2026-07-27:
+  // 12,507 of 16,303 active routes (76.7%) sat at exactly zero headroom. A
+  // one-cent rise at SMSPVA then made `liveCost > maxCostUsd` true and every
+  // order on that route was refused with margin_too_low, charged, and instantly
+  // refunded until the next hourly sync-prices repriced it. That is what
+  // produced 11 of 22 orders in 24h closing in <1s with no number, and it also
+  // fed the auto-hide (see 20260727120000) which removed TikTok/Netherlands
+  // from the catalog on 8 orders that never got a number.
+  //
+  // Resolved from the route's OWN provider, because the two are priced at
+  // different divisors — see MIN_MARGIN_BY_PROVIDER. `route.provider` is the
+  // right source: providerOrder() returns exactly one provider per service and
+  // there is no cross-provider fallback, so the row we priced is the row we buy.
+  //
+  // Computed BEFORE the charge (not in the reservation loop) because the
+  // pre-charge balance guard below needs it.
+  const minMargin = marginFor(route.provider as string | null);
+  // What we EXPECTED to pay, i.e. the divisor the route was priced with.
+  const expectedCostUsd = (cost * NET_USD_PER_CREDIT) / minMargin;
+  // What we are WILLING to pay. Deliberately much higher — see the block above
+  // CEILING_SLACK_MULTIPLE for why, and note it is a cap, not a price: a normal
+  // order still fills from the cheapest pool and still earns the full margin.
+  const maxCostUsd = Math.min(
+    expectedCostUsd * CEILING_SLACK_MULTIPLE + CEILING_HEADROOM_USD,
+    cost * NET_USD_PER_CREDIT * MAX_REVENUE_FRACTION,
+  );
+
+  // Pre-charge balance guard, and it FAILS OPEN. Every product line used to
+  // charge → attempt reservation → refund, so a dry provider balance turned
+  // every order into a guaranteed charge-and-refund — and each one fed the
+  // fail-cooldown machinery as if it were a stockout. poll-active-orders
+  // already writes {balance_usd, checked_at} into app_config every 60s; refuse
+  // BEFORE charging only when that reading is fresh and provably too small for
+  // this order's own ceiling. A stale or missing reading proceeds as before —
+  // a guard that trips on its own DB blip refuses orders the product could
+  // have served, which is worse than what it prevents. `provider_unreachable`
+  // is already mapped in every shipped build, and out-of-balance IS the
+  // provider being unable to serve.
+  try {
+    const healthKey = `${providers[0]}_health`;
+    const { data: h } = await sb
+      .from("app_config").select("value").eq("key", healthKey).maybeSingle();
+    const health = h?.value as { balance_usd?: number; checked_at?: string } | null;
+    const fresh = !!health?.checked_at &&
+      Date.now() - new Date(health.checked_at).getTime() < 5 * 60 * 1000;
+    if (fresh && typeof health?.balance_usd === "number" && health.balance_usd < maxCostUsd) {
+      console.error(
+        `create-order: pre-charge refusal — ${healthKey} $${health.balance_usd} ` +
+          `below order ceiling $${maxCostUsd.toFixed(2)} (svc=${service.id} cty=${country.id})`,
+      );
+      return json({ error: "provider_unreachable" }, { status: 503 });
+    }
+  } catch { /* fail open */ }
+
   // Write the order row AND charge, atomically. Every paid attempt now has a
   // row from this point on, so a failure below is recorded instead of vanishing
   // — 51% of all charge attempts previously left no trace, which is why the
@@ -511,38 +573,6 @@ Deno.serve(async (req) => {
   let used: (typeof providers)[number] | null = null;
   let usedCostUsd: number | null = null;
   let lastError = "no_numbers_available";
-
-  // The most we can pay and still keep MIN_MARGIN on what we charged. Passed
-  // to the provider as a purchase-time cap AND enforced on the actual charged
-  // cost — the live quote is per cheapest pool and does not bind the fill
-  // price (seen live: wechat/kg quoted 6¢, uncapped purchase filled at 79¢).
-  //
-  // + CEILING_HEADROOM_USD, because without it this ceiling has ZERO tolerance
-  // on most of the catalog. sync-prices sets retail = ceil(cost / 0.05) and
-  // this computes cost * 0.05, so whenever wholesale lands on an exact 5¢
-  // boundary the cap equals the cost to the cent — measured 2026-07-27:
-  // 12,507 of 16,303 active routes (76.7%) sat at exactly zero headroom. A
-  // one-cent rise at SMSPVA then made `liveCost > maxCostUsd` true and every
-  // order on that route was refused with margin_too_low, charged, and instantly
-  // refunded until the next hourly sync-prices repriced it. That is what
-  // produced 11 of 22 orders in 24h closing in <1s with no number, and it also
-  // fed the auto-hide (see 20260727120000) which removed TikTok/Netherlands
-  // from the catalog on 8 orders that never got a number.
-  //
-  // Resolved from the route's OWN provider, because the two are priced at
-  // different divisors — see MIN_MARGIN_BY_PROVIDER. `route.provider` is the
-  // right source: providerOrder() returns exactly one provider per service and
-  // there is no cross-provider fallback, so the row we priced is the row we buy.
-  const minMargin = marginFor(route.provider as string | null);
-  // What we EXPECTED to pay, i.e. the divisor the route was priced with.
-  const expectedCostUsd = (cost * NET_USD_PER_CREDIT) / minMargin;
-  // What we are WILLING to pay. Deliberately much higher — see the block above
-  // CEILING_SLACK_MULTIPLE for why, and note it is a cap, not a price: a normal
-  // order still fills from the cheapest pool and still earns the full margin.
-  const maxCostUsd = Math.min(
-    expectedCostUsd * CEILING_SLACK_MULTIPLE + CEILING_HEADROOM_USD,
-    cost * NET_USD_PER_CREDIT * MAX_REVENUE_FRACTION,
-  );
 
   // ── Real-SIM carrier ─────────────────────────────────────────────────────
   //

@@ -69,46 +69,27 @@ Deno.serve(async (req) => {
     return json({ order: { ...order, provider_status: act.status } });
   }
 
-  const patch: Record<string, unknown> = {
-    provider_status: act.status,
-    updated_at: new Date().toISOString(),
-  };
-  if (next.code) {
-    patch.code = next.code;
-    patch.raw_message = act.message ?? null;
-  }
-  if (next.status !== "waiting") {
-    patch.status = next.status;
-    patch.closed_at = new Date().toISOString();
-  }
-
-  // Atomic claim. Every status write in this codebase is gated on the row still
-  // being live — the one place that skipped it could hand a user a working code
-  // they had already been refunded for.
-  const { data: claimed, error: upErr } = await sb
-    .from("email_orders").update(patch)
-    .eq("id", order.id).eq("status", "waiting")
-    .select("*").maybeSingle();
-  if (upErr) {
-    console.error(`check-email-order: update failed order=${order.id}: ${upErr.message}`);
+  // Atomic write-and-refund. close_email_order_claim locks the row, re-checks
+  // 'waiting' (every status write in this codebase is gated on the row still
+  // being live — the one place that skipped it could hand a user a working
+  // code they had already been refunded for), records the code/provider
+  // status, and refunds a PAID codeless terminal row in the SAME transaction.
+  // The old patch-then-refund pair could strand a terminal row with the money
+  // kept when the worker died between the two round-trips.
+  const { data: didWrite, error: closeErr } = await sb.rpc("close_email_order_claim", {
+    p_order: order.id,
+    p_status: next.status,
+    p_code: next.code ?? null,
+    p_raw: next.code ? (act.message ?? null) : null,
+    p_provider_status: act.status ?? null,
+  });
+  if (closeErr) {
+    console.error(`check-email-order: close failed order=${order.id}: ${closeErr.message}`);
     return json({ order });
   }
-  if (!claimed) return json({ order });   // the cron closed it first — it wins
+  if (!didWrite) return json({ order });   // the cron closed it first — it wins
 
-  // Refund a PAID activation that ended without a code. Free ones have nothing
-  // to give back. `code is not null` is the test, never status.
-  if (!claimed.code && claimed.status !== "waiting" && (claimed.cost_credits ?? 0) > 0) {
-    const { error: refundErr } = await sb.rpc("wallet_move_email", {
-      p_user: userId, p_amount: claimed.cost_credits,
-      p_reason: "refund", p_email_order: claimed.id,
-    });
-    if (refundErr) {
-      console.error(
-        `check-email-order: REFUND FAILED order=${claimed.id} user=${userId} ` +
-        `credits=${claimed.cost_credits}: ${refundErr.message}`,
-      );
-    }
-  }
-
-  return json({ order: claimed });
+  const { data: fresh } = await sb
+    .from("email_orders").select("*").eq("id", order.id).maybeSingle();
+  return json({ order: fresh ?? order });
 });

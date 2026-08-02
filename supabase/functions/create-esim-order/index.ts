@@ -112,38 +112,20 @@ Deno.serve(async (req) => {
     return json({ error: "spend_failed" }, { status: 500 });
   }
 
-  /** Close the reserved row and return the credits, claim-gated so a
-   *  concurrent closer cannot cause a double refund (the create-order bug). */
+  /** Close the reserved row and return the credits — ONE transaction.
+   *  fail_esim_order_claim locks the row, re-checks 'provisioning', flips to
+   *  'failed' and refunds atomically; a refund failure rolls the flip back so
+   *  the row stays live and the next closer retries. The old claim-then-refund
+   *  pair left a killed worker's row terminal with the money kept. */
   const failEsim = async (reason: string) => {
-    // 'failed', NOT 'canceled'. esim_status is
-    // (provisioning, installed, active, depleted, expired, refunded, failed) —
-    // 'canceled' belongs to order_status, a DIFFERENT enum. Writing it made
-    // PostgREST reject the update with 22P02, and because the error was
-    // discarded `claimed` came back empty and this function returned early
-    // WITHOUT REFUNDING. Every failed eSIM purchase charged the user and
-    // silently kept the money.
-    const { data: claimed, error: claimErr } = await sb
-      .from("esim_orders")
-      .update({ status: "failed", updated_at: new Date().toISOString() })
-      .eq("id", orderId)
-      .eq("status", "provisioning")
-      .select("id");
-    if (claimErr) {
-      console.error(`failEsim: claim FAILED order=${orderId} reason=${reason}: ${claimErr.message}`);
-      return;
-    }
-    if (!claimed || claimed.length === 0) return;   // already closed elsewhere
-    // Linked to the eSIM order so the ledger reconciles (migration
-    // 20260727160000) — wallet_transactions.order_id FKs public.orders and
-    // cannot hold an esim_orders id.
-    const { error: refundErr } = await sb.rpc("wallet_move_esim", {
-      p_user: userId, p_amount: cost, p_reason: "refund", p_esim_order: orderId,
+    const { data: didClose, error: closeErr } = await sb.rpc("fail_esim_order_claim", {
+      p_order: orderId,
     });
-    if (refundErr) {
-      console.error(`failEsim: REFUND FAILED order=${orderId} user=${userId} ` +
-                    `credits=${cost}: ${refundErr.message}`);
+    if (closeErr) {
+      console.error(`failEsim: fail_esim_order_claim FAILED order=${orderId} reason=${reason}: ${closeErr.message}`);
       return;
     }
+    if (!didClose) return;   // already closed elsewhere
     console.warn(`create-esim-order failed plan=${plan.id} reason=${reason} order=${orderId}`);
   };
 

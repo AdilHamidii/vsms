@@ -198,35 +198,22 @@ Deno.serve(async (req) => {
   return json({ order: claimed });
 });
 
-/** Close a live row and refund if it was paid.
+/** Close a live row and refund if it was paid — ONE transaction.
  *
- *  Claim-gated so a concurrent poller cannot double-refund, and backed by the
- *  partial unique index on (email_order_id) where reason='refund' if it ever is. */
+ *  close_email_order_claim locks the row, re-checks 'waiting', flips and
+ *  refunds atomically; a refund failure rolls the flip back so the next closer
+ *  (or the 5-minute sweep) retries. The old claim-then-refund pair left a
+ *  killed worker's row terminal with the money kept. Double refunds stay
+ *  impossible via the partial unique index on (email_order_id) where
+ *  reason='refund'. */
 async function failEmail(
   // deno-lint-ignore no-explicit-any
-  sb: any, orderId: string, userId: string, credits: number,
+  sb: any, orderId: string, _userId: string, _credits: number,
 ): Promise<void> {
-  const { data: claimed, error: claimErr } = await sb
-    .from("email_orders")
-    .update({ status: "failed", closed_at: new Date().toISOString(), updated_at: new Date().toISOString() })
-    .eq("id", orderId)
-    .eq("status", "waiting")
-    .select("id");
-  if (claimErr) {
-    console.error(`failEmail: claim failed order=${orderId}: ${claimErr.message}`);
-    return;
-  }
-  if (!claimed || claimed.length === 0) return;   // already closed elsewhere
-
-  if (credits <= 0) return;                       // free tier: nothing to give back
-
-  const { error: refundErr } = await sb.rpc("wallet_move_email", {
-    p_user: userId, p_amount: credits, p_reason: "refund", p_email_order: orderId,
+  const { error: closeErr } = await sb.rpc("close_email_order_claim", {
+    p_order: orderId, p_status: "failed",
   });
-  if (refundErr) {
-    console.error(
-      `failEmail: REFUND FAILED order=${orderId} user=${userId} ` +
-      `credits=${credits}: ${refundErr.message}`,
-    );
+  if (closeErr) {
+    console.error(`failEmail: close_email_order_claim FAILED order=${orderId}: ${closeErr.message}`);
   }
 }

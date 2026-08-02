@@ -111,28 +111,15 @@ Deno.serve(async (req) => {
   // the order "waiting" until our own timer — the user stared at a number that
   // was already dead. Close it now and return the credits.
   if (result.state === "expired" || result.state === "canceled") {
-    const { data: claimed } = await sb
-      .from("orders")
-      .update({ status: "expired", closed_at: new Date().toISOString() })
-      .eq("id", order.id)
-      .eq("status", "waiting")
-      .select("id, cost_credits");
-    if (claimed && claimed.length > 0) {
-      // Same guard as cancel-order and poll-active-orders. A discarded error
-      // here leaves the order claimed to 'expired' with the money never moved —
-      // and this is the "Check now" path, which must never dead-end silently.
-      const { error: refundErr } = await sb.rpc("wallet_credit", {
-        p_user: userId, p_amount: claimed[0].cost_credits,
-        p_reason: "refund", p_order: order.id,
-      });
-      if (refundErr) {
-        console.error(`check-order: REFUND FAILED order=${order.id} user=${userId} ` +
-                      `credits=${claimed[0].cost_credits}: ${refundErr.message} — reverting to waiting`);
-        await sb.from("orders")
-          .update({ status: "waiting", closed_at: null })
-          .eq("id", order.id).eq("status", "expired");
-        return json({ error: "refund_failed" }, { status: 500 });
-      }
+    // Flip + refund in ONE transaction. The old claim-then-wallet_credit pair
+    // reverted in TypeScript on a refund error, but a worker killed between
+    // the two round-trips still stranded a terminal row with the money kept.
+    // expire_order_claim is the single implementation (same as the expiry
+    // sweep); false = another worker already closed it, which is fine here.
+    const { error: expErr } = await sb.rpc("expire_order_claim", { p_order: order.id });
+    if (expErr) {
+      console.error(`check-order: expire_order_claim failed order=${order.id}: ${expErr.message}`);
+      return json({ error: "refund_failed" }, { status: 500 });
     }
     const { data: fresh } = await sb.from("orders").select("*").eq("id", order.id).single();
     return json({ order: fresh, arrived: false, closed: true });
