@@ -86,10 +86,11 @@ supabase functions deploy poll-active-orders sync-prices sync-herosms sync-esim-
 # NOT touch retail_credits — see "Why sync-herosms exists" below.
 # DELETED 2026-07-30: sync-virtualsms/, sync-smspool/, smspool-catalog/ — all
 # three are gone from disk AND undeployed.
-# ⚠️ The two lists above do NOT cover everything: there are 24 function
-# directories besides _shared, and `telegram-setup` appears in NEITHER list. It
-# is cron-gated and fails closed so there is no exposure, but rotating
-# TELEGRAM_WEBHOOK_SECRET requires re-running it — deploy it --no-verify-jwt.
+# ⚠️ The two lists above do NOT cover everything: there are 25 function
+# directories besides _shared, and TWO appear in NEITHER list — `telegram-setup`
+# (cron-gated, fails closed; rotating TELEGRAM_WEBHOOK_SECRET requires
+# re-running it) and `goodwill-credit` (manual make-good grant + push, added
+# 2026-08-02). Both deploy --no-verify-jwt.
 # (This comment previously claimed the lists covered "every directory … 19
 # functions total". Both halves were wrong.)
 
@@ -2326,7 +2327,7 @@ purchasable and both review slots are free.
   charge-and-forfeit bug in `providers.ts` fixed.
 - **Codebase**: `MARKETING_VERSION 1.7`, `CURRENT_PROJECT_VERSION 21`, iOS min
   **18.0**, **96** Swift sources (Release BUILD SUCCEEDED on iPhone 17 Pro /
-  iOS 26.5, zero warnings), **122** migration files, **24** edge functions.
+  iOS 26.5, zero warnings), **123** migration files, **25** edge functions.
   Localizable.xcstrings: 358 strings, **0 untranslated** across all 6 locales
   (re-counted 2026-08-02 after the 1.8 localization batch added 11 keys).
 - **Catalog**: 18,492 routes, **12,900 active**. **HeroSMS 5,143 / SMSPVA 7,757**.
