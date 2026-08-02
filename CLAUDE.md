@@ -2158,8 +2158,10 @@ then `smoothed_cost_cents > MAX_WHOLESALE_CENTS`, then measured-zero auto-hide.
   `isOk(before)` / `isOk(after)`; `isOk` reads `r.statusCode`, so a thrown
   balance call makes it a `TypeError` **after the number is already reserved** —
   charge, refund, and forfeited wholesale on a number we abandon. Live on the
-  SMSPVA path (7,757 active routes). Caught by `deno check` 2026-07-30, present
-  since `91dc756`, **not yet fixed**; the fix is `before && isOk(before)`.
+  SMSPVA path until fixed. Caught by `deno check` 2026-07-30, present since
+  `91dc756`; **FIXED** (`before && isOk(before)`, deployed 2026-07-31 and
+  re-verified in code 2026-08-02 — an earlier version of this bullet said
+  "not yet fixed" long after it was).
   (`deno check` also reports three `Cannot find name 'EdgeRuntime'` — those are
   a Supabase runtime global Deno does not type, and are benign.)
 - **Xcode rewrites `Localizable.xcstrings` in the PRIMARY checkout while you
@@ -2325,8 +2327,8 @@ purchasable and both review slots are free.
 - **Codebase**: `MARKETING_VERSION 1.7`, `CURRENT_PROJECT_VERSION 21`, iOS min
   **18.0**, **96** Swift sources (Release BUILD SUCCEEDED on iPhone 17 Pro /
   iOS 26.5, zero warnings), **122** migration files, **24** edge functions.
-  Localizable.xcstrings: 347 strings, **0 untranslated** across all 6 locales
-  (counts re-verified 2026-08-02).
+  Localizable.xcstrings: 358 strings, **0 untranslated** across all 6 locales
+  (re-counted 2026-08-02 after the 1.8 localization batch added 11 keys).
 - **Catalog**: 18,492 routes, **12,900 active**. **HeroSMS 5,143 / SMSPVA 7,757**.
   **7 measured routes** as of 2026-08-02 (3 on 07-31 — evidence is accumulating again), see Known-open. 265
   visible services, 69 countries, 1,081 eSIM plans (all `hidden`, line paused).
@@ -2357,7 +2359,15 @@ purchasable and both review slots are free.
 Several were mis-reported by the audit and re-checked by hand — the corrections
 are as load-bearing as the findings:
 
-- 🔴 **Four close paths refund NON-atomically with no rollback and no sweep.**
+- ✅ **RESOLVED 2026-08-02: four close paths refunded NON-atomically with no
+  rollback and no sweep.** poll-active-orders' provider-close branch and
+  check-order's twin now call `expire_order_claim`; `failEsim` / `failEmail` /
+  `check-email-order` go through `fail_esim_order_claim` /
+  `close_email_order_claim` (migration `20260802120000`), and
+  `expire_email_orders` reverts the row to `waiting` when its refund
+  subtransaction fails instead of committing a terminal row with the money
+  kept. The general rule stands: a status claim and its refund are ONE
+  transaction, never two round-trips. *Original finding, kept for context:*
   `poll-active-orders:458-479` (the highest-traffic close path),
   `create-esim-order`'s `failEsim`, `create-email-order`'s `failEmail`,
   `check-email-order`. The status flip commits, then the refund is a separate
@@ -2367,17 +2377,23 @@ are as load-bearing as the findings:
   2026-07-31 and this file then recorded the general rule as if it had been
   applied everywhere. It had not. `expire_email_orders()` also swallows its own
   refund failure in a nested handler while the CTE's status flip stays committed.
-- 🔴 **SMSPVA `poll()` throws away the status code, including 407 = "we received
-  the SMS but your balance is not enough to pay it".** `providers.ts:427-431`
+- ✅ **RESOLVED 2026-08-02: SMSPVA `poll()` threw away the status code,
+  including 407 = "we received the SMS but your balance is not enough to pay
+  it".** `poll()` now pages loudly on 407 and keeps the order alive (a top-up
+  inside the window rescues the withheld code), closes immediately on 406/410
+  via the atomic provider-close path, and logs 411. *Original finding:* `providers.ts:427-431`
   treats every non-200 as `waiting`. The official 174-page spec is committed in
   our own repo at **`docs/apidocs.pdf`** — this file elsewhere calls that API
   "undocumented". 406/410 = order invalid/closed, 411 = karma/ratelimit. SMSPVA
   is at $5.26 against a $7.50 ceiling, so 407 is live: the order polls to
   expiry, refunds, bans the number, and is indistinguishable from a stockout —
   which also corrupts the delivery evidence. ~15 lines.
-- 🔴 **No order path checks a provider balance before charging.** All three
-  product lines do charge → fail → refund. The balance is already written every
-  60s into `app_config.<provider>_health`.
+- ✅ **RESOLVED 2026-08-02 (SMS): `create-order` refuses BEFORE charging when
+  the provider's `app_config.<provider>_health` reading is <5 min fresh and
+  `balance_usd` is below this order's own `maxCostUsd`.** Fails OPEN on
+  stale/missing data; maps to the already-shipped `provider_unreachable` copy.
+  eSIM/email order paths still charge-then-refund — extend the same guard if
+  either line grows volume.
 - 🔴 **Three landmines before the eSIM provider switch.** `esim_plans.id` IS the
   provider's plan id AND the PK, with `esim_orders.plan_id` as an FK — a new
   provider using small integers (SMSPool uses "1107") **overwrites rows in place
