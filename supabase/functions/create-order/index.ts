@@ -85,6 +85,38 @@ const NET_USD_PER_CREDIT = 0.30;
 // losing the order outright — a refunded order earns nothing and burns trust.
 const CEILING_HEADROOM_USD = 0.10;
 
+/** How far above the expected wholesale we will still buy (owner decision,
+ *  2026-08-02: "be a bit lenient on the margin, all orders should succeed").
+ *
+ *  THIS DOES NOT REDUCE MARGIN ON ORDERS THAT ALREADY SUCCEED. It is a cap
+ *  passed to the provider, not a price: a normal fill comes from the cheapest
+ *  pool and earns the full 12x/6x. The cap only binds when the price has moved
+ *  since the last sync — and today that order does not earn less, it FAILS,
+ *  returning margin_too_low after charging and refunding the user. So the whole
+ *  effect of this constant is to convert failures into lower-margin sales.
+ *
+ *  Sized from measurement, not taste. Across 1,554 (service,country) pairs, the
+ *  ratio of the SECOND-cheapest price tier to the cheapest — i.e. what we pay
+ *  when the cheap pool empties between hourly syncs — is:
+ *      p50 1.11x · p75 1.25x · p90 1.54x · p95 2.03x · p99 6.38x · max 36.8x
+ *  2.0 therefore covers ~95% of pool-exhaustion events. Chasing the p99 tail
+ *  would mean paying 6x for a number, which is where "lenient" stops being
+ *  lenient and starts being a leak: 188 of those routes have fewer than 50
+ *  numbers in the cheapest tier, so the tail is reachable, not theoretical.
+ *
+ *  The flat CEILING_HEADROOM_USD stays ON TOP because the two solve different
+ *  problems: the multiple covers a proportional price move, the flat term
+ *  covers the exact-boundary rounding case that took 76.7% of the catalog to
+ *  zero tolerance on 2026-07-27. */
+const CEILING_SLACK_MULTIPLE = 2.0;
+
+/** Hard backstop: never pay more than this fraction of what we charged. With
+ *  NET_USD_PER_CREDIT deliberately conservative, half of revenue still leaves
+ *  every order at 2x or better, so no order can ever be sold at a loss no
+ *  matter what the multiple above is set to or what a future divisor change
+ *  does. This is the invariant; CEILING_SLACK_MULTIPLE is the policy. */
+const MAX_REVENUE_FRACTION = 0.5;
+
 /** Numberless attempts on one route, by one user, before we start requiring a
  *  gap between tries. Three, because two in a row is plausibly transient — a
  *  stockout that refills, a price that ticks back under the ceiling. */
@@ -487,7 +519,15 @@ Deno.serve(async (req) => {
   // right source: providerOrder() returns exactly one provider per service and
   // there is no cross-provider fallback, so the row we priced is the row we buy.
   const minMargin = marginFor(route.provider as string | null);
-  const maxCostUsd = (cost * NET_USD_PER_CREDIT) / minMargin + CEILING_HEADROOM_USD;
+  // What we EXPECTED to pay, i.e. the divisor the route was priced with.
+  const expectedCostUsd = (cost * NET_USD_PER_CREDIT) / minMargin;
+  // What we are WILLING to pay. Deliberately much higher — see the block above
+  // CEILING_SLACK_MULTIPLE for why, and note it is a cap, not a price: a normal
+  // order still fills from the cheapest pool and still earns the full margin.
+  const maxCostUsd = Math.min(
+    expectedCostUsd * CEILING_SLACK_MULTIPLE + CEILING_HEADROOM_USD,
+    cost * NET_USD_PER_CREDIT * MAX_REVENUE_FRACTION,
+  );
 
   // ── Real-SIM carrier ─────────────────────────────────────────────────────
   //
