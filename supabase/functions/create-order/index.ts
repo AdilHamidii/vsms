@@ -74,6 +74,24 @@ const MIN_MARGIN_FALLBACK = 12.0;
 const marginFor = (provider: string | null | undefined): number =>
   MIN_MARGIN_BY_PROVIDER[provider ?? ""] ?? MIN_MARGIN_FALLBACK;
 
+/** The price HeroSMS says it WILL sell at, out of `WRONG_MAX_PRICE:0.35`.
+ *
+ *  Suffixed error codes are matched by PREFIX everywhere in this codebase
+ *  (see classifyHerosmsFault) because an exact `switch` silently never fires
+ *  on them. Same reason the value is parsed rather than assumed: it is the
+ *  provider's own current floor for this (country, service), which is the one
+ *  number that turns a refusal into a sale.
+ *
+ *  Returns null for a missing/garbled suffix so the caller keeps the existing
+ *  refusal — never a default, which would authorise a spend nobody quoted. */
+function wrongMaxPriceUsd(raw: string | undefined): number | null {
+  if (!raw) return null;
+  const m = /WRONG_MAX_PRICE:\s*([0-9]+(?:\.[0-9]+)?)/i.exec(raw);
+  if (!m) return null;
+  const usd = Number(m[1]);
+  return Number.isFinite(usd) && usd > 0 ? usd : null;
+}
+
 const NET_USD_PER_CREDIT = 0.30;
 
 // Absolute slack added to the order-time ceiling so a trivial provider price
@@ -178,6 +196,37 @@ async function bumpFailStreak(sb: Admin, lastError: string, routeDesc: string): 
     await sb.from("app_config").upsert({ key: "order_fail_streak", value }, { onConflict: "key" });
   } catch (e) {
     console.error("fail-streak tracking failed (ignored):", e);
+  }
+}
+
+/** How many recent numberless failures to keep. Small: this is a diagnostic
+ *  tail for "why did N never get a number", not an event log. */
+const FAIL_SAMPLE_KEEP = 25;
+
+/** Persist WHY an order never got a number, so the cause survives the request.
+ *
+ *  `app_config` is RLS-restricted to an explicit key whitelist
+ *  (maintenance / announcement / esim_paused), so this key is reachable only
+ *  through the service role — it carries carrier names and wholesale costs and
+ *  must never join that whitelist. */
+async function recordFailureSample(
+  sb: Admin,
+  route: string,
+  lastError: string,
+  diag: Record<string, unknown> | null,
+): Promise<void> {
+  try {
+    const { data } = await sb
+      .from("app_config").select("value").eq("key", "order_fail_samples").maybeSingle();
+    const prev = Array.isArray(data?.value) ? (data.value as unknown[]) : [];
+    const next = [
+      { at: new Date().toISOString(), route, error: lastError, ...(diag ?? {}) },
+      ...prev,
+    ].slice(0, FAIL_SAMPLE_KEEP);
+    await sb.from("app_config")
+      .upsert({ key: "order_fail_samples", value: next }, { onConflict: "key" });
+  } catch (e) {
+    console.error("failure-sample write failed (ignored):", e);
   }
 }
 
@@ -573,6 +622,15 @@ Deno.serve(async (req) => {
   let used: (typeof providers)[number] | null = null;
   let usedCostUsd: number | null = null;
   let lastError = "no_numbers_available";
+  /** Why the last reservation attempt failed, in enough detail to tell a real
+   *  stockout from a price refusal WITHOUT reading the function logs.
+   *
+   *  Every numberless order is a charge-and-refund, and today the only record
+   *  of the cause is a console line in a dashboard nobody reads at 3am — the
+   *  order row keeps `actual_cost_cents` null and carries no error at all. So
+   *  "4 never got a number" in the 6h digest is unanswerable after the fact,
+   *  which is exactly the position this session started from. */
+  let lastDiag: Record<string, unknown> | null = null;
 
   // ── Real-SIM carrier ─────────────────────────────────────────────────────
   //
@@ -702,7 +760,33 @@ Deno.serve(async (req) => {
           ? (route.smspva_operator_cents as number) / 100
           : null))
       : null;
-    if (tier === "premium" && carrierFloorUsd != null) {
+    // ── HeroSMS: the SYNCED cost is the accurate one, the live quote is not.
+    //
+    // `livePriceUsd` resolves HeroSMS through `getPrices`, whose `cost` is the
+    // DEFAULT advertised price — and that number is wrong in both directions.
+    // Measured over 1,554 (service,country) pairs on 2026-08-02: 1,107 (71%)
+    // had stock CHEAPER than it and 60 (4%) had NO stock at all at that price.
+    // That is precisely why `sync-herosms` was moved onto
+    // /api/v1/activations/offers the same day, taking the cheapest key in the
+    // price→stock map WITH a non-zero count and storing it in
+    // `herosms_cost_cents`.
+    //
+    // The order path was left behind. So the gate below compared an inflated
+    // phantom price against a ceiling derived from the accurate one, and
+    // refused `margin_too_low` on routes with plenty of buyable stock under
+    // our cap — charged and instantly refunded, permanently, until the price
+    // moved. Same failure that cost a paying customer eight straight attempts
+    // on apple/Turkey.
+    //
+    // Preferring the cached value cannot overpay: `maxPriceUsd` is enforced
+    // provider-side by getNumberV2 and the ACTUAL charged cost is re-checked
+    // against the ceiling after the fill. If the price rose since the hourly
+    // sync, the provider refuses with WRONG_MAX_PRICE and the retry below
+    // handles it with the real number instead of a guess.
+    if (p === "herosms" && route.herosms_cost_cents != null &&
+        (route.herosms_cost_cents as number) > 0) {
+      liveCost = (route.herosms_cost_cents as number) / 100;
+    } else if (tier === "premium" && carrierFloorUsd != null) {
       const liveBase = await livePriceUsd(p, codes);
       liveCost = liveBase != null ? Math.max(carrierFloorUsd, liveBase) : carrierFloorUsd;
     } else {
@@ -730,9 +814,32 @@ Deno.serve(async (req) => {
       liveCost = cachedCents / 100;
     }
     if (liveCost == null) { lastError = "route_unavailable"; continue; }
-    if (liveCost > maxCostUsd) {
-      console.warn(`margin_too_low provider=${p} tier=${tier} svc=${service.id} cty=${country.id} credits=${cost} liveUsd=${liveCost}`);
+    // Pre-flight refusal bound. For HeroSMS this is the INVARIANT (half of
+    // revenue), not the policy ceiling — because HeroSMS enforces the cap we
+    // pass server-side, so there is no exposure in asking. We still pass
+    // `maxCostUsd` on the first reservation, so a normal order fills from the
+    // cheapest stock and earns the full margin; only if the provider itself
+    // answers WRONG_MAX_PRICE do we escalate, and only to the figure IT names.
+    //
+    // Refusing here at `maxCostUsd` instead would skip reserve() entirely and
+    // with it that recovery — throwing the order away on the strength of an
+    // hourly price snapshot, when the provider was about to tell us the real
+    // number. That is a charge-and-refund on a route we can profitably serve.
+    //
+    // SMSPVA keeps the tighter bound: it accepts no price cap and reports no
+    // cost, so an over-ceiling fill can only be discovered after the purchase
+    // and undone by release() — churn worth avoiding.
+    const refuseAboveUsd = p === "herosms"
+      ? cost * NET_USD_PER_CREDIT * MAX_REVENUE_FRACTION
+      : maxCostUsd;
+    if (liveCost > refuseAboveUsd) {
+      console.warn(`margin_too_low provider=${p} tier=${tier} svc=${service.id} cty=${country.id} credits=${cost} liveUsd=${liveCost} bound=${refuseAboveUsd.toFixed(3)}`);
       lastError = "margin_too_low";
+      lastDiag = {
+        provider: p, tier, credits: cost, error_type: "PRE_FLIGHT_PRICE",
+        raw: "", quoted_usd: liveCost, ceiling_usd: Number(refuseAboveUsd.toFixed(4)),
+        pin: null, strict_pin: null,
+      };
       continue;
     }
     // smspva rides the real-SIM carrier (mandatory for premium, opportunistic
@@ -751,7 +858,23 @@ Deno.serve(async (req) => {
     // ceiling and goes null when it does not, which would leave the order
     // unpinned — i.e. filled from the VoIP pool this route exists to avoid.
     // `premiumPin` is the route's real carrier unconditionally, so force it.
-    const pin = realSimForced ? premiumPin
+    // On HeroSMS the forced-real pin takes the UNION of real carriers, not the
+    // single best one. `premiumPin` is `herosms_real_operator` — one carrier,
+    // the most-stocked at probe time — while `herosms_real_operators` holds
+    // every real carrier the same probe found (mean 3.34 per route, max 7).
+    //
+    // This path is STRICT (see strictPin below), so a dry pin is a hard
+    // `no_numbers_available` with no unpinned fallback — which is correct, but
+    // it means naming one carrier throws away the other real stock on the same
+    // route for no reason. Every member of the union was probed non-VoIP, so
+    // the quality guarantee that makes this route real-SIM-only is unchanged;
+    // only the amount of real stock we can reach goes up. 51 of the 105
+    // real_sim_only routes priced at 1-6 credits carry more than one carrier.
+    //
+    // Falls back to the single carrier for rows probed before the list column
+    // existed, so behaviour is never worse than before.
+    const forcedRealPin = p === "herosms" ? (heroCarrier ?? premiumPin) : premiumPin;
+    const pin = realSimForced ? forcedRealPin
               : p === "smspva" ? smspvaPin
               : p === "herosms" ? heroCarrier
               : null;
@@ -773,7 +896,47 @@ Deno.serve(async (req) => {
     // number. release() never throws (logged internally), and only a
     // SUCCESSFUL duplicate fill re-enters the loop — reserve errors take the
     // existing error path unchanged.
-    let res = await reserve(p, codes, maxCostUsd, pin, strictPin);
+    // The ceiling actually passed to the provider. Starts at maxCostUsd and is
+    // raised at most once, to a figure the PROVIDER named, never above the
+    // no-loss invariant. Tracked separately so the post-fill check below
+    // compares against the cap we really authorised.
+    let ceilingUsd = maxCostUsd;
+    let res = await reserve(p, codes, ceilingUsd, pin, strictPin);
+
+    // ── WRONG_MAX_PRICE tells us the price that WOULD have worked. Use it.
+    //
+    // HeroSMS answers an unfillable cap with `WRONG_MAX_PRICE:0.35` — the
+    // suffix is the minimum it will sell at right now. We classified that as
+    // PRICE_NOT_FOUND → margin_too_low and threw the number away, so a route
+    // whose stock had moved a couple of cents above a stale ceiling was a
+    // charge-and-refund every single time until the next hourly sync. The
+    // apple/Turkey case was 1.8 CENTS short and burned eight consecutive
+    // attempts by a paying customer.
+    //
+    // Retry exactly once, and only up to `MAX_REVENUE_FRACTION` of what we
+    // charged — the invariant that guarantees no order is ever sold at a loss
+    // (see the constant). When maxCostUsd is already at that cap there is no
+    // room and we correctly decline: that route is mispriced and needs
+    // repricing, not a looser gate. Both outcomes are logged so the split
+    // between "recovered" and "genuinely too dear" is measurable.
+    if (!res.ok && res.errorType === "PRICE_NOT_FOUND") {
+      const askUsd = wrongMaxPriceUsd(res.error);
+      const hardCapUsd = cost * NET_USD_PER_CREDIT * MAX_REVENUE_FRACTION;
+      if (askUsd != null && askUsd > ceilingUsd && askUsd <= hardCapUsd + 1e-9) {
+        console.warn(
+          `price_retry provider=${p} svc=${service.id} cty=${country.id} ` +
+            `askUsd=${askUsd} ceiling=${ceilingUsd.toFixed(3)} invariant=${hardCapUsd.toFixed(3)}`,
+        );
+        ceilingUsd = askUsd;
+        res = await reserve(p, codes, ceilingUsd, pin, strictPin);
+      } else if (askUsd != null) {
+        console.warn(
+          `price_retry_declined provider=${p} svc=${service.id} cty=${country.id} ` +
+            `credits=${cost} askUsd=${askUsd} invariant=${hardCapUsd.toFixed(3)} — route is mispriced`,
+        );
+      }
+    }
+
     for (
       let redraw = 0;
       redraw < 2 && res.ok && res.number && recentNumbers.has(res.number);
@@ -788,11 +951,11 @@ Deno.serve(async (req) => {
       // issuance. markDead bans first, then cancels, so the wholesale refund is
       // still attempted.
       if (res.orderId) await markDead(p, res.orderId);
-      res = await reserve(p, codes, maxCostUsd, pin, strictPin);
+      res = await reserve(p, codes, ceilingUsd, pin, strictPin);
     }
     if (res.ok) {
-      if (res.costUsd != null && res.costUsd > maxCostUsd + 0.001) {
-        console.warn(`actual_cost_over_ceiling provider=${p} svc=${service.id} cty=${country.id} credits=${cost} paidUsd=${res.costUsd} maxUsd=${maxCostUsd}`);
+      if (res.costUsd != null && res.costUsd > ceilingUsd + 0.001) {
+        console.warn(`actual_cost_over_ceiling provider=${p} svc=${service.id} cty=${country.id} credits=${cost} paidUsd=${res.costUsd} maxUsd=${ceilingUsd}`);
         if (res.orderId) await release(p, res.orderId).catch(() => {});
         lastError = "margin_too_low";
         continue;
@@ -818,6 +981,21 @@ Deno.serve(async (req) => {
               : res.errorType === "TRANSPORT_ERROR" ? "provider_unreachable"
               : res.error === "number_never_activated" ? "no_numbers_available"
               : "no_numbers_available";
+    lastDiag = {
+      provider: p,
+      tier,
+      credits: cost,
+      error_type: res.errorType ?? null,
+      raw: (res.error ?? "").slice(0, 120),
+      // The two numbers that separate "nothing in stock" from "priced us out".
+      quoted_usd: liveCost,
+      ceiling_usd: Number(ceilingUsd.toFixed(4)),
+      // A strict pin cannot fall back to the unpinned pool, so a dry carrier
+      // is terminal here by design — worth recording, because it is the
+      // difference between "we could have served this" and "we chose not to".
+      pin,
+      strict_pin: strictPin,
+    };
     if (res.errorType === "TRANSPORT_ERROR") {
       console.error(`${p} TRANSPORT_ERROR — possible orphaned paid reservation: ${res.error}`);
     }
@@ -833,6 +1011,9 @@ Deno.serve(async (req) => {
     await failOrder(lastError);
     try {
       EdgeRuntime.waitUntil(bumpFailStreak(sb, lastError, `${service.id}/${country.id} (${tier})`));
+      EdgeRuntime.waitUntil(
+        recordFailureSample(sb, `${service.id}/${country.id}`, lastError, lastDiag),
+      );
     } catch { /* paging must never affect the order path */ }
     const status = lastError === "margin_too_low" ? 409 : 503;
     return json({ error: lastError }, { status });
