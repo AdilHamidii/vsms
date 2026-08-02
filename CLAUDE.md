@@ -502,7 +502,12 @@ Three cohorts, all in `winback` (cron `relay-winback`, daily):
   fit. Fires at 3–14 days, inside the observed repeat window.
 
 **⛔ THE DAILY CREDIT IS DISABLED ENTIRELY (owner decision, 2026-08-02,
-migration `20260801150000`).** 93 grants / 101 credits lifetime, 92 of them in
+migration `20260801150000`) — and the CLIENT code is REMOVED as of the 1.8
+branch (2026-08-02):** the claim card, banner, AppState state/methods and the
+WalletAPI RPC wrappers are gone, `register-push` no longer calls
+`claim_daily_credit_for` (it keeps returning `daily_credits: null`, which
+shipped builds decode), and coldStart is 5 steps, not 6. The no-op DB
+functions survive ONLY for 1.6/1.7 users.** 93 grants / 101 credits lifetime, 92 of them in
 the final week. Do not re-enable it casually — read the whole of this note first.
 
 It is a KILL SWITCH, not a DROP, because the SHIPPED app (1.6/1.7) calls
@@ -746,6 +751,13 @@ following 30 days, the 1-credit band delivered **10.9%** against **42.1%** for
 the 2–5 band. Result was a 0%-conversion funnel — 11 signups, 2 orders, 0 codes,
 0 purchases in the 24h to 2026-07-26. Fixed by raising the grant to **3 credits**
 (migration `20260726140000`, after `20260726130000` briefly set 5).
+**Raised to 5 credits on 2026-08-02 as a ONE-WEEK EXPERIMENT** (owner
+decision, `20260802130000`): 5 cr reaches 3,721 routes / 247 of 265 services
+in the post-repricing catalog (3 cr: 2,299/227). Evaluate ~2026-08-09 —
+signup→first-order rate vs 26% (7d to 08-02) and 21.7% (lifetime); revert is
+the same migration with `v_bonus := 3`. Note the shipped sign-in copy still
+says "3 free credits" — deliberate under-promise for the experiment week;
+update the literal + 6 translations only if 5 sticks.
 
 **The cliff is between 1 and 2 credits, not further up** — this is the number to
 reason from, measured per exact price over the 30d to 2026-07-26:
@@ -2327,7 +2339,7 @@ purchasable and both review slots are free.
   charge-and-forfeit bug in `providers.ts` fixed.
 - **Codebase**: `MARKETING_VERSION 1.7`, `CURRENT_PROJECT_VERSION 21`, iOS min
   **18.0**, **96** Swift sources (Release BUILD SUCCEEDED on iPhone 17 Pro /
-  iOS 26.5, zero warnings), **123** migration files, **25** edge functions.
+  iOS 26.5, zero warnings), **124** migration files, **25** edge functions.
   Localizable.xcstrings: 358 strings, **0 untranslated** across all 6 locales
   (re-counted 2026-08-02 after the 1.8 localization batch added 11 keys).
 - **Catalog**: 18,492 routes, **12,900 active**. **HeroSMS 5,143 / SMSPVA 7,757**.
