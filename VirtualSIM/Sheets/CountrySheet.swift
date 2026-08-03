@@ -234,6 +234,22 @@ private struct CountryRow: View {
     let isLast: Bool
     let onTap: () -> Void
 
+    /// Colour bands for the pool's published rate: >75 green, 40-75 amber,
+    /// <40 red (owner decision, 2026-08-03).
+    ///
+    /// These are the SAME semantic colours SuccessBadge uses for OUR measured
+    /// record, and at nearly the same thresholds (>=70 / >=40). So on a row
+    /// carrying both, colour no longer distinguishes them — only position (this
+    /// one sits in the left column, beside the dial code) and wording ("74%"
+    /// versus "Worked 3 of 7 times") do. Noted because the standing rule was
+    /// that a third party's number must never wear `theme.live`; this is a
+    /// deliberate exception, not an oversight.
+    private func poolRateColor(_ pct: Int) -> Color {
+        if pct > 75 { return theme.live }
+        if pct >= 40 { return theme.warn }
+        return theme.fail
+    }
+
     var body: some View {
         Button(action: onTap) {
             VStack(spacing: 0) {
@@ -259,7 +275,7 @@ private struct CountryRow: View {
                             if let poolRate {
                                 Text("\(poolRate)%")
                                     .font(RFont.text(12, weight: .semibold))
-                                    .foregroundStyle(theme.text2)
+                                    .foregroundStyle(poolRateColor(poolRate))
                             }
                             // countries.avg_seconds is seed data too — drop
                             // the claim rather than dress it up. The measured
