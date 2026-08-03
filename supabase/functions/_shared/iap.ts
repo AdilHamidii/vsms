@@ -62,6 +62,19 @@
 
 import { decodeProtectedHeader, importX509, jwtVerify } from "https://esm.sh/jose@5.9.4";
 import * as x509 from "https://esm.sh/@peculiar/x509@1.12.3";
+// Apple Root CA - G3 is ECDSA **P-384 / SHA-384**, and Supabase's edge runtime
+// WebCrypto does not implement P-384 verification: the final chain hop threw
+// `NotSupportedError: Not implemented`, which surfaced as `chain_verify_failed`
+// and REJECTED EVERY PURCHASE on 2026-08-03. The identical code, the same
+// pinned library and the same certificate verify `true` on local Deno, so this
+// is a hosted-runtime limitation, not a bad cert and not our logic.
+//
+// Fixed with a pure-JS verification of that one hop rather than by weakening
+// the pin. The tempting shortcut — pin the INTERMEDIATE by thumbprint and skip
+// the signature check — is exactly what turns Apple's routine intermediate
+// rotation into a total purchase outage. Pin the ROOT ONLY still holds.
+import { p384 } from "https://esm.sh/@noble/curves@1.6.0/p384";
+import { sha384 } from "https://esm.sh/@noble/hashes@1.5.0/sha512";
 
 const ALLOWED_BUNDLE_IDS = ["com.anthersystems.VirtualSIM"];
 
@@ -124,6 +137,32 @@ function pemFromB64(b64: string): string {
   return `-----BEGIN CERTIFICATE-----\n${body}\n-----END CERTIFICATE-----`;
 }
 
+/** The uncompressed EC point inside an SPKI DER blob. P-384 => 0x04 + 48 + 48. */
+function p384PointFromSpki(spki: ArrayBuffer): Uint8Array {
+  const b = new Uint8Array(spki);
+  for (let i = 0; i < b.length; i++) {
+    if (b[i] === 0x04 && b.length - i === 97) return b.slice(i);
+  }
+  throw new IapVerificationError("root_key_unreadable");
+}
+
+/** Verify that `cert` was signed by the PINNED Apple root, in pure JS.
+ *  Returns false on a bad signature; never throws for a merely invalid cert. */
+function verifyAgainstAppleRoot(cert: x509.X509Certificate): boolean {
+  const pub = p384PointFromSpki(trustedRoot.publicKey.rawData);
+  // `tbs` is the exact bytes the CA signed. It is runtime-public but typed
+  // private by @peculiar/x509, so the cast is explicit rather than silent:
+  // re-encoding the TBS ourselves would risk verifying different bytes than
+  // the ones Apple signed, which is the whole point of the check.
+  const tbs = (cert as unknown as { tbs: ArrayBuffer }).tbs;
+  const digest = sha384(new Uint8Array(tbs));
+  try {
+    return p384.verify(new Uint8Array(cert.signature), digest, pub, { prehash: false });
+  } catch {
+    return false;   // malformed signature encoding is a rejection, not a crash
+  }
+}
+
 async function sha256Thumbprint(cert: x509.X509Certificate): Promise<string> {
   const buf = await cert.getThumbprint("SHA-256");
   return Array.from(new Uint8Array(buf))
@@ -172,7 +211,10 @@ export async function verifyTransactionJWS(jws: string): Promise<AppleTransactio
       }
     }
     const top = supplied[supplied.length - 1];
-    if (!(await top.verify({ publicKey: trustedRoot.publicKey }))) {
+    // Deliberately NOT `top.verify({publicKey: trustedRoot.publicKey})` — see
+    // the import block. Same cryptographic check, computed in JS so it does not
+    // depend on the host runtime implementing ECDSA P-384.
+    if (!verifyAgainstAppleRoot(top)) {
       throw new IapVerificationError("untrusted_chain");
     }
   } catch (e) {
