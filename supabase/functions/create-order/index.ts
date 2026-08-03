@@ -621,6 +621,13 @@ Deno.serve(async (req) => {
   let reservation = null as Awaited<ReturnType<typeof reserve>> | null;
   let used: (typeof providers)[number] | null = null;
   let usedCostUsd: number | null = null;
+  /** What the order is finally CHARGED and what tier it records. They start at
+   *  the tier the client asked for and move together only when a premium order
+   *  takes a standard fill — see the downgrade block in the provider loop.
+   *  `cost` stays the amount `begin_order` actually debited, so the difference
+   *  is what has to be returned. */
+  let chargedCredits = cost;
+  let effectiveTier = tier;
   let lastError = "no_numbers_available";
   /** Why the last reservation attempt failed, in enough detail to tell a real
    *  stockout from a price refusal WITHOUT reading the function logs.
@@ -901,7 +908,13 @@ Deno.serve(async (req) => {
     // no-loss invariant. Tracked separately so the post-fill check below
     // compares against the cap we really authorised.
     let ceilingUsd = maxCostUsd;
-    let res = await reserve(p, codes, ceilingUsd, pin, strictPin);
+    // The pin/strictness that produced the CURRENT `res`. They change if the
+    // premium downgrade below fires, and the duplicate-number redraw must
+    // re-issue the same kind of request rather than silently re-pinning
+    // strictly on a fill we already decided to take unpinned.
+    let effPin: string | null = pin;
+    let effStrict = strictPin;
+    let res = await reserve(p, codes, ceilingUsd, effPin, effStrict);
 
     // ── WRONG_MAX_PRICE tells us the price that WOULD have worked. Use it.
     //
@@ -937,6 +950,61 @@ Deno.serve(async (req) => {
       }
     }
 
+    // ── Premium falls back to a STANDARD fill, at the STANDARD price.
+    //
+    // A premium order pins the real carriers STRICTLY, and strict means
+    // reserve() does not retry unpinned. So whenever the real pool is
+    // momentarily dry the user gets NO NUMBER AT ALL and is told to try
+    // another country — while the identical standard order fills seconds
+    // later from the same catalog. Measured 2026-08-03: subito/uk premium
+    // returned NO_NUMBERS at 04:32:21 and subito/uk standard filled on
+    // `lebara` at 04:32:24, three seconds later, with `lebara` in the very
+    // list the premium call had pinned. Six of the eight recent HeroSMS
+    // numberless orders were this, all on routes that do not reject VoIP.
+    //
+    // This is NOT the silent downgrade that was rejected on 2026-07-21. That
+    // objection was to charging the 20% real-SIM uplift and quietly handing
+    // back standard stock. Here the order is REPRICED to `retail_credits`,
+    // the difference is returned, and the row records `tier: standard` — so
+    // the user pays for exactly what they received and the history is honest.
+    //
+    // Hard boundary: `real_sim_only` routes never take this path. There a VoIP
+    // number is one the service is certain to reject, so failing as a stockout
+    // is the correct outcome and a cheaper number is worth nothing.
+    if (
+      !res.ok && res.errorType === "OUT_OF_STOCK" &&
+      tier === "premium" && route.real_sim_only !== true &&
+      route.retail_credits != null && (route.retail_credits as number) < cost
+    ) {
+      const stdCredits = route.retail_credits as number;
+      // Re-derive the ceiling from the STANDARD price, so the margin rule is
+      // the one that belongs to the price we are about to charge. Same
+      // expression as maxCostUsd — the invariant still bounds it at half of
+      // revenue, so a downgraded order can no more be sold at a loss than a
+      // normal one.
+      const stdCeiling = Math.min(
+        (stdCredits * NET_USD_PER_CREDIT / minMargin) * CEILING_SLACK_MULTIPLE +
+          CEILING_HEADROOM_USD,
+        stdCredits * NET_USD_PER_CREDIT * MAX_REVENUE_FRACTION,
+      );
+      // Unpinned deliberately: the strict call above just proved the named
+      // carriers are dry, so re-offering them would only spend another round
+      // trip inside the order path to be told the same thing.
+      const alt = await reserve(p, codes, stdCeiling, null, false);
+      if (alt.ok) {
+        console.warn(
+          `premium_downgraded_to_standard provider=${p} svc=${service.id} cty=${country.id} ` +
+            `credits=${cost}->${stdCredits} ceiling=${stdCeiling.toFixed(3)}`,
+        );
+        res = alt;
+        ceilingUsd = stdCeiling;
+        effPin = null;
+        effStrict = false;
+        chargedCredits = stdCredits;
+        effectiveTier = "standard";
+      }
+    }
+
     for (
       let redraw = 0;
       redraw < 2 && res.ok && res.number && recentNumbers.has(res.number);
@@ -951,7 +1019,7 @@ Deno.serve(async (req) => {
       // issuance. markDead bans first, then cancels, so the wholesale refund is
       // still attempted.
       if (res.orderId) await markDead(p, res.orderId);
-      res = await reserve(p, codes, ceilingUsd, pin, strictPin);
+      res = await reserve(p, codes, ceilingUsd, effPin, effStrict);
     }
     if (res.ok) {
       if (res.costUsd != null && res.costUsd > ceilingUsd + 0.001) {
@@ -1026,6 +1094,11 @@ Deno.serve(async (req) => {
     .from("orders")
     .update({
       provider: used,
+      // Both move only on a premium->standard downgrade. Written unconditionally
+      // so the row can never claim a tier the fill did not deliver, or a price
+      // the wallet was not left holding.
+      tier: effectiveTier,
+      cost_credits: chargedCredits,
       smspva_id: reservation.orderId,      // generic: the provider's order id
       smspva_number: reservation.number,   // generic: display number
       actual_cost_cents: usedCostUsd != null ? Math.round(usedCostUsd * 100) : null,
@@ -1083,6 +1156,38 @@ Deno.serve(async (req) => {
     if (reservation.orderId) await release(used, reservation.orderId);
     await failOrder("order_persist_failed");
     return json({ error: "order_persist_failed", detail: insertErr?.message }, { status: 500 });
+  }
+
+  // Return the premium uplift on a downgraded order.
+  //
+  // AFTER the row is persisted, never before: the failure branch above refunds
+  // the FULL `cost`, so returning part of it first would over-credit an order
+  // that then failed to persist.
+  //
+  // Reason is `adjustment`, NOT `refund`, and that is load-bearing.
+  // `wallet_transactions_refund_once_idx` is UNIQUE on (order_id) WHERE
+  // reason='refund', i.e. exactly one refund row per order — it exists so a
+  // retried refund cannot double-pay. Spending that slot on a partial
+  // correction would make the LATER full refund (expiry, cancel, late-code
+  // sweep) violate the index and raise, leaving a terminal order with the
+  // user's credits kept. `adjustment` is outside the index, so the refund slot
+  // stays free for the refund.
+  if (chargedCredits < cost) {
+    const { error: adjErr } = await sb.rpc("wallet_credit", {
+      p_user: userId,
+      p_amount: cost - chargedCredits,
+      p_reason: "adjustment",
+      p_order: orderId,
+    });
+    if (adjErr) {
+      // The user holds a number and is overcharged by the uplift (1-2 credits).
+      // Loud, not fatal: failing the order here would release a working number
+      // over a rounding-sized amount. Recoverable with goodwill-credit.
+      console.error(
+        `create-order: DOWNGRADE REFUND FAILED order=${orderId} user=${userId} ` +
+          `owed=${cost - chargedCredits} credits — ${adjErr.message}`,
+      );
+    }
   }
 
   return json({ order });
