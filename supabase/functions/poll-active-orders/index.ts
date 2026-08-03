@@ -7,7 +7,7 @@ import { admin } from "../_shared/supabaseAdmin.ts";
 import { markDead, markSuccess, poll, type OrderProvider } from "../_shared/providers.ts";
 import { getBalanceUsd } from "../_shared/smspool.ts";
 import { getBalanceUsd as getHeroBalanceUsd } from "../_shared/herosms.ts";
-import { getBalanceUsd as getFivesimBalanceUsd } from "../_shared/fivesim.ts";
+import { getProfile as getFivesimProfile, type FiveProfile } from "../_shared/fivesim.ts";
 import { getBalance as getSmspvaBalance, isOk } from "../_shared/smspva.ts";
 import { sendPush } from "../_shared/apns.ts";
 import { notifySafe, esc } from "../_shared/telegram.ts";
@@ -167,6 +167,9 @@ Deno.serve(async (req) => {
    *  standing status; this is the instant page. */
   async function recordBalance(
     key: string, label: string, read: () => Promise<number | null>,
+    /** Extra fields merged into the stored blob, read AFTER `read()` so a
+     *  provider can hand back more than a balance without a second call. */
+    readExtra?: () => Promise<Record<string, unknown> | null>,
   ) {
     try {
       const bal = await read();
@@ -207,6 +210,14 @@ Deno.serve(async (req) => {
         }
       }
 
+      // Never let an optional extra reader break the balance write — the
+      // balance is what create-order's pre-charge guard and the pager read.
+      let extra: Record<string, unknown> | null = null;
+      if (readExtra) {
+        try { extra = await readExtra(); }
+        catch (e) { console.error(`${key} extra read failed:`, e); }
+      }
+
       await sb.from("app_config").upsert({
         key,
         value: {
@@ -216,6 +227,7 @@ Deno.serve(async (req) => {
           // crossing is re-attempted rather than silently consumed.
           alert_tier: alerted ? tier : prevTier,
           checked_at: new Date().toISOString(),
+          ...(extra ?? {}),
         },
         updated_at: new Date().toISOString(),
       }, { onConflict: "key" });
@@ -229,12 +241,27 @@ Deno.serve(async (req) => {
   //    freshness), so it must not sit behind work whose duration scales with
   //    order volume — at the 150s worker kill it would silently stop, and a
   //    frozen reading is indistinguishable from a healthy provider.
+  // One `user/profile` read serves both the balance and the rating: recordBalance
+  // calls `read` and then `readExtra`, so the cached profile is populated by the
+  // time the second runs. Never reorder those two calls.
+  let fiveProfile: FiveProfile | null = null;
+  const readFivesimBalance = async () => {
+    fiveProfile = await getFivesimProfile();
+    return fiveProfile?.balanceUsd ?? null;
+  };
+  const readFivesimExtra = async () =>
+    fiveProfile?.rating != null ? { rating: fiveProfile.rating } : null;
+
   await Promise.all([
     // 5sim serves ALL SMS. This key is also what create-order's pre-charge
     // balance guard reads (`${providers[0]}_health`) — without it that guard
     // fails OPEN, so a dry balance charges the user and refunds instead of
     // refusing. It was missing from the cutover.
-    recordBalance("5sim_health", "5sim (SMS)", getFivesimBalanceUsd),
+    //
+    // `rating` rides along because it is a SECOND way to lose the ability to
+    // buy that the balance cannot show: 0 means no purchases at all, and our
+    // cancel-and-ban pattern only ever drives it down between top-ups.
+    recordBalance("5sim_health", "5sim (SMS)", readFivesimBalance, readFivesimExtra),
     // HeroSMS is NOT retired: it serves the temp-EMAIL line on the same
     // account and balance, so this reading still matters.
     recordBalance("herosms_health", "HeroSMS (e-mail)", getHeroBalanceUsd),

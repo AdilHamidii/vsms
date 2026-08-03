@@ -207,20 +207,38 @@ Deno.serve(async (req) => {
   let countriesOk = 0, countriesFailed = 0;
   const failedCountries: string[] = [];
 
+  // Status histogram over FAILED price fetches, plus one sample body.
+  //
+  // The 600ms spacing was derived from an assumed 429, but the adapter used to
+  // collapse every failure to null so we never actually saw a status. A 403
+  // (Cloudflare's bot filter) and a 429 (real rate limit) want opposite
+  // responses — more spacing fixes one and does nothing for the other — so the
+  // counters are keyed by whatever status arrives rather than by the two we
+  // happen to expect. `0` is a transport error or timeout.
+  const fetchFaults: Record<string, number> = {};
+  let faultSample: string | null = null;
+  const noteFault = (status: number, error: string) => {
+    const k = String(status);
+    fetchFaults[k] = (fetchFaults[k] ?? 0) + 1;
+    if (!faultSample) faultSample = `${status}: ${error.slice(0, 120)}`;
+  };
+
   for (const [i, c] of countries.entries()) {
     const slug = c.fivesim_country as string;
     if (i > 0) await sleep(CALL_SPACING_MS);
-    let payload = await getPricesForCountry(slug);
-    if (!payload) {
-      // One retry after a longer pause. The dominant failure here is a 429,
-      // and a country dropped from a run is inventory that silently reads as
-      // "5sim does not serve it" for the next hour.
+    let res = await getPricesForCountry(slug);
+    if (!res.ok) {
+      noteFault(res.status, res.error);
+      // One retry after a longer pause. A country dropped from a run is
+      // inventory that silently reads as "5sim does not serve it" for the next
+      // hour, so it is worth one more call even when the status says otherwise.
       await sleep(RETRY_PAUSE_MS);
-      payload = await getPricesForCountry(slug);
+      res = await getPricesForCountry(slug);
+      if (!res.ok) noteFault(res.status, res.error);
     }
-    if (!payload) { countriesFailed++; failedCountries.push(slug); continue; }
+    if (!res.ok) { countriesFailed++; failedCountries.push(slug); continue; }
     countriesOk++;
-    const products = payload[slug] ?? {};
+    const products = res.data[slug] ?? {};
     for (const [product, pools] of Object.entries(products)) {
       const ourServices = svcByProduct.get(product);
       if (!ourServices) continue;
@@ -313,6 +331,9 @@ Deno.serve(async (req) => {
   const out = {
     live, written, countries_ok: countriesOk, countries_failed: countriesFailed,
     failed_countries: failedCountries.slice(0, 10),
+    // Empty {} on a clean run. Anything here is the answer to "is the spacing
+    // fixing a rate limit, or are we being bot-filtered?" — see noteFault.
+    fetch_faults: fetchFaults, fault_sample: faultSample,
     priced_pairs: chosen.size,
     sellable, rated, unrated,
     hidden_no_stock: hiddenNoStock, hidden_blocked: hiddenBlocked, hidden_too_dear: hiddenTooDear,

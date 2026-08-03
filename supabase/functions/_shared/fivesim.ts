@@ -143,11 +143,37 @@ function faultOf(w: Wire): { error: string; errorType?: ProviderErrorType } {
 
 // ── Balance ─────────────────────────────────────────────────────────────────
 
-export async function getBalanceUsd(): Promise<number | null> {
+export interface FiveProfile {
+  balanceUsd: number | null;
+  /** Account standing, 0..96. See `getProfile`. */
+  rating: number | null;
+}
+
+/** Balance AND rating from ONE `user/profile` call.
+ *
+ *  `rating` is a second, independent way to lose the ability to buy, and it is
+ *  invisible in the balance. 5sim starts an account at 96 (also the maximum)
+ *  and moves it per outcome: a completed activation +0.5, a top-up +8, against
+ *  cancel −0.1, ban −0.1 and timeout −0.15. **At zero you cannot purchase at
+ *  all**, and the failure surfaces as `not enough rating` — which
+ *  `classifyFivesimFault` maps to AUTH_ERROR, i.e. it would page as a dead key
+ *  rather than as the slow drift it actually is.
+ *
+ *  We ban dead numbers deliberately (`markDead`), and our cancel rate is high
+ *  because users abandon waits, so this only ever trends down between top-ups.
+ *  Recording it makes the drift observable BEFORE it stops the product; nothing
+ *  gates on it yet, on purpose — the ban is load-bearing for the fresh-number
+ *  guarantee and must not be traded away on a hunch. */
+export async function getProfile(): Promise<FiveProfile | null> {
   const w = await call("user/profile");
   if (w.kind !== "json") return null;
-  const b = (w.data as { balance?: unknown }).balance;
-  return typeof b === "number" && Number.isFinite(b) ? b : null;
+  const d = w.data as { balance?: unknown; rating?: unknown };
+  const num = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : null);
+  return { balanceUsd: num(d.balance), rating: num(d.rating) };
+}
+
+export async function getBalanceUsd(): Promise<number | null> {
+  return (await getProfile())?.balanceUsd ?? null;
 }
 
 // ── Prices (GUEST — no key needed, and none is sent) ─────────────────────────
@@ -162,16 +188,39 @@ export interface FivePool {
 /** country -> product -> operator -> pool */
 export type FivePrices = Record<string, Record<string, Record<string, FivePool>>>;
 
+export type FivePricesResult =
+  | { ok: true; data: FivePrices }
+  | { ok: false; status: number; error: string };
+
 /** One country at a time. The all-countries form is a single 9.1 MB response;
  *  per-country is ~0.1-0.6 MB, which keeps peak memory bounded inside the edge
- *  runtime and lets a partial run still write what it got. */
-export async function getPricesForCountry(country: string): Promise<FivePrices | null> {
+ *  runtime and lets a partial run still write what it got.
+ *
+ *  Returns the STATUS on failure rather than a bare null, because the two
+ *  plausible causes want opposite responses and we could not tell them apart:
+ *  a 429 means back off (our `CALL_SPACING_MS` is the fix), while a 403 is
+ *  Cloudflare's bot filter and no amount of spacing helps. Measured against the
+ *  same URL 4s apart on 2026-08-03: `Python-urllib/3.11` → 403 `error code:
+ *  1010`, while `curl/8.7.1`, `Deno/2.1.4` and an empty UA all → 200. So the
+ *  filter keys on the client string, Deno's default already passes, and we
+ *  deliberately do NOT set an explicit User-Agent — pinning one would be
+ *  choosing a value we would then have to defend against their next rule
+ *  change. The caller histograms these statuses so whatever actually happens
+ *  is visible, including causes neither of us guessed. */
+export async function getPricesForCountry(country: string): Promise<FivePricesResult> {
   const w = await call(`guest/prices?country=${encodeURIComponent(country)}`, TIMEOUT_MS, false);
   if (w.kind !== "json") {
-    console.warn(`5sim: prices fetch failed for ${country}:`, faultOf(w).error);
-    return null;
+    const f = faultOf(w);
+    // A transport fault (DNS, connection reset, abort on TIMEOUT_MS) carries no
+    // HTTP status at all. It buckets as 0 rather than being folded into a real
+    // status — "the request never completed" is a different diagnosis from any
+    // answer the server gave us, and conflating them is what would send us
+    // tuning spacing against a network problem.
+    const status = w.kind === "text" ? w.status : 0;
+    console.warn(`5sim: prices fetch failed for ${country} status=${status}:`, f.error);
+    return { ok: false, status, error: f.error };
   }
-  return w.data as FivePrices;
+  return { ok: true, data: w.data as FivePrices };
 }
 
 // ── Purchase ────────────────────────────────────────────────────────────────

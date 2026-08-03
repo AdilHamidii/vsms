@@ -689,26 +689,49 @@ final class AppState {
                          : (2, 0, price)                    // country measured 0
     }
 
-    /// As `untestedKey`, but with the PROVIDER's ranking inserted ahead of
-    /// price. Used wherever we are choosing between routes we have never sold.
+    /// As `untestedKey`, but ranked FIRST by the provider's published delivery
+    /// rate for the exact pool this route buys from. Used wherever we are
+    /// choosing between routes we have never sold.
     ///
-    /// Ordering is (country tier, vendor score, country score, price). Vendor
-    /// data outranks price and outranks a country-level record, because it is
-    /// specific to THIS (service, country) pair while `countryRatio` is that
-    /// country's record across every service.
+    /// Ordering is (pool tier, pool rate, country tier, country record, price).
     ///
-    /// Measured 2026-07-31, and this is the whole reason it exists: for
-    /// `google` the cheapest bookable route was Kenya at 1 credit, which has
-    /// delivered 0 of 9. Cameroon costs 2 credits and the provider reports
-    /// 59.3%. Price picked Kenya every time.
+    /// Measured 2026-07-31, and this is the whole reason a vendor rate sits
+    /// ahead of price: for `google` the cheapest bookable route was Kenya at 1
+    /// credit, which has delivered 0 of 9. Cameroon costs 2 credits and the
+    /// provider reports 59.3%. Price picked Kenya every time.
     ///
-    /// A missing rank scores 0 — NEUTRAL, never a penalty. The source is a
-    /// top-10 list gated at 50+ activations, so absence carries no information
-    /// and must not push a route below one that merely happens to be listed.
-    private func rankedUntestedKey(_ service: Service, _ country: Country, price: Int) -> (Int, Int, Int, Int) {
-        let vendor = -Int((rank(for: service, country: country)?.vendorPercent ?? 0).rounded())
+    /// Two things changed on 2026-08-03, both of which were steering wrong:
+    ///
+    ///  1. It read `service_country_ranks` (1,043 rows) while the row in front
+    ///     of the user renders `routes.pool_rate_pct` (2,715 rows). So 1,672
+    ///     active routes showed a real percentage that the ranker scored as 0 —
+    ///     the list and the default pick were reading two different tables.
+    ///     Where both exist they agree exactly, so this is a pure coverage win.
+    ///
+    ///  2. The COUNTRY tier came first, and country evidence is a cross-service
+    ///     roll-up over a handful of orders. The UK (3 attempts, 0 codes) and
+    ///     the US (4, 0) therefore sorted BELOW countries we know nothing about,
+    ///     while holding some of the best-rated pools in the catalog. A
+    ///     pair-specific rate outranks a country-wide one, so the country tier
+    ///     now only breaks ties between equally-rated pools.
+    ///
+    /// A published 0% sorts LAST, below unrated. That deliberately differs from
+    /// CountrySheet's "Best success" sort, which lists 0% above unrated because
+    /// the owner asked for measured values in descending order. The difference
+    /// is between a list the user scrolls and a choice we make FOR them: 1,184
+    /// of the 2,715 rated routes publish exactly 0, and defaulting someone onto
+    /// inventory the vendor itself reports as dead is the same error as the old
+    /// cheapest-first rule. "No information" beats "reported dead".
+    private func rankedUntestedKey(_ service: Service, _ country: Country,
+                                   price: Int) -> (Int, Int, Int, Int, Int) {
         let base = untestedKey(country, price: price)
-        return (base.0, vendor, base.1, price)
+        let poolTier: Int, poolScore: Int
+        switch poolRate(for: service, country: country) {
+        case .some(let pct) where pct > 0: (poolTier, poolScore) = (0, -pct)
+        case .some:                        (poolTier, poolScore) = (2, 0)  // published 0%
+        case .none:                        (poolTier, poolScore) = (1, 0)  // unrated
+        }
+        return (poolTier, poolScore, base.0, base.1, price)
     }
 
     /// The provider's rate for one pair, or nil when it is not in their top 10.
@@ -954,11 +977,31 @@ final class AppState {
 
     /// Affordable country for `service`, chosen by the same evidence-first rule
     /// as `bestCountry(for:)` rather than by lowest price.
+    ///
+    /// The last tier ignores `balance` entirely, and that is the point. Both
+    /// tiers above it are bounded by `price <= balance`, so when the balance is
+    /// ZERO they return nil for every route in the catalog — `affordableStarter`
+    /// then walks all 265 services, gets nil from each, and leaves the SEED
+    /// default in place. That seed is whatsapp/us, which is `hidden`, so
+    /// `cost()` returns nil and a brand-new user's very first screen renders its
+    /// primary CTA as **"Unavailable"**.
+    ///
+    /// That was survivable while the signup grant was 3–5 credits and this path
+    /// was rare. The grant went to 0 on 2026-08-03 (`20260803070000`), so it is
+    /// now what EVERY new user sees — on a product whose activation is a
+    /// single-session event with a median signup→first-order of 123 seconds.
+    ///
+    /// Returning an unaffordable-but-real route instead is strictly better: the
+    /// CTA becomes a priced "Need N more credits" that opens the credits sheet,
+    /// which is an honest description of the situation and a way out of it.
+    /// "Unavailable" is neither — it reads as "this product is broken".
     private func bestAffordableCountry(for service: Service) -> Country? {
-        guard let best = bestCountry(for: service),
-              let c = cost(for: service, country: best), c <= balance
-        else { return affordableFallbackCountry(for: service) }
-        return best
+        if let best = bestCountry(for: service),
+           let c = cost(for: service, country: best), c <= balance {
+            return best
+        }
+        if let affordable = affordableFallbackCountry(for: service) { return affordable }
+        return bestCountry(for: service)
     }
 
     /// Best country for `service` the current balance can actually reach.
@@ -986,18 +1029,18 @@ final class AppState {
     /// inventory is a pricing question (grant size vs route price), not a
     /// ranking one.
     private func affordableFallbackCountry(for service: Service) -> Country? {
-        var best: (country: Country, key: (Int, Int, Int, Int))?
+        var best: (country: Country, key: (Int, Int, Int, Int, Int))?
         for c in countries {
             guard let price = cost(for: service, country: c), price <= balance else { continue }
-            let key: (Int, Int, Int, Int)
+            let key: (Int, Int, Int, Int, Int)
             if let ratio = deliveryRecord(for: service, country: c).ratio {
                 // Route-level zero is stronger evidence than country-level
                 // zero, so it sorts BELOW an untested route in a bad country.
                 // Our OWN measurement always outranks the provider's, so the
                 // vendor slot is neutral here — these two branches are decided
                 // by orders we actually placed.
-                key = ratio > 0 ? (0, 0, -Int(ratio * 100), price)   // proven
-                                : (4, 0, 0, price)                   // proven-bad
+                key = ratio > 0 ? (0, 0, 0, -Int(ratio * 100), price)   // proven
+                                : (4, 0, 0, 0, price)                   // proven-bad
             } else {
                 // Untested: the provider's ranking first, then the country's
                 // own record, then price. Offset by 1 so a route with NO record
@@ -1009,7 +1052,7 @@ final class AppState {
                 // reached google/ke (1 cr, 0 of 9) instead of google/cm (2 cr,
                 // provider reports 59.3%).
                 let k = rankedUntestedKey(service, c, price: price)
-                key = (k.0 + 1, k.1, k.2, k.3)
+                key = (k.0 + 1, k.1, k.2, k.3, k.4)
             }
             if best == nil || key < best!.key { best = (c, key) }
         }
@@ -1668,16 +1711,22 @@ final class AppState {
             //     happen in the first place. Retrying into the same bargain
             //     bin is the worst possible answer here.
             //
-            // Same tiering as bestCountry / CountrySheet: proven → untested
-            // ranked by the COUNTRY's record → measured-failing.
-            func retryKey(_ c: Country) -> (Int, Int, Int) {
+            // Same tiering as bestCountry / affordableFallbackCountry: proven →
+            // untested ranked by the POOL's published rate → measured-failing.
+            //
+            //  d. It ranked untested routes by the COUNTRY's record alone, so
+            //     it could not see `pool_rate_pct` at all — the very number the
+            //     retry screen is about to show the user. Retrying onto a pool
+            //     the provider reports at 0% while an 80% pool sat one row down
+            //     is the same dead end as (c), one signal later.
+            func retryKey(_ c: Country) -> (Int, Int, Int, Int, Int) {
                 let price = cost(for: svc, country: c) ?? .max
                 guard let ratio = deliveryRecord(for: svc, country: c).ratio else {
-                    let k = untestedKey(c, price: price)
-                    return (k.0 + 1, k.1, k.2)                     // untested
+                    let k = rankedUntestedKey(svc, c, price: price)
+                    return (k.0 + 1, k.1, k.2, k.3, k.4)              // untested
                 }
-                return ratio > 0 ? (0, -Int(ratio * 100), price)   // proven
-                                 : (4, 0, price)                   // proven-bad
+                return ratio > 0 ? (0, 0, 0, -Int(ratio * 100), price)   // proven
+                                 : (4, 0, 0, 0, price)                   // proven-bad
             }
             next = alternatives.min { retryKey($0) < retryKey($1) } ?? order.country
         }
