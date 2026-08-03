@@ -74,36 +74,85 @@ interface Chosen {
 
 /** Pick the pool create-order should pin.
  *
- *  Rated pools win outright, best rate first. Only when NO pool clears the
- *  stock floor with a published rate do we fall back to the most-stocked pool
- *  and record `ratePct = null` — which means "unrated", never "0%". Those
- *  routes are still sold and simply rank last (owner decision 2026-08-03).
+ *  THREE tiers, and the middle one is the whole point:
+ *    1. pools publishing a rate ABOVE zero, best first;
+ *    2. no positive pool -> the most-stocked pool with NO published rate;
+ *    3. only zero-rated pools exist -> take the most-stocked of those.
+ *
+ *  Tier 2 exists because a published 0 and an absent rate are DIFFERENT CLAIMS.
+ *  Measured across all 171,804 pools in the feed, rate-field presence is
+ *  perfectly nested by window length — ZERO monotonicity violations — which is
+ *  the signature of "emitted only if there was activity in that window". So an
+ *  absent rate720 means no activations in 30 days, while a published 0 means
+ *  activations happened and none delivered.
+ *
+ *  The old filter was `typeof v.rate720 === "number"`, which INCLUDES 0. That
+ *  ranked a pool the vendor says delivers nothing above a pool it has never
+ *  reported on, and never even evaluated the latter: 844 active routes picked a
+ *  0% pool while an unrated in-stock alternative sat there holding a MEDIAN
+ *  271x the numbers (olx/finland pinned virtual4 at 0% against virtual34's
+ *  8.6M). It also inverted this codebase's own rule that absence means "too few
+ *  orders", never "bad".
+ *
+ *  It is also a repricing, because cost derives from chain[0]: of the affected
+ *  routes 469 get CHEAPER, median -1 credit.
+ *
+ *  ⚠️ Caveat worth knowing before trusting any of these numbers: 66% of every
+ *  published rate720 in the feed is exactly 0, and the values cluster on tiny
+ *  denominators (4.76 = 1/21, 33.33 = 1/3), so many zeros are 0-of-3.
+ *  MIN_POOL_STOCK guards STOCK, not sample size; nothing bounds that yet.
  */
 function choosePool(pools: Record<string, FivePool>): Chosen | null {
   const inStock = Object.entries(pools)
     .filter(([, v]) => Number.isFinite(v.cost) && v.cost > 0 && (v.count ?? 0) > 0);
   if (!inStock.length) return null;
 
-  const rated = inStock
-    .filter(([, v]) => (v.count ?? 0) >= MIN_POOL_STOCK && typeof v.rate720 === "number")
-    .sort((a, b) => (b[1].rate720 as number) - (a[1].rate720 as number));
+  const stocked = inStock.filter(([, v]) => (v.count ?? 0) >= MIN_POOL_STOCK);
 
-  if (rated.length) {
-    const [op, v] = rated[0];
+  // A fallback pool we could never afford is dead weight: create-order's
+  // ceiling is min(credits*0.03*3 + 0.10, credits*0.15) with credits derived
+  // from the HEAD's cost, so any chain member above 3x head + $0.10 is refused
+  // on arrival and only spends a round trip. Verified: 54 active routes carry
+  // such a member today.
+  const affordable = (headCost: number, list: [string, FivePool][]) =>
+    list.filter(([, v], i) => i === 0 || v.cost <= headCost * 3 + 0.10);
+
+  // Tier 1: a rate we can actually act on.
+  const positive = stocked
+    .filter(([, v]) => typeof v.rate720 === "number" && (v.rate720 as number) > 0)
+    .sort((a, b) => (b[1].rate720 as number) - (a[1].rate720 as number));
+  if (positive.length) {
+    const [, v] = positive[0];
     return {
-      chain: rated.slice(0, 3).map(([o]) => o),
-      costUsd: v.cost,
-      stock: v.count ?? 0,
+      chain: affordable(v.cost, positive).slice(0, 3).map(([o]) => o),
+      costUsd: v.cost, stock: v.count ?? 0,
       ratePct: Math.round(v.rate720 as number),
     };
   }
-  const byStock = inStock.sort((a, b) => (b[1].count ?? 0) - (a[1].count ?? 0));
-  const [op, v] = byStock[0];
+
+  // Tier 2: unmeasured beats measured-dead. ratePct stays NULL — we are not
+  // claiming anything about it, and the picker renders nothing rather than 0%.
+  const unrated = stocked
+    .filter(([, v]) => typeof v.rate720 !== "number")
+    .sort((a, b) => (b[1].count ?? 0) - (a[1].count ?? 0));
+  if (unrated.length) {
+    const [, v] = unrated[0];
+    return {
+      chain: affordable(v.cost, unrated).slice(0, 3).map(([o]) => o),
+      costUsd: v.cost, stock: v.count ?? 0, ratePct: null,
+    };
+  }
+
+  // Tier 3: everything here is a published zero. Take the deepest pool and keep
+  // the 0 on the label — it IS the vendor's verdict, and the row should say so.
+  const byStock = (stocked.length ? stocked : inStock)
+    .sort((a, b) => (b[1].count ?? 0) - (a[1].count ?? 0));
+  const [, v] = byStock[0];
+  const r = v.rate720;
   return {
     chain: byStock.slice(0, 3).map(([o]) => o),
-    costUsd: v.cost,
-    stock: v.count ?? 0,
-    ratePct: null,
+    costUsd: v.cost, stock: v.count ?? 0,
+    ratePct: typeof r === "number" ? Math.round(r) : null,
   };
 }
 

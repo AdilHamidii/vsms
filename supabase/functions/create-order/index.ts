@@ -306,7 +306,7 @@ Deno.serve(async (req) => {
 
   const { data: route, error: rErr } = await sb
     .from("routes")
-    .select("retail_credits, status, last_cost_cents, fivesim_cost_cents, pool_operator, herosms_cost_cents, herosms_physical_count, herosms_real_operator, herosms_real_operators, real_sim_only, provider, smspool_pool, smspva_operator, smspva_operator_cents, premium_credits")
+    .select("retail_credits, status, last_cost_cents, fivesim_cost_cents, pool_operator, pool_rate_pct, herosms_cost_cents, herosms_physical_count, herosms_real_operator, herosms_real_operators, real_sim_only, provider, smspool_pool, smspva_operator, smspva_operator_cents, premium_credits")
     .eq("service_id", service.id)
     .eq("country_id", country.id)
     .maybeSingle();
@@ -1125,6 +1125,12 @@ Deno.serve(async (req) => {
       // believed — without it we would hide inventory on a plausible story and
       // never be able to tell whether it helped. Null means "not recorded",
       // never "no real SIMs".
+      // The rate the route was SOLD on, and the chain we asked for. sync-5sim
+      // rewrites `routes` hourly, so without these the number that drove the
+      // pick — and that the picker showed the user as a colour — is gone within
+      // the hour and rate720 can never be tested against real delivery.
+      pool_rate_pct: route.pool_rate_pct ?? null,
+      pool_pinned: (route.pool_operator as string | null) ?? null,
       route_physical_count: (route.herosms_physical_count as number | null) ?? null,
       // The carrier that ACTUALLY filled, straight from getNumberV2's
       // `activationOperator` ("any" when unpinned). This is the control arm the
