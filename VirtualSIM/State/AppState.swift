@@ -972,36 +972,50 @@ final class AppState {
                 return (svc, cty)
             }
         }
+
+        // SECOND PASS, ignoring balance entirely.
+        //
+        // Everything above is bounded by `price <= balance`, so at a ZERO
+        // balance every service returns nil and we used to fall through to
+        // `return nil` — which leaves the SEED default in place. That seed is
+        // whatsapp/us, which is `hidden`, so `cost()` returns nil and a
+        // brand-new user's very first screen renders its primary CTA as a
+        // disabled **"Unavailable / Pick another country"**.
+        //
+        // Survivable while the signup grant was 3–5 credits and this path was
+        // rare. The grant went to 0 on 2026-08-03 (`20260803070000`), so it is
+        // now what EVERY new user sees — on a product whose activation is a
+        // single-session event with a median signup→first-order of 123 seconds.
+        //
+        // An unaffordable but REAL route is strictly better: the CTA becomes a
+        // priced "Buy credits / Need N more" that opens the credits sheet. That
+        // is an honest description of the situation and a way out of it.
+        // "Unavailable" is neither — it reads as "this product is broken".
+        for id in preferred {
+            if let svc = services.first(where: { $0.id == id }),
+               let cty = bestCountry(for: svc) {
+                return (svc, cty)
+            }
+        }
+        for svc in services {
+            if let cty = bestCountry(for: svc) { return (svc, cty) }
+        }
         return nil
     }
 
     /// Affordable country for `service`, chosen by the same evidence-first rule
     /// as `bestCountry(for:)` rather than by lowest price.
     ///
-    /// The last tier ignores `balance` entirely, and that is the point. Both
-    /// tiers above it are bounded by `price <= balance`, so when the balance is
-    /// ZERO they return nil for every route in the catalog — `affordableStarter`
-    /// then walks all 265 services, gets nil from each, and leaves the SEED
-    /// default in place. That seed is whatsapp/us, which is `hidden`, so
-    /// `cost()` returns nil and a brand-new user's very first screen renders its
-    /// primary CTA as **"Unavailable"**.
-    ///
-    /// That was survivable while the signup grant was 3–5 credits and this path
-    /// was rare. The grant went to 0 on 2026-08-03 (`20260803070000`), so it is
-    /// now what EVERY new user sees — on a product whose activation is a
-    /// single-session event with a median signup→first-order of 123 seconds.
-    ///
-    /// Returning an unaffordable-but-real route instead is strictly better: the
-    /// CTA becomes a priced "Need N more credits" that opens the credits sheet,
-    /// which is an honest description of the situation and a way out of it.
-    /// "Unavailable" is neither — it reads as "this product is broken".
+    /// nil means "nothing here is within `balance`", which is what lets
+    /// `affordableStarter` move on and try another service. Do NOT make this
+    /// fall back to an unaffordable route — that search is the whole point of
+    /// the first pass, and collapsing it would pin every user to the first
+    /// preferred service regardless of what they can buy.
     private func bestAffordableCountry(for service: Service) -> Country? {
-        if let best = bestCountry(for: service),
-           let c = cost(for: service, country: best), c <= balance {
-            return best
-        }
-        if let affordable = affordableFallbackCountry(for: service) { return affordable }
-        return bestCountry(for: service)
+        guard let best = bestCountry(for: service),
+              let c = cost(for: service, country: best), c <= balance
+        else { return affordableFallbackCountry(for: service) }
+        return best
     }
 
     /// Best country for `service` the current balance can actually reach.
