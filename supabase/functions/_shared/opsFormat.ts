@@ -25,8 +25,7 @@ interface Snapshot {
   };
   esims?: { count?: number; credits?: number };
   herosms_usd?: number | null;
-  smspva_usd?: number | null;
-  smspool_usd?: number | null;
+  fivesim_usd?: number | null;
 }
 
 /** Roughly what a credit is worth in gross revenue, for a readable estimate
@@ -48,9 +47,11 @@ const LOW_BALANCE_USD = 37.5;
  *  anonymous number — the migration of 2026-07-21 swapped these roles and the
  *  digest silently kept reporting the old one. */
 const ROLE: Record<string, string> = {
-  herosms: "SMS",
-  smspva: "SMS fallback",
-  smspool: "eSIM",
+  // 5sim serves every SMS order since the 2026-08-03 cutover. HeroSMS is NOT
+  // retired — it runs the temp-EMAIL line on the same account and balance, so
+  // its reading is still load-bearing, just for a different product.
+  "5sim": "SMS",
+  herosms: "e-mail",
 };
 
 export function balanceLine(name: string, usd: number | null | undefined): string {
@@ -310,9 +311,11 @@ export function formatDigest(raw: Record<string, unknown>): string {
 
   lines.push("");
   // HeroSMS first — it serves SMS for the services carrying 99.4% of volume.
+  // SMSPVA and SMSPool are gone from this block on purpose: SMSPVA no longer
+  // serves anything and eSIMs are paused, so their balances were two lines of
+  // noise on the one channel that has to stay readable.
+  lines.push(balanceLine("5sim", s.fivesim_usd));
   lines.push(balanceLine("HeroSMS", s.herosms_usd));
-  lines.push(balanceLine("SMSPVA", s.smspva_usd));
-  lines.push(balanceLine("SMSPool", s.smspool_usd));
 
   return lines.join("\n");
 }

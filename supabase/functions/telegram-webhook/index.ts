@@ -199,7 +199,7 @@ Deno.serve(async (req) => {
     // (SMSPVA) was not shown at all.
     const { data: rows } = await sb
       .from("app_config").select("key, value")
-      .in("key", ["herosms_health", "smspva_health", "smspool_health"]);
+      .in("key", ["5sim_health", "herosms_health"]);
 
     const read = (k: string) => {
       const v = (rows ?? []).find((r) => r.key === k)?.value as
@@ -214,13 +214,16 @@ Deno.serve(async (req) => {
     const FRESH_MS = 10 * 60 * 1000;
     const fresh = (v: { checked_at?: string } | null) =>
       !!v?.checked_at && Date.now() - new Date(v.checked_at).getTime() <= FRESH_MS;
+    // Only the two balances that still fund something: 5sim buys every SMS,
+    // HeroSMS funds the temp-EMAIL line on its own account. SMSPVA serves
+    // nothing now and eSIMs are paused, so printing those two was noise on the
+    // one channel that has to stay readable at a glance.
+    const fiveRaw = read("5sim_health");
     const heroRaw = read("herosms_health");
-    const pvaRaw = read("smspva_health"), poolRaw = read("smspool_health");
+    const five = fresh(fiveRaw) ? fiveRaw : null;
     const hero = fresh(heroRaw) ? heroRaw : null;
-    const pva = fresh(pvaRaw) ? pvaRaw : null;
-    const pool = fresh(poolRaw) ? poolRaw : null;
-    const checked = heroRaw?.checked_at ?? pvaRaw?.checked_at ?? poolRaw?.checked_at;
-    const stalePoller = (heroRaw || pvaRaw || poolRaw) && !hero && !pva && !pool;
+    const checked = fiveRaw?.checked_at ?? heroRaw?.checked_at;
+    const stalePoller = (fiveRaw || heroRaw) && !five && !hero;
 
     // Surface the watchdog verdict here too — /balance is the owner's "is
     // everything alive" reflex, so it should answer for the jobs as well.
@@ -237,9 +240,8 @@ Deno.serve(async (req) => {
     reply = [
       // HeroSMS first: it serves SMS for 150 services carrying 99.4% of order
       // volume, so it is the number that answers "can we sell right now".
+      balanceLine("5sim", five?.balance_usd),
       balanceLine("HeroSMS", hero?.balance_usd),
-      balanceLine("SMSPVA", pva?.balance_usd),
-      balanceLine("SMSPool", pool?.balance_usd),
       stalePoller ? "⚠️ balance readings are STALE — the poller may be dead" : "",
       failing.length > 0
         ? `🚨 watchdog: ${esc(failing.join(", "))}`

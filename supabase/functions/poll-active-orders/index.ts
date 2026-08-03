@@ -7,6 +7,7 @@ import { admin } from "../_shared/supabaseAdmin.ts";
 import { markDead, markSuccess, poll, type OrderProvider } from "../_shared/providers.ts";
 import { getBalanceUsd } from "../_shared/smspool.ts";
 import { getBalanceUsd as getHeroBalanceUsd } from "../_shared/herosms.ts";
+import { getBalanceUsd as getFivesimBalanceUsd } from "../_shared/fivesim.ts";
 import { getBalance as getSmspvaBalance, isOk } from "../_shared/smspva.ts";
 import { sendPush } from "../_shared/apns.ts";
 import { notifySafe, esc } from "../_shared/telegram.ts";
@@ -229,26 +230,14 @@ Deno.serve(async (req) => {
   //    order volume — at the 150s worker kill it would silently stop, and a
   //    frozen reading is indistinguishable from a healthy provider.
   await Promise.all([
-    recordBalance("smspva_health", "SMSPVA (SMS)", async () => {
-      // SMSPVA wraps every response in {statusCode, data} — the balance is at
-      // r.data.balance, NOT r.balance. Reading the wrong level yields NaN and
-      // writes nothing at all, which looks identical to "provider is fine".
-      const r = await getSmspvaBalance();
-      if (!isOk(r)) {
-        console.error("smspva balance error:", JSON.stringify(r));
-        return null;
-      }
-      const n = Number(r.data?.balance);
-      return Number.isFinite(n) ? n : null;
-    }),
-    recordBalance("smspool_health", "SMSPool (eSIM)", getBalanceUsd),
-    // HeroSMS serves 100% of SMS for the services it carries. Monitoring it is
-    // not optional: CLAUDE.md records that an ABSENT balance line reads as
-    // healthy, which is exactly how SMSPVA went unmonitored while serving all
-    // SMS. `balanceLine` renders a missing reading as "no reading" rather than
-    // omitting it, so registering the key here is what makes a dry HeroSMS
-    // visible at all.
-    recordBalance("herosms_health", "HeroSMS (SMS)", getHeroBalanceUsd),
+    // 5sim serves ALL SMS. This key is also what create-order's pre-charge
+    // balance guard reads (`${providers[0]}_health`) — without it that guard
+    // fails OPEN, so a dry balance charges the user and refunds instead of
+    // refusing. It was missing from the cutover.
+    recordBalance("5sim_health", "5sim (SMS)", getFivesimBalanceUsd),
+    // HeroSMS is NOT retired: it serves the temp-EMAIL line on the same
+    // account and balance, so this reading still matters.
+    recordBalance("herosms_health", "HeroSMS (e-mail)", getHeroBalanceUsd),
   ]);
 
   // ── Auto-expire overdue orders. Each expiry is an atomic claim (flip
