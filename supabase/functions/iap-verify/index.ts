@@ -64,8 +64,15 @@ Deno.serve(async (req) => {
     const code = e instanceof IapVerificationError ? e.code : "unknown";
     console.error(`iap verification REJECTED user=${userId} code=${code}`, String(e));
     try {
+      // The DETAIL, not just the code. `chain_verify_failed` alone is
+      // unactionable: it is thrown whenever the certificate walk raises, and
+      // the reason — wrong root, unsupported curve, a locally-signed StoreKit
+      // test receipt — lives only in the exception message, which until now
+      // went to a function log nobody reads at 3am. Diagnosing this from the
+      // code alone produced one wrong answer already.
       EdgeRuntime.waitUntil(notifySafe(
         `🚨 <b>IAP verification rejected</b>\ncode: ${esc(code)}\nuser: ${esc(userId)}\n` +
+        `detail: <code>${esc(String(e).slice(0, 300))}</code>\n` +
         `<i>If this is a real buyer, credit them manually — StoreKit will keep retrying.</i>`,
       ));
     } catch { /* alerting must never mask the response */ }

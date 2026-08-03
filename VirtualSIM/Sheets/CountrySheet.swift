@@ -234,8 +234,9 @@ private struct CountryRow: View {
     let isLast: Bool
     let onTap: () -> Void
 
-    /// Colour bands for the pool's published rate: >75 green, 40-75 amber,
-    /// <40 red (owner decision, 2026-08-03).
+    /// Colour bands for the pool's published rate: >60 green, 30-60 amber,
+    /// <30 red (owner decision, 2026-08-03; first set at 75/40, lowered the
+    /// same day because 84% of rated routes fell in the red band).
     ///
     /// These are the SAME semantic colours SuccessBadge uses for OUR measured
     /// record, and at nearly the same thresholds (>=70 / >=40). So on a row
@@ -245,8 +246,8 @@ private struct CountryRow: View {
     /// that a third party's number must never wear `theme.live`; this is a
     /// deliberate exception, not an oversight.
     private func poolRateColor(_ pct: Int) -> Color {
-        if pct > 75 { return theme.live }
-        if pct >= 40 { return theme.warn }
+        if pct > 60 { return theme.live }
+        if pct >= 30 { return theme.warn }
         return theme.fail
     }
 
