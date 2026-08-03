@@ -41,6 +41,37 @@ const BALANCE_TIERS = [
   MAX_ORDER_COST_USD,            //  7.50
 ];
 
+// ── HeroSMS fail-fast ───────────────────────────────────────────────────────
+//
+// How long a HeroSMS order may sit with a number and no code before we refund
+// it and let the user move on. PER PROVIDER on purpose, and the asymmetry is
+// measured, not assumed (2026-08-03, every order since the 07-30 cutover):
+//
+//   of orders still ALIVE at 90s, how many EVER delivered
+//     HeroSMS   0 of 22   (0%)      every code it has ever sent: 19s-86s
+//     SMSPVA   11 of 49  (22%)      codes as late as 337s
+//   Fisher exact p = 0.014
+//
+// Seven HeroSMS orders ran the full 8-minute window for nothing — 59.5 minutes
+// of users watching a screen whose outcome was already fixed, while the credits
+// they could have retried with sat locked in a dead order.
+//
+// 150s is ~1.7x the slowest code HeroSMS has ever sent. The threshold is
+// deliberately not agonised over, because being wrong about it costs nothing:
+// `expire_order_early_claim` keeps `late_watch_until`, so the number stays
+// reserved and polled until its ORIGINAL deadline and any late code is still
+// handed over free (the same rescue path a user cancel uses). The only thing
+// that moves earlier is the refund. 0 of 22 is a small sample — the rule of
+// three puts the upper bound on late HeroSMS delivery at 13.6% — and the
+// rescue is exactly what makes that uncertainty affordable.
+//
+// SMSPVA is deliberately excluded. Applying this to a provider that delivers
+// 22% of its remaining orders after 90s would destroy real codes.
+const FAIL_FAST_SECONDS_BY_PROVIDER: Record<string, number> = { herosms: 150 };
+// Small on purpose: each one is an RPC plus an APNs fan-out, and it must never
+// crowd out the polling loop below, which is what delivers codes.
+const FAIL_FAST_LIMIT = 25;
+
 function validateCronSecret(req: Request): boolean {
   const header = req.headers.get("x-cron-secret");
   const expected = Deno.env.get("CRON_SECRET");
@@ -306,6 +337,78 @@ Deno.serve(async (req) => {
     }
   }
 
+  // ── Fail-fast: refund a HeroSMS order once it is past the point where a code
+  //    has ever arrived, WITHOUT giving up the number. See
+  //    FAIL_FAST_SECONDS_BY_PROVIDER for the measurement.
+  //
+  //    Runs after the natural-expiry sweep and before the rescue below, so an
+  //    order closed here is already eligible for rescue in the SAME run.
+  //
+  //    `expires_at > now` is what keeps the two sweeps disjoint: anything past
+  //    its real deadline belongs to the sweep above, which markDead()s the
+  //    number to reclaim the wholesale. Here we must NOT release it.
+  let failedFast = 0;
+  const ffProviders = Object.keys(FAIL_FAST_SECONDS_BY_PROVIDER);
+  const ffMinSeconds = Math.min(...Object.values(FAIL_FAST_SECONDS_BY_PROVIDER));
+  const { data: ffCandidates, error: ffErr } = await sb
+    .from("orders")
+    .select("id, user_id, cost_credits, provider, created_at, service:service_id ( name )")
+    .eq("status", "waiting")
+    .in("provider", ffProviders)
+    .not("smspva_number", "is", null)
+    .lt("created_at", new Date(Date.now() - ffMinSeconds * 1000).toISOString())
+    .gt("expires_at", new Date().toISOString())
+    .order("created_at", { ascending: true })
+    .limit(FAIL_FAST_LIMIT);
+  // Same reasoning as the expiry select: a failed read returns 200 {fail_fast:0},
+  // which is indistinguishable from a quiet minute. Surface it.
+  if (ffErr) {
+    console.error("poll: fail-fast candidate select FAILED — no orders closed early this run", ffErr);
+  }
+
+  for (const row of ffCandidates ?? []) {
+    try {
+      // The select uses the SHORTEST threshold across providers so one query
+      // serves them all; re-check this row's own provider before acting.
+      const limitS = FAIL_FAST_SECONDS_BY_PROVIDER[row.provider ?? ""];
+      if (limitS == null) continue;
+      const heldS = (Date.now() - new Date(row.created_at as string).getTime()) / 1000;
+      if (heldS < limitS) continue;
+
+      // Refund + close + stamp late_watch_until in ONE transaction. A failed
+      // wallet_credit RAISES inside the function and rolls the status flip back
+      // to 'waiting', so the order is retried next minute rather than sitting
+      // terminal and unrefundable. false = someone else already claimed it —
+      // most likely the code landed, which is precisely the race we must lose
+      // quietly.
+      const { data: closed, error: ffRpcErr } = await sb
+        .rpc("expire_order_early_claim", { p_order: row.id });
+      if (ffRpcErr) {
+        console.error(`poll: FAIL-FAST REFUND FAILED order=${row.id} user=${row.user_id} ` +
+                      `credits=${row.cost_credits}: ${ffRpcErr.message}`);
+        continue;   // no count, and above all no "you were refunded" push
+      }
+      if (!closed) continue;
+      failedFast++;
+
+      const svc = row.service as { name: string } | null;
+      // Same title as the natural expiry: to the user these are the same event
+      // ("no code came, you have your credits back"), and inventing a second
+      // vocabulary for it would only raise the question of what the difference
+      // is. The number is still being watched, so a late code arrives as its
+      // own push — deliberately not promised here, because it usually does not
+      // happen and a promise we keep 0% of the time is worse than silence.
+      pushSent += await notify(
+        row.user_id,
+        "No code arrived",
+        `Your ${svc?.name ?? "verification"} number didn't get a code — ${row.cost_credits} credits refunded. You can try again now.`,
+        { event: "expired", orderId: row.id },
+      );
+    } catch (e) {
+      console.error("fail-fast failed for order", row.id, e);
+    }
+  }
+
   // NOTE ON ORDERING: this runs BEFORE the main polling loop, not after.
   //
   // It was last, behind up to 200 expiry claims and 50 sequential provider
@@ -334,7 +437,15 @@ Deno.serve(async (req) => {
     .select("id, user_id, cost_credits, provider, smspva_id, late_watch_until, service:service_id ( name )")
     .not("late_watch_until", "is", null)
     .is("otp", null)
-    .eq("status", "canceled")
+    // 'expired' as well as 'canceled' since the fail-fast sweep above: it
+    // closes a dead HeroSMS order as 'expired' and KEEPS the number, so
+    // filtering on 'canceled' alone would have made this sweep skip exactly
+    // those rows — no rescue, and nothing to ever release the number, because
+    // markDead() below is the only thing that does. Safe to widen: nothing
+    // else writes late_watch_until on an expired row (the natural-expiry sweep
+    // releases the number itself and leaves the column null), so this still
+    // matches only rows a close path deliberately handed over.
+    .in("status", ["canceled", "expired"])
     .order("late_watch_until", { ascending: true })
     .limit(50);
   if (lateErr) console.error("poll: late-watch select failed", lateErr);
@@ -485,5 +596,10 @@ Deno.serve(async (req) => {
     }
   }
 
-  return json({ expired, polled, arrived, pushSent, rescued, lateReleased });
+  // `failedFast` is reported separately from `expired` on purpose: they are the
+  // same status but different decisions, and collapsing them would hide whether
+  // the fail-fast rule is firing at all. Watch it against `rescued` — a rescue
+  // rate that climbs means 150s is cutting into real deliveries and the
+  // threshold is wrong.
+  return json({ expired, failedFast, polled, arrived, pushSent, rescued, lateReleased });
 });

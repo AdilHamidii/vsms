@@ -75,6 +75,32 @@ Deno.serve(async (req) => {
   let routesSeeded = 0;
   let fetchErrors = 0;
 
+  // A seeded rate may only exist on the provider that seeded it.
+  //
+  // Every statement below is scoped `.eq("provider","smspva")`, which is right
+  // — but it leaves a hole this function is the only one able to close: when a
+  // route is RE-HOMED to another provider it leaves that scope carrying the
+  // grade with it, and the clearing pass can never reach it again. Measured
+  // 2026-08-03, after the HeroSMS cutover: 285 active HeroSMS routes still held
+  // an SMSPVA seeded rate, 176 of them reading 70%+, while the only HeroSMS
+  // routes with real MEASURED evidence all read 0%.
+  //
+  // Runs once per invocation, not per service code — it is a single indexed
+  // UPDATE that normally matches nothing, and scoping it to this run's batch
+  // would leave rows for services the cursor has not reached in weeks.
+  // Deliberately NOT fatal: this is hygiene, and failing the whole seeding run
+  // over it would trade live data for dead data.
+  const { error: foreignErr, count: foreignCleared } = await sb
+    .from("routes")
+    .update({ success_rate: null, rate_source: null }, { count: "exact" })
+    .eq("rate_source", "seeded")
+    .neq("provider", "smspva");
+  if (foreignErr) {
+    console.error("sync-smspva-conversions: foreign-seed cleanup failed (ignored):", foreignErr.message);
+  } else if ((foreignCleared ?? 0) > 0) {
+    console.warn(`sync-smspva-conversions: cleared ${foreignCleared} seeded rates stranded on non-SMSPVA routes`);
+  }
+
   for (const [i, code] of batch.entries()) {
     if (i > 0) await sleep(CALL_SPACING_MS);
 
