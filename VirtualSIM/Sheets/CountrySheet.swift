@@ -1,13 +1,12 @@
 import SwiftUI
 
 enum CountrySort: String, Hashable, CaseIterable {
-    case bestSuccess, cheapest, fastest, `default`
+    case bestSuccess, cheapest, `default`
 
     var label: String {
         switch self {
         case .bestSuccess: "Best success"
         case .cheapest:    "Cheapest"
-        case .fastest:     "Fastest"
         case .default:     "A–Z"
         }
     }
@@ -15,7 +14,6 @@ enum CountrySort: String, Hashable, CaseIterable {
         switch self {
         case .bestSuccess: RIcon.shield
         case .cheapest:    RIcon.coin
-        case .fastest:     RIcon.bolt
         case .default:     RIcon.filter
         }
     }
@@ -41,7 +39,6 @@ struct CountrySheet: View {
         var list = state.availableCountries
         switch sort {
         case .default:  break
-        case .fastest:  list.sort { $0.avgSeconds < $1.avgSeconds }
         case .cheapest:
             // Unavailable routes (nil price) sink to the bottom of the list.
             let costFor: (Country) -> Int = {
@@ -80,23 +77,23 @@ struct CountrySheet: View {
             // a third party's aggregate never outranks orders we placed.
             // A missing vendor rate scores 0 — neutral, never a penalty, since
             // the source is a top-10 list and absence carries no information.
-            func key(_ c: Country) -> (Int, Int, Int, Int) {
+            // Rank by the pool's published delivery rate, high to low, with
+            // UNRATED countries below every rated one and unbuyable ones last.
+            //
+            // This replaced a five-tier scheme built on our own measured record
+            // plus a country-level roll-up. That mattered when essentially no
+            // route had a rate; now every sellable route carries one and the
+            // user can SEE it on the row, so a hidden ordering that disagrees
+            // with the visible number is worse than no cleverness at all.
+            //
+            // Unrated scores -1 so it sorts strictly below a genuine 0% — the
+            // two are different claims: "nobody has ordered enough here" is not
+            // "this fails". Price breaks ties.
+            func key(_ c: Country) -> (Int, Int, Int) {
                 let price = state.cost(for: currentService, country: c) ?? .max
                 let avail = state.cost(for: currentService, country: c) != nil ? 0 : 1
-                // The pool's published rate, negated so higher sorts first.
-                // A route with no published rate scores 0 and therefore ranks
-                // LAST within its tier — owner decision 2026-08-03: unrated
-                // routes stay sellable but stop being surfaced first.
-                let vendor = -(state.poolRate(for: currentService, country: c) ?? 0)
-                guard let ratio = state.deliveryRecord(for: currentService, country: c).ratio else {
-                    guard let cr = state.countryRatio(c) else {
-                        return (avail, 2, vendor, price)          // nothing measured
-                    }
-                    return cr > 0 ? (avail, 1, vendor, -Int(cr * 100))   // country delivers
-                                  : (avail, 3, vendor, price)            // country measured 0
-                }
-                // Percent as a negative so higher delivery sorts first.
-                return ratio > 0 ? (avail, 0, 0, -Int(ratio * 100)) : (avail, 4, 0, price)
+                let rate = state.poolRate(for: currentService, country: c) ?? -1
+                return (avail, -rate, price)
             }
             list.sort { key($0) < key($1) }
         }
@@ -108,7 +105,7 @@ struct CountrySheet: View {
             SheetHeader(title: "Choose a country")
             sortRow
             ScrollView {
-                providerTopCountries
+                rateHint
                 Card {
                     LazyVStack(spacing: 0) {
                         ForEach(Array(sorted.enumerated()), id: \.element.id) { idx, c in
@@ -131,79 +128,27 @@ struct CountrySheet: View {
         }
         .background(theme.bg)
     }
-
-    /// The provider's own top countries for this service.
+    /// One line of guidance instead of a separate "top rates" card.
     ///
-    /// ⚠️ This is NOT the app's delivery record and is never drawn as one. The
-    /// list below keeps rendering `DeliveryRecord` ("Not tested" / "Worked 3 of
-    /// 7 times"), which describes orders WE placed. This section relays a
-    /// network-wide aggregate across all traffic on the underlying carrier
-    /// network — a different claim, about a different population, so it is
-    /// separated, captioned, and worded as reported rather than measured.
-    /// Collapsing the two is precisely what made SMSPVA's seeded grade rank
-    /// never-sold routes as "proven".
+    /// The card was removed once EVERY row started carrying its own
+    /// colour-coded percentage: it restated a subset of the list directly above
+    /// the list, and the two could drift apart. A sentence that tells the user
+    /// what the colour means is worth more than a second ranking of the same
+    /// data.
     ///
-    /// The copy deliberately says "network-wide" and never names or alludes to
-    /// a supplier (owner decision, 2026-07-31): the app should not advertise
-    /// that it resells someone else's inventory. The honesty requirement is
-    /// only that this is visibly NOT our own measurement — which "network-wide
-    /// … not our own delivery record" carries without the commercial reveal.
-    ///
-    /// The caption also has to say what absence means, because the source is a
-    /// top-10 gated at 50+ activations: a country missing here has NOT been
-    /// judged badly, it simply did not rank or lacked the traffic to score.
-    /// Without that line, a short list reads as "everything else is bad".
-    @ViewBuilder
-    private var providerTopCountries: some View {
-        let top = state.topRankedCountries(for: currentService)
-        if !top.isEmpty {
-            VStack(alignment: .leading, spacing: 0) {
-                Text("Top success rates")
-                    .font(RFont.text(13, weight: .semibold))
-                    .foregroundStyle(theme.text)
-                Text("Network-wide rates from the last 24h — not our own delivery record. Countries not listed haven't been ranked, which isn't a mark against them.")
-                    .font(RFont.text(11))
-                    .foregroundStyle(theme.text2)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .padding(.top, 3)
-
-                Card {
-                    LazyVStack(spacing: 0) {
-                        ForEach(Array(top.enumerated()), id: \.element.country.id) { idx, entry in
-                            Button {
-                                onPick(entry.country)
-                                dismiss()
-                            } label: {
-                                HStack(spacing: 10) {
-                                    FlagCircle(country: entry.country, size: 26)
-                                    Text(entry.country.name)
-                                        .font(RFont.text(14, weight: .medium))
-                                        .foregroundStyle(theme.text)
-                                    Spacer(minLength: 8)
-                                    // "reports" every time. A bare "36%" on this
-                                    // row would read as the app's own number.
-                                    Text("reports \(Int(entry.rank.vendorPercent.rounded()))%")
-                                        .font(RFont.text(12, weight: .medium))
-                                        .foregroundStyle(theme.text2)
-                                    Text("\(entry.price) cr")
-                                        .font(RFont.text(13, weight: .semibold))
-                                        .foregroundStyle(entry.price <= state.balance ? theme.text : theme.text2)
-                                }
-                                .padding(.vertical, 11)
-                                .padding(.horizontal, 14)
-                                .contentShape(.rect)
-                            }
-                            .buttonStyle(.plain)
-                            if idx < top.count - 1 { Divider().opacity(0.35) }
-                        }
-                    }
-                }
-                .padding(.top, 8)
-            }
-            .padding(.horizontal, 16)
-            .padding(.top, 8)
-            .padding(.bottom, 4)
-        }
+    /// The wording keeps the two properties the old caption had to hold at
+    /// once: it says what the number IS (a network-wide delivery rate over 30
+    /// days, matching 5sim's rate720) and what it is NOT (our own record), and
+    /// it names no supplier.
+    private var rateHint: some View {
+        Text("Pick a country with a high percentage — that's how often codes arrive there network-wide over the last 30 days. It isn't our own delivery record.")
+            .font(RFont.text(11))
+            .foregroundStyle(theme.text2)
+            .fixedSize(horizontal: false, vertical: true)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 20)
+            .padding(.top, 4)
+            .padding(.bottom, 10)
     }
 
     private var sortRow: some View {

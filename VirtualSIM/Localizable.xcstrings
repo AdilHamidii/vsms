@@ -8418,16 +8418,16 @@
     "Numbers are bought with credits. If no code turns up, your credits go straight back to your balance — every time.": {
       "extractionState": "manual",
       "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "new",
-            "value": "Numbers are bought with credits. If no code turns up, your credits go straight back to your balance — every time."
-          }
-        },
         "de": {
           "stringUnit": {
             "state": "translated",
             "value": "Nummern werden mit Credits gekauft. Kommt kein Code an, gehen deine Credits sofort zurück auf dein Guthaben – jedes Mal."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "new",
+            "value": "Numbers are bought with credits. If no code turns up, your credits go straight back to your balance — every time."
           }
         },
         "es": {
@@ -8785,6 +8785,47 @@
           "stringUnit": {
             "state": "translated",
             "value": "Remove permanentemente sua conta, saldo e histórico de pedidos."
+          }
+        }
+      }
+    },
+    "Pick a country with a high percentage — that's how often codes arrive there network-wide over the last 30 days. It isn't our own delivery record.": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Wähle ein Land mit hohem Prozentsatz — so oft sind Codes dort netzwerkweit in den letzten 30 Tagen angekommen. Das ist nicht unsere eigene Zustellrate."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Elige un país con un porcentaje alto: es la frecuencia con la que llegan los códigos allí en toda la red durante los últimos 30 días. No es nuestro propio registro de entrega."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Choisissez un pays avec un pourcentage élevé — c'est la fréquence d'arrivée des codes sur l'ensemble du réseau ces 30 derniers jours. Ce n'est pas notre propre taux de livraison."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Scegli un paese con una percentuale alta: è la frequenza con cui i codici arrivano lì a livello di rete negli ultimi 30 giorni. Non è il nostro dato di consegna."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "パーセンテージの高い国を選んでください。過去30日間にネットワーク全体でコードが届いた割合です。当社自身の配信実績ではありません。"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Escolha um país com porcentagem alta — é com que frequência os códigos chegam lá em toda a rede nos últimos 30 dias. Não é o nosso próprio registro de entrega."
           }
         }
       }
@@ -12821,16 +12862,16 @@
     "You only pay when the code arrives.": {
       "extractionState": "manual",
       "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "new",
-            "value": "You only pay when the code arrives."
-          }
-        },
         "de": {
           "stringUnit": {
             "state": "translated",
             "value": "Du zahlst nur, wenn der Code ankommt."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "new",
+            "value": "You only pay when the code arrives."
           }
         },
         "es": {
@@ -13075,16 +13116,16 @@
     "Your balance covers this — nothing more to pay.": {
       "extractionState": "manual",
       "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "new",
-            "value": "Your balance covers this — nothing more to pay."
-          }
-        },
         "de": {
           "stringUnit": {
             "state": "translated",
             "value": "Dein Guthaben deckt das ab – es fällt nichts weiter an."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "new",
+            "value": "Your balance covers this — nothing more to pay."
           }
         },
         "es": {
