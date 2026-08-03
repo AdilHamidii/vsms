@@ -3,13 +3,22 @@ import SwiftUI
 // Two-page onboarding. Page 1: the product itself doing its one job — a
 // temporary number sitting on a card, a verification SMS typing in, and the
 // code landing highlighted in brand green — the same surfaces the user meets
-// on the Waiting/OTP screens. Page 2: the welcome credits — every new account
-// starts with 3 free credits, and users convert better when they're told
-// before the sign-in ask. No abstract icon badges anywhere.
+// on the Waiting/OTP screens. Page 2: the refund guarantee. No abstract icon
+// badges anywhere.
 //
-// The amount here MUST match `handle_new_user()` (migration
-// 20260726140000_signup_bonus_3cr.sql). It is stated to the user before they
-// sign in, so a stale number here is a promise the server doesn't keep.
+// Page 2 USED TO PROMISE WELCOME CREDITS ("you'll find 3 free credits
+// waiting"), and this header used to warn that the number must match
+// `handle_new_user()` or it becomes "a promise the server doesn't keep". That
+// is exactly what happened: the signup grant was disabled on 2026-08-03
+// (app_config.signup_bonus_credits = 0) and the screen kept promising three.
+//
+// So the promise is gone rather than re-numbered. Quoting a credit amount here
+// couples pre-sign-in copy to a server value that changes without a release —
+// it has already been 1, 3 and 5 — and every change silently turns this screen
+// into a lie. What replaces it holds at ANY grant amount: a number that never
+// delivers a code is refunded in full. That is enforced on every terminal path
+// (expire_order_claim, cancel-order) and was verified end-to-end in the ledger,
+// so it is a claim we can always keep.
 struct OnboardingScreen: View {
     @Environment(\.theme) private var theme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -84,13 +93,13 @@ struct OnboardingScreen: View {
 
     private var giftCopyBlock: some View {
         VStack(spacing: 14) {
-            Text("Your first try is on us.")
+            Text("You only pay when the code arrives.")
                 .font(RFont.display(30, weight: .bold))
                 .tracking(-0.8)
                 .lineSpacing(2)
                 .multilineTextAlignment(.center)
                 .foregroundStyle(theme.text)
-            Text("Sign in and you'll find 3 free credits waiting — enough to get a number and see the code arrive before you spend anything.")
+            Text("Numbers are bought with credits. If no code turns up, your credits go straight back to your balance — every time.")
                 .font(RFont.text(15))
                 .lineSpacing(3)
                 .multilineTextAlignment(.center)

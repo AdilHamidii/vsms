@@ -193,7 +193,14 @@ struct HomeScreen: View {
     private var freeCreditHint: some View {
         HStack(spacing: 8) {
             CoinIcon(size: 15, color: theme.live)
-            Text("Your free credits cover this — first number's on us.")
+            // Deliberately does NOT call the balance "free". This is gated on
+            // `isFirstRun && balance >= routeCost`, and with the signup grant
+            // disabled (app_config.signup_bonus_credits = 0) the only way to
+            // hold a balance before your first order is to have PAID for it —
+            // so "your free credits" told a paying customer their purchase was
+            // a gift. The wording below is true at any grant amount, which is
+            // the property the onboarding copy lost by quoting a number.
+            Text("Your balance covers this — nothing more to pay.")
                 .font(RFont.text(12, weight: .medium))
                 .tracking(-0.1)
                 .foregroundStyle(theme.text2)

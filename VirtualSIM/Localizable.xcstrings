@@ -8415,6 +8415,53 @@
         }
       }
     },
+    "Numbers are bought with credits. If no code turns up, your credits go straight back to your balance — every time.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "new",
+            "value": "Numbers are bought with credits. If no code turns up, your credits go straight back to your balance — every time."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nummern werden mit Credits gekauft. Kommt kein Code an, gehen deine Credits sofort zurück auf dein Guthaben – jedes Mal."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Los números se compran con créditos. Si no llega ningún código, tus créditos vuelven al instante a tu saldo, siempre."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Les numéros s'achètent avec des crédits. Si aucun code n'arrive, vos crédits reviennent aussitôt sur votre solde, à chaque fois."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "I numeri si acquistano con i crediti. Se non arriva nessun codice, i crediti tornano subito sul tuo saldo, ogni volta."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "番号はクレジットで購入します。コードが届かなかった場合は、クレジットがすぐに残高へ戻ります。"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Os números são comprados com créditos. Se nenhum código chegar, seus créditos voltam na hora para o seu saldo, sempre."
+          }
+        }
+      }
+    },
     "OTP reveal": {
       "extractionState": "manual",
       "localizations": {
@@ -10163,87 +10210,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Mostrar métricas"
-          }
-        }
-      }
-    },
-    "Sign in and you'll find 1 free credit waiting — enough to get a number and see the code arrive before you spend anything.": {
-      "extractionState": "stale",
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Nach der Anmeldung wartet 1 Gratis-Credit auf Sie – genug, um eine Nummer zu holen und den Code ankommen zu sehen, bevor Sie etwas ausgeben."
-          }
-        },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Inicia sesión y encontrarás 1 crédito gratis esperándote: suficiente para conseguir un número y ver llegar el código antes de gastar nada."
-          }
-        },
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Connectez-vous et 1 crédit gratuit vous attend — de quoi obtenir un numéro et voir le code arriver avant de dépenser quoi que ce soit."
-          }
-        },
-        "it": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Accedi e troverai 1 credito gratuito ad aspettarti: abbastanza per ottenere un numero e vedere arrivare il codice prima di spendere qualcosa."
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "サインインすると1クレジットが無料で付与されます。番号を取得してコードが届くのを、支払う前に試せます。"
-          }
-        },
-        "pt-BR": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Entre e você encontrará 1 crédito grátis esperando — o suficiente para pegar um número e ver o código chegar antes de gastar qualquer coisa."
-          }
-        }
-      }
-    },
-    "Sign in and you'll find 3 free credits waiting — enough to get a number and see the code arrive before you spend anything.": {
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Melde dich an – 3 Gratis-Credits warten schon. Genug für eine Nummer und einen ankommenden Code, bevor du etwas ausgibst."
-          }
-        },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Inicia sesión y te esperan 3 créditos gratis: suficientes para conseguir un número y ver llegar el código antes de gastar nada."
-          }
-        },
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Connectez-vous : 3 crédits offerts vous attendent — de quoi obtenir un numéro et voir le code arriver avant de dépenser quoi que ce soit."
-          }
-        },
-        "it": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Accedi e troverai 3 crediti gratis ad aspettarti — abbastanza per ottenere un numero e vedere arrivare il codice prima di spendere."
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "サインインすると3クレジットが無料で待っています。お金を使う前に番号を取得してコードの到着を確認できます。"
-          }
-        },
-        "pt-BR": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Entre e você encontra 3 créditos grátis esperando — o bastante para pegar um número e ver o código chegar antes de gastar."
           }
         }
       }
@@ -12852,6 +12818,53 @@
         }
       }
     },
+    "You only pay when the code arrives.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "new",
+            "value": "You only pay when the code arrives."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Du zahlst nur, wenn der Code ankommt."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Solo pagas cuando llega el código."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vous ne payez que si le code arrive."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Paghi solo quando arriva il codice."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "コードが届いたときだけお支払いいただきます。"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Você só paga quando o código chega."
+          }
+        }
+      }
+    },
     "You weren't charged — your credits are back in your balance.": {
       "localizations": {
         "de": {
@@ -13059,6 +13072,53 @@
         }
       }
     },
+    "Your balance covers this — nothing more to pay.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "new",
+            "value": "Your balance covers this — nothing more to pay."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dein Guthaben deckt das ab – es fällt nichts weiter an."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tu saldo cubre esto: no hay nada más que pagar."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Votre solde couvre cela — rien de plus à payer."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Il tuo saldo copre questo: non c'è altro da pagare."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "残高でまかなえます。追加のお支払いはありません。"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Seu saldo cobre isso — não há mais nada a pagar."
+          }
+        }
+      }
+    },
     "Your code appears here the moment it arrives.": {
       "localizations": {
         "de": {
@@ -13175,127 +13235,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Seu eSIM"
-          }
-        }
-      }
-    },
-    "Your first try is on us.": {
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Ihr erster Versuch geht auf uns."
-          }
-        },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Tu primer intento corre de nuestra cuenta."
-          }
-        },
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Votre premier essai est offert."
-          }
-        },
-        "it": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "La tua prima prova la offriamo noi."
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "最初のお試しは無料です。"
-          }
-        },
-        "pt-BR": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Sua primeira tentativa é por nossa conta."
-          }
-        }
-      }
-    },
-    "Your free credit covers this — first number's on us.": {
-      "extractionState": "stale",
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Ihr Gratis-Guthaben deckt das ab – die erste Nummer geht auf uns."
-          }
-        },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Tu crédito gratis lo cubre: el primer número corre de nuestra cuenta."
-          }
-        },
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Votre crédit offert couvre ce numéro — le premier est pour nous."
-          }
-        },
-        "it": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Il tuo credito gratuito lo copre: il primo numero lo offriamo noi."
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "無料クレジットで足ります — 最初の番号は無料です。"
-          }
-        },
-        "pt-BR": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Seu crédito grátis cobre isso — o primeiro número é por nossa conta."
-          }
-        }
-      }
-    },
-    "Your free credits cover this — first number's on us.": {
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Deine Gratis-Credits decken das ab – die erste Nummer geht auf uns."
-          }
-        },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Tus créditos gratis lo cubren: el primer número corre por nuestra cuenta."
-          }
-        },
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Vos crédits offerts couvrent cela — le premier numéro est pour nous."
-          }
-        },
-        "it": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "I tuoi crediti gratis coprono tutto — il primo numero lo offriamo noi."
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "無料クレジットで足ります — 最初の番号は当社負担です。"
-          }
-        },
-        "pt-BR": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Seus créditos grátis cobrem isso — o primeiro número é por nossa conta."
           }
         }
       }
