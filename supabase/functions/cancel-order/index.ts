@@ -4,17 +4,44 @@ import { admin, callerUserId } from "../_shared/supabaseAdmin.ts";
 // late-code sweep in poll-active-orders owns its lifecycle now.
 import { markSuccess, poll, type OrderProvider } from "../_shared/providers.ts";
 
-// Minimum hold before a paid order may be destroyed (owner decision
-// 2026-07-27). Measured: median code arrival 58s, p90 134s, while the median
-// CANCEL lands at 57s — users were killing orders one second before the
-// typical code. 180s (owner decision) sits above p90 arrival (134s), so
-// virtually every code that was ever going to land has landed by then, while
-// still leaving 5 minutes of the 8-minute window.
+// Minimum hold before a paid order may be destroyed.
+//
+// 180s -> 90s (owner decision 2026-08-03). The original 180 was set against
+// SMSPVA's arrival curve when SMSPVA served everything. HeroSMS, which now
+// serves most volume, has a far tighter one — measured over 90 days on orders
+// that actually held a number:
+//
+//     arrival   p50   p90   max
+//     herosms    28    86    86
+//     smspva     58   145   337
+//
+// and, conditioning on "no code yet at T", the share that still delivered:
+//
+//     T        herosms          smspva
+//     60s      2 of 26 (7.7%)   20 of 71 (28.2%)
+//     90s      0 of 21 (0.0%)   14 of 54 (25.9%)
+//     180s     0 of 17 (0.0%)    3 of 32 ( 9.4%)
+//
+// On HeroSMS no code has EVER arrived after 86s, so everything between 90s and
+// 180s was provably dead time — the user sat watching a spent number while the
+// hold refused to let them move on.
+//
+// ⚠️ THE COST IS ON SMSPVA, AND IT IS REAL: 26% of SMSPVA orders still alive at
+// 90s went on to deliver. Users cancel as soon as they are allowed (the median
+// cancel tracked the hold exactly: 40s before it existed, 221s after), so this
+// will cut into that tail. The right shape is a PER-PROVIDER hold — ~90s for
+// HeroSMS, ~180s for SMSPVA — resolved from the order's provider. Left flat for
+// now because the owner asked for 90s; make it per-provider before concluding
+// anything from a change in SMSPVA delivery.
 //
 // Applies to reroll as well as the ✕: a reroll releases the number exactly
 // like a cancel, so an early reroll throws away an in-flight code just the
 // same.
-const MIN_HOLD_SECONDS = 180;
+//
+// NOTE this is now EQUAL to PRE_RESERVATION_GRACE_MS rather than 2x it, so the
+// numberless-cancel guard below is no longer subsumed — it is coincident, and
+// still the backstop if this ever drops under 90s. Do not remove it.
+const MIN_HOLD_SECONDS = 90;
 
 // Grace during which an order that has NOT yet been given a number cannot be
 // cancelled at all — see the unconditional guard below. Sized to create-order's

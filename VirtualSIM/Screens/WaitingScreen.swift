@@ -111,7 +111,16 @@ struct WaitingScreen: View {
     /// Minimum hold before a paid order can be destroyed. Mirrors
     /// MIN_HOLD_SECONDS in cancel-order — the server refuses early cancels, so
     /// leaving these enabled would only produce an error banner.
-    private static let minHoldSeconds = 180
+    ///
+    /// 180 -> 90 (2026-08-03). Measured over 90 days: on HeroSMS, which serves
+    /// most volume, no code has ever arrived later than 86s, and 0 of 21 orders
+    /// still alive at 90s went on to deliver. The 90-180s stretch was dead time.
+    ///
+    /// This constant may only ever be RAISED ahead of the server, never lowered
+    /// ahead of it: a client that offers cancel before the server allows it just
+    /// collects a 429. Ship the backend change first — which also means shipped
+    /// 1.6/1.7 (still 180 here) stay safe, they simply keep the stricter hold.
+    private static let minHoldSeconds = 90
 
     /// Seconds left before cancel/reroll unlock, or nil once they're free.
     /// Driven by `elapsed`, which already ticks once per second.
