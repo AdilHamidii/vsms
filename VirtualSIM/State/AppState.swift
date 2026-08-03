@@ -644,6 +644,19 @@ final class AppState {
         return .measured(codes: codes, attempts: attempts)
     }
 
+    /// The provider's published 30-day delivery rate for the pool this route
+    /// buys from, or nil when they publish none for it.
+    ///
+    /// Distinct from `deliveryRecord`, which is OUR measurement of orders we
+    /// placed. Both can appear on the same row and they must stay visually and
+    /// verbally separate — collapsing them is what forced the seeded vendor
+    /// grade to be demoted to `.notTested`.
+    func poolRate(for service: Service, country: Country) -> Int? {
+        guard let route = routeIndex["\(service.id)|\(country.id)"],
+              route.status == "active" else { return nil }
+        return route.poolRatePct
+    }
+
     /// How this COUNTRY has delivered across every service, over 30 days, on
     /// the provider we currently use — or nil when we've never had a conclusive
     /// order there. Server-computed by `refresh_country_delivery`.

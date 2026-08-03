@@ -83,7 +83,11 @@ struct CountrySheet: View {
             func key(_ c: Country) -> (Int, Int, Int, Int) {
                 let price = state.cost(for: currentService, country: c) ?? .max
                 let avail = state.cost(for: currentService, country: c) != nil ? 0 : 1
-                let vendor = -Int((state.rank(for: currentService, country: c)?.vendorPercent ?? 0).rounded())
+                // The pool's published rate, negated so higher sorts first.
+                // A route with no published rate scores 0 and therefore ranks
+                // LAST within its tier — owner decision 2026-08-03: unrated
+                // routes stay sellable but stop being surfaced first.
+                let vendor = -(state.poolRate(for: currentService, country: c) ?? 0)
                 guard let ratio = state.deliveryRecord(for: currentService, country: c).ratio else {
                     guard let cr = state.countryRatio(c) else {
                         return (avail, 2, vendor, price)          // nothing measured
@@ -111,6 +115,7 @@ struct CountrySheet: View {
                             CountryRow(country: c,
                                        price: state.cost(for: currentService, country: c),
                                        record: state.deliveryRecord(for: currentService, country: c),
+                                       poolRate: state.poolRate(for: currentService, country: c),
                                        balance: state.balance,
                                        isLast: idx == sorted.count - 1) {
                                 onPick(c)
@@ -223,6 +228,8 @@ private struct CountryRow: View {
     let country: Country
     let price: Int?
     let record: DeliveryRecord
+    /// Provider's published rate for this route's pool. nil = unrated; render nothing.
+    let poolRate: Int?
     let balance: Int
     let isLast: Bool
     let onTap: () -> Void
@@ -241,6 +248,19 @@ private struct CountryRow: View {
                             .lineLimit(1)
                         HStack(spacing: 8) {
                             MonoText(country.dialCode, size: 12, color: theme.text2)
+                            // The pool's published delivery rate. Left column,
+                            // deliberately: the right column is SuccessBadge,
+                            // which is OUR measured record, and a vendor
+                            // percentage sitting next to "Worked 2 of 7" is
+                            // exactly the conflation that had to be undone
+                            // once already. Never theme.live/warn/fail —
+                            // those colours are a claim about our own data.
+                            // nil renders NOTHING, never "0%".
+                            if let poolRate {
+                                Text("\(poolRate)%")
+                                    .font(RFont.text(12, weight: .semibold))
+                                    .foregroundStyle(theme.text2)
+                            }
                             // countries.avg_seconds is seed data too — drop
                             // the claim rather than dress it up. The measured
                             // band lives on Service, not Country.

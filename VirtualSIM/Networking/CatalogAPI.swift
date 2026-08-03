@@ -14,6 +14,16 @@ struct Route: Codable, Hashable {
     /// Optional because clients predating the column decode a missing key as
     /// nil — `Codable` drops unknown keys, but a non-optional Bool would throw.
     let realSimOnly: Bool?
+    /// The delivery rate the PROVIDER publishes for the exact pool of numbers
+    /// this route buys from, over the last 30 days. 0-100.
+    ///
+    /// nil means the provider publishes no rate for that pool — which means
+    /// "too few orders", NEVER "bad". It must render as absent and must never
+    /// be coerced to 0. Those routes are still sold; they simply rank last.
+    ///
+    /// This is NOT our own measurement and must never reach `SuccessBadge`,
+    /// which states what happened to orders WE placed ("Worked 3 of 7 times").
+    let poolRatePct: Int?
 
     // `lastCostCents` was decoded here and never read by a single call site —
     // it only ever served to publish our wholesale cost. See the explicit
@@ -62,7 +72,7 @@ struct CatalogAPI {
             .get, path: "rest/v1/routes",
             query: [
                 URLQueryItem(name: "select",
-                             value: "service_id,country_id,retail_credits,status,success_rate,rate_source,success_sample,success_codes,premium_credits,real_sim_only"),
+                             value: "service_id,country_id,retail_credits,status,success_rate,rate_source,success_sample,success_codes,premium_credits,real_sim_only,pool_rate_pct"),
                 URLQueryItem(name: "or", value: "(retail_credits.not.is.null,status.neq.active,success_rate.not.is.null)"),
             ],
             authenticated: false
