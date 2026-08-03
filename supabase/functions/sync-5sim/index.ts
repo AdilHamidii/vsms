@@ -47,6 +47,19 @@ const SMOOTH_ALPHA = 0.5;
 
 const CHUNK = 500;
 
+// ⚠️ 5sim's DOCUMENTED rate limit is wrong for this endpoint.
+// The docs claim "100 requests per second by IP address". Measured 2026-08-03:
+// unspaced sequential calls to guest/prices return 200 six times and then
+// HTTP 429 for every subsequent request — the first live run of this sync got
+// 10 countries through and lost 51 in 2.4 seconds. 600ms was measured clean at
+// 12/12; 61 countries then costs ~55s, well inside the ~150s edge budget.
+//
+// Do not lower this casually: 5sim bans the key for 10 minutes after the limit
+// is tripped 5 times within 10 minutes, and that key also has to buy numbers.
+const CALL_SPACING_MS = 600;
+const RETRY_PAUSE_MS = 2_500;
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
 function priceToCredits(usd: number): number {
   if (!Number.isFinite(usd) || usd <= 0) return MIN_CREDITS;
   return Math.min(MAX_CREDITS, Math.max(MIN_CREDITS, Math.ceil(usd / CREDIT_DIVISOR)));
@@ -145,9 +158,17 @@ Deno.serve(async (req) => {
   let countriesOk = 0, countriesFailed = 0;
   const failedCountries: string[] = [];
 
-  for (const c of countries) {
+  for (const [i, c] of countries.entries()) {
     const slug = c.fivesim_country as string;
-    const payload = await getPricesForCountry(slug);
+    if (i > 0) await sleep(CALL_SPACING_MS);
+    let payload = await getPricesForCountry(slug);
+    if (!payload) {
+      // One retry after a longer pause. The dominant failure here is a 429,
+      // and a country dropped from a run is inventory that silently reads as
+      // "5sim does not serve it" for the next hour.
+      await sleep(RETRY_PAUSE_MS);
+      payload = await getPricesForCountry(slug);
+    }
     if (!payload) { countriesFailed++; failedCountries.push(slug); continue; }
     countriesOk++;
     const products = payload[slug] ?? {};
