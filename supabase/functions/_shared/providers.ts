@@ -13,6 +13,7 @@
 // `orders_provider_check` still permits them. Rewriting those rows would
 // destroy the delivery evidence they carry.
 
+import * as five from "./fivesim.ts";
 import * as hero from "./herosms.ts";
 import {
   getNumber as smsGetNumber,
@@ -36,7 +37,7 @@ import {
  *  so a HeroSMS stockout fails as a stockout instead of silently re-reserving
  *  at SMSPVA under a different price and delivery profile. SMSPVA also stays
  *  fully wired as the rollback target, and its routes are never deleted. */
-export type Provider = "herosms" | "smspva";
+export type Provider = "5sim" | "herosms" | "smspva";
 
 /** Providers that may appear on an existing `orders.provider`, including
  *  retired ones. Lifecycle calls (poll/release/markDead/markSuccess) accept
@@ -64,6 +65,21 @@ export type EmailStatus =
   | "waiting" | "received" | "canceled" | "expired" | "failed";
 
 export interface RouteCodes {
+  /** `routes.provider` — the column that decides PRICING (which divisor, which
+   *  cached-cost column). Passing it here is what stops the router and the
+   *  pricing from ever disagreeing.
+   *
+   *  Before 5sim, routing was code-presence only. That was safe while each
+   *  service had codes for exactly one provider — but every service now also
+   *  carries a 5sim product, so code-presence alone would route a route whose
+   *  `provider` still says 'herosms' to 5sim, and create-order would then price
+   *  it with HeroSMS's divisor against HeroSMS's cached cost while buying from
+   *  someone else. That is the silent breakage all three previous switches had.
+   *  Optional so old callers still work; when absent we fall back to codes. */
+  owner?: string | null;
+  /** 5sim product slug ("facebook", "leboncoin") and country slug ("usa"). */
+  fiveProduct?: string | null;
+  fiveCountry?: string | null;
   /** HeroSMS short service code ("ig", "wa", "do"=leboncoin). */
   heroService?: string | null;
   /** HeroSMS numeric country id (16=UK, 187=USA, 33=Colombia). */
@@ -100,6 +116,19 @@ export interface RouteCodes {
  *
  *  eSIMs are untouched and stay on SMSPool (a separate table and code path). */
 export function providerOrder(c: RouteCodes): Provider[] {
+  // OWNERSHIP FIRST. `routes.provider` is authoritative whenever it names a
+  // provider we can actually reach — see RouteCodes.owner for why. A route may
+  // now carry codes for two providers at once, and the one that prices it must
+  // be the one that buys it.
+  if (c.owner === "5sim" && c.fiveProduct && c.fiveCountry) return ["5sim"];
+  if (c.owner === "herosms" && c.heroService && c.heroCountry != null) return ["herosms"];
+  if (c.owner === "smspva" && c.smsService && c.smsCountry) return ["smspva"];
+
+  // No owner recorded (or its codes are missing): fall back to code presence,
+  // 5sim first — it is the SMS provider as of 2026-08-03. HeroSMS stays wired
+  // because it still serves the temp-EMAIL line on the same account, and SMSPVA
+  // stays as the rollback target; neither is deleted.
+  if (c.fiveProduct && c.fiveCountry) return ["5sim"];
   if (c.heroService && c.heroCountry != null) return ["herosms"];
   if (c.smsService && c.smsCountry) return ["smspva"];
   return [];
@@ -108,6 +137,16 @@ export function providerOrder(c: RouteCodes): Provider[] {
 /** Live wholesale price (USD) at a provider, or null if unavailable. */
 export async function livePriceUsd(p: Provider, c: RouteCodes): Promise<number | null> {
   try {
+    if (p === "5sim" && c.fiveProduct && c.fiveCountry) {
+      // 5sim quotes PER POOL, and the pool we buy from is chosen at sync time
+      // (routes.pool_operator) — so a live "price for this route" is not a
+      // single number. Returning null here is correct and deliberate:
+      // create-order already prefers the synced `fivesim_cost_cents`, which is
+      // the cost of the exact pool it is about to pin. Quoting the cheapest
+      // pool instead would gate the margin against a pool we are not buying,
+      // which is the apple/Turkey `getPrices.cost` bug in a new costume.
+      return null;
+    }
     if (p === "herosms" && c.heroService && c.heroCountry != null) {
       return await hero.getPrice(c.heroCountry, c.heroService);
     }
@@ -141,6 +180,56 @@ export async function reserve(
   pinStrict = false,
 ): Promise<Reservation> {
   try {
+    if (p === "5sim" && c.fiveProduct && c.fiveCountry) {
+      // `pool` is an ORDERED, comma-separated fallback CHAIN, not a set.
+      // 5sim buys one operator per URL path segment (unlike HeroSMS, whose
+      // getNumberV2 takes a comma list in one call), so we walk the chain.
+      //
+      // Bounded at 3 pinned attempts + one unpinned, because each is a real
+      // round trip inside the order path. The chain is already ordered
+      // best-rate-first by sync-5sim.
+      const chain = (pool ?? "").split(",").map((s) => s.trim()).filter(Boolean).slice(0, 3);
+      const attempts = chain.length ? chain : ["any"];
+      let last: Awaited<ReturnType<typeof five.buyActivation>> | null = null;
+
+      for (const op of attempts) {
+        last = await five.buyActivation(c.fiveCountry, op, c.fiveProduct);
+        if (last.ok) break;
+        // Only scarcity is worth trying the next pool. A BALANCE/AUTH fault
+        // will fail identically on every pool, and walking the chain would turn
+        // one dead account into four pointless calls; an unclassified error is
+        // NOT retried here because it may mean the number was already
+        // allocated, which is how a double purchase happens.
+        if (last.errorType !== "OUT_OF_STOCK") break;
+      }
+
+      // Every named pool was dry. Fall back to the general pool unless the
+      // caller pinned strictly (premium / real-SIM-only), where an unvetted
+      // fill is worth less than an honest stockout.
+      if (last && !last.ok && !pinStrict && chain.length &&
+          last.errorType === "OUT_OF_STOCK") {
+        last = await five.buyActivation(c.fiveCountry, "any", c.fiveProduct);
+      }
+
+      if (!last || !last.ok) {
+        return { ok: false, error: last?.error, errorType: last?.errorType };
+      }
+      return {
+        ok: true,
+        orderId: last.orderId,
+        // Already full E.164 from the adapter. Deliberately NOT
+        // `${c.dial} ${number}` — that form is SMSPVA's, which returns a
+        // NATIONAL number, and reusing it would double the country code.
+        number: last.phoneNumber ?? "",
+        // 5sim accepts NO price cap, so this is the first moment the real price
+        // is known. create-order's post-fill ceiling check is the only guard on
+        // this provider and must not be skipped.
+        costUsd: last.costUsd,
+        expiresAt: last.expiresAt,
+        // What actually filled, echoed by the buy response.
+        pool: last.operator ?? undefined,
+      };
+    }
     if (p === "herosms" && c.heroService && c.heroCountry != null) {
       // Unlike SMSPVA, this provider ACCEPTS a price cap and REPORTS the cost,
       // so `maxPriceUsd` is enforced provider-side instead of only being
@@ -354,6 +443,13 @@ function refuseRetired(fn: string, p: string, orderId: string): void {
  *  quality of numbers they hand out next. Best-effort hygiene: a failure here
  *  must never affect the delivered order. */
 export async function markSuccess(p: OrderProvider, orderId: string): Promise<void> {
+  if (p === "5sim") {
+    // `finish` closes the activation. 5sim tracks an account `rating` (96/96
+    // today) that falls on abusive cancel patterns and blocks buying below a
+    // floor, so closing successful orders properly is not just hygiene here.
+    try { await five.finish(orderId); } catch { /* hygiene only */ }
+    return;
+  }
   if (p === "herosms") {
     // setStatus=6 (finish) is HeroSMS's "this activation is done" signal.
     try { await hero.finish(orderId); } catch { /* hygiene only */ }
@@ -374,6 +470,18 @@ export async function markSuccess(p: OrderProvider, orderId: string): Promise<vo
  *  reclaim the wholesale refund; both best-effort — the user's credit refund
  *  has already happened by the time this runs and must never depend on it. */
 export async function markDead(p: OrderProvider, orderId: string): Promise<void> {
+  if (p === "5sim") {
+    // CANCEL FIRST, then ban — the same order as SMSPVA below and for the same
+    // reason: cancel is what reclaims the wholesale (verified live 2026-08-03,
+    // balance returned to the cent), ban is hygiene so the number is not
+    // re-issued. `ban` refuses with "order has sms" once a code landed, which
+    // the adapter treats as success.
+    const c = await five.cancel(orderId);
+    const b = await five.ban(orderId);
+    console.log(`markDead 5sim order=${orderId} cancel=${c.ok} ban=${b.ok}` +
+      `${c.error ? ` cancelErr=${c.error}` : ""}${b.error ? ` banErr=${b.error}` : ""}`);
+    return;
+  }
   if (p === "herosms") {
     await heroRelease("markDead", orderId);
     return;
@@ -421,6 +529,12 @@ export interface PollResult {
 
 /** Poll a provider order for the SMS code. */
 export async function poll(p: OrderProvider, orderId: string): Promise<PollResult> {
+  if (p === "5sim") {
+    // The adapter reads sms[].code, NOT `status` — 5sim returns
+    // `status:"RECEIVED"` for a number that is merely waiting.
+    const s = await five.getStatus(orderId);
+    return { state: s.state, code: s.code, fullText: s.fullText };
+  }
   if (p === "herosms") {
     const s = await hero.getStatus(orderId);
     return { state: s.state, code: s.code, fullText: s.fullText };
@@ -453,6 +567,11 @@ export async function poll(p: OrderProvider, orderId: string): Promise<PollResul
 
 /** Best-effort release/cancel at a provider (local refund happens regardless). */
 export async function release(p: OrderProvider, orderId: string): Promise<void> {
+  if (p === "5sim") {
+    const r = await five.cancel(orderId);
+    if (!r.ok) console.error(`release failed provider=5sim order=${orderId}: ${r.error}`);
+    return;
+  }
   if (p === "herosms") { await heroRelease("release", orderId); return; }
   if (p !== "smspva") { refuseRetired("release", p, orderId); return; }
   try {

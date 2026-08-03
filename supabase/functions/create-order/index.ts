@@ -65,6 +65,11 @@ const DEDUPE_CONCURRENT_SECONDS = 3;
 // double SMSPVA — 60% of the catalog, and the better-delivering provider — and
 // take its 3-credit reach from 729 routes to 16. See the block in sync-herosms.
 const MIN_MARGIN_BY_PROVIDER: Record<string, number> = {
+  // 10x (owner, 2026-08-03). LOCKSTEP with sync-5sim's CREDIT_DIVISOR = 0.03,
+  // because 0.30 / 10 = 0.03 exactly. Move one without the other and you either
+  // refuse honest routes (margin_too_low, charged then refunded) or sell under
+  // cost on every order.
+  "5sim": 10.0,
   herosms: 12.0,
   smspva: 6.0,
 };
@@ -290,18 +295,18 @@ Deno.serve(async (req) => {
   const sb = admin();
 
   const { data: service, error: svcErr } = await sb
-    .from("services").select("id, smspva_code, herosms_code")
+    .from("services").select("id, smspva_code, herosms_code, fivesim_product")
     .eq("id", body.service_id).single();
   if (svcErr || !service) return json({ error: "unknown_service" }, { status: 404 });
 
   const { data: country, error: cErr } = await sb
-    .from("countries").select("id, smspva_code, herosms_id, dial_code")
+    .from("countries").select("id, smspva_code, herosms_id, dial_code, fivesim_country")
     .eq("id", body.country_id).single();
   if (cErr || !country) return json({ error: "unknown_country" }, { status: 404 });
 
   const { data: route, error: rErr } = await sb
     .from("routes")
-    .select("retail_credits, status, last_cost_cents, herosms_cost_cents, herosms_physical_count, herosms_real_operator, herosms_real_operators, real_sim_only, provider, smspool_pool, smspva_operator, smspva_operator_cents, premium_credits")
+    .select("retail_credits, status, last_cost_cents, fivesim_cost_cents, pool_operator, herosms_cost_cents, herosms_physical_count, herosms_real_operator, herosms_real_operators, real_sim_only, provider, smspool_pool, smspva_operator, smspva_operator_cents, premium_credits")
     .eq("service_id", service.id)
     .eq("country_id", country.id)
     .maybeSingle();
@@ -372,6 +377,11 @@ Deno.serve(async (req) => {
     ? route.premium_credits as number
     : route.retail_credits as number;
   const codes: RouteCodes = {
+    // The route's own provider column decides which arm of the router runs, so
+    // routing can never disagree with the pricing. See RouteCodes.owner.
+    owner: route.provider as string | null,
+    fiveProduct: service.fivesim_product,
+    fiveCountry: country.fivesim_country,
     heroService: service.herosms_code,
     heroCountry: country.herosms_id,
     smsService: service.smspva_code,
@@ -814,7 +824,9 @@ Deno.serve(async (req) => {
     // A HeroSMS route with no HeroSMS cost is now correctly unavailable rather
     // than sellable-then-broken. sync-herosms hides those routes; this is the
     // belt to that braces, for the window before it next runs.
-    const cachedCents = p === "herosms"
+    const cachedCents = p === "5sim"
+      ? (route.fivesim_cost_cents as number | null)
+      : p === "herosms"
       ? (route.herosms_cost_cents as number | null)
       : (route.last_cost_cents as number | null);
     if (liveCost == null && cachedCents != null && cachedCents > 0) {
@@ -836,6 +848,10 @@ Deno.serve(async (req) => {
     // SMSPVA keeps the tighter bound: it accepts no price cap and reports no
     // cost, so an over-ceiling fill can only be discovered after the purchase
     // and undone by release() — churn worth avoiding.
+    // 5sim takes NO price cap, so like SMSPVA it gets the TIGHT bound: an
+    // over-ceiling fill can only be found after the purchase and undone with
+    // release(). Only HeroSMS, which enforces maxPrice server-side, earns the
+    // loose one.
     const refuseAboveUsd = p === "herosms"
       ? cost * NET_USD_PER_CREDIT * MAX_REVENUE_FRACTION
       : maxCostUsd;
@@ -883,6 +899,7 @@ Deno.serve(async (req) => {
     const forcedRealPin = p === "herosms" ? (heroCarrier ?? premiumPin) : premiumPin;
     const pin = realSimForced ? forcedRealPin
               : p === "smspva" ? smspvaPin
+              : p === "5sim" ? (route.pool_operator as string | null)
               : p === "herosms" ? heroCarrier
               : null;
     // Strict when the buyer paid for a specific real-SIM pool (premium), and
