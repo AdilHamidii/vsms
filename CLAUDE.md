@@ -315,13 +315,29 @@ failed. Only the explicit 0 is evidence of death. `staleDead` therefore tests
 `v.rate168 === 0` and must NEVER be written as `!v.rate168` — the sloppy form
 condemns every low-traffic pool in the catalog.
 
-`choosePool` now excludes stale-dead pools from tier 1, adds a **tier 1b** that
-prefers a pool delivering *right now* (`rate24`, else `rate168`) and labels it
-with that fresher number, and refuses to re-publish `rate720` for a stale-dead
-pool that reaches the bottom tier — it publishes **0** there instead. Live
-effect: rated routes 1,906 → 1,757, and olx/us went `virtual63` 49% →
-`virtual51` 23%. Caveat: a short window can be a tiny sample, so tier 1b only
-fires when the alternative is an unrated or known-dead pool.
+**THE FIX IS A FRESHNESS LADDER, not a special case.** `rateOf(pool)` in
+`sync-5sim` returns, in order: `rate24` if positive → `rate168` if positive →
+**0** when `rate168` is an explicit 0 → `rate720` → `null` (never measured).
+One helper drives all three tiers of `choosePool`.
+
+Leading with the short windows is nearly free. Measured over 4,003 in-stock
+pools (2026-08-04):
+
+| window | published | published > 0 |
+|---|---|---|
+| `rate24` | 35.4% | 8.7% |
+| `rate168` | 37.7% | 11.8% |
+| `rate720` | 39.5% | 14.8% |
+
+**⚠️ THE ASYMMETRY IS LOAD-BEARING.** A positive short window is accepted
+immediately; a **zero is only believed when the 7-day window agrees**. A rate
+has no denominator, so a 24h zero can be 0-of-1 and must not condemn a good
+pool, whereas a full week of activations that all failed is a verdict. Guarding
+only the positive direction is the easy mistake here.
+
+Live effect: rated routes 1,906 → 1,753; simulated over 2,962 routes, 90 switch
+pool and 373 are relabelled (187 up, 224 down) for a coverage cost of −3.6%.
+olx/us went `virtual63` 49% → `virtual51` 23%.
 
 **Only the bare `rate` field is documented.** All seven windowed fields are
 undocumented, and the documented rule *"omitted below 20% or too few orders"* is
