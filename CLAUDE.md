@@ -2589,10 +2589,10 @@ It is a starting point for "is this roughly right", never a citation.
   **96** Swift sources, **357** strings / 0 untranslated / 0 specifier reorders.
 - **Backend**: **26** edge function dirs besides `_shared`, **13** `_shared` files,
   **136** migration files, **16** pg_cron jobs (all active).
-- **Catalog** (08-04 20:05, after the +100 expansion): **8,167** active routes —
-  5sim **6,559**, HeroSMS 573, SMSPVA 1,035. **368 services**, 354 with at least
-  one bookable route. 69 countries, **60** of them mapped to 5sim. eSIM 1,081
-  plans, **0 active — line PAUSED**.
+- **Catalog** (08-04 20:35, after BOTH +100 batches): **9,312** active routes,
+  5sim **7,704**. **468 services**, 454 with at least one bookable route. 69
+  countries, **60** of them mapped to 5sim. eSIM 1,081 plans, **0 active — line
+  PAUSED**.
 - **Evidence**: `rate_source='measured'` = **3 routes**, rebuilding from 0 after
   the cutover. That reset is CORRECT — see "Evidence must describe the provider
   that serves the NEXT order".
@@ -2685,10 +2685,21 @@ measure our own steering.
 
 **5sim offers 1,276 products. We listed 147.** The other 1,133 were absent
 because `services` is a hand-built table, not because of anything 5sim does.
-100 were added on 2026-08-04 (`20260804200000`): all 100 became bookable, 1,945
-active routes, 1–66 credits (avg 7.3). Catalog went 268 → **368** services and
-5,905 → 8,167 active routes. `scripts/gen-fivesim-services.py` does the next
-batch; ~1,030 products remain.
+**TWO batches of 100 were added on 2026-08-04** (`20260804200000`,
+`20260804220000`) — every one became bookable:
+
+| batch | services | active routes | price range |
+|---|---|---|---|
+| 1 | 100 | 1,945 | 1–66 cr (avg 7.3) |
+| 2 | 100 | 1,148 | 1–68 cr (avg 6.2) |
+
+Catalog went 268 → **468** services and 5,905 → **9,312** active routes.
+`scripts/gen-fivesim-services.py` does the next batch; **~930 products remain**.
+
+**Coverage per service is very uneven and that is normal.** Of batch 1, 24
+services reached 45+ countries while 27 reached only 1–2. Stock is per (service,
+country) and `sync-5sim` re-evaluates hourly, so thin services fill in on their
+own. Do not read a 1-country service as broken.
 
 **No app release is needed.** The catalog is fetched from the server and
 `ServiceLogo` falls back to the favicon cascade for unbundled domains, so new
@@ -2715,6 +2726,15 @@ Four traps, each of which fails SILENTLY:
    carry under a different slug does not appear in it.** Four did — g2a,
    hepsiburada, grab, claude — and `on conflict (id) do nothing` would have
    swallowed them without a word. Always diff against `services.id` too.
+
+**A country that FAILS a sync run is skipped, not hidden — and you will see it.**
+Batch 2's run reported `countries_failed: 1` (germany, 429s) and
+`skipped_failed_country: 468`. Germany kept its 112 active routes instead of
+being wiped to zero, because sync-5sim distinguishes "we could not read this
+country" from "this country has no stock". That distinction is the difference
+between a transient rate-limit and deleting a market from the catalog. The
+next hourly run picks it up. Also note `fetch_faults` counted 10–12 `429`s per
+run at 60 countries — 5sim rate-limits, so do not add more parallelism.
 
 **Re-homing an existing service: country OVERLAP decides, not "do they carry
 it".** Claude/Grab/Hepsiburada moved to 5sim (`20260804210000`) and went 7→21,

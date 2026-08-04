@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Generate a migration that adds 5sim services to the catalog.
 
-Used for the 100 added on 2026-08-04 (migration 20260804200000). Keep it for
-the next batch -- 5sim carries 1,276 products and we now list ~250, so there is
-a long tail left.
+Used for both 2026-08-04 batches (20260804200000, 20260804220000). The `S`
+list below is whatever the CURRENT batch is -- it holds batch 2. 5sim carries
+1,276 products and we now list ~350, so ~930 remain for the next run.
 
 THREE CHECKS, each of which caught a real defect on the first run:
 
@@ -24,123 +24,128 @@ history for how they were produced:
 
 Emits only the VALUES block; the surrounding migration is written by hand so
 its rationale is reviewed rather than generated.
+
+A FOURTH check earns its place too: tint_hex must be exactly 7 chars of valid
+hex. Batch 2 tripped it twice -- a 3-char shorthand ("#F60") and a Gujarati
+digit that had crept into a paste ("#07F૪64"). Neither would have failed the
+INSERT; both would have rendered a wrong or default colour in the app.
 """
-
-
 import json, sys
 
 # (fivesim_product, our_id, display_name, category, domain, tint_hex)
 S = [
- # ---- Commerce / marketplaces -------------------------------------------
- ("ebay","ebay","eBay","Commerce","ebay.com","#E53238"),
- ("etsy","etsy","Etsy","Commerce","etsy.com","#F1641E"),
- ("aliexpress","aliexpress","AliExpress","Commerce","aliexpress.com","#E62E04"),
- ("temu","temu","Temu","Commerce","temu.com","#FB7701"),
- ("shein","shein","SHEIN","Commerce","shein.com","#000000"),
- ("wish","wish","Wish","Commerce","wish.com","#2FB7EC"),
- ("taobao","taobao","Taobao","Commerce","taobao.com","#FF4400"),
- ("jd","jd","JD.com","Commerce","jd.com","#E1251B"),
- ("pinduoduo","pinduoduo","Pinduoduo","Commerce","pinduoduo.com","#E22E1F"),
- ("rakuten","rakuten","Rakuten","Commerce","rakuten.com","#BF0000"),
- ("allegro","allegro","Allegro","Commerce","allegro.pl","#FF5A00"),
- ("emag","emag","eMAG","Commerce","emag.ro","#0071BC"),
- ("rozetka","rozetka","Rozetka","Commerce","rozetka.com.ua","#00A046"),
- ("trendyol","trendyol","Trendyol","Commerce","trendyol.com","#F27A1A"),
- ("baidu","baidu","Baidu","Tech","baidu.com","#2932E1"),
- ("flipkart","flipkart","Flipkart","Commerce","flipkart.com","#2874F0"),
- ("myntra","myntra","Myntra","Commerce","myntra.com","#FF3F6C"),
- ("meesho","meesho","Meesho","Commerce","meesho.com","#F43397"),
- ("tokopedia","tokopedia","Tokopedia","Commerce","tokopedia.com","#42B549"),
- ("bukalapak","bukalapak","Bukalapak","Commerce","bukalapak.com","#E31E52"),
- ("coupang","coupang","Coupang","Commerce","coupang.com","#B12704"),
- ("carousell","carousell","Carousell","Commerce","carousell.com","#FF4F4F"),
- ("noon","noon","Noon","Commerce","noon.com","#FEEE00"),
- ("poshmark","poshmark","Poshmark","Commerce","poshmark.com","#731A25"),
- ("depop","depop","Depop","Commerce","depop.com","#FF0000"),
- ("gumtree","gumtree","Gumtree","Commerce","gumtree.com","#72EF36"),
- ("shopify","shopify","Shopify","Commerce","shopify.com","#95BF47"),
- ("duolingo","duolingo","Duolingo","Productivity","duolingo.com","#58CC02"),
- ("humblebundle","humblebundle","Humble Bundle","Commerce","humblebundle.com","#CC2929"),
- # ---- Retail brands ------------------------------------------------------
- ("nike","nike","Nike","Commerce","nike.com","#111111"),
- ("adidas","adidas","Adidas","Commerce","adidas.com","#000000"),
- ("zara","zara","Zara","Commerce","zara.com","#000000"),
- ("footlocker","footlocker","Foot Locker","Commerce","footlocker.com","#E4002B"),
- ("carrefour","carrefour","Carrefour","Commerce","carrefour.com","#004E9F"),
- ("tesco","tesco","Tesco","Commerce","tesco.com","#00539F"),
- ("lidl","lidl","Lidl","Commerce","lidl.com","#0050AA"),
- ("7eleven","seven-eleven","7-Eleven","Commerce","7-eleven.com","#F37021"),
- ("cocacola","cocacola","Coca-Cola","Commerce","coca-cola.com","#F40009"),
- # ---- Food / delivery ----------------------------------------------------
- ("mcdonalds","mcdonalds","McDonald's","Delivery","mcdonalds.com","#FFC72C"),
- ("burgerking","burgerking","Burger King","Delivery","bk.com","#D62300"),
- ("kfc","kfc","KFC","Delivery","kfc.com","#A50034"),
- ("pizzahut","pizzahut","Pizza Hut","Delivery","pizzahut.com","#EE3A43"),
- ("dominospizza","dominos","Domino's Pizza","Delivery","dominos.com","#006491"),
- ("dunkin","dunkin","Dunkin'","Delivery","dunkindonuts.com","#FF671F"),
- ("justeat","justeat","Just Eat","Delivery","just-eat.com","#FF8000"),
- ("zomato","zomato","Zomato","Delivery","zomato.com","#E23744"),
- ("swiggy","swiggy","Swiggy","Delivery","swiggy.com","#FC8019"),
- ("talabat","talabat","Talabat","Delivery","talabat.com","#FF5A00"),
- ("getir","getir","Getir","Delivery","getir.com","#5D3EBC"),
- ("rappi","rappi","Rappi","Delivery","rappi.com","#FF441F"),
+ # ---- Commerce / retail --------------------------------------------------
+ ("lowes","lowes","Lowe's","Commerce","lowes.com","#004990"),
+ ("samsclub","samsclub","Sam's Club","Commerce","samsclub.com","#0067A0"),
+ ("publix","publix","Publix","Commerce","publix.com","#007A33"),
+ ("coles","coles","Coles","Commerce","coles.com.au","#E01A22"),
+ ("auchan","auchan","Auchan","Commerce","auchan.fr","#E2001A"),
+ ("metro","metro","Metro","Commerce","metro.de","#003D7D"),
+ ("boots","boots","Boots","Commerce","boots.com","#05054B"),
+ ("watsons","watsons","Watsons","Commerce","watsons.com","#00A5A5"),
+ ("jbhifi","jbhifi","JB Hi-Fi","Commerce","jbhifi.com.au","#FFF200"),
+ ("catawiki","catawiki","Catawiki","Commerce","catawiki.com","#0B4EA2"),
+ ("vestiairecollective","vestiaire","Vestiaire Collective","Commerce","vestiairecollective.com","#000000"),
+ ("willhaben","willhaben","willhaben","Commerce","willhaben.at","#F58220"),
+ ("shpock","shpock","Shpock","Commerce","shpock.com","#00B3A4"),
+ ("donedeal","donedeal","DoneDeal","Commerce","donedeal.ie","#E5322D"),
+ ("xianyu","xianyu","Xianyu","Commerce","goofish.com","#FFCC00"),
+ ("weidian","weidian","Weidian","Commerce","weidian.com","#FF6F00"),
+ ("1688","alibaba-1688","1688","Commerce","1688.com","#FF6A00"),
+ ("miravia","miravia","Miravia","Commerce","miravia.es","#FF4D4D"),
+ ("bigbasket","bigbasket","BigBasket","Commerce","bigbasket.com","#84C225"),
+ ("zepto","zepto","Zepto","Commerce","zeptonow.com","#5C2D91"),
+ # ---- Delivery / food ----------------------------------------------------
+ ("meituan","meituan","Meituan","Delivery","meituan.com","#FFD100"),
+ ("eleme","eleme","Ele.me","Delivery","ele.me","#0099FF"),
+ ("keeta","keeta","Keeta","Delivery","keeta.com","#FFD100"),
+ ("gopuff","gopuff","Gopuff","Delivery","gopuff.com","#00B2A9"),
+ ("picnic","picnic","Picnic","Delivery","picnic.app","#E1071B"),
+ ("flink","flink","Flink","Delivery","goflink.com","#FF5A00"),
+ ("hungerstation","hungerstation","HungerStation","Delivery","hungerstation.com","#F9A01B"),
+ ("snappfood","snappfood","SnappFood","Delivery","snappfood.ir","#FF00A6"),
+ ("nandos","nandos","Nando's","Delivery","nandos.com","#D51D29"),
+ ("greggs","greggs","Greggs","Delivery","greggs.co.uk","#00539F"),
  # ---- Transport ----------------------------------------------------------
- ("gojek","gojek","Gojek","Transport","gojek.com","#00AA13"),
- ("paytm","paytm","Paytm","Finance","paytm.com","#00BAF2"),
- ("blablacar","blablacar","BlaBlaCar","Transport","blablacar.com","#00AFF5"),
- ("indriver","indriver","inDrive","Transport","indrive.com","#C1F11D"),
- ("rapido","rapido","Rapido","Transport","rapido.bike","#FFCC00"),
- ("olacabs","olacabs","Ola","Transport","olacabs.com","#B4D22E"),
- ("freenow","freenow","FREENOW","Transport","free-now.com","#FF00FF"),
- ("lime","lime","Lime","Transport","li.me","#00DD00"),
+ ("yango","yango","Yango","Transport","yango.com","#FFDD00"),
+ ("uklon","uklon","Uklon","Transport","uklon.com.ua","#00A3E0"),
+ ("bykea","bykea","Bykea","Transport","bykea.com","#00B140"),
+ ("swvl","swvl","Swvl","Transport","swvl.com","#E4002B"),
+ ("dott","dott","Dott","Transport","ridedott.com","#1E3A8A"),
+ ("tier","tier","TIER","Transport","tier.app","#00E676"),
+ ("voi","voi","Voi","Transport","voi.com","#F26B5E"),
+ ("tada","tada","TADA","Transport","tada.global","#00C4B3"),
  # ---- Travel -------------------------------------------------------------
- ("irctc","irctc","IRCTC","Travel","irctc.co.in","#213B78"),
- ("redbus","redbus","redBus","Travel","redbus.in","#D84E55"),
- ("klook","klook","Klook","Travel","klook.com","#FF5722"),
- ("oyo","oyo","OYO","Travel","oyorooms.com","#EE2E24"),
- ("qantas","qantas","Qantas","Travel","qantas.com","#E40000"),
- ("unitedairlines","united-airlines","United Airlines","Travel","united.com","#002244"),
- ("airasia","airasia","AirAsia","Travel","airasia.com","#FF0000"),
+ ("trip","trip","Trip.com","Travel","trip.com","#287DFA"),
+ ("tujia","tujia","Tujia","Travel","tujia.com","#00B0A6"),
+ ("tongchengtravel","tongcheng","Tongcheng Travel","Travel","ly.com","#1E90FF"),
+ ("vfsglobal","vfsglobal","VFS Global","Travel","vfsglobal.com","#003865"),
+ ("immoscout24","immoscout24","ImmoScout24","Travel","immobilienscout24.de","#FF7300"),
+ ("seloger","seloger","SeLoger","Travel","seloger.com","#E2001A"),
+ ("fotocasa","fotocasa","Fotocasa","Travel","fotocasa.es","#00A0DF"),
+ # ---- Social / messaging -------------------------------------------------
+ ("likee","likee","Likee","Social","likee.video","#FFCC00"),
+ ("kwai","kwai","Kwai","Social","kwai.com","#FF5000"),
+ ("lemon8","lemon8","Lemon8","Social","lemon8-app.com","#FFE411"),
+ ("azar","azar","Azar","Social","azarlive.com","#3E5BFF"),
+ ("band","band","BAND","Social","band.us","#00C73C"),
+ ("tamtam","tamtam","TamTam","Messaging","tamtam.chat","#04A8F5"),
+ ("botim","botim","BOTIM","Messaging","botim.me","#00B0FF"),
+ ("dingtalk","dingtalk","DingTalk","Messaging","dingtalk.com","#3296FA"),
+ ("blued","blued","Blued","Social","blued.com","#2D6CDF"),
+ ("weverse","weverse","Weverse","Social","weverse.io","#07F064"),
+ # ---- Dating -------------------------------------------------------------
+ ("tantan","tantan","Tantan","Dating","tantanapp.com","#FF4E6A"),
+ ("hily","hily","Hily","Dating","hily.com","#7B2FF7"),
+ ("lovoo","lovoo","LOVOO","Dating","lovoo.com","#00A6E0"),
+ ("meetic","meetic","Meetic","Dating","meetic.fr","#E6007E"),
+ ("meetme","meetme","MeetMe","Dating","meetme.com","#00AEEF"),
+ ("taimi","taimi","Taimi","Dating","taimi.com","#8E44AD"),
+ ("muzz","muzz","Muzz","Dating","muzz.com","#00B894"),
+ ("ashleymadison","ashleymadison","Ashley Madison","Dating","ashleymadison.com","#B01116"),
+ # ---- Entertainment ------------------------------------------------------
+ ("iqiyi","iqiyi","iQIYI","Entertainment","iqiyi.com","#00BE06"),
+ ("wetv","wetv","WeTV","Entertainment","wetv.vip","#FF6A00"),
+ ("sonyliv","sonyliv","SonyLIV","Entertainment","sonyliv.com","#00A3E0"),
+ ("vidio","vidio","Vidio","Entertainment","vidio.com","#00B0FF"),
+ ("megogo","megogo","MEGOGO","Entertainment","megogo.net","#7B1FA2"),
+ ("ximalaya","ximalaya","Ximalaya","Entertainment","ximalaya.com","#FF4B33"),
+ ("huya","huya","HUYA","Entertainment","huya.com","#FF6600"),
+ ("douyu","douyu","DouYu","Entertainment","douyu.com","#FF5D23"),
+ ("bigolive","bigolive","BIGO LIVE","Entertainment","bigo.tv","#00C2FF"),
+ ("hoyoverse","hoyoverse","HoYoverse","Entertainment","hoyoverse.com","#4A90D9"),
+ ("supercell","supercell","Supercell","Entertainment","supercell.com","#F4B223"),
+ ("activision","activision","Activision","Entertainment","activision.com","#000000"),
+ # ---- Game marketplaces --------------------------------------------------
+ ("g2g","g2g","G2G","Commerce","g2g.com","#FF6B00"),
+ ("cdkeys","cdkeys","CDKeys","Commerce","cdkeys.com","#F5A623"),
+ ("tcgplayer","tcgplayer","TCGplayer","Commerce","tcgplayer.com","#F37021"),
+ ("playerauctions","playerauctions","PlayerAuctions","Commerce","playerauctions.com","#0F5B9E"),
+ # ---- Crypto -------------------------------------------------------------
+ ("cryptocom","cryptocom","Crypto.com","Crypto","crypto.com","#03316C"),
+ ("gemini","gemini-exchange","Gemini","Crypto","gemini.com","#00DCFA"),
+ ("blockchain","blockchain","Blockchain.com","Crypto","blockchain.com","#1656E3"),
+ ("paxful","paxful","Paxful","Crypto","paxful.com","#4A90E2"),
+ ("bitso","bitso","Bitso","Crypto","bitso.com","#0A2C4E"),
+ # ---- Finance ------------------------------------------------------------
+ ("polymarket","polymarket","Polymarket","Finance","polymarket.com","#1652F0"),
+ ("moomoo","moomoo","moomoo","Finance","moomoo.com","#FF6B00"),
+ ("mobikwik","mobikwik","MobiKwik","Finance","mobikwik.com","#2C3E82"),
+ ("gcash","gcash","GCash","Finance","gcash.com","#007DFE"),
+ ("paymaya","maya","Maya","Finance","maya.ph","#4CC55B"),
+ ("dana","dana","DANA","Finance","dana.id","#118EEA"),
+ ("monobank","monobank","monobank","Finance","monobank.ua","#000000"),
  # ---- Tech ---------------------------------------------------------------
- ("nvidia","nvidia","NVIDIA","Tech","nvidia.com","#76B900"),
- ("gitlab","gitlab","GitLab","Tech","gitlab.com","#FC6D26"),
- ("adobe","adobe","Adobe","Tech","adobe.com","#FF0000"),
- ("opera","opera","Opera","Tech","opera.com","#FF1B2D"),
- ("proton","proton","Proton","Tech","proton.me","#6D4AFF"),
- ("xiaomi","xiaomi","Xiaomi","Tech","mi.com","#FF6900"),
- ("razer","razer","Razer","Tech","razer.com","#44D62C"),
- ("tradingview","tradingview","TradingView","Finance","tradingview.com","#2962FF"),
- ("skype","skype","Skype","Messaging","skype.com","#00AFF0"),
+ ("oraclecloud","oraclecloud","Oracle Cloud","Tech","oracle.com","#C74634"),
+ ("alibabacloud","alibabacloud","Alibaba Cloud","Tech","alibabacloud.com","#FF6A00"),
+ ("byteplus","byteplus","BytePlus","Tech","byteplus.com","#1664FF"),
+ ("okta","okta","Okta","Tech","okta.com","#007DC1"),
+ ("authy","authy","Authy","Tech","authy.com","#EC1C24"),
+ ("kaggle","kaggle","Kaggle","Tech","kaggle.com","#20BEFF"),
  # ---- AI -----------------------------------------------------------------
- ("instacart","instacart","Instacart","Delivery","instacart.com","#43B02A"),
- ("perplexity","perplexity","Perplexity","AI","perplexity.ai","#20808D"),
- ("deepseek","deepseek","DeepSeek","AI","deepseek.com","#4D6BFE"),
- ("mistralai","mistral","Mistral AI","AI","mistral.ai","#FA520F"),
- ("suno","suno","Suno","AI","suno.com","#000000"),
- # ---- Gaming / entertainment --------------------------------------------
- ("roblox","roblox","Roblox","Entertainment","roblox.com","#E2231A"),
- ("epicgames","epicgames","Epic Games","Entertainment","epicgames.com","#2A2A2A"),
- ("nintendo","nintendo","Nintendo","Entertainment","nintendo.com","#E60012"),
- ("ubisoft","ubisoft","Ubisoft","Entertainment","ubisoft.com","#000000"),
- ("riotgames","riotgames","Riot Games","Entertainment","riotgames.com","#D32936"),
- ("pubg","pubg","PUBG","Entertainment","pubg.com","#F2A900"),
- ("garena","garena","Garena","Entertainment","garena.com","#EE3B33"),
- ("faceit","faceit","FACEIT","Entertainment","faceit.com","#FF5500"),
- ("bilibili","bilibili","Bilibili","Entertainment","bilibili.com","#00A1D6"),
- ("spotify","spotify","Spotify","Entertainment","spotify.com","#1DB954"),
- # ---- Social -------------------------------------------------------------
- ("bereal","bereal","BeReal","Social","bereal.com","#000000"),
- ("bluesky","bluesky","Bluesky","Social","bsky.app","#0085FF"),
- ("nextdoor","nextdoor","Nextdoor","Social","nextdoor.com","#8ED500"),
- ("weibo","weibo","Weibo","Social","weibo.com","#E6162D"),
- ("medium","medium","Medium","Social","medium.com","#000000"),
- ("substack","substack","Substack","Social","substack.com","#FF6719"),
- # ---- Work / misc --------------------------------------------------------
- ("upwork","upwork","Upwork","Productivity","upwork.com","#14A800"),
- ("fiverr","fiverr","Fiverr","Productivity","fiverr.com","#1DBF73"),
- ("indeed","indeed","Indeed","Productivity","indeed.com","#2164F3"),
- ("eventbrite","eventbrite","Eventbrite","Specialty","eventbrite.com","#F05537"),
- ("gofundme","gofundme","GoFundMe","Finance","gofundme.com","#02A95C"),
+ ("heygen","heygen","HeyGen","AI","heygen.com","#7C3AED"),
+ ("codeium","codeium","Codeium","AI","codeium.com","#09B6A2"),
+ ("genspark","genspark","Genspark","AI","genspark.ai","#FF5A1F"),
 ]
 
 ICON = {
@@ -148,41 +153,36 @@ ICON = {
  "Transport":"car.fill", "Travel":"airplane", "Tech":"desktopcomputer",
  "AI":"sparkles", "Entertainment":"gamecontroller.fill", "Social":"person.2.fill",
  "Messaging":"bubble.left.and.bubble.right.fill", "Finance":"creditcard.fill",
- "Productivity":"briefcase.fill", "Specialty":"star.fill",
+ "Productivity":"briefcase.fill", "Specialty":"star.fill", "Dating":"heart.fill",
+ "Crypto":"bitcoinsign.circle.fill",
 }
-VALID_CATS = set(ICON)
 
 def q(s): return "'" + s.replace("'", "''") + "'"
 
 def main():
     products = set(json.load(open('/Users/adyl/.claude/jobs/744c6e4a/tmp/5sim_products.json')))
-    missing = set(open('/Users/adyl/.claude/jobs/744c6e4a/tmp/missing.txt').read().split())
+    missing  = set(open('/Users/adyl/.claude/jobs/744c6e4a/tmp/missing.txt').read().split())
     existing = set(open('/Users/adyl/.claude/jobs/744c6e4a/tmp/existing_ids.txt').read().split())
 
-    errs = []
-    seen_p, seen_id = set(), set()
+    errs, seen_p, seen_id = [], set(), set()
     for p, sid, name, cat, dom, tint in S:
         if p not in products: errs.append(f"NOT a 5sim product: {p}")
-        if p not in missing:  errs.append(f"already mapped (would duplicate): {p}")
-        if cat not in VALID_CATS: errs.append(f"unknown category {cat} for {p}")
-        if sid in existing: errs.append(f"service id ALREADY EXISTS in catalog: {sid} ({name})")
+        elif p not in missing: errs.append(f"already mapped: {p}")
+        if sid in existing: errs.append(f"service id ALREADY EXISTS: {sid} ({name})")
+        if cat not in ICON: errs.append(f"unknown category {cat} for {p}")
         if p in seen_p: errs.append(f"duplicate product: {p}")
         if sid in seen_id: errs.append(f"duplicate id: {sid}")
-        if not tint.startswith('#') or len(tint) != 7: errs.append(f"bad tint {tint} for {p}")
+        if not tint.startswith('#') or len(tint) != 7 or any(c not in '0123456789ABCDEFabcdef' for c in tint[1:]):
+            errs.append(f"bad tint {tint!r} for {p}")
         seen_p.add(p); seen_id.add(sid)
     if errs:
         print("VALIDATION FAILED:"); [print("  -", e) for e in errs]; sys.exit(1)
 
-    print(f"validated {len(S)} services, all present in 5sim catalog and none already mapped")
-    if len(S) != 100:
-        print(f"WARNING: {len(S)} rows, expected 100")
-
-    lines = []
-    for i, (p, sid, name, cat, dom, tint) in enumerate(S):
-        lines.append(
-          f"  ({q(sid)}, {q(name)}, {q(cat)}, {q(dom)}, {q(tint)}, "
-          f"{q(name[0].upper())}, {q(ICON[cat])}, {10000 + i*10}, {q(p)}, '')")
-    open('/Users/adyl/.claude/jobs/744c6e4a/tmp/services_values.sql','w').write(",\n".join(lines))
+    print(f"validated {len(S)} services")
+    lines = [f"  ({q(sid)}, {q(name)}, {q(cat)}, {q(dom)}, {q(tint)}, "
+             f"{q(name[0].upper())}, {q(ICON[cat])}, {11000 + i*10}, {q(p)}, '')"
+             for i, (p, sid, name, cat, dom, tint) in enumerate(S)]
+    open('/Users/adyl/.claude/jobs/744c6e4a/tmp/services_values2.sql','w').write(",\n".join(lines))
     print("wrote VALUES block")
 
 if __name__ == "__main__":
