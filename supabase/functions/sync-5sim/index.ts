@@ -28,11 +28,21 @@ const CREDIT_DIVISOR = 0.03;
 const MIN_CREDITS = 1;
 const MAX_CREDITS = 999;
 
-// Hide only what a user literally cannot buy: the largest credit pack is 150,
-// so 150 * 0.03 = $4.50. Same rule as the other syncs, recomputed for OUR
-// divisor — this constant is NOT shared, and copying HeroSMS's 375 would hide
-// routes that are perfectly affordable at this markup.
-const MAX_WHOLESALE_CENTS = 450;
+/** Owner decision 2026-08-04: the wholesale ceiling is REMOVED.
+ *
+ *  This was `150 credits x this provider's divisor` — the largest credit pack —
+ *  so the rule was "hide only what a user literally cannot buy in one purchase".
+ *  It now sits far above any real price (observed maxima: $30 herosms, $20 5sim
+ *  and smspva) and is retained ONLY as a glitch guard: a provider feed returning
+ *  a nonsense price should not price a route at 30,000 credits. Lower this one
+ *  number to restore the cap; the next sync re-hides.
+ *
+ *  ⚠️ Removing it surfaced 1,345 routes priced 151-1,200 credits. They are
+ *  visible but NOT orderable until the provider balance is topped up:
+ *  create-order refuses before charging when the balance is under the order's
+ *  own maxCostUsd, which is ~$27 for a 300-credit route and ~$108 for the
+ *  dearest. See "Why a service reads Unavailable" in CLAUDE.md. */
+const MAX_WHOLESALE_CENTS = 100_000;
 
 // A rate with no denominator is only meaningful if the pool can actually serve.
 // 5sim publishes no order count behind `rate720` and shows rates on pools

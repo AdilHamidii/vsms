@@ -56,13 +56,21 @@ const MAX_CREDITS = 999;
 /** Weight on the new quote when the cost FALLS. Matches sync-prices. */
 const SMOOTH_ALPHA = 0.5;
 
-/** Price ceiling, on the same rule as sync-prices — "hide only what a user
- *  literally cannot buy" — but recomputed for THIS divisor: the largest credit
- *  pack is 150, and 150 × $0.025 = $3.75. At 750 (sync-prices' value, which is
- *  150 × $0.05) a HeroSMS route would price at up to 300 credits, which no
- *  combination of packs can afford, so listing it could only ever dead-end.
- *  Hides 8 routes beyond the old value. */
-const MAX_WHOLESALE_CENTS = 375;
+/** Owner decision 2026-08-04: the wholesale ceiling is REMOVED.
+ *
+ *  This was `150 credits x this provider's divisor` — the largest credit pack —
+ *  so the rule was "hide only what a user literally cannot buy in one purchase".
+ *  It now sits far above any real price (observed maxima: $30 herosms, $20 5sim
+ *  and smspva) and is retained ONLY as a glitch guard: a provider feed returning
+ *  a nonsense price should not price a route at 30,000 credits. Lower this one
+ *  number to restore the cap; the next sync re-hides.
+ *
+ *  ⚠️ Removing it surfaced 1,345 routes priced 151-1,200 credits. They are
+ *  visible but NOT orderable until the provider balance is topped up:
+ *  create-order refuses before charging when the balance is under the order's
+ *  own maxCostUsd, which is ~$27 for a 300-credit route and ~$108 for the
+ *  dearest. See "Why a service reads Unavailable" in CLAUDE.md. */
+const MAX_WHOLESALE_CENTS = 100_000;
 
 /** cents → credits at the HeroSMS divisor. Mirrors sync-prices' priceToCredits
  *  exactly, including the clamps, so the two providers round identically. */
