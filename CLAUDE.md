@@ -36,13 +36,30 @@ turns "buy from the best pool" and "show the user that pool's number" from
 guesswork into arithmetic. It is the first time we can steer on delivery before
 placing an order rather than after failing one.
 
-**Ownership is per SERVICE, never per route** (owner decision): a service 5sim
-carries goes entirely to 5sim; one it doesn't stays on whichever provider does.
-That keeps the catalog broad without ever splitting one service across two
-providers — which is what keeps per-service evidence meaningful. **There is no
-fallback between providers**: `providerOrder()` returns exactly one, so a
-stockout fails as a stockout rather than silently re-reserving elsewhere under a
-different price and delivery profile.
+⚠️ **"Ownership is per SERVICE, never per route" WAS the design rule and the
+live catalog does NOT satisfy it.** Measured 2026-08-04: **109 of 254 visible
+services have active routes on two providers**, carrying ~80% of all active
+routes (instagram is 57 routes on 5sim + 5 on HeroSMS; whatsapp 44 + 4).
+Ownership is really per **(service, country)** — per ROUTE.
+
+That is safe for ROUTING — `routes.provider` is a column on each row and
+`providerOrder()` resolves it first, so every route deterministically goes to
+exactly one provider. It was NOT safe for service-level EVIDENCE, which
+assumed disjointness and silently overwrote itself; fixed 2026-08-04, see
+"Evidence must describe the provider that serves the NEXT order".
+
+**The split is entirely COUNTRY-driven, not service-driven.** Every non-5sim
+active route is in one of **9 countries 5sim does not serve** — Ukraine, Japan,
+New Zealand, Singapore, Bosnia, Gibraltar, Malta, Switzerland, Turkey (1,490
+routes). There is no service 5sim carries that we merely failed to re-home:
+`sync-5sim` re-homes those automatically every hour. Owner decision 2026-08-04:
+**keep them.** Seven have never taken an order, but Switzerland is the best
+delivery record in the app's history (5 codes / 14 orders) and dropping the set
+would remove nine countries from a 100%-search-driven catalog.
+
+**There is no fallback between providers**: `providerOrder()` returns exactly
+one, so a stockout fails as a stockout rather than silently re-reserving
+elsewhere under a different price and delivery profile.
 
 `providerOrder()` in `_shared/providers.ts` is the single source of truth for SMS
 routing; order/poll functions call the router, never a provider. It resolves
@@ -2121,7 +2138,34 @@ muted; green/amber/red are reserved for measured records.
 
 ### Evidence must describe the provider that serves the NEXT order
 
-Two bugs, both silent, both fixed 2026-07-30 (`20260730220000`, `20260730230000`).
+Three bugs, all silent. Two fixed 2026-07-30 (`20260730220000`,
+`20260730230000`), the third 2026-08-04 (`20260804090000`).
+
+**3. The per-provider loop OVERWROTE service evidence instead of adding to it.**
+`refresh_evidence_all_providers` called `refresh_service_delivery(lookback,
+provider)` once per provider. That is right for ROUTES — `routes` has a
+`provider` column, so the passes are disjoint — and wrong for SERVICES, because
+`public.services` has none, so every pass wrote the same row and the last one
+won. The loop runs `order by 1`, so **`smspva` sorted last and silently won
+every service it co-owns**, including the highest-volume ones (facebook: 52
+orders across 4 historical providers; leboncoin: 50 across 3).
+
+The wrapper's own comment asserted "`services` is made disjoint by the ownership
+predicate" — true only under the per-service ownership rule, which the catalog
+stopped satisfying (109 of 254 services sit on two providers; see the header).
+**A comment claiming an invariant is not the same as enforcing it.**
+
+Fixed by dropping the provider parameter and filtering each ORDER by whether
+**its own** provider still actively serves that service, in a single pass called
+once outside the loop — exactly how country evidence is already handled, and for
+the identical reason. The property that mattered survives untouched: 53 orders
+from retired providers (50 smspool, 3 virtualsms) are still excluded, because
+those providers own no active routes. Live effect: services carrying evidence
+12 → 14, orders counted **39 → 57**.
+
+**The general rule: a per-provider refresh may only write to a table that has a
+provider column.** `routes` does. `services` and `countries` do not, so both
+must be refreshed exactly once with per-order ownership filtering.
 
 **1. Only one provider was ever measured.** The three refreshes scope every
 statement to `coalesce(p_provider, active_sms_provider())`, and
