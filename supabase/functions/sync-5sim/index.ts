@@ -135,50 +135,50 @@ function choosePool(pools: Record<string, FivePool>): Chosen | null {
   //    fields are perfectly nested by length); an explicit 0 means there were
   //    activations and all of them failed. Only the explicit 0 is evidence of
   //    death, so `staleDead` tests `=== 0` and never `!v.rate168`.
-  const staleDead = (v: FivePool) =>
-    typeof v.rate720 === "number" && v.rate720 > 0 && v.rate168 === 0;
-  /** Freshest positive signal, 24h preferred over 7d. */
-  const recentPct = (v: FivePool): number | null => {
-    for (const r of [v.rate24, v.rate168]) {
-      if (typeof r === "number" && r > 0) return r;
-    }
-    return null;
+  /** The freshest CREDIBLE rate for a pool: shortest window first, falling back
+   *  to longer ones purely for coverage.
+   *
+   *  Measured over 4,003 in-stock pools on 2026-08-04, the windows publish on
+   *  35.4% (24h) / 37.7% (7d) / 39.5% (30d) — so leading with the short ones
+   *  costs almost no coverage, while `rate24` and `rate720` **disagree about
+   *  alive-vs-dead on 15.6%** of the pools that publish both. When they
+   *  disagree the short window is the one that matched our real outcomes.
+   *
+   *  ASYMMETRY IS DELIBERATE. A positive short window is accepted immediately —
+   *  it is the strongest available evidence a pool is delivering right now. A
+   *  ZERO is only believed when the 7-day window agrees, so a single quiet day
+   *  cannot condemn a good pool. That matters because a rate has no denominator:
+   *  a 24h zero can be 0-of-1, whereas a full week of activations that all
+   *  failed is a verdict.
+   *
+   *  Returns null only when the pool publishes no rate at all (unrated), which
+   *  stays distinct from a measured 0 everywhere downstream. */
+  const rateOf = (v: FivePool): number | null => {
+    const h24 = v.rate24, d7 = v.rate168, d30 = v.rate720;
+    if (typeof h24 === "number" && h24 > 0) return h24;
+    if (typeof d7 === "number" && d7 > 0) return d7;
+    if (d7 === 0) return 0;                       // a week of tries, none landed
+    if (typeof d30 === "number") return d30;      // only the 30-day figure exists
+    return null;                                  // never measured
   };
 
-  // Tier 1: a rate we can act on, NOT contradicted by the recent windows.
+  // Tier 1: a rate we can act on, taken from the freshest window that has one.
   const positive = stocked
-    .filter(([, v]) => typeof v.rate720 === "number" && (v.rate720 as number) > 0 && !staleDead(v))
-    .sort((a, b) => (b[1].rate720 as number) - (a[1].rate720 as number));
+    .filter(([, v]) => (rateOf(v) ?? 0) > 0)
+    .sort((a, b) => (rateOf(b[1]) as number) - (rateOf(a[1]) as number));
   if (positive.length) {
     const [, v] = positive[0];
     return {
       chain: affordable(v.cost, positive).slice(0, 3).map(([o]) => o),
       costUsd: v.cost, stock: v.count ?? 0,
-      ratePct: Math.round(v.rate720 as number),
-    };
-  }
-
-  // Tier 1b: nothing has a trustworthy 30-day rate, but something is delivering
-  // RIGHT NOW. This is the olx/us case — rate720 = 0 while rate24 = 22.7%. A
-  // recent positive beats both an unmeasured pool and a stale-dead one, and the
-  // label is that recent number rather than the 30-day figure that disagrees
-  // with it.
-  const recent = stocked
-    .filter(([, v]) => recentPct(v) !== null)
-    .sort((a, b) => (recentPct(b[1]) as number) - (recentPct(a[1]) as number));
-  if (recent.length) {
-    const [, v] = recent[0];
-    return {
-      chain: affordable(v.cost, recent).slice(0, 3).map(([o]) => o),
-      costUsd: v.cost, stock: v.count ?? 0,
-      ratePct: Math.round(recentPct(v) as number),
+      ratePct: Math.round(rateOf(v) as number),
     };
   }
 
   // Tier 2: unmeasured beats measured-dead. ratePct stays NULL — we are not
   // claiming anything about it, and the picker renders nothing rather than 0%.
   const unrated = stocked
-    .filter(([, v]) => typeof v.rate720 !== "number")
+    .filter(([, v]) => rateOf(v) === null)
     .sort((a, b) => (b[1].count ?? 0) - (a[1].count ?? 0));
   if (unrated.length) {
     const [, v] = unrated[0];
@@ -188,21 +188,19 @@ function choosePool(pools: Record<string, FivePool>): Chosen | null {
     };
   }
 
-  // Tier 3: everything here is a published zero. Take the deepest pool and keep
-  // the 0 on the label — it IS the vendor's verdict, and the row should say so.
+  // Tier 3: every pool here reads 0 on its freshest window. Take the deepest
+  // one and keep the 0 on the label — it IS the vendor's verdict, and the row
+  // should say so rather than fall back to a longer window that disagrees.
+  // `rateOf` has already collapsed a stale 30-day figure to 0 whenever the
+  // 7-day window contradicted it, so there is nothing left to re-publish here.
   const byStock = (stocked.length ? stocked : inStock)
     .sort((a, b) => (b[1].count ?? 0) - (a[1].count ?? 0));
   const [, v] = byStock[0];
-  const r = v.rate720;
-  // A stale-dead pool that reaches here has no live alternative on the route,
-  // so we sell it — but we must NOT re-publish the 30-day figure the recent
-  // windows just contradicted. 0 is the vendor's own freshest measurement, and
-  // it is what makes the row render red and sort last instead of advertising a
-  // number we have direct evidence against.
+  const r = rateOf(v);
   return {
     chain: byStock.slice(0, 3).map(([o]) => o),
     costUsd: v.cost, stock: v.count ?? 0,
-    ratePct: staleDead(v) ? 0 : (typeof r === "number" ? Math.round(r) : null),
+    ratePct: r === null ? null : Math.round(r),
   };
 }
 

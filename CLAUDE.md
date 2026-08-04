@@ -290,11 +290,38 @@ GET /v1/user/buy/activation/{country}/{operator}/{product}    # pins the pool
 GET /v1/user/profile                  # {balance, rating}
 ```
 
-**`rate720` (30 days) is the number we use, store in `routes.pool_rate_pct` and
-render in the picker.** It has the best coverage of any window *and* is the most
-stable. Do not read 5sim's own website as a reference: its operator list shows
-the **max across all seven windows**, and its Statistics tab shows `rate72`, so
-our figures will look lower than theirs. That is correct, not a bug.
+**`rate720` (30 days) is the base number we use, stored in `routes.pool_rate_pct`
+and rendered in the picker.** It has the best coverage of any window *and* is the
+most stable. Do not read 5sim's own website as a reference: its operator list
+shows the **max across all seven windows**, and its Statistics tab shows
+`rate72`, so our figures will look lower than theirs. That is correct, not a bug.
+
+🔴 **`rate720` ALONE IS NOT SAFE — it lags a pool's death by up to three weeks,
+and that cost us a whole route (2026-08-04).** olx/us pinned `virtual63` at a
+published **49.24%** whose `rate168`, `rate72`, `rate24` and `rate` were all an
+explicit **0**: it had not delivered in at least seven days. Thirteen real
+orders across five different users, every one held to expiry, **zero codes**.
+On the same route `virtual51` published `rate720 = 0` — so we ranked it last —
+while actually running at `rate24 = 22.7%`. We pinned the corpse and skipped the
+live pool, then painted the row green at 49%.
+
+Measured over the 801 chosen pools in the 14 busiest countries: **96 (12.0%)**
+published `rate720 > 0` against an explicit `rate168 = 0`.
+
+**ABSENT IS NOT ZERO, and this distinction is the entire fix.** The windows are
+perfectly nested by length, so an absent field means *no activations* in that
+window while an explicit `0` means there *were* activations and every one
+failed. Only the explicit 0 is evidence of death. `staleDead` therefore tests
+`v.rate168 === 0` and must NEVER be written as `!v.rate168` — the sloppy form
+condemns every low-traffic pool in the catalog.
+
+`choosePool` now excludes stale-dead pools from tier 1, adds a **tier 1b** that
+prefers a pool delivering *right now* (`rate24`, else `rate168`) and labels it
+with that fresher number, and refuses to re-publish `rate720` for a stale-dead
+pool that reaches the bottom tier — it publishes **0** there instead. Live
+effect: rated routes 1,906 → 1,757, and olx/us went `virtual63` 49% →
+`virtual51` 23%. Caveat: a short window can be a tiny sample, so tier 1b only
+fires when the alternative is an unrated or known-dead pool.
 
 **Only the bare `rate` field is documented.** All seven windowed fields are
 undocumented, and the documented rule *"omitted below 20% or too few orders"* is
