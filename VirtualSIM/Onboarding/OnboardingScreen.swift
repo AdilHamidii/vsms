@@ -12,13 +12,24 @@ import SwiftUI
 // is exactly what happened: the signup grant was disabled on 2026-08-03
 // (app_config.signup_bonus_credits = 0) and the screen kept promising three.
 //
-// So the promise is gone rather than re-numbered. Quoting a credit amount here
-// couples pre-sign-in copy to a server value that changes without a release —
-// it has already been 1, 3 and 5 — and every change silently turns this screen
-// into a lie. What replaces it holds at ANY grant amount: a number that never
-// delivers a code is refunded in full. That is enforced on every terminal path
-// (expire_order_claim, cancel-order) and was verified end-to-end in the ledger,
-// so it is a claim we can always keep.
+// ⚠️ THAT FIX WAS ONLY HALF-APPLIED, and the missing half shipped in 1.8 and
+// 1.9. The prose above was rewritten, but the CARD was not: a `GiftCard`
+// rendering a hardcoded "+3 credits / Covers your first number" stayed on this
+// page. So when the signup grant was set to 0 permanently on 2026-08-04 (owner
+// decision — the product is paid, and a user who has paid actually uses the
+// number), the very first screen of the app promised three credits and the
+// server granted none. Fixed here by deleting the card, not by re-numbering it.
+//
+// THE RULE, since this has now been got wrong twice: NOTHING on this screen may
+// quote a credit amount. Onboarding runs BEFORE sign-in, so it cannot read
+// `app_config` even if we wanted it to, while the grant is a server value that
+// changes without a release — it has been 0, 1, 3 and 5. Any number here is a
+// promise the server has not agreed to keep.
+//
+// What replaces it holds at ANY grant amount, including zero: a number that
+// never delivers a code is refunded in full. That is enforced on every terminal
+// path (expire_order_claim, cancel-order) and was verified end-to-end in the
+// ledger, so it is a claim we can always keep.
 struct OnboardingScreen: View {
     @Environment(\.theme) private var theme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -42,9 +53,9 @@ struct OnboardingScreen: View {
                         .transition(pageTransition)
                     } else {
                         VStack(spacing: 30) {
-                            GiftCard()
+                            RefundCard()
                                 .padding(.horizontal, 22)
-                            giftCopyBlock
+                            refundCopyBlock
                         }
                         .transition(pageTransition)
                     }
@@ -91,7 +102,7 @@ struct OnboardingScreen: View {
         .padding(.horizontal, 24)
     }
 
-    private var giftCopyBlock: some View {
+    private var refundCopyBlock: some View {
         VStack(spacing: 14) {
             Text("You only pay when the code arrives.")
                 .font(RFont.display(30, weight: .bold))
@@ -155,27 +166,31 @@ struct OnboardingScreen: View {
     }
 }
 
-// MARK: - Welcome credit card
+// MARK: - Refund guarantee card
 
-private struct GiftCard: View {
+// The hero line is a STATEMENT, not an amount. That is the whole point: this
+// card replaced one that rendered a hardcoded "+3 credits", which became a lie
+// the moment the signup grant changed on the server (see the header). Nothing
+// here may be re-numbered back into a promise — a claim that survives every
+// grant value is the only kind this pre-sign-in screen can safely make.
+private struct RefundCard: View {
     @Environment(\.theme) private var theme
 
     var body: some View {
         Card {
             VStack(alignment: .leading, spacing: 0) {
                 HStack {
-                    Text("WELCOME GIFT")
+                    Text("IF NO CODE ARRIVES")
                         .font(RFont.text(11, weight: .semibold))
                         .tracking(0.6)
                         .foregroundStyle(theme.text3)
                     Spacer()
-                    Image(systemName: "gift.fill")
+                    Image(systemName: "checkmark.shield.fill")
                         .font(.system(size: 13, weight: .semibold))
                         .foregroundStyle(theme.live)
                 }
                 HStack(spacing: 10) {
-                    CoinIcon(size: 22, color: theme.text)
-                    Text("+3 credits")
+                    Text("Full refund")
                         .font(RFont.display(28, weight: .bold))
                         .tracking(-0.6)
                         .foregroundStyle(theme.text)
@@ -185,15 +200,15 @@ private struct GiftCard: View {
                 Rectangle().fill(theme.sep).frame(height: 0.5)
                     .padding(.vertical, 16)
                 VStack(alignment: .leading, spacing: 10) {
-                    giftRow(symbol: "bolt.fill", text: "Covers your first number")
-                    giftRow(symbol: "arrow.uturn.left", text: "No code? Refunded instantly.")
+                    refundRow(symbol: "arrow.uturn.left", text: "Credits go straight back")
+                    refundRow(symbol: "bolt.fill", text: "Automatic, every single time")
                 }
             }
             .padding(20)
         }
     }
 
-    private func giftRow(symbol: String, text: LocalizedStringKey) -> some View {
+    private func refundRow(symbol: String, text: LocalizedStringKey) -> some View {
         HStack(spacing: 9) {
             Image(systemName: symbol)
                 .font(.system(size: 12, weight: .semibold))
