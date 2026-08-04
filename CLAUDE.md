@@ -2105,7 +2105,7 @@ lookback that ever held a number.
    "this performed badly". The change was small in the catalog (**only 4 routes**
    were evidence-hidden; 472 of the 688 hidden are the price kind) and large in
    the UI: see the label rule below. Note the un-hide statement **must** exclude
-   `blocked_routes` — without that clause it resurrects `whatsapp|us`, which is
+   `blocked_routes` — without that clause it resurrects `whatsapp|us`, which was
    blocked because those numbers don't work at all.
 
 `refresh_service_delivery`'s wipe is scoped the same way, for the same reason:
@@ -2349,23 +2349,45 @@ different from a zero.
 
 ### Why a service reads "Unavailable" — the price ceiling
 
-`sync-prices` hides any route whose wholesale cost exceeds `MAX_WHOLESALE_CENTS`,
-and a hidden route is exactly what the client renders as **"Unavailable"**
-(`cost()` → nil). It was a flat **$4.00** until 2026-07-27, which hid **WhatsApp
-across nearly every Western market** — 40 of its 69 routes, including the UK,
-France, Netherlands and Poland at $5–6 wholesale — even though those are
-comfortably buyable at 100–120 credits. For the most-requested service in the app
-that read as "the app is broken", not as a deliberate cap. It is now **750**
-(= the largest credit pack, 150 cr × $0.05), making the rule *hide only what a
-user literally cannot buy*; that unhid 1,503 routes and took WhatsApp from 29 to
-45 countries. Genuinely absurd routes stay hidden (WhatsApp Germany $13, Italy
-$14.52, Spain $15, Canada $20).
+⚠️ **BOTH price-based hides were REMOVED on 2026-08-04 (owner decision).**
+`MAX_WHOLESALE_CENTS` is **100_000** in all four syncs and `blocked_routes` is
+**`[]`**. The history below is kept because both levers still exist and one
+number restores either.
 
-**`blocked_routes` (app_config) is a separate manual kill-list and still wins at
-any price** — `whatsapp|us`, `google|us`, `openai|us`, `twitter-x|us` are hidden
-because those numbers don't work, not because they're expensive. So when checking
-why something is unavailable, look at three things in order: `blocked_routes`,
-then `smoothed_cost_cents > MAX_WHOLESALE_CENTS`, then measured-zero auto-hide.
+*What the ceiling was for:* it hid any route whose wholesale exceeded a cap set
+at **150 credits × that provider's divisor** — the largest credit pack — so the
+rule was *hide only what a user literally cannot buy in one purchase*. A flat
+$4.00 version until 2026-07-27 hid **WhatsApp across nearly every Western
+market** (40 of 69 routes, UK/France/Netherlands/Poland at $5–6 wholesale) and
+read as "the app is broken"; raising it to the pack size unhid 1,503 routes.
+
+*What removing it actually did:* **+122 active routes (5,905 → 6,027)**, of
+which **124 now price above 150 credits**, max **541**. Far less than the ~1,345
+a naive `cost > ceiling` count suggests — most of those were **also** hidden for
+having no stock, and a no-stock route stays hidden regardless of price. Count
+`status='hidden'` reasons in order; they overlap.
+
+🔴 **Those 124 routes are VISIBLE BUT NOT ORDERABLE at current balances.**
+`create-order` refuses before charging when the provider balance is under the
+order's own `maxCostUsd`. Measured 2026-08-04: 5sim's 7 need **$14.68–21.79**
+against a $9.37 balance, HeroSMS's 10 need $13.00–40.68 against $9.62, SMSPVA's
+107 need $24.00–60.00 against $5.26 — **zero orderable on any provider**. No
+money is taken (the guard is pre-charge) but the user gets the
+`provider_unreachable` copy, which does not say "we are out of float". Topping
+up is what makes this change do anything.
+
+*The blocklist* was a manual kill-list that won at any price: `whatsapp|us`,
+`google|us`, `openai|us`, `twitter-x|us`, hidden because those numbers do not
+work rather than because they cost too much. Cleared to `[]` because their whole
+record — 8 orders, 0 codes — was 12–13 July on **SMSPVA and SMSPool**, providers
+we have retired, and this repo's own rule says such evidence does not carry to
+the provider serving the next order. They are re-opened for measurement under
+5sim. **If they still deliver zero, put them back.**
+
+So when checking why something is unavailable, look in this order:
+`blocked_routes` (now empty), then cost vs `MAX_WHOLESALE_CENTS` (now
+non-binding), then **no stock** — which after these two changes is the reason
+for essentially every hidden route.
 
 ## Non-obvious gotchas (real bugs we've hit, do not re-introduce)
 
