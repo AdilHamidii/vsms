@@ -2632,11 +2632,32 @@ refunded. Before suspecting users, check what the app pre-selected — and note 
 cluster was on the CHEAPEST route in the catalog, the opposite of what someone
 burning your money would pick.
 
-🔴 **The fix is to rank the starter candidates by pool rate instead of array
-position** — the list's own comment claims it is "ordered by MEASURED delivery",
-which was SMSPVA-era and now means nothing. At 3 credits there are 618 reachable
-routes and 58 above 60%, yet the list still hands out an unrated one. Client
-change; not in build 28.
+✅ **FIXED 2026-08-04 (`804a6dd`) — the candidates are now ranked by pool rate,
+not by array position. NOT IN BUILD 28**, so every shipped build still has the
+behaviour above; it needs a release to reach anyone.
+
+`preferred` is kept as the CANDIDATE SET and its order survives only as the
+FINAL tie-break, so brand recognition still decides where the evidence is silent
+and nowhere else. Scoring goes through the new `routeKey`, extracted from
+`affordableFallbackCountry` so both callers share one definition of "better" —
+the rule had no second caller before, which is precisely how the starter ended
+up picking by position while every other ranker used the pool rate.
+
+Old vs new, simulated against the live catalog (the two old-rule values in the
+table above reproduce exactly, which is what validates the model):
+
+| grant | old pick | new pick |
+|---|---|---|
+| 1 cr | olx/us 23% | **tiktok/uk 41%** |
+| 2 cr | deliveroo/ge **unrated** | **discord/pl 70%** |
+| 3 cr | deliveroo/us 76% | deliveroo/us 76% — agree |
+| 5 cr | leboncoin/uk 52% | **glovo/pt 96%** |
+| 8 cr | leboncoin/at 77% | **glovo/pt 96%** |
+
+⚠️ **3 cr agreeing is LUCK, not correctness** — deliveroo happens to be both
+near the front of the list and the best-rated today. The old rule would have
+picked it just the same at 0%. Do not read the one matching row as evidence the
+bug was minor.
 
 **Corollary for any delivery analysis: an order on a route the user did not
 choose is not evidence about that route.** Those 16 olx orders were cited as
@@ -2713,16 +2734,18 @@ ads.apple.com → Settings → Billing.
 
 **Top of the list as of 2026-08-04:**
 
-- 🔴 **The starter list hands every new user ONE route, chosen by array
-  position.** See "The grant size decides which ONE route new users land on".
-  At the current 3-credit grant that is an **unrated** deliveroo/Georgia, while
-  618 routes and 58 above 60% are reachable. Rank the candidates in
-  `AppState.affordableStarter` by pool rate. Client change; not in build 28.
-- 🔴 **The IAP fix is deployed but UNCONFIRMED.** Every purchase was failing
-  `chain_verify_failed` until 2026-08-03; the fix (P-384 in pure JS) is live but
-  **no purchase has been attempted since 2026-08-02 09:02**. One real buy settles
-  it — success is a row in `iap_receipts` with `granted_credits > 0` and no
-  Telegram alert. Until then, treat revenue as unproven.
+- 🟠 **The starter list is FIXED in the repo but NOT SHIPPED.** `804a6dd` ranks
+  the candidates by pool rate instead of array position; every released build,
+  28 included, still lands the whole new-user cohort on one position-picked
+  route. See "The grant size decides which ONE route new users land on" for the
+  before/after table. **This needs a build to be worth anything** — it is the
+  only fix in the tree whose entire value is in a release.
+- ✅ **RESOLVED 2026-08-04 — the IAP fix is CONFIRMED working.** A Production
+  receipt at 2026-08-03 16:41Z granted credits (`granted_credits > 0`), which is
+  the settling evidence this entry asked for. Revenue is proven, not assumed.
+  *Original:* every purchase failed `chain_verify_failed` until 2026-08-03
+  because the Supabase edge runtime does not implement ECDSA P-384; fixed in
+  pure JS via `@noble/curves/p384`.
 - 🔴 **Does `pool_rate_pct` predict OUR delivery? Unverified, and the obvious
   query is now KNOWN-CONTAMINATED.** Against HeroSMS orders the same vendor's
   rates correlated **negatively** (r = −0.51, n = 16). Stamped per order as
