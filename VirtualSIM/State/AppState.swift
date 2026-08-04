@@ -673,6 +673,9 @@ final class AppState {
     /// and it saw only 12 of the 25 countries we have order history for.
     func countryRatio(_ country: Country) -> Double? { country.deliveryRatio }
 
+    /// (tier, pool rate, country tier, country record, price) — see `routeKey`.
+    typealias RouteKey = (Int, Int, Int, Int, Int)
+
     /// Sort key for a route with no record of its own: country evidence first,
     /// price only as the final tie-break.
     ///
@@ -945,33 +948,50 @@ final class AppState {
         }
     }
 
-    /// A recognizable service + country pair the current balance can afford.
-    /// Prefers well-known services (in the given order); falls back to any
-    /// affordable available pair. nil only when nothing is affordable yet
-    /// (e.g. catalog not loaded), leaving the seed default in place.
+    /// A recognizable service + country pair the current balance can afford,
+    /// ranked by the same evidence rule the rest of the app steers on.
+    ///
+    /// ⚠️ This does not merely choose "something affordable" — it chooses the
+    /// ONE route the entire new-user cohort lands on, because
+    /// `applyStartupSelection` points the Home hero at it and the hero is what
+    /// they tap. Measured 2026-08-03/04: setting the signup grant to 1 credit
+    /// sent **16 of 16 subsequent orders to olx**, from 9 different users, with
+    /// zero olx orders before that minute — every one from a wallet holding
+    /// exactly 1 credit.
+    ///
+    /// It used to return the FIRST entry in `preferred` with any affordable
+    /// route, so array position picked the service and the route's actual
+    /// quality was never compared across services. Grant size therefore
+    /// silently selected the cohort's destination: 1 cr → olx/us (23%),
+    /// 2–3 cr → deliveroo/Georgia (UNRATED), 5 cr → leboncoin/uk (52%). At the
+    /// 3-credit grant that is an unrated pool while 618 routes are reachable
+    /// and 58 of them publish above 60%.
+    ///
+    /// Worse, the list's own comment claimed it was "ordered by MEASURED
+    /// delivery". That was true when written and is now false: the measurement
+    /// was SMSPVA-era and describes a provider we no longer buy from. A frozen
+    /// ranking is not a ranking.
+    ///
+    /// Every candidate is now scored with `routeKey`; curated order survives
+    /// only as the final tie-break, where the evidence is genuinely silent.
     private func affordableStarter() -> (Service, Country)? {
-        // Ordered by MEASURED delivery, not by brand recognition. The previous
-        // list led with telegram/instagram/google/whatsapp/facebook — which is
-        // almost exactly the set that measures ~9% delivered, versus ~52% for
-        // everything else. Every new user was being defaulted onto the worst
-        // part of the catalog, and most never saw a code at all.
+        // Kept as the CANDIDATE SET, no longer as the ranking. These are
+        // services a first-run user plausibly recognises, minus the ones that
+        // measured worst: the original list led with telegram/instagram/google/
+        // whatsapp/facebook, almost exactly the set measuring ~9% delivered
+        // against ~52% for everything else.
         //
-        // Meta and the messengers stay fully browsable; they're just no longer
-        // the first thing a brand-new user is pointed at.
+        // Meta and the messengers stay fully browsable; they're just not what a
+        // brand-new user is pointed at.
         let preferred = ["leboncoin", "deliveroo", "glovo", "whatnot", "walmart",
                          "vinted", "wallapop", "subito", "olx", "uber",
                          "tiktok", "discord"]
-        for id in preferred {
-            if let svc = services.first(where: { $0.id == id }),
-               let cty = bestAffordableCountry(for: svc) {
-                return (svc, cty)
-            }
-        }
-        for svc in services {
-            if let cty = bestAffordableCountry(for: svc) {
-                return (svc, cty)
-            }
-        }
+        let shortlist = preferred.compactMap { id in services.first { $0.id == id } }
+
+        // FIRST PASS — bounded by balance, so it can only return a route the
+        // user is able to buy right now.
+        if let pick = bestStarter(among: shortlist, affordableOnly: true) { return pick }
+        if let pick = bestStarter(among: services, affordableOnly: true) { return pick }
 
         // SECOND PASS, ignoring balance entirely.
         //
@@ -991,16 +1011,33 @@ final class AppState {
         // priced "Buy credits / Need N more" that opens the credits sheet. That
         // is an honest description of the situation and a way out of it.
         // "Unavailable" is neither — it reads as "this product is broken".
-        for id in preferred {
-            if let svc = services.first(where: { $0.id == id }),
-               let cty = bestCountry(for: svc) {
-                return (svc, cty)
-            }
+        if let pick = bestStarter(among: shortlist, affordableOnly: false) { return pick }
+        return bestStarter(among: services, affordableOnly: false)
+    }
+
+    /// Best (service, country) pair among `candidates`, scored by `routeKey`.
+    ///
+    /// The candidate list's own order is the LAST tie-break rather than the
+    /// first, so a curated shortlist still expresses brand preference — but
+    /// only where the evidence has nothing to say. Any earlier and list
+    /// position outranks a measured pool rate, which is the bug this replaced.
+    ///
+    /// `affordableOnly` picks the country resolver: `bestAffordableCountry`
+    /// can only return something within `balance` (nil otherwise, which is what
+    /// lets an unaffordable service drop out of the running), while
+    /// `bestCountry` ignores balance for the zero-balance second pass.
+    private func bestStarter(among candidates: [Service],
+                             affordableOnly: Bool) -> (Service, Country)? {
+        var best: (pair: (Service, Country), key: (Int, Int, Int, Int, Int, Int))?
+        for (position, svc) in candidates.enumerated() {
+            guard let cty = affordableOnly ? bestAffordableCountry(for: svc)
+                                           : bestCountry(for: svc),
+                  let price = cost(for: svc, country: cty) else { continue }
+            let k = routeKey(svc, cty, price: price)
+            let key = (k.0, k.1, k.2, k.3, k.4, position)
+            if best == nil || key < best!.key { best = ((svc, cty), key) }
         }
-        for svc in services {
-            if let cty = bestCountry(for: svc) { return (svc, cty) }
-        }
-        return nil
+        return best?.pair
     }
 
     /// Affordable country for `service`, chosen by the same evidence-first rule
@@ -1043,34 +1080,48 @@ final class AppState {
     /// inventory is a pricing question (grant size vs route price), not a
     /// ranking one.
     private func affordableFallbackCountry(for service: Service) -> Country? {
-        var best: (country: Country, key: (Int, Int, Int, Int, Int))?
+        var best: (country: Country, key: RouteKey)?
         for c in countries {
             guard let price = cost(for: service, country: c), price <= balance else { continue }
-            let key: (Int, Int, Int, Int, Int)
-            if let ratio = deliveryRecord(for: service, country: c).ratio {
-                // Route-level zero is stronger evidence than country-level
-                // zero, so it sorts BELOW an untested route in a bad country.
-                // Our OWN measurement always outranks the provider's, so the
-                // vendor slot is neutral here — these two branches are decided
-                // by orders we actually placed.
-                key = ratio > 0 ? (0, 0, 0, -Int(ratio * 100), price)   // proven
-                                : (4, 0, 0, 0, price)                   // proven-bad
-            } else {
-                // Untested: the provider's ranking first, then the country's
-                // own record, then price. Offset by 1 so a route with NO record
-                // can never outrank one we have measured delivering.
-                //
-                // This is the branch that matters: at the 3-credit grant the
-                // affordable set is almost entirely untested, so before this
-                // existed price decided by default — which is how a new user
-                // reached google/ke (1 cr, 0 of 9) instead of google/cm (2 cr,
-                // provider reports 59.3%).
-                let k = rankedUntestedKey(service, c, price: price)
-                key = (k.0 + 1, k.1, k.2, k.3, k.4)
-            }
+            let key = routeKey(service, c, price: price)
             if best == nil || key < best!.key { best = (c, key) }
         }
         return best?.country
+    }
+
+    /// Lowest = best. How good one (service, country) route is as something to
+    /// put in front of a user who has no history with it.
+    ///
+    /// Tiers: 0 proven-delivering · 1 untested with a rated pool · 2 untested
+    /// and unrated · 3 untested where the pool publishes 0% · 4 measured
+    /// failing. Tiers 1–3 come straight from `rankedUntestedKey`, offset by 1.
+    ///
+    /// Shared by `affordableFallbackCountry` (which COUNTRY to open a service
+    /// in) and `affordableStarter` (which SERVICE to open at all), so the two
+    /// cannot drift apart about what "better" means. It was previously inline
+    /// in the first of those and had no second caller, which is exactly how the
+    /// starter ended up picking by array position instead.
+    private func routeKey(_ service: Service, _ country: Country,
+                          price: Int) -> RouteKey {
+        if let ratio = deliveryRecord(for: service, country: country).ratio {
+            // Route-level zero is stronger evidence than country-level zero, so
+            // it sorts BELOW an untested route in a bad country. Our OWN
+            // measurement always outranks the provider's, so the vendor slot is
+            // neutral here — these two branches are decided by orders we
+            // actually placed.
+            return ratio > 0 ? (0, 0, 0, -Int(ratio * 100), price)   // proven
+                             : (4, 0, 0, 0, price)                   // proven-bad
+        }
+        // Untested: the provider's pool rate first, then the country's own
+        // record, then price. Offset by 1 so a route with NO record can never
+        // outrank one we have measured delivering.
+        //
+        // This is the branch that matters: at the 3-credit grant the affordable
+        // set is almost entirely untested, so before this existed price decided
+        // by default — which is how a new user reached google/ke (1 cr, 0 of 9)
+        // instead of google/cm (2 cr, provider reports 59.3%).
+        let k = rankedUntestedKey(service, country, price: price)
+        return (k.0 + 1, k.1, k.2, k.3, k.4)
     }
 
     // ─────────── Catalog / profile / wallet bootstrap ───────────
