@@ -2589,9 +2589,10 @@ It is a starting point for "is this roughly right", never a citation.
   **96** Swift sources, **357** strings / 0 untranslated / 0 specifier reorders.
 - **Backend**: **26** edge function dirs besides `_shared`, **13** `_shared` files,
   **136** migration files, **16** pg_cron jobs (all active).
-- **Catalog** (08-04 07:15): **5,905** active routes, 5sim **4,417**. Pool rate:
-  **1,373 positive / 389 zero / 2,655 unrated**. 268 services (254 visible), 69
-  countries. eSIM 1,081 plans, **0 active — line PAUSED**.
+- **Catalog** (08-04 20:05, after the +100 expansion): **8,167** active routes —
+  5sim **6,559**, HeroSMS 573, SMSPVA 1,035. **368 services**, 354 with at least
+  one bookable route. 69 countries, **60** of them mapped to 5sim. eSIM 1,081
+  plans, **0 active — line PAUSED**.
 - **Evidence**: `rate_source='measured'` = **3 routes**, rebuilding from 0 after
   the cutover. That reset is CORRECT — see "Evidence must describe the provider
   that serves the NEXT order".
@@ -2679,6 +2680,48 @@ proof its pool was dead; that was wrong, and only 5sim's own `rate168 = 0`
 (measured across all their customers) actually supported it. The pending
 `pool_rate_pct` correlation study must exclude default-landed orders or it will
 measure our own steering.
+
+### Adding services — the catalog was the bottleneck, not the provider
+
+**5sim offers 1,276 products. We listed 147.** The other 1,133 were absent
+because `services` is a hand-built table, not because of anything 5sim does.
+100 were added on 2026-08-04 (`20260804200000`): all 100 became bookable, 1,945
+active routes, 1–66 credits (avg 7.3). Catalog went 268 → **368** services and
+5,905 → 8,167 active routes. `scripts/gen-fivesim-services.py` does the next
+batch; ~1,030 products remain.
+
+**No app release is needed.** The catalog is fetched from the server and
+`ServiceLogo` falls back to the favicon cascade for unbundled domains, so new
+services appear on shipped builds immediately. Run
+`scripts/fetch-bundled-assets.sh --refresh` before the next release to bundle
+the logos.
+
+Four traps, each of which fails SILENTLY:
+
+1. **Seed the routes yourself.** `sync-5sim` builds its write set from routes it
+   has READ and never inserts — a service with no route rows is invisible to it
+   forever. 100 services × 60 fivesim-mapped countries = 6,000 rows.
+2. **`routes.status` defaults to `'active'` and `routes.provider` to
+   `'smspva'`** — both wrong. An unpriced active route renders "Unavailable",
+   and the default provider hands ownership to one with no code for the service,
+   because `providerOrder()` resolves ownership from `routes.provider`. Seed
+   `hidden` + `'5sim'` and let the sync decide.
+3. **`services.smspva_code` is NOT NULL, and you must NOT drop that
+   constraint.** `Service.swift` declares `let smspvaCode: String`,
+   non-optional, so a null throws on decode and takes the WHOLE catalog down for
+   every shipped build. Use `''` — it decodes, and it is falsy in the router.
+   Client first, schema second, as with every other column change.
+4. **The "missing" set is keyed on 5SIM PRODUCT SLUGS, so a brand you already
+   carry under a different slug does not appear in it.** Four did — g2a,
+   hepsiburada, grab, claude — and `on conflict (id) do nothing` would have
+   swallowed them without a word. Always diff against `services.id` too.
+
+**Re-homing an existing service: country OVERLAP decides, not "do they carry
+it".** Claude/Grab/Hepsiburada moved to 5sim (`20260804210000`) and went 7→21,
+6→60 and 5→59 active routes — their routes in the 9 countries with no
+`fivesim_country` stayed on HeroSMS, so nothing was lost. **g2a was excluded**:
+5sim carries it in exactly ONE of our 60 countries against the 9 it serves on
+SMSPVA, so the swap would have cut it to a ninth of its coverage.
 
 ### The default-landed orders were numbers NOBODY EVER SUBMITTED (2026-08-04)
 
