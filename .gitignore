@@ -20,3 +20,6 @@ supabase/.branches/
 .env.*
 !.env.example
 build/
+
+# Third-party vendor documentation — not ours to redistribute
+docs/apidocs.pdf

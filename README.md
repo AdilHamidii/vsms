@@ -179,4 +179,4 @@ There is **no automated test suite** — verification is a type-check plus a rea
 
 - **Minimum iOS is 18.0.** Anything behind an `if #available(iOS 26, *)` must keep a working 18.0 path — the majority of devices only ever render the fallback.
 - **The publishable Supabase key is safe in client code.** It's the anon key under its current name; row-level security governs what it can reach.
-- **`docs/apidocs.pdf`** is a third-party vendor's API specification, kept for reference. It is not covered by this repository's licence.
+- **One upstream API spec is referenced but not included.** `docs/apidocs.pdf` is SMSPVA's own copyrighted documentation and is gitignored rather than redistributed here. A few comments in `_shared/providers.ts` cite it by page; obtain it from the vendor if you need them.
