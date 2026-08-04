@@ -2598,9 +2598,19 @@ It is a starting point for "is this roughly right", never a citation.
 - **Balances: 5sim $9.37 (rating 96/96), HeroSMS $9.62.** Both `low`, both at
   alert tier 3 on a `[37.50, 22.50, 11.25, 7.50]` ladder. **Both are near the
   $7.50 single-order ceiling — top up.**
-- **App Store**: 1.8 (build 28) `WAITING_FOR_REVIEW` since 2026-08-03 13:18Z,
-  notes refreshed in 13 locales. 1.7/1.6 `READY_FOR_SALE`. All five packs
-  `APPROVED`. One review slot free.
+- **App Store**: **1.8 (build 28) is `READY_FOR_SALE`**, and has been since
+  2026-08-03 07:03Z — this file claimed `WAITING_FOR_REVIEW` for a full day
+  after it went live, which matters because 1.8 is what every current user and
+  every new signup is actually running. **Read ASC, not this line.**
+  **1.9 is `WAITING_FOR_REVIEW` on build 31** since 2026-08-04 16:07Z, notes in
+  13 locales. 1.7/1.6 `READY_FOR_SALE`. All five packs `APPROVED`.
+  Builds 29 and 30 are superseded (29 carried the "+3 credits" card; 30 was
+  uploaded before the `inviteJoinerCredits` bug was caught). **Cancel-and-
+  replace took ~90 seconds end to end** and confirms the note under Release
+  prep: an app-version submission is not a one-way door. `PATCH
+  reviewSubmissions/<id> {"canceled": true}` → version goes `DEVELOPER_REJECTED`
+  → `PATCH appStoreVersions/<id>/relationships/build` → new `reviewSubmission`
+  + item + `{"submitted": true}`.
 - **Signup grant: 0 — REMOVED PERMANENTLY** (owner decision 2026-08-04 15:42Z,
   `20260804160000`). The product is paid: you want a number, you buy credits.
   It had been 5 → 0 → 1 → 3 → 0 in two days; the reach table that used to live
