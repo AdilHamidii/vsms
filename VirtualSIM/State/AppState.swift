@@ -118,22 +118,29 @@ final class AppState {
     var filter: SortFilter = .all
     var profile: Profile?
 
-    /// Credits a friend actually lands with when they join on an invite code.
+    /// Credits a friend lands with when they join on an invite code.
     ///
-    /// This is the SUM of two separate grants, and getting it wrong is how the
-    /// invite copy came to understate itself by 60%: `handle_new_user` credits
-    /// `v_bonus := 3` at signup, and `redeem_referral` credits a further 2 when
-    /// the code is entered. Both share links said "2 free credits" — the
-    /// referral half only.
+    /// ⚠️ TRACKS `redeem_referral` ALONE — deliberately NOT the sum of the two
+    /// grants. It used to be 5 (`handle_new_user`'s 3 at signup plus
+    /// `redeem_referral`'s 2), which was correct on the day it was written and
+    /// silently became a 150% overstatement on 2026-08-04 when the signup grant
+    /// was set to 0 permanently. A joiner now lands with exactly 2.
     ///
-    /// It matters beyond marketing: measured delivery by starting balance is
-    /// 1 cr → 10.9%, 2 cr → 40.0%, 3 cr → 39.3%, and reachable catalog goes
-    /// 971 → 1,636 → 2,851 routes at 2 / 3 / 5 credits. A joiner starting at 5
-    /// is materially better placed than an organic signup at 3.
+    /// The signup grant is a SERVER value that changes with no release — it has
+    /// been 0, 1, 3 and 5 — and the client cannot read it (`app_config`'s RLS
+    /// whitelist exposes only maintenance/announcement/esim_paused, and the
+    /// invite is rendered before any of that would help). Summing a volatile
+    /// server number into shipped copy therefore cannot be kept honest; the
+    /// referral half is set by one function that changes only by migration.
     ///
-    /// Keep in lockstep with those two SQL functions; a constant duplicated
-    /// across a language boundary drifts silently.
-    static let inviteJoinerCredits = 5
+    /// So: if the signup grant is ever restored, do NOT add it back in here.
+    /// This constant is the referral reward, and the copy it feeds says what
+    /// the invite itself is worth.
+    ///
+    /// Same rule as OnboardingScreen's: never render a credit amount the server
+    /// is free to change underneath you. Keep in lockstep with
+    /// `redeem_referral`'s `wallet_credit(p_referee, 2, 'referral_invitee', …)`.
+    static let inviteJoinerCredits = 2
 
     /// Share text for the invite, in ONE place.
     ///

@@ -2585,7 +2585,7 @@ SMS provider again, walk this list:
 Every number below has been wrong within a day of being written at least once.
 It is a starting point for "is this roughly right", never a citation.
 
-- **iOS**: `MARKETING_VERSION 1.8`, `CURRENT_PROJECT_VERSION 28`, iOS min **18.0**,
+- **iOS**: `MARKETING_VERSION 1.9`, `CURRENT_PROJECT_VERSION 30`, iOS min **18.0**,
   **96** Swift sources, **357** strings / 0 untranslated / 0 specifier reorders.
 - **Backend**: **26** edge function dirs besides `_shared`, **13** `_shared` files,
   **136** migration files, **16** pg_cron jobs (all active).
@@ -2601,11 +2601,13 @@ It is a starting point for "is this roughly right", never a citation.
 - **App Store**: 1.8 (build 28) `WAITING_FOR_REVIEW` since 2026-08-03 13:18Z,
   notes refreshed in 13 locales. 1.7/1.6 `READY_FOR_SALE`. All five packs
   `APPROVED`. One review slot free.
-- **Signup grant: 3 credits** (`app_config.signup_bonus_credits`, set 08-04
-  07:09). It has been 5 → 0 → 1 → 3 in two days. Reach at each size, measured
-  08-04: **1 cr → 67 routes / 36 services; 3 cr → 618 / 112; 5 cr → 1,486 / 132.**
-  ⚠️ Migration `20260803070000` hardcodes **0**, so a from-scratch replay
-  silently disables the grant.
+- **Signup grant: 0 — REMOVED PERMANENTLY** (owner decision 2026-08-04 15:42Z,
+  `20260804160000`). The product is paid: you want a number, you buy credits.
+  It had been 5 → 0 → 1 → 3 → 0 in two days; the reach table that used to live
+  here (1 cr → 67 routes, 3 cr → 618, 5 cr → 1,486) is kept only in that
+  migration, because reach was never the reason the grant mattered — see the
+  two sections below. Rollback is one UPDATE and takes effect on the next
+  signup with no deploy.
 
 ### ⚠️ The grant size decides which ONE route new users land on
 
@@ -2667,6 +2669,75 @@ proof its pool was dead; that was wrong, and only 5sim's own `rate168 = 0`
 (measured across all their customers) actually supported it. The pending
 `pool_rate_pct` correlation study must exclude default-landed orders or it will
 measure our own steering.
+
+### The default-landed orders were numbers NOBODY EVER SUBMITTED (2026-08-04)
+
+The section above established that the grant picks the route. This settles what
+those cohorts actually *did* with it, and it is the reason the grant is now 0.
+
+**The decisive test was manual and takes two minutes.** A deliveroo/us order was
+cancelled with ~15 minutes still on the provider's clock. The number was still
+visible on the 5sim dashboard, so it was used by hand to start a real Deliveroo
+signup — **and the code arrived.** Corroborated the same hour from the other
+side: user `45dd50c8` ordered deliveroo/us on `+13025795171` and received a
+code in 324s, while `+13025795294` from the same number block expired codeless.
+
+So the pool was never the problem. Neither olx/us nor deliveroo/us was
+"failing". Those orders were **free numbers nobody had a reason to use** — the
+app handed a brand-new user a phone number they never pasted anywhere, and the
+order then expired or was cancelled at the first instant the hold allowed.
+
+**Do not read those orders as evidence about the route.** They are the
+strongest form of the warning already recorded above: an order on a route the
+user did not choose is not evidence about that route. Here it is worse — they
+are not evidence about *delivery* at all, because no verification was ever
+attempted. `pool_rate_pct` correlation work must exclude them.
+
+**It was investigated as sabotage and the specific checks came back negative.**
+Recorded because the pattern genuinely looks coordinated and will look that way
+again: over 30h, 32 signups clustered on one route with zero codes.
+
+| check | result |
+|---|---|
+| shared devices | **31 distinct push tokens / 32 accounts**; the one reused token dates to 07-30 |
+| accounts that never ordered | **19 of 32**, sitting on untouched credits |
+| identities with `grant_count > 1` | **0** |
+| emails | 19 Apple relay + real distinct icloud/gmail/usa.com addresses |
+| paying customers in the cohort | **1** (`7d5c1844`) |
+| reopen rate, exposure-matched | **17.9%** vs 0% and 5.4% for older cohorts — *higher*, not lower |
+
+⚠️ **The reopen comparison is easy to get backwards.** The naive cut (any
+reopen, all 48h signups) reads 7.1% against 19–25% and looks like a red flag.
+That is censoring — most of the cohort has not had a next day yet. Restrict to
+accounts ≥24h old and count reopens inside their first 24h and it inverts.
+Also note `push_devices.updated_at` only moves on a **cold** launch, so a user
+who signs up, orders, waits 500s and quits records a ~1s gap; it measures
+return visits, never session length.
+
+**A contributing cause, now fixed, worth knowing for the shape of it:** in
+**1.7** the waiting screen's ✕ was `.disabled(holdRemaining != nil || ...)`
+labelled *"Cancel available in 180 seconds"*. A user could not leave the screen
+to go and paste the number for three minutes. Fixed in `c0b76fc` and shipped in
+1.8, so it does not explain the 08-04 cluster — but the cancel distribution
+still shows the wall it left behind (nothing under 89s, then a pile at 179,
+180, 183, 189, 194, 200, 202, 210, 220, 221, 225).
+
+### ⚠️ Onboarding may never quote a credit amount
+
+Got wrong twice, both times shipping to users. Onboarding page 2 rendered a
+hardcoded **"WELCOME GIFT / +3 credits / Covers your first number"** card. When
+the grant was zeroed on 08-03 the page's *prose* was rewritten and its header
+comment updated to say the promise was gone — **but the card was left in
+place**, and shipped that way in 1.8 and in build 29 of 1.9.
+
+The screen runs **before sign-in**, so it cannot read `app_config` even if we
+wanted it to, while the grant is a server value that changes with no release —
+it has been 0, 1, 3 and 5. Any number there is a promise the server has not
+agreed to keep. `RefundCard` (build 30) states the one thing true at **any**
+grant including zero: a number that never delivers a code is refunded in full.
+
+Same class as the seeded-success-rate rule — do not put a figure in front of a
+user that something else is free to change underneath you.
 
 ### What 2026-08-03 changed — the 5sim cutover
 
