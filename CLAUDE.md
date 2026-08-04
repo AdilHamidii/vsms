@@ -681,7 +681,9 @@ its own with **no client release**. Verified every caller tolerates refusal:
 `app_config.daily_credit_enabled` guards all four paths — `daily_credit_status`,
 `claim_daily_credit`, `claim_daily_credit_for`, `daily_credit_candidates` — and
 **fails CLOSED**, so losing the row cannot silently resume paying. The
-`relay-daily-credit` cron is unscheduled (15 jobs now, not 16). Re-enable recipe
+`relay-daily-credit` cron is unscheduled. (This line used to claim "15 jobs now,
+not 16"; the live count is **16 active**, verified 2026-08-04 — another job was
+added after it was written. Re-query, don't quote.) Re-enable recipe
 is at the bottom of the migration.
 
 **If you re-enable it, add a tombstone FIRST.** `daily_bonus` was a credit grant
