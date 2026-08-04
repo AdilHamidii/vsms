@@ -248,6 +248,68 @@ async function resetFailStreak(sb: Admin): Promise<void> {
   }
 }
 
+/** Page when a REAL ORDER was refused because the provider float is too small
+ *  to fund it.
+ *
+ *  Deliberately separate from the balance-tier pages in poll-active-orders.
+ *  Those say "the balance is trending low" on a fixed ladder and fire whether
+ *  or not anyone is trying to buy. This says **a customer just got turned away**
+ *  — which is the only version of the fact that costs money, and which the
+ *  ladder can miss entirely: after the 2026-08-04 ceiling removal a route can
+ *  need $60 of float while the ladder's lowest rung is $7.50, so every tier
+ *  reads "fine" while orders are being refused.
+ *
+ *  It carries the SHORTFALL, not just the balance, because "top up" is not
+ *  actionable without knowing how much. The user sees `provider_unreachable`,
+ *  which does not say "we are out of float" — this is the only place that fact
+ *  surfaces.
+ *
+ *  Counts refusals between pages and resets on a successful send, so the
+ *  message reports a true "since last alert" figure rather than a lifetime
+ *  total. Send BEFORE stamping and stamp only on success — the same rule as
+ *  the two alerts above: stamping first means one dropped Telegram message
+ *  buys 6h of silence during a live outage.
+ *
+ *  NEVER throws. A paging failure must not turn a clean 503 into a 500. */
+async function alertLowBalanceBlock(
+  sb: Admin, provider: string, balanceUsd: number, neededUsd: number, routeDesc: string,
+): Promise<void> {
+  try {
+    const KEY = "low_balance_block";
+    const { data } = await sb
+      .from("app_config").select("value").eq("key", KEY).maybeSingle();
+    const v = (data?.value ?? {}) as { n?: number; last_alert_at?: string };
+    const n = (v.n ?? 0) + 1;
+    const due = !v.last_alert_at ||
+      Date.now() - new Date(v.last_alert_at).getTime() >= REALERT_MS;
+
+    const value: Record<string, unknown> = {
+      n, last_alert_at: v.last_alert_at ?? null, provider,
+      balance_usd: balanceUsd, needed_usd: neededUsd,
+    };
+
+    if (due) {
+      const short = Math.max(0, neededUsd - balanceUsd);
+      const sent = await notifySafe(
+        `🚨 <b>Order refused — ${esc(provider)} float too low</b>\n` +
+        `balance <b>$${balanceUsd.toFixed(2)}</b>, this order needed ` +
+        `<b>$${neededUsd.toFixed(2)}</b> (short $${short.toFixed(2)})\n` +
+        `route: ${esc(routeDesc)}\n` +
+        `${n} order${n === 1 ? "" : "s"} refused since the last alert. ` +
+        `The customer was NOT charged — they saw "provider unreachable". Top up to resume.`,
+      );
+      if (sent) { value.last_alert_at = new Date().toISOString(); value.n = 0; }
+      else console.error("low-balance-block page FAILED to send — not suppressing, will retry");
+    }
+
+    await sb.from("app_config").upsert(
+      { key: KEY, value, updated_at: new Date().toISOString() }, { onConflict: "key" },
+    );
+  } catch (e) {
+    console.error("low-balance-block alert failed (ignored):", e);
+  }
+}
+
 async function alertProviderFault(sb: Admin, provider: string, errorType: string, detail: string): Promise<void> {
   try {
     const { data } = await sb
@@ -536,6 +598,14 @@ Deno.serve(async (req) => {
       console.error(
         `create-order: pre-charge refusal — ${healthKey} $${health.balance_usd} ` +
           `below order ceiling $${maxCostUsd.toFixed(2)} (svc=${service.id} cty=${country.id})`,
+      );
+      // Page the owner. Until this existed the refusal was console.error only,
+      // so "nobody can buy the expensive half of the catalog" was invisible
+      // unless someone read the logs. Awaited, matching the other two alerts:
+      // this path is terminal, and the helper never throws.
+      await alertLowBalanceBlock(
+        sb, providers[0], health.balance_usd, maxCostUsd,
+        `${service.id}/${country.id} · ${cost} cr`,
       );
       return json({ error: "provider_unreachable" }, { status: 503 });
     }
