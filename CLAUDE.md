@@ -2739,6 +2739,21 @@ grant including zero: a number that never delivers a code is refunded in full.
 Same class as the seeded-success-rate rule — do not put a figure in front of a
 user that something else is free to change underneath you.
 
+**The same audit caught a SECOND one, and it is the more instructive of the
+two.** `AppState.inviteJoinerCredits` was **5**, documented as the deliberate
+SUM of `handle_new_user`'s 3 and `redeem_referral`'s 2 — correct the day it was
+written, a 150% overstatement the moment the grant went to 0. It feeds three
+shipped surfaces: the share text, the Account invite card and the OTP screen
+prompt. Now **2**, tracking `redeem_referral` alone.
+
+**Do not re-sum it if the signup grant is ever restored.** That is the whole
+lesson: a client constant derived from a value the server changes without a
+release cannot be kept honest, and the client cannot even *read* this one —
+`app_config`'s RLS whitelist exposes only `maintenance` / `announcement` /
+`esim_paused`. The referral half is safe to mirror because it changes only by
+migration. When a grant amount moves, grep for every client constant derived
+from it; there were two, and the second was found only by looking.
+
 ### What 2026-08-03 changed — the 5sim cutover
 
 **5sim became the primary SMS provider.** New `_shared/fivesim.ts` + `sync-5sim`

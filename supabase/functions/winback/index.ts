@@ -73,14 +73,25 @@ Deno.serve(async (req) => {
         // include "ordered but never received a code" while the copy stayed
         // "your first one's on us" — so 8 of the 34 users ever nudged were
         // told their first number was free AFTER paying for failures.
+        //
+        // That same error came back by a different route on 2026-08-04, which
+        // is why neither branch may describe a balance as FREE. The signup
+        // grant is now permanently 0, and this cohort is gated on
+        // `balance > 0` — so a never_ordered candidate from here on is someone
+        // who BOUGHT those credits. "Your first one's on us" is false for
+        // them, and grows more false as the granted balances drain.
+        //
+        // Both branches now assert only things that hold however the credits
+        // were obtained: that the balance exists, and that a number which
+        // delivers nothing is refunded.
         const triedFailed = c.kind === "tried_failed";
         const r = await sendPush(d.token, triedFailed ? {
           alertTitle: "Your credits are still here",
           alertBody: "Every number that fails is refunded. Pick a country we've measured delivering.",
           customData: { winback: true },
         } : {
-          alertTitle: "Your free credit is waiting",
-          alertBody: "Grab a verification number in seconds — your first one's on us.",
+          alertTitle: "Your credits are still here",
+          alertBody: "Grab a verification number in seconds. No code, no charge — you're refunded.",
           customData: { winback: true },
         }, d.environment as "sandbox" | "production");
         if (r.ok) { anyOk = true; sent++; }
