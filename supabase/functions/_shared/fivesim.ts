@@ -183,6 +183,17 @@ export interface FivePool {
   count: number;
   /** 30-day delivery rate. UNDOCUMENTED field — see sync-5sim. */
   rate720?: number;
+  /** 7-day and 24-hour rates, same undocumented family as rate720.
+   *
+   *  These exist to CONTRADICT rate720, which is the whole reason they are
+   *  read. A pool that stopped delivering a week ago keeps advertising its
+   *  30-day average for another three weeks — measured 2026-08-04, 96 of 801
+   *  pools we had chosen (12%) published `rate720 > 0` with `rate168` an
+   *  explicit 0. Absent ≠ 0 here: absent means no activations in the window,
+   *  0 means there were activations and every one failed. Only the explicit
+   *  0 is evidence of death. */
+  rate168?: number;
+  rate24?: number;
   [k: string]: unknown;
 }
 /** country -> product -> operator -> pool */

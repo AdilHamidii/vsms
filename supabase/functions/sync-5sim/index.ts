@@ -117,9 +117,37 @@ function choosePool(pools: Record<string, FivePool>): Chosen | null {
   const affordable = (headCost: number, list: [string, FivePool][]) =>
     list.filter(([, v], i) => i === 0 || v.cost <= headCost * 3 + 0.10);
 
-  // Tier 1: a rate we can actually act on.
+  // ── FRESHNESS. `rate720` is a 30-day average and it LAGS: a pool that died
+  //    a week ago keeps advertising the three weeks when it worked.
+  //
+  //    Paid for in production. olx/us pinned `virtual63` at a published
+  //    **49.24%** while that pool's rate168 AND rate24 were both an explicit
+  //    **0** — it had not delivered in at least seven days. Thirteen real
+  //    orders across five different users, every one held its number to
+  //    expiry, ZERO codes. Meanwhile `virtual51` on the same route published
+  //    rate720 = 0 (so we ranked it dead last) while actually running at
+  //    rate24 = 22.7%. We picked the corpse and skipped the live pool.
+  //
+  //    Measured across 801 chosen pools on 2026-08-04: **96 (12.0%)** had
+  //    rate720 > 0 with rate168 an explicit 0.
+  //
+  //    ABSENT IS NOT ZERO. An absent window means no activations in it (5sim's
+  //    fields are perfectly nested by length); an explicit 0 means there were
+  //    activations and all of them failed. Only the explicit 0 is evidence of
+  //    death, so `staleDead` tests `=== 0` and never `!v.rate168`.
+  const staleDead = (v: FivePool) =>
+    typeof v.rate720 === "number" && v.rate720 > 0 && v.rate168 === 0;
+  /** Freshest positive signal, 24h preferred over 7d. */
+  const recentPct = (v: FivePool): number | null => {
+    for (const r of [v.rate24, v.rate168]) {
+      if (typeof r === "number" && r > 0) return r;
+    }
+    return null;
+  };
+
+  // Tier 1: a rate we can act on, NOT contradicted by the recent windows.
   const positive = stocked
-    .filter(([, v]) => typeof v.rate720 === "number" && (v.rate720 as number) > 0)
+    .filter(([, v]) => typeof v.rate720 === "number" && (v.rate720 as number) > 0 && !staleDead(v))
     .sort((a, b) => (b[1].rate720 as number) - (a[1].rate720 as number));
   if (positive.length) {
     const [, v] = positive[0];
@@ -127,6 +155,23 @@ function choosePool(pools: Record<string, FivePool>): Chosen | null {
       chain: affordable(v.cost, positive).slice(0, 3).map(([o]) => o),
       costUsd: v.cost, stock: v.count ?? 0,
       ratePct: Math.round(v.rate720 as number),
+    };
+  }
+
+  // Tier 1b: nothing has a trustworthy 30-day rate, but something is delivering
+  // RIGHT NOW. This is the olx/us case — rate720 = 0 while rate24 = 22.7%. A
+  // recent positive beats both an unmeasured pool and a stale-dead one, and the
+  // label is that recent number rather than the 30-day figure that disagrees
+  // with it.
+  const recent = stocked
+    .filter(([, v]) => recentPct(v) !== null)
+    .sort((a, b) => (recentPct(b[1]) as number) - (recentPct(a[1]) as number));
+  if (recent.length) {
+    const [, v] = recent[0];
+    return {
+      chain: affordable(v.cost, recent).slice(0, 3).map(([o]) => o),
+      costUsd: v.cost, stock: v.count ?? 0,
+      ratePct: Math.round(recentPct(v) as number),
     };
   }
 
@@ -149,10 +194,15 @@ function choosePool(pools: Record<string, FivePool>): Chosen | null {
     .sort((a, b) => (b[1].count ?? 0) - (a[1].count ?? 0));
   const [, v] = byStock[0];
   const r = v.rate720;
+  // A stale-dead pool that reaches here has no live alternative on the route,
+  // so we sell it — but we must NOT re-publish the 30-day figure the recent
+  // windows just contradicted. 0 is the vendor's own freshest measurement, and
+  // it is what makes the row render red and sort last instead of advertising a
+  // number we have direct evidence against.
   return {
     chain: byStock.slice(0, 3).map(([o]) => o),
     costUsd: v.cost, stock: v.count ?? 0,
-    ratePct: typeof r === "number" ? Math.round(r) : null,
+    ratePct: staleDead(v) ? 0 : (typeof r === "number" ? Math.round(r) : null),
   };
 }
 
