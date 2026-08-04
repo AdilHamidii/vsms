@@ -2764,6 +2764,28 @@ release cannot be kept honest, and the client cannot even *read* this one —
 migration. When a grant amount moves, grep for every client constant derived
 from it; there were two, and the second was found only by looking.
 
+**It is not only client copy — the OPS channel had it too, and that one fooled
+the owner.** `telegram-notify` rendered the signup alert as
+`b != null ? "N free credits granted" : "welcome credit granted"`. But
+`handle_new_user` writes a `wallet_transactions` row **only when the bonus is
+> 0**, so at a grant of 0 the lookup misses and *every* signup alert claimed
+"welcome credit granted". It read exactly like the grant was still live, and
+produced the question "are you sure it's 0?" within four hours. Now
+`?? 0` with `b > 0`, else *"no signup credit (grant is 0)"*.
+
+**The general trap: a MISSING row means the grant did not happen, not that its
+size is unknown.** Any code that renders a grant by looking one up must treat
+absence as zero. Three of the four instances today were a fallback branch
+asserting something the primary branch could no longer support.
+
+**How to answer "did this user actually get a bonus?" — use
+`public.signup_grants`, not `wallet_transactions`.** It has no FK to
+`auth.users`, so it survives Delete Account, and `handle_new_user` writes to it
+**only when the amount is > 0**. `wallet_transactions` cascades, so a deleted
+account looks identical to one that was never granted. This mattered
+immediately: three accounts that signed up after the flip had already been
+deleted, and only the tombstone could prove they were granted nothing.
+
 ### What 2026-08-03 changed — the 5sim cutover
 
 **5sim became the primary SMS provider.** New `_shared/fivesim.ts` + `sync-5sim`
