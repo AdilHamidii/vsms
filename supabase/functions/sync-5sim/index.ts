@@ -79,7 +79,15 @@ interface Chosen {
   chain: string[];      // ordered pool slugs, best first
   costUsd: number;      // cost of chain[0] — the pool we will actually buy
   stock: number;
+  /** SELECTION rate — the freshest credible window (`rateOf`). Decides which
+   *  pool we buy from. Never stored, never shown. */
   ratePct: number | null;
+  /** DISPLAY rate — the 7-day window (`displayRateOf`). Written to
+   *  `routes.pool_rate_pct`, which is what the country row renders AND what the
+   *  client's `rankedUntestedKey` sorts on. See displayRateOf for why these are
+   *  deliberately two different numbers. */
+  displayPct: number | null;
+  displayWindow: string | null;
 }
 
 /** Pick the pool create-order should pin.
@@ -172,16 +180,62 @@ function choosePool(pools: Record<string, FivePool>): Chosen | null {
     return null;                                  // never measured
   };
 
+  /** The rate we SHOW, which is deliberately NOT the rate we CHOOSE on.
+   *
+   *  `rateOf` leads with `rate24` because a 24-hour window is the fastest way to
+   *  notice a pool has died, and reacting fast is worth acting on noise. But it
+   *  is the wrong number to put in front of a user: it has no denominator and it
+   *  swings hard in BOTH directions.
+   *
+   *  Paid for in production 2026-08-05. One user ran seven Tinder orders in 8.5
+   *  minutes. Colombia/virtual34 rendered **88%** (its rate24) against a
+   *  rate168 of 71.4 and rate720 of 71.2 — they got 1 code in 3 real attempts
+   *  and reasonably felt lied to. The same session opened on usa/virtual63,
+   *  which rendered **15%** (rate24 = 16) against rate168 = 47.1 and
+   *  rate720 = 57.3 — the identical defect steering the other way, making a
+   *  usable route look dead.
+   *
+   *  Measured over 3,320 in-stock pools publishing a positive rate in at least
+   *  one window (12 countries, 2026-08-05): median |rate24 - rate720| is 9.6
+   *  points, **16.6% differ by 30+ points**, and only 50.8% agree within 10.
+   *
+   *  So: choose on freshness, display on stability. 7 days is the shortest
+   *  window with enough activations to be worth quoting.
+   *
+   *  COVERAGE IS UNCHANGED, which is the only reason this is free. 5sim's rate
+   *  fields are perfectly nested by window length (verified again here: 0
+   *  violations over 14,892 in-stock pools), so any pool publishing `rate24`
+   *  also publishes `rate168` and `rate720`. Both rules rate exactly 8,791 of
+   *  those pools — no route loses its number.
+   *
+   *  An explicit `rate168 = 0` is KEPT and shown as 0: a full week of
+   *  activations that all failed is the vendor's verdict, not noise. Absent
+   *  stays absent — falls through to rate720, then null. Same absent-is-not-zero
+   *  rule as `rateOf`.
+   *
+   *  ⚠️ This ALSO changes what `orders.pool_rate_pct` stamps at reservation,
+   *  which is the input to the pending "does the pool rate predict OUR
+   *  delivery?" study. Orders before 2026-08-05 carry rate24; after, rate168.
+   *  Split the study on that date or the two halves are not comparable. */
+  const displayRateOf = (v: FivePool): { pct: number; window: string } | null => {
+    const d7 = v.rate168, d30 = v.rate720;
+    if (typeof d7 === "number") return { pct: Math.round(d7), window: "168h" };
+    if (typeof d30 === "number") return { pct: Math.round(d30), window: "720h" };
+    return null;
+  };
+
   // Tier 1: a rate we can act on, taken from the freshest window that has one.
   const positive = stocked
     .filter(([, v]) => (rateOf(v) ?? 0) > 0)
     .sort((a, b) => (rateOf(b[1]) as number) - (rateOf(a[1]) as number));
   if (positive.length) {
     const [, v] = positive[0];
+    const d = displayRateOf(v);
     return {
       chain: affordable(v.cost, positive).slice(0, 3).map(([o]) => o),
       costUsd: v.cost, stock: v.count ?? 0,
       ratePct: Math.round(rateOf(v) as number),
+      displayPct: d?.pct ?? null, displayWindow: d?.window ?? null,
     };
   }
 
@@ -192,9 +246,13 @@ function choosePool(pools: Record<string, FivePool>): Chosen | null {
     .sort((a, b) => (b[1].count ?? 0) - (a[1].count ?? 0));
   if (unrated.length) {
     const [, v] = unrated[0];
+    // rateOf returned null, and the nesting property means no window published
+    // anything — so there is nothing to display either. Asserted, not assumed.
     return {
       chain: affordable(v.cost, unrated).slice(0, 3).map(([o]) => o),
       costUsd: v.cost, stock: v.count ?? 0, ratePct: null,
+      displayPct: displayRateOf(v)?.pct ?? null,
+      displayWindow: displayRateOf(v)?.window ?? null,
     };
   }
 
@@ -207,10 +265,12 @@ function choosePool(pools: Record<string, FivePool>): Chosen | null {
     .sort((a, b) => (b[1].count ?? 0) - (a[1].count ?? 0));
   const [, v] = byStock[0];
   const r = rateOf(v);
+  const d = displayRateOf(v);
   return {
     chain: byStock.slice(0, 3).map(([o]) => o),
     costUsd: v.cost, stock: v.count ?? 0,
     ratePct: r === null ? null : Math.round(r),
+    displayPct: d?.pct ?? null, displayWindow: d?.window ?? null,
   };
 }
 
@@ -348,7 +408,10 @@ Deno.serve(async (req) => {
     else if (blocked.has(key)) { status = "hidden"; hiddenBlocked++; }
     // Ceiling is checked against the RAW cost, pricing against the smoothed one.
     else if (costCents != null && costCents > MAX_WHOLESALE_CENTS) { status = "hidden"; hiddenTooDear++; }
-    else { status = "active"; sellable++; if (pick.ratePct != null) rated++; else unrated++; }
+    // Counts what the route will RENDER, so it tracks pool_rate_pct rather than
+    // the selection rate. Coverage is identical (5sim's windows are nested), but
+    // the counter should describe the column it is reporting on.
+    else { status = "active"; sellable++; if (pick.displayPct != null) rated++; else unrated++; }
 
     const row: Record<string, unknown> = {
       service_id: r.service_id,
@@ -358,9 +421,13 @@ Deno.serve(async (req) => {
       fivesim_stock: pick?.stock ?? null,
       fivesim_checked_at: nowIso,
       pool_operator: pick ? pick.chain.join(",") : null,
-      pool_rate_pct: pick?.ratePct ?? null,
-      pool_rate_window: pick?.ratePct != null ? "720h" : null,
-      pool_rate_checked_at: pick?.ratePct != null ? nowIso : null,
+      // The DISPLAY rate, not the selection rate — see displayRateOf. The window
+      // is recorded rather than hardcoded: this field read a literal "720h" for
+      // every row while the value was actually whichever window the ladder
+      // landed on, so it has never described the number beside it until now.
+      pool_rate_pct: pick?.displayPct ?? null,
+      pool_rate_window: pick?.displayWindow ?? null,
+      pool_rate_checked_at: pick?.displayPct != null ? nowIso : null,
     };
     if (live) {
       row.provider = "5sim";
