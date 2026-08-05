@@ -355,12 +355,18 @@ struct CheckoutScreen: View {
                     )
                 }
             } else {
+                // Enabled, and it opens the picker it names. A disabled button
+                // whose subtitle is an instruction is the same anti-pattern the
+                // e-mail CTAs on Home had: the screen's answer to "what now?"
+                // refusing to do the thing it just told you to do.
                 PrimaryButton(
-                    label: "Unavailable",
-                    sub: "Pick another country",
-                    icon: RIcon.bolt,
-                    disabled: true,
-                    action: {}
+                    label: "Pick another country",
+                    sub: String(localized: "Not available here"),
+                    icon: RIcon.globe,
+                    action: {
+                        RHaptic.select()
+                        openCountries()
+                    }
                 )
             }
 
