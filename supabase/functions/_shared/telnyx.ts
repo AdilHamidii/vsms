@@ -432,6 +432,106 @@ export async function sendMessage(opts: {
   return { id: String(r.id), parts: Number(r.parts ?? 1) };
 }
 
+// ── Voice: credential connections and WebRTC tokens ────────────────────────
+//
+// ⚠️ **UNPROVEN AGAINST THE LIVE API**, like `reserveNumber` and for the same
+// reason — these were written from the docs, not from probing, because the
+// account balance does not currently support exercising voice end to end.
+// Everything else in this file was probed first. Treat the shapes below as
+// provisional and re-verify before trusting them in production.
+//
+// A per-line CREDENTIAL CONNECTION is deliberate: inbound to a DID then rings
+// only that DID's registrations, so user A can never be rung for user B's
+// number. The alternative — one shared connection — makes that separation a
+// matter of application logic rather than provider configuration.
+//
+// The Call Control alternative was rejected outright: routing inbound calls
+// through an edge function puts a Deno cold start on the ring path (300–1500ms
+// of dead air) and makes every inbound call fail during any incident that takes
+// the edge layer down. That is precisely the scenario `run_watchdog` is written
+// in pure SQL to survive.
+
+export async function createCredentialConnection(opts: {
+  name: string; pushCredentialId?: string;
+}): Promise<{ id: string } | TelnyxFault> {
+  const r = await call<Record<string, unknown>>("POST", "/credential_connections", {
+    connection_name: opts.name,
+    user_name: opts.name,
+    // Telnyx requires a password on the connection even though the client
+    // authenticates with a short-lived token rather than these credentials.
+    password: crypto.randomUUID().replace(/-/g, ""),
+    ...(opts.pushCredentialId
+      ? { ios_push_credential_id: opts.pushCredentialId }
+      : {}),
+  });
+  if (faultOf(r)) return r;
+  return { id: String(r.id) };
+}
+
+/** A login for one line's connection. Cache the id on
+ *  `phone_lines.provider_credential_id`: DELETING it on lapse is what makes
+ *  suspension real rather than client-side theatre. */
+export async function createTelephonyCredential(opts: {
+  connectionId: string; name: string;
+}): Promise<{ id: string } | TelnyxFault> {
+  const r = await call<Record<string, unknown>>("POST", "/telephony_credentials", {
+    connection_id: opts.connectionId,
+    name: opts.name,
+  });
+  if (faultOf(r)) return r;
+  return { id: String(r.id) };
+}
+
+/** Short-lived JWT the iOS client feeds to `TxConfig`.
+ *
+ *  ⚠️ NEVER ship the Telnyx API key to a device. This endpoint exists so the
+ *  client holds a credential scoped to one line and expiring on its own, rather
+ *  than a key that can buy numbers. */
+export async function mintCredentialToken(
+  credentialId: string,
+): Promise<{ token: string } | TelnyxFault> {
+  const r = await call<unknown>(
+    "POST", `/telephony_credentials/${credentialId}/token`);
+  if (faultOf(r)) return r;
+  // This endpoint returns a bare JWT as text/plain on some API versions and a
+  // wrapped object on others — accept both rather than guessing.
+  if (typeof r === "string") return { token: r };
+  const obj = r as Record<string, unknown>;
+  const tok = obj.token ?? obj.data ?? null;
+  // TRANSPORT_ERROR, not a stockout: the call SUCCEEDED and the body was not
+  // what we expected. Never classify an unknown failure as OUT_OF_STOCK — that
+  // is what sends users country-shopping during an outage, and on this line
+  // there is no other country to shop to.
+  if (!tok) {
+    return {
+      telnyxFault: true, type: "TRANSPORT_ERROR", status: 200,
+      detail: "no token in response",
+    };
+  }
+  return { token: String(tok) };
+}
+
+export async function deleteTelephonyCredential(
+  credentialId: string,
+): Promise<true | TelnyxFault> {
+  const r = await call<unknown>("DELETE", `/telephony_credentials/${credentialId}`);
+  if (faultOf(r)) return r;
+  return true;
+}
+
+/** Point a number's VOICE at a connection. Like messaging, this is NOT settable
+ *  on the main number resource — it lives on the /voice sub-resource, and the
+ *  main one returns 10027 "not reachable here". */
+export async function attachVoiceConnection(
+  numberId: string, connectionId: string,
+): Promise<true | TelnyxFault> {
+  const r = await call<unknown>("PATCH", `/phone_numbers/${numberId}/voice`, {
+    connection_id: connectionId,
+  });
+  if (faultOf(r)) return r;
+  return true;
+}
+
 // ── Balance ────────────────────────────────────────────────────────────────
 
 export async function getBalance(): Promise<{ usd: number } | TelnyxFault> {
