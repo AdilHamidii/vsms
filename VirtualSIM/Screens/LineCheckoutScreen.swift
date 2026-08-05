@@ -137,13 +137,21 @@ struct LineCheckoutScreen: View {
     private var priceBlock: some View {
         VStack(spacing: 8) {
             HStack(alignment: .firstTextBaseline, spacing: 5) {
-                Text("$9.99")
-                    .font(RFont.display(30, weight: .bold))
-                    .tracking(-0.8)
-                    .foregroundStyle(theme.text)
-                Text("per month")
-                    .font(RFont.text(15))
-                    .foregroundStyle(theme.text2)
+                // StoreKit's own localized price, never a literal. This block
+                // IS the 3.1.2(a) disclosure, so a hardcoded "$9.99" beside a
+                // button reading "9,99 €/mo" discloses a price the user will
+                // not be billed — the same drift that put $4.99 against €5.99
+                // on the credit ladder's top product. Hidden entirely when the
+                // real price is unknown, rather than guessed.
+                if let price = subs.displayPrice {
+                    Text(price)
+                        .font(RFont.display(30, weight: .bold))
+                        .tracking(-0.8)
+                        .foregroundStyle(theme.text)
+                    Text("per month")
+                        .font(RFont.text(15))
+                        .foregroundStyle(theme.text2)
+                }
             }
             Text("Renews automatically each month until you cancel. Cancel anytime in your Apple ID settings.")
                 .font(RFont.text(12))
@@ -179,11 +187,24 @@ struct LineCheckoutScreen: View {
         }
     }
 
+    /// Disabled WITH its reason showing, never failing on tap.
+    ///
+    /// When the App Store has not returned the product — it is unreleased,
+    /// StoreKit is unreachable, or the storefront does not carry it — the
+    /// purchase cannot succeed, and a live-looking button that throws an error
+    /// is the worst version of that. Same rule as `ThreadScreen`'s composer.
     private var cta: some View {
-        VStack(spacing: 0) {
+        VStack(spacing: 8) {
+            if unavailable {
+                Text("The App Store isn't offering this subscription right now. Please try again in a moment.")
+                    .font(RFont.text(12))
+                    .foregroundStyle(theme.text2)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
             PrimaryButton(
                 label: ctaLabel,
-                disabled: busy || state.lineOffer == nil,
+                disabled: busy || state.lineOffer == nil || subs.product == nil,
                 action: buy
             )
         }
@@ -195,6 +216,11 @@ struct LineCheckoutScreen: View {
 
     private var busy: Bool { isReserving || subs.isPurchasing }
 
+    /// Distinguishes "still loading" from "the store has no such product" —
+    /// collapsing the two would tell a user on a slow connection that the
+    /// product does not exist.
+    private var unavailable: Bool { subs.product == nil && !subs.isLoadingProduct }
+
     /// Names the step in progress rather than showing a spinner on a button
     /// whose label still says "Get this number". Reserving involves a live
     /// Telnyx round trip, so the pause is real and unexplained silence there
@@ -202,6 +228,8 @@ struct LineCheckoutScreen: View {
     private var ctaLabel: String {
         if isReserving { return String(localized: "Checking availability…") }
         if subs.isPurchasing { return String(localized: "Confirming…") }
+        if subs.isLoadingProduct { return String(localized: "Loading…") }
+        if unavailable { return String(localized: "Temporarily unavailable") }
         // StoreKit's own localized price, never a hardcoded "$9.99" — the
         // credit ladder drifted to $4.99-vs-€5.99 on its top product precisely
         // because prices were assumed instead of read.
