@@ -1488,6 +1488,36 @@ around 10DLC or toll-free verification. A multi-country catalogue was
 investigated on 2026-08-05 and is closed — do not re-open it on the strength of
 the search endpoint's null field.
 
+### The definitive sellable catalogue (exhaustive sweep, 2026-08-05)
+
+228 ISO codes → **138 carry ordering requirements** (fetched from
+`/v2/requirements?filter[action]=ordering`, 292 rows, the reliable source) →
+the remaining 92 were swept for live inventory. **Everything we can sell
+without paperwork is NANP (+1):**
+
+| country | type | $/mo | upfront | SMS |
+|---|---|---|---|---|
+| **US** | local | 1.00 | 1.00 | ✅ |
+| **CA** | local | 1.00 | 1.00 | ✅ |
+| **VI** US Virgin Is. | local | 1.00 | 3.00 | ✅ |
+| **PR** Puerto Rico | local | 3.00 | 3.00 | ✅ |
+| CD DR Congo | mobile | 27.00 | 27.00 | ❌ voice only |
+| BW Botswana | toll_free | 40.00 | 40.00 | ❌ voice only |
+
+The other **86** requirement-free codes have **no inventory at all**. CD and BW
+are voice-only and cost 3–5× the retail price, so they are unsellable.
+
+⚠️ **PR and VI are US area codes, not extra markets.** They are +1/NANP, so US
+carrier rules — including 10DLC — apply to them exactly as to any US number.
+Listing them as "4 countries" would be marketing fiction; it is one market with
+four flag icons.
+
+**The open question worth $2 to answer: does CANADA need 10DLC?** TCR/10DLC is a
+US carrier programme; Canadian A2P is governed separately and may not require
+registration. If a CA number can send without a campaign, that is a launch path
+with **zero paperwork** — and a +1 number is equally credible to a US recipient.
+Test by buying one CA number and sending to the US number we already own.
+
 **A corollary worth keeping:** the two-tier pricing designed for a 36-country
 catalogue is unnecessary. US and CA are both $1.00/month, so **one product at
 $9.99 covers the whole catalogue.**
