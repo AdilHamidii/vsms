@@ -363,6 +363,16 @@ struct LineProvisionResult: Codable, Hashable {
     let e164: String?
 }
 
+struct LineSendResult: Codable, Hashable {
+    let ok: Bool
+    let messageId: String?
+    let threadId: String?
+    /// Texts left after this send, straight from the server's own counter.
+    /// Preferred over decrementing locally: the segment count is decided
+    /// server-side and a long message costs more than one.
+    let remaining: Int?
+}
+
 /// Why the store has nothing to sell.
 ///
 /// Three cases and not two, because an empty catalogue has more than one cause

@@ -136,6 +136,32 @@ struct LineAPI {
         )
     }
 
+    /// Send a text. The allowance is consumed server-side before Telnyx is
+    /// called, and handed back if the send fails terminally — this line has no
+    /// money to refund, so the allowance is the only thing that can be made
+    /// whole.
+    func send(to: String, text: String) async throws -> LineSendResult {
+        struct Body: Encodable { let to: String; let text: String }
+        return try await client.request(
+            .post, path: "functions/v1/send-line-message", body: Body(to: to, text: text)
+        )
+    }
+
+    /// Block / unblock / report / mark-read. Every write to `line_threads` is
+    /// revoked from `authenticated` — RLS is row-level and cannot stop a client
+    /// setting `blocked` on someone else's row — so all four go through the
+    /// service role, and the RPCs verify ownership rather than trusting the id.
+    func threadAction(threadId: String, action: String, reason: String? = nil) async throws {
+        struct Body: Encodable {
+            let thread_id: String; let action: String; let reason: String?
+        }
+        _ = try await client.request(
+            .post, path: "functions/v1/line-thread-action",
+            body: Body(thread_id: threadId, action: action, reason: reason),
+            as: APIClient.Empty.self
+        )
+    }
+
     func calls(limit: Int = 100) async throws -> [LineCall] {
         try await client.request(
             .get, path: "rest/v1/line_calls",

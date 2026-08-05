@@ -1508,6 +1508,78 @@ final class AppState {
         lineThreads.reduce(0) { $0 + $1.unreadCount }
     }
 
+    /// Messages for one conversation, newest-last for display.
+    ///
+    /// The server returns newest-FIRST so the row limit keeps recent messages;
+    /// ordering ascending with a limit would page in the oldest and render a
+    /// thread that looks empty.
+    @MainActor
+    func loadLineMessages(using api: LineAPI, threadId: String) async {
+        guard let fresh = try? await api.messages(threadId: threadId) else { return }
+        lineMessages[threadId] = fresh.reversed()
+    }
+
+    /// Send, then reconcile against what the server actually recorded.
+    ///
+    /// Deliberately NOT optimistic. A send can be refused for two reasons the
+    /// client cannot predict — the allowance is counted in SEGMENTS decided
+    /// server-side, and the line may have lapsed since the view loaded — so
+    /// painting the bubble first would show a message that then has to be
+    /// taken away. The composer is fast enough without it.
+    @MainActor
+    func sendLineMessage(using api: LineAPI, to: String, text: String) async -> Bool {
+        do {
+            let res = try await api.send(to: to, text: text)
+            guard res.ok else { return false }
+            if let tid = res.threadId {
+                openThreadId = tid
+                await loadLineMessages(using: api, threadId: tid)
+            }
+            await loadLineThreads(using: api)
+            // The allowance moved, and the meter is on screen above the
+            // composer — refreshing the line is what keeps it honest.
+            await loadLine(using: api)
+            return true
+        } catch let err as APIError {
+            lastError = err.userMessage
+            return false
+        } catch {
+            lastError = String(localized: "Couldn't send that message. Please try again.")
+            return false
+        }
+    }
+
+    @MainActor
+    func setThreadBlocked(using api: LineAPI, threadId: String, blocked: Bool) async {
+        do {
+            try await api.threadAction(threadId: threadId, action: blocked ? "block" : "unblock")
+            await loadLineThreads(using: api)
+        } catch let err as APIError {
+            lastError = err.userMessage
+        } catch { /* the list refresh below is cosmetic */ }
+    }
+
+    @MainActor
+    func reportThread(using api: LineAPI, threadId: String) async {
+        try? await api.threadAction(threadId: threadId, action: "report")
+    }
+
+    /// Clears the unread badge. Swallows failure: a badge that lingers is a
+    /// cosmetic annoyance, and surfacing an error banner for it would be worse
+    /// than the problem.
+    @MainActor
+    func markThreadRead(using api: LineAPI, threadId: String) async {
+        try? await api.threadAction(threadId: threadId, action: "read")
+        if let i = lineThreads.firstIndex(where: { $0.id == threadId }),
+           lineThreads[i].unreadCount > 0 {
+            let t = lineThreads[i]
+            lineThreads[i] = LineThread(
+                id: t.id, lineId: t.lineId, peerE164: t.peerE164,
+                lastMessageAt: t.lastMessageAt, lastPreview: t.lastPreview,
+                unreadCount: 0, blocked: t.blocked, createdAt: t.createdAt)
+        }
+    }
+
     /// Clear everything the Number tab owns. Called on LEAVING the tab, because
     /// the reservation and the quote are read at `flow == nil` and so cannot be
     /// cleared by `flow.didSet` — see the note there.

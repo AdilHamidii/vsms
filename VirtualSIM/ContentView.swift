@@ -215,6 +215,21 @@ struct ContentView: View {
                 }
             }
         }
+        // Tapping an inbound-text push opens that conversation. Sets the tab
+        // too: the thread cover renders over whatever tab is behind it, and
+        // closing it should land the user on their number rather than back on
+        // an unrelated product.
+        .onChange(of: push.pendingLineThreadId) { _, newValue in
+            guard let threadId = newValue else { return }
+            push.pendingLineThreadId = nil
+            Task {
+                await state.loadLineThreads(using: LineAPI(client: api))
+                state.tab = .line
+                state.intent = .line
+                state.openThreadId = threadId
+                state.flow = .thread
+            }
+        }
         .onChange(of: push.pendingOrderId) { _, newValue in
             guard let orderId = newValue else { return }
             push.pendingOrderId = nil
@@ -321,7 +336,7 @@ struct ContentView: View {
         case .lineProvisioning:
             LineProvisioningScreen()
         case .thread:
-            comingSoonFlow("Your conversations will appear here.")
+            ThreadScreen()
         case .dialer:
             comingSoonFlow("Calling from your number is coming very soon.")
         }
