@@ -1,18 +1,20 @@
 // Telnyx adapter — the fourth product line (rentable second numbers).
 //
-// ⚠️ THIS FILE IS DELIBERATELY INCOMPLETE. It currently contains ONLY the
-// webhook signature verifier and the fault vocabulary. The endpoint wrappers
-// (numbers, messaging, voice, CDR, balance) are NOT here yet, on purpose:
-// this repo's adapters are written AFTER probing the live API, never from the
-// documentation. `heromail.ts` is the reference — probing is why the 2-minute
-// cancel floor, the `Authorization: ApiKey` scheme and the overloaded `CANCEL`
-// status are documented facts rather than guesses, and why `getPrices`
-// advertising a price with ZERO stock behind it was caught before it cost
-// another customer their session.
+// Every wrapper below was written AFTER probing the live API with a real
+// account and real purchases on 2026-08-05, never from the documentation. That
+// discipline caught four things the docs would have led us to write wrong:
 //
-// The signature verifier is here first because it is the one piece that is
-// fully determined without an account: it is pure crypto with a published
-// contract, and it is the gate everything else sits behind.
+//   1. `POST /v2/messaging_profiles` REQUIRES `whitelisted_destinations`,
+//      else 40331.
+//   2. `messaging_profile_id` is NOT settable on `PATCH /v2/phone_numbers/{id}`
+//      (10027) — messaging config lives on the `/messaging` sub-resource.
+//   3. Number orders are ASYNCHRONOUS and the response reports NO COST.
+//      Nothing anywhere reports what you paid, so the search quote is the only
+//      chance to record it.
+//   4. `regulatory_requirements` in SEARCH RESULTS IS ALWAYS NULL and means
+//      nothing. A GB number bought on the strength of it arrived
+//      `requirement-info-pending` and was unusable. The real source is
+//      `GET /v2/requirements?filter[action]=ordering`.
 //
 // ── Why not Web Crypto ─────────────────────────────────────────────────────
 // `crypto.subtle` MAY support Ed25519 in the Supabase edge runtime. It also
@@ -164,11 +166,238 @@ export function faultOf<T>(v: T | TelnyxFault): v is TelnyxFault {
 export function classifyTelnyxFault(status: number, code?: string): ProviderErrorType {
   if (status === 401 || status === 403) return "AUTH_ERROR";
   if (status === 429) return "RATE_LIMITED";
-  // 422 is Telnyx's "we understood you and refused": number already taken,
-  // number no longer available, regulatory requirements unmet.
-  if (status === 422 && code && /1001[45]|10015|numbers?_not_available/i.test(code)) {
-    return "OUT_OF_STOCK";
-  }
+  // 10015 is "No coverage found ... based on the provided search parameters",
+  // observed live for every country Telnyx does not sell SMS+voice in.
+  if (code === "10015") return "OUT_OF_STOCK";
+  // 40310 "Invalid 'to' address" and 40331 "Missing whitelisted destinations"
+  // are our bugs, not stock problems — never let them read as a stockout.
   if (status === 402) return "BALANCE_ERROR";
   return "TRANSPORT_ERROR";
+}
+
+// ── HTTP core ──────────────────────────────────────────────────────────────
+
+const API = "https://api.telnyx.com/v2";
+
+function apiKey(): string {
+  const k = Deno.env.get("TELNYX_API_KEY");
+  if (!k) throw new Error("Missing env var TELNYX_API_KEY");
+  return k;
+}
+
+async function call<T>(
+  method: string, path: string, body?: unknown,
+): Promise<T | TelnyxFault> {
+  let resp: Response;
+  try {
+    resp = await fetch(API + path, {
+      method,
+      headers: {
+        authorization: `Bearer ${apiKey()}`,
+        "content-type": "application/json",
+      },
+      body: body === undefined ? undefined : JSON.stringify(body),
+      // One slow call must not eat the whole ~150s edge budget.
+      signal: AbortSignal.timeout(20_000),
+    });
+  } catch (e) {
+    return { telnyxFault: true, type: "TRANSPORT_ERROR", status: 0, detail: String(e) };
+  }
+
+  const text = await resp.text();
+  let parsed: Record<string, unknown> = {};
+  try {
+    parsed = text ? JSON.parse(text) : {};
+  } catch {
+    // Telnyx is consistently JSON; an unparseable body means a proxy or an
+    // outage page, which is transport, not a business refusal.
+    return {
+      telnyxFault: true, type: "TRANSPORT_ERROR", status: resp.status,
+      detail: text.slice(0, 200),
+    };
+  }
+
+  const errs = parsed.errors as Array<Record<string, unknown>> | undefined;
+  if (!resp.ok || errs) {
+    const first = errs?.[0] ?? {};
+    const code = first.code === undefined ? undefined : String(first.code);
+    return {
+      telnyxFault: true,
+      type: classifyTelnyxFault(resp.status, code),
+      status: resp.status,
+      code,
+      detail: String(first.detail ?? first.title ?? text.slice(0, 200)),
+    };
+  }
+  return (parsed.data ?? parsed) as T;
+}
+
+// ── Numbers ────────────────────────────────────────────────────────────────
+
+export interface AvailableNumber {
+  phoneNumber: string;
+  type: string;
+  /** What Telnyx charges US per month, in cents. RECORD THIS AT PURCHASE —
+   *  neither the order response nor the number resource ever reports a cost
+   *  again, so this quote is the only chance to capture it. */
+  monthlyCents: number;
+  upfrontCents: number;
+  reservable: boolean;
+  region: string | null;
+}
+
+const cents = (v: unknown) => Math.round(parseFloat(String(v ?? "0")) * 100);
+
+/** Live availability. NEVER cache this — stock is per (country, area code) and
+ *  genuinely runs out, the same rule `email-domains` follows for HeroSMS. */
+export async function searchNumbers(opts: {
+  country: string; areaCode?: string; limit?: number;
+}): Promise<AvailableNumber[] | TelnyxFault> {
+  const p = new URLSearchParams();
+  p.set("filter[country_code]", opts.country);
+  p.set("filter[phone_number_type]", "local");
+  p.append("filter[features][]", "sms");
+  p.append("filter[features][]", "voice");
+  p.set("filter[limit]", String(opts.limit ?? 10));
+  if (opts.areaCode) p.set("filter[national_destination_code]", opts.areaCode);
+
+  const r = await call<Array<Record<string, unknown>>>("GET", "/available_phone_numbers?" + p);
+  if (faultOf(r)) return r;
+
+  return r.map((n) => {
+    const ci = (n.cost_information ?? {}) as Record<string, unknown>;
+    const regions = (n.region_information ?? []) as Array<Record<string, string>>;
+    return {
+      phoneNumber: String(n.phone_number),
+      type: String(n.phone_number_type),
+      monthlyCents: cents(ci.monthly_cost),
+      upfrontCents: cents(ci.upfront_cost),
+      reservable: n.reservable === true,
+      // Prefer the human-meaningful label; the raw first entry is often an
+      // obscure rate centre nobody recognises.
+      region: regions.find((x) => x.region_type === "location")?.region_name ??
+              regions.find((x) => x.region_type === "state")?.region_name ?? null,
+    };
+  });
+}
+
+/** Buy. ASYNCHRONOUS — the order starts `pending`; poll `getOrder`. Measured
+ *  under 5s, but a webhook outage must not strand a purchase, so the caller
+ *  polls rather than waiting on an event. */
+export async function orderNumber(
+  phoneNumber: string, customerReference: string,
+): Promise<{ orderId: string; status: string } | TelnyxFault> {
+  const r = await call<Record<string, unknown>>("POST", "/number_orders", {
+    phone_numbers: [{ phone_number: phoneNumber }],
+    customer_reference: customerReference,
+  });
+  if (faultOf(r)) return r;
+  return { orderId: String(r.id), status: String(r.status) };
+}
+
+export async function getOrder(
+  orderId: string,
+): Promise<{ status: string; numbers: Array<{ e164: string; status: string }> } | TelnyxFault> {
+  const r = await call<Record<string, unknown>>("GET", `/number_orders/${orderId}`);
+  if (faultOf(r)) return r;
+  const nums = (r.phone_numbers ?? []) as Array<Record<string, unknown>>;
+  return {
+    status: String(r.status),
+    numbers: nums.map((n) => ({
+      e164: String(n.phone_number),
+      // ⚠️ 'requirement-info-pending' means the number is bought and UNUSABLE
+      // pending regulatory documents. Treat it as a failure, not as progress.
+      status: String(n.status ?? n.requirements_status ?? ""),
+    })),
+  };
+}
+
+export async function findNumberId(e164: string): Promise<string | null | TelnyxFault> {
+  const r = await call<Array<Record<string, unknown>>>(
+    "GET", "/phone_numbers?" + new URLSearchParams({ "filter[phone_number]": e164 }));
+  if (faultOf(r)) return r;
+  return r.length ? String(r[0].id) : null;
+}
+
+/** ⚠️ messaging_profile_id is NOT settable here — that is the `/messaging`
+ *  sub-resource (10027). This endpoint takes customer_reference and tags. */
+export async function setCustomerReference(
+  numberId: string, reference: string,
+): Promise<true | TelnyxFault> {
+  const r = await call("PATCH", `/phone_numbers/${numberId}`,
+                       { customer_reference: reference });
+  return faultOf(r) ? r : true;
+}
+
+export async function attachMessagingProfile(
+  numberId: string, profileId: string,
+): Promise<true | TelnyxFault> {
+  const r = await call("PATCH", `/phone_numbers/${numberId}/messaging`,
+                       { messaging_profile_id: profileId });
+  return faultOf(r) ? r : true;
+}
+
+/** Stops the monthly charge. The number returns to Telnyx's pool and WILL be
+ *  re-sold, so the UI must say the number is genuinely gone. */
+export async function releaseNumber(numberId: string): Promise<true | TelnyxFault> {
+  const r = await call("DELETE", `/phone_numbers/${numberId}`);
+  return faultOf(r) ? r : true;
+}
+
+/** Every number we own, for the orphan reconciler. `customer_reference` is the
+ *  join back to phone_lines.id — a number with no live line is money leaking. */
+export async function listOwnedNumbers(
+  page = 1, size = 250,
+): Promise<Array<{ id: string; e164: string; status: string; reference: string | null }> | TelnyxFault> {
+  const r = await call<Array<Record<string, unknown>>>(
+    "GET", `/phone_numbers?page[number]=${page}&page[size]=${size}`);
+  if (faultOf(r)) return r;
+  return r.map((n) => ({
+    id: String(n.id),
+    e164: String(n.phone_number),
+    status: String(n.status),
+    reference: (n.customer_reference as string | null) ?? null,
+  }));
+}
+
+// ── Messaging ──────────────────────────────────────────────────────────────
+
+/** ⚠️ `whitelisted_destinations` is REQUIRED (40331). It is the list of
+ *  countries the profile may SEND to, not where the number lives. */
+export async function createMessagingProfile(opts: {
+  name: string; webhookUrl: string; destinations: string[]; dailySpendUsd?: string;
+}): Promise<{ id: string } | TelnyxFault> {
+  const r = await call<Record<string, unknown>>("POST", "/messaging_profiles", {
+    name: opts.name,
+    webhook_url: opts.webhookUrl,
+    webhook_api_version: "2",
+    whitelisted_destinations: opts.destinations,
+    // The only cost ceiling that still holds when our backend is down.
+    ...(opts.dailySpendUsd
+      ? { daily_spend_limit: opts.dailySpendUsd, daily_spend_limit_enabled: true }
+      : {}),
+  });
+  if (faultOf(r)) return r;
+  return { id: String(r.id) };
+}
+
+export async function sendMessage(opts: {
+  from: string; to: string; text: string; profileId?: string;
+}): Promise<{ id: string; parts: number } | TelnyxFault> {
+  const r = await call<Record<string, unknown>>("POST", "/messages", {
+    from: opts.from,
+    to: opts.to,
+    text: opts.text,
+    ...(opts.profileId ? { messaging_profile_id: opts.profileId } : {}),
+  });
+  if (faultOf(r)) return r;
+  return { id: String(r.id), parts: Number(r.parts ?? 1) };
+}
+
+// ── Balance ────────────────────────────────────────────────────────────────
+
+export async function getBalance(): Promise<{ usd: number } | TelnyxFault> {
+  const r = await call<Record<string, unknown>>("GET", "/balance");
+  if (faultOf(r)) return r;
+  return { usd: parseFloat(String(r.available_credit ?? r.balance ?? "0")) };
 }
