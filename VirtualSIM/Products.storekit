@@ -1,95 +1,124 @@
 {
-  "identifier" : "8B5C2D9F-vSIM-OTP-Local-Config-0001",
-  "nonRenewingSubscriptions" : [],
-  "products" : [
+  "identifier": "8B5C2D9F-vSIM-OTP-Local-Config-0001",
+  "nonRenewingSubscriptions": [],
+  "products": [
     {
-      "displayPrice" : "2.99",
-      "familyShareable" : false,
-      "internalID" : "11111111-1111-1111-1111-111111111111",
-      "localizations" : [
+      "displayPrice": "2.99",
+      "familyShareable": false,
+      "internalID": "11111111-1111-1111-1111-111111111111",
+      "localizations": [
         {
-          "description" : "Get 5 SMS verification codes",
-          "displayName" : "5 OTP Credits",
-          "locale" : "en_US"
+          "description": "Get 5 SMS verification codes",
+          "displayName": "5 OTP Credits",
+          "locale": "en_US"
         }
       ],
-      "productID" : "com.anthersystems.VirtualSIM.credits.5",
-      "referenceName" : "5 Credits",
-      "type" : "Consumable"
+      "productID": "com.anthersystems.VirtualSIM.credits.5",
+      "referenceName": "5 Credits",
+      "type": "Consumable"
     },
     {
-      "displayPrice" : "5.99",
-      "familyShareable" : false,
-      "internalID" : "22222222-2222-2222-2222-222222222222",
-      "localizations" : [
+      "displayPrice": "5.99",
+      "familyShareable": false,
+      "internalID": "22222222-2222-2222-2222-222222222222",
+      "localizations": [
         {
-          "description" : "Get 12 SMS verification codes — our most popular pack",
-          "displayName" : "12 OTP Credits",
-          "locale" : "en_US"
+          "description": "Get 12 SMS verification codes \u2014 our most popular pack",
+          "displayName": "12 OTP Credits",
+          "locale": "en_US"
         }
       ],
-      "productID" : "com.anthersystems.VirtualSIM.credits.12",
-      "referenceName" : "12 Credits",
-      "type" : "Consumable"
+      "productID": "com.anthersystems.VirtualSIM.credits.12",
+      "referenceName": "12 Credits",
+      "type": "Consumable"
     },
     {
-      "displayPrice" : "12.99",
-      "familyShareable" : false,
-      "internalID" : "33333333-3333-3333-3333-333333333333",
-      "localizations" : [
+      "displayPrice": "12.99",
+      "familyShareable": false,
+      "internalID": "33333333-3333-3333-3333-333333333333",
+      "localizations": [
         {
-          "description" : "Get 30 SMS verification codes",
-          "displayName" : "30 OTP Credits",
-          "locale" : "en_US"
+          "description": "Get 30 SMS verification codes",
+          "displayName": "30 OTP Credits",
+          "locale": "en_US"
         }
       ],
-      "productID" : "com.anthersystems.VirtualSIM.credits.30",
-      "referenceName" : "30 Credits",
-      "type" : "Consumable"
+      "productID": "com.anthersystems.VirtualSIM.credits.30",
+      "referenceName": "30 Credits",
+      "type": "Consumable"
     },
     {
-      "displayPrice" : "24.99",
-      "familyShareable" : false,
-      "internalID" : "44444444-4444-4444-4444-444444444444",
-      "localizations" : [
+      "displayPrice": "24.99",
+      "familyShareable": false,
+      "internalID": "44444444-4444-4444-4444-444444444444",
+      "localizations": [
         {
-          "description" : "60 credits — enough for most eSIM data plans",
-          "displayName" : "60 Credits",
-          "locale" : "en_US"
+          "description": "60 credits \u2014 enough for most eSIM data plans",
+          "displayName": "60 Credits",
+          "locale": "en_US"
         }
       ],
-      "productID" : "com.anthersystems.VirtualSIM.credits.60",
-      "referenceName" : "60 Credits",
-      "type" : "Consumable"
+      "productID": "com.anthersystems.VirtualSIM.credits.60",
+      "referenceName": "60 Credits",
+      "type": "Consumable"
     },
     {
-      "displayPrice" : "59.99",
-      "familyShareable" : false,
-      "internalID" : "55555555-5555-5555-5555-555555555555",
-      "localizations" : [
+      "displayPrice": "59.99",
+      "familyShareable": false,
+      "internalID": "55555555-5555-5555-5555-555555555555",
+      "localizations": [
         {
-          "description" : "150 credits — best value per credit, for larger eSIM data plans",
-          "displayName" : "150 Credits",
-          "locale" : "en_US"
+          "description": "150 credits \u2014 best value per credit, for larger eSIM data plans",
+          "displayName": "150 Credits",
+          "locale": "en_US"
         }
       ],
-      "productID" : "com.anthersystems.VirtualSIM.credits.150",
-      "referenceName" : "150 Credits",
-      "type" : "Consumable"
+      "productID": "com.anthersystems.VirtualSIM.credits.150",
+      "referenceName": "150 Credits",
+      "type": "Consumable"
     }
   ],
-  "settings" : {
-    "_applicationInternalID" : "",
-    "_developerTeamID" : "UDMK379475",
-    "_failTransactionsEnabled" : false,
-    "_lastSynchronizedDate" : 0,
-    "_locale" : "en_US",
-    "_storefront" : "USA",
-    "_storeKitErrors" : []
+  "settings": {
+    "_applicationInternalID": "",
+    "_developerTeamID": "UDMK379475",
+    "_failTransactionsEnabled": false,
+    "_lastSynchronizedDate": 0,
+    "_locale": "en_US",
+    "_storeKitErrors": [],
+    "_storefront": "USA"
   },
-  "subscriptionGroups" : [],
-  "version" : {
-    "major" : 4,
-    "minor" : 0
+  "subscriptionGroups": [
+    {
+      "id": "22289428",
+      "localizations": [],
+      "name": "Second Number",
+      "subscriptions": [
+        {
+          "adHocOffers": [],
+          "codeOffers": [],
+          "displayPrice": "9.99",
+          "familyShareable": false,
+          "groupNumber": 1,
+          "internalID": "6798378879",
+          "introductoryOffer": null,
+          "localizations": [
+            {
+              "description": "Your own number for calls and texts.",
+              "displayName": "Second Number",
+              "locale": "en_US"
+            }
+          ],
+          "productID": "com.anthersystems.VirtualSIM.line.monthly",
+          "recurringSubscriptionPeriod": "P1M",
+          "referenceName": "Second Number",
+          "subscriptionGroupID": "22289428",
+          "type": "RecurringSubscription"
+        }
+      ]
+    }
+  ],
+  "version": {
+    "major": 4,
+    "minor": 0
   }
 }

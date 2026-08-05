@@ -1391,6 +1391,45 @@ String enum with no unknown case, which is why `begin_order` had to write a
 semantically wrong `'waiting'`. Six lines each, and it permanently removes the
 client-first-schema-second ordering constraint for this line.
 
+**The subscription EXISTS in App Store Connect (created 2026-08-05 via the ASC
+API, headlessly):**
+
+| | |
+|---|---|
+| group | **`22289428`** "Second Number" (+ en-US localization) |
+| product | **`6798378879`** `com.anthersystems.VirtualSIM.line.monthly` |
+| period | `ONE_MONTH`, not family-shareable |
+| price | **$9.99 USD → proceeds $8.49** (base territory **USA**) |
+| availability | 32 territories, `availableInNewTerritories: true` |
+| grace period | **16 days, ALL_RENEWALS, sandboxOptIn ON** |
+| state | `MISSING_METADATA` |
+
+⚠️ **`subscriptionAvailability` MUST EXIST BEFORE PRICING.** Setting a price
+first returns a useless **409 `ENTITY_ERROR.RELATIONSHIP.INVALID`** pointing at
+`/data/relationships/subscriptionPricePoint/id` — which reads as a bad price
+point, and the price point is fine. Create `subscriptionAvailabilities`, then
+price. Nothing in the error says so.
+
+⚠️ **Base territory is USA, deliberately.** The credit-pack ladder mixed FRA and
+USA bases and silently drifted to $4.99-vs-€5.99 on the top revenue product.
+One base per ladder.
+
+**`sandboxOptIn` on the grace period is not optional for us** — without it the
+`DID_FAIL_TO_RENEW`/`GRACE_PERIOD` branch of the line state machine cannot be
+exercised in Sandbox at all.
+
+**Two things still block the product, and both are genuinely blocked:**
+- **App Store review screenshot** — needs the in-app subscription UI to exist,
+  so it waits on the client. This is the whole of the remaining
+  `MISSING_METADATA`.
+- **ASSN V2 URL** (`subscriptionStatusUrl`, and the sandbox twin) — currently
+  `null`. Set both once `apple-notifications` is deployed; Apple validates
+  reachability, so pointing at a function that does not exist yet will fail.
+
+`VirtualSIM/Products.storekit` carries a matching local subscription group —
+local StoreKit testing does not read ASC, so the two must be kept in step by
+hand.
+
 **Landed so far (all verified against live DB state, not deploy logs):**
 - `20260805170000_phone_lines.sql` — 6 enums, 7 tables, the `my_line` view,
   19 SECURITY DEFINER RPCs, `set_lines_paused`, the `app_config_read`
