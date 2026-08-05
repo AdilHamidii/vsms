@@ -21,6 +21,10 @@ interface Snapshot {
     /** Charged-and-refunded attempts that never reserved a number. Excluded
      *  from `placed` so they cannot masquerade as delivery failures. */
     numberless?: number;
+    /** Dev-account orders in the window. Excluded from every figure here, as
+     *  always — reported only so an empty Numbers line can say why it is empty
+     *  rather than reading as "the product is dead". */
+    dev_hidden?: number;
     by_provider?: ProviderRow[];
   };
   /** Temp-EMAIL line. Same evidence shape as `orders`: `placed` counts only
@@ -301,7 +305,16 @@ export function formatDigest(raw: Record<string, unknown>): string {
       }
     }
   } else {
-    lines.push(`📱 Numbers: none ordered`);
+    // Say WHY it is empty when the dev account was the only thing ordering.
+    // Every figure here excludes dev by design, so an owner testing the app
+    // watches their own order vanish and reads "none ordered" as an outage.
+    // Reported 2026-08-05 as "I see people ordering numbers yet I don't see
+    // that on the telegram stats" — it was one dev order and two real
+    // purchases, all behaving correctly.
+    const dev = o.dev_hidden ?? 0;
+    lines.push(dev > 0
+      ? `📱 Numbers: none ordered · ${dev} dev order${dev === 1 ? "" : "s"} hidden`
+      : `📱 Numbers: none ordered`);
   }
 
   // Orders that never got a number: charged and instantly refunded because the
