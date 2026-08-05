@@ -1452,6 +1452,52 @@ first returns a useless **409 `ENTITY_ERROR.RELATIONSHIP.INVALID`** pointing at
 point, and the price point is fine. Create `subscriptionAvailabilities`, then
 price. Nothing in the error says so.
 
+🔴 **A `MISSING_METADATA` PRODUCT IS NOT RETURNED BY StoreKit — NOT EVEN IN
+SANDBOX.** From the phone this looks like a bug in your own app:
+`Product.products(for:)` returns an empty array, so the app renders whatever
+its "no product" branch says. Ours said *"Second numbers are temporarily
+unavailable"* and the CTA still looked live, so tapping it ran the whole
+reserve-then-purchase path just to surface an error. **Check the ASC state
+before debugging the client.**
+
+⚠️ **CREATING A BASE PRICE OVER THE API DOES NOT PROPAGATE TO OTHER
+TERRITORIES.** The ASC web UI fills every territory from the base automatically;
+the API does not. Measured 2026-08-06: `subscriptionAvailability` listed **32**
+territories while `GET /v1/subscriptions/{id}/prices` returned **one** record
+(USA), i.e. 31 territories with no price at all. Confirm with
+`?filter[territory]=FRA` — it returns `total: 0`, not an error.
+
+The fix replicates what the UI does — take the base territory's price point,
+ask Apple for its equivalent everywhere else, and create each price:
+
+```
+GET  /v1/subscriptionPricePoints/{basePointId}/equalizations?include=territory&limit=200
+POST /v1/subscriptionPrices   { subscription, subscriptionPricePoint }
+```
+
+Script: `scripts/asc-equalize-subscription-prices.py` (supports `--dry`).
+
+⚠️ **ASC's IAP `state` RECOMPUTES LAZILY — but not THAT lazily.** A 20-minute
+poll after the screenshot landed, and a further 9 minutes after the 31 prices
+landed, both stayed `MISSING_METADATA`. So treat "no change after ~5 minutes"
+as a real missing field, not propagation. **The API will not name which field**
+— there is no reasons array anywhere on the resource. The web page flags it in
+red; that is the fastest diagnosis by a wide margin.
+
+**Do NOT use `POST /v1/subscriptionSubmissions` as a diagnostic.** It would name
+the missing field in its error — but if the read is wrong and the metadata is
+in fact complete, it SUBMITS, and cancelling an IAP submission leaves the
+version `DEVELOPER_REJECTED` and needs the web UI to recover (see Release prep).
+
+**Verified present on `6798378879` as of 2026-08-06, so do not re-check these:**
+en-US subscription localization (name + description), subscription **group**
+localization, review notes, `subscriptionPeriod`, `familySharable`, 32-territory
+availability, an `appStoreReviewScreenshot` attached and `COMPLETE` with no
+errors, and prices in all 32 territories. The app's `primaryLocale` is `en-US`,
+so the localization matches. The remaining untested hypothesis is that a
+**first** subscription must be attached to an app version before ASC will call
+it ready.
+
 ⚠️ **Base territory is USA, deliberately.** The credit-pack ladder mixed FRA and
 USA bases and silently drifted to $4.99-vs-€5.99 on the top revenue product.
 One base per ladder.

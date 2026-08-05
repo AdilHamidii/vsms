@@ -413,9 +413,28 @@ struct HomeScreen: View {
     /// for phone numbers on a specific route; rendering them on an e-mail
     /// purchase would restate another product's evidence as this one's, and we
     /// have measured nothing for e-mail yet.
+    ///
+    /// ⚠️ E-mail mode gets a SENTENCE, not silence. Switching product line used
+    /// to delete this whole block with no explanation, so the screen quietly
+    /// lost its evidence and looked like it had simply broken. Saying that we
+    /// have not measured e-mail yet is both the honest answer and the reason
+    /// the row is gone.
     @ViewBuilder
     private var evidenceStrip: some View {
-        if state.showMetrics, !state.emailMode {
+        if state.showMetrics, state.emailMode {
+            VStack(alignment: .leading, spacing: 0) {
+                Rectangle()
+                    .fill(theme.sep)
+                    .frame(height: 0.5)
+                Text("No delivery record yet — e-mail is new and we only show what we've measured.")
+                    .font(RFont.text(12))
+                    .foregroundStyle(theme.text3)
+                    .lineSpacing(2)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.horizontal, 16)
+                    .padding(.top, 14)
+            }
+        } else if state.showMetrics, !state.emailMode {
             VStack(alignment: .leading, spacing: 0) {
                 // Full-bleed, matching the rules ReceiptRow draws above it —
                 // an inset rule here would read as a second, unrelated card.
