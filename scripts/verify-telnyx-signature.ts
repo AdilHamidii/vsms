@@ -12,10 +12,23 @@
 // (valid passes / flipped byte fails / stale timestamp fails / no signature
 // fails) plus the failure modes that are specific to this verifier.
 //
-// ⚠️ It does NOT replace replaying a REAL captured webhook. Do that too, once
-// a Telnyx account exists: store the first real request's raw body and both
-// headers, and assert it verifies. A locally-generated signature proves the
-// algorithm; only a real one proves we agreed with Telnyx about WHAT is signed.
+// It also REPLAYS a real captured webhook when given one:
+//
+//   supabase db query --linked \
+//     "select value::text from app_config where key='telnyx_webhook_last';"
+//   # save the JSON object to capture.json, then:
+//   deno run --allow-read --allow-net --allow-env \
+//     scripts/verify-telnyx-signature.ts capture.json
+//
+// A locally-generated signature proves the ALGORITHM; only a real one proves we
+// agreed with Telnyx about WHAT is signed. Done for real on 2026-08-05 — 6/6.
+// The capture is not committed: this repo is public and it contains live
+// numbers.
+//
+// 🔴 That replay found the thing worth remembering: Telnyx sends PRETTY-PRINTED
+// JSON. The captured body was 1,703 bytes and JSON.parse -> JSON.stringify
+// yields 1,203. Parsing before verifying silently discards 500 bytes of signed
+// content, and every signature fails.
 
 import { ed25519 } from "https://esm.sh/@noble/curves@1.6.0/ed25519";
 import {
@@ -117,6 +130,40 @@ ok("unknown 422 -> TRANSPORT_ERROR, not stockout",
 ok("faultOf guards",
    faultOf({ telnyxFault: true, type: "AUTH_ERROR", status: 401 }) &&
    !faultOf({ id: "x" } as unknown as { telnyxFault: true }));
+
+// ── Optional: replay a REAL captured webhook ───────────────────────────────
+// Shape: {raw, signature, timestamp} as written by telnyx-webhook's capture
+// phase into app_config.telnyx_webhook_last.
+if (Deno.args[0]) {
+  const cap = JSON.parse(await Deno.readTextFile(Deno.args[0]));
+  const key = Deno.env.get("TELNYX_PUBLIC_KEY");
+  if (!key) {
+    console.error("\nTELNYX_PUBLIC_KEY not set; skipping the real-capture replay");
+  } else {
+    const t = Number(cap.timestamp);
+    console.log("\n--- replaying real captured webhook ---");
+
+    const a = verifyTelnyxSignature(cap.raw, cap.signature, cap.timestamp, key, t);
+    ok("REAL webhook verifies", a.ok, a.ok ? "" : a.reason);
+
+    const flipped = cap.raw.slice(0, 100) +
+      (cap.raw[100] === "a" ? "b" : "a") + cap.raw.slice(101);
+    ok("REAL: flipped byte rejected",
+       !verifyTelnyxSignature(flipped, cap.signature, cap.timestamp, key, t).ok);
+
+    // Telnyx pretty-prints, so this drops ~30% of the signed bytes.
+    const reser = JSON.stringify(JSON.parse(cap.raw));
+    ok("REAL: re-serialized body rejected",
+       !verifyTelnyxSignature(reser, cap.signature, cap.timestamp, key, t).ok,
+       `(${cap.raw.length} -> ${reser.length} bytes)`);
+
+    ok("REAL: replay past the window rejected",
+       !verifyTelnyxSignature(cap.raw, cap.signature, cap.timestamp, key, t + 301).ok);
+
+    ok("REAL: timestamp cannot be slid forward",
+       !verifyTelnyxSignature(cap.raw, cap.signature, String(t + 1), key, t + 1).ok);
+  }
+}
 
 console.log(`\n${pass} passed, ${fail} failed`);
 if (fail) Deno.exit(1);

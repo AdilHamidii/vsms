@@ -1512,11 +1512,38 @@ carrier rules — including 10DLC — apply to them exactly as to any US number.
 Listing them as "4 countries" would be marketing fiction; it is one market with
 four flag icons.
 
-**The open question worth $2 to answer: does CANADA need 10DLC?** TCR/10DLC is a
-US carrier programme; Canadian A2P is governed separately and may not require
-registration. If a CA number can send without a campaign, that is a launch path
-with **zero paperwork** — and a +1 number is equally credible to a US recipient.
-Test by buying one CA number and sending to the US number we already own.
+✅ **CANADA NEEDS NO 10DLC — MEASURED, AND IT IS THE LAUNCH PATH.** Tested
+2026-08-05 with a real purchase: `+1 343 513 1580` (Ottawa) went **`active`
+immediately** with no requirement pending, and sending from it to our US number
+with **no TCR brand and no campaign registered** was **`delivered`** at
+$0.0040. `/v2/10dlc/brand` reports `totalRecords: 0` — nothing is registered
+and it worked anyway.
+
+**So the zero-paperwork launch is: sell CANADIAN numbers.** No TCR brand, no
+campaign, no toll-free verification, no waiting on an external approval that
+can be rejected. A +1 number is equally credible to a US recipient, and CA
+costs the same $1.00/month as US.
+
+⚠️ **US numbers still need 10DLC to SEND.** The purchased US number carries
+`messaging_campaign_id: null` and is unregistered. Do not assume the Canadian
+result generalises to it — it does not, because TCR is a US carrier programme
+and the Canadian number is simply not subject to it. Offer US numbers only
+after the brand and campaign clear.
+
+⚠️ **Inbound to a Canadian number is still domestic-only** (`international_
+inbound: false`, same as US), so this fixes the *paperwork*, not the
+can-a-European-text-it problem.
+
+**The inbound path is now PROVEN END TO END.** The `message.received` webhook
+arrived, passed Ed25519 verification in production, and was captured. Replayed
+through the verifier: real bytes verify, one flipped byte fails, a re-serialized
+body fails, a replay past 300s fails, and a slid timestamp fails — 6/6.
+
+🔴 **The parse-after-verify rule is not theoretical: Telnyx sends
+PRETTY-PRINTED JSON.** The captured body is **1,703 bytes**; `JSON.parse` then
+`JSON.stringify` yields **1,203**. Parsing before verifying would silently
+discard 500 bytes of signed content and every signature would fail. Read
+`await req.text()` once, verify, *then* parse.
 
 **A corollary worth keeping:** the two-tier pricing designed for a 36-country
 catalogue is unnecessary. US and CA are both $1.00/month, so **one product at
