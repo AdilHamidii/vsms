@@ -8,10 +8,19 @@ struct OrderRow: View {
 
     /// Same rule as ReceiptRow: only a Button when it navigates. `.disabled`
     /// on a non-tappable row just greys perfectly readable history.
+    ///
+    /// And when it IS a Button it now says so — press feedback plus a chevron.
+    /// A row that responds to touch exactly as much as the row above it, which
+    /// does nothing, teaches the user that neither is worth tapping.
     var body: some View {
         if let onTap {
-            Button(action: onTap) { content }
-                .buttonStyle(.plain)
+            Button {
+                RHaptic.select()
+                onTap()
+            } label: {
+                content
+            }
+            .pressable()
         } else {
             content
         }
@@ -63,9 +72,15 @@ struct OrderRow: View {
                             .font(RFont.text(11))
                             .foregroundStyle(theme.text3)
                     }
+                    if onTap != nil {
+                        Image(systemName: RIcon.chev)
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(theme.text3)
+                    }
                 }
                 .padding(.horizontal, 14)
                 .padding(.vertical, 12)
+                .contentShape(.rect)
                 if !isLast {
                     Rectangle()
                         .fill(theme.sep)

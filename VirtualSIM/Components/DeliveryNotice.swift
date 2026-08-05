@@ -12,6 +12,20 @@ import SwiftUI
 ///
 /// Two densities: `.full` on Checkout (pre-purchase, has room to explain) and
 /// `.compact` on Waiting (already anxious, wants one line and a way out).
+///
+/// ── Two fixes from the 2026-08 audit ─────────────────────────────────────
+///
+/// **The apology is gone from `.full`.** It ended with *"We're sorry for the
+/// hassle"* — an apology for a failure that had not happened, positioned as the
+/// last thing read before spending money. Apologising pre-emptively does not
+/// make the risk smaller; it just makes the purchase feel like a mistake
+/// already in progress. It survives in `.compact`, which renders on the WAITING
+/// screen, where the hassle is real and the sentence is finally true.
+///
+/// **The measured evidence leads.** It used to sit third, below a generic
+/// headline and a paragraph of prose — so the one sentence on the card that is
+/// our own data was the one the eye reached last. Everything above it was
+/// framing; this is the fact.
 struct DeliveryNotice: View {
     @Environment(\.theme) private var theme
 
@@ -44,7 +58,8 @@ struct DeliveryNotice: View {
         switch odds {
         case .poor:  return theme.fail
         case .mixed: return theme.warn
-        case .good, .unknown: return theme.warn
+        case .good:  return theme.live
+        case .unknown: return theme.warn
         }
     }
 
@@ -53,31 +68,72 @@ struct DeliveryNotice: View {
     /// the tier, which is `.unknown` on a small sample and paints warn. TikTok
     /// at 5 of 7 is the app's best first-order service and would have rendered
     /// its record in the warning colour.
+    ///
+    /// Bands come from `DeliveryBand`, the app's single definition — this used
+    /// to carry its own fourth copy of the same arithmetic at its own
+    /// thresholds (0.50 / 0.20), which happen to be the ones everything now
+    /// agrees on.
     private var evidenceColor: Color {
-        if odds != .unknown { return accent }
         guard let r = service?.observedRatio else { return theme.text2 }
-        if r >= 0.50 { return theme.live }
-        if r >= 0.20 { return theme.warn }
-        return theme.fail
+        return theme.deliveryColor(DeliveryBand.of(ratio: r))
     }
 
+    private var evidenceWash: Color {
+        guard let r = service?.observedRatio else { return theme.chipBg }
+        return theme.deliverySoft(DeliveryBand.of(ratio: r))
+    }
+
+    /// ⚠️ Every branch says **credits come back**, never "you're not charged".
+    ///
+    /// Credits leave the wallet inside the same transaction that writes the
+    /// order row, so "you're only charged if a code arrives" — which all four
+    /// of these used to say — is false, and it is false on the same screen as a
+    /// Cost row reading "N left after". Checkout's title block was corrected for
+    /// exactly this; a component rendered 12pt below it must not reintroduce
+    /// the contradiction.
     private var detail: String {
         guard let service else {
-            return String(localized: "Some services block temporary numbers, so a code may never come through. If that happens you're not charged — and trying another number is free, as many times as you like.")
+            return String(localized: "Some services block temporary numbers, so a code may never come through. If that happens your credits come straight back — and trying another number is free, as many times as you like.")
         }
         switch odds {
         case .poor:
-            return String(localized: "\(service.name) blocks most temporary numbers, so a code often never arrives. You're only charged if one does, and trying again is free — but it may not work at all.")
+            return String(localized: "\(service.name) blocks most temporary numbers, so a code often never arrives. Your credits come back every time one doesn't, and trying again is free — but it may not work at all.")
         case .mixed:
-            return String(localized: "\(service.name) accepts temporary numbers some of the time. You're only charged if a code arrives, and trying another number is free.")
+            return String(localized: "\(service.name) accepts temporary numbers some of the time. Your credits come back if no code arrives, and trying another number is free.")
         case .good, .unknown:
-            return String(localized: "Some services block temporary numbers, so a code may never come through. If that happens you're not charged — and trying another number is free, as many times as you like.")
+            return String(localized: "Some services block temporary numbers, so a code may never come through. If that happens your credits come straight back — and trying another number is free, as many times as you like.")
         }
     }
 
     private var fullNotice: some View {
         Card {
-            VStack(alignment: .leading, spacing: 10) {
+            VStack(alignment: .leading, spacing: 12) {
+                // 1. WHAT WE MEASURED. First, largest, and the only figure on
+                //    the card. Absent when the sample is too thin to state —
+                //    `deliveryEvidence` is nil below 3 attempts, and silence is
+                //    the honest answer there.
+                if let evidence = service?.deliveryEvidence {
+                    VStack(alignment: .leading, spacing: 5) {
+                        Text(evidence)
+                            .font(RFont.display(17, weight: .semibold))
+                            .tracking(-0.3)
+                            .foregroundStyle(evidenceColor)
+                            .fixedSize(horizontal: false, vertical: true)
+
+                        // The window, stated once. A bare "5 of the last 7"
+                        // has no timeframe and no owner, so it could equally
+                        // be the provider's number about everyone's orders.
+                        Text("Our own orders, last 30 days")
+                            .font(RFont.text(12))
+                            .foregroundStyle(theme.text3)
+                    }
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 8)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(evidenceWash, in: .rect(cornerRadius: RRadius.sm))
+                }
+
+                // 2. What that means, in words.
                 HStack(spacing: 8) {
                     Image(systemName: RIcon.info)
                         .font(.system(size: 13, weight: .semibold))
@@ -92,19 +148,7 @@ struct DeliveryNotice: View {
                     .font(RFont.text(13))
                     .tracking(-0.1)
                     .foregroundStyle(theme.text2)
-                    .fixedSize(horizontal: false, vertical: true)
-
-                if let evidence = service?.deliveryEvidence {
-                    Text(evidence)
-                        .font(RFont.text(12, weight: .medium))
-                        .tracking(-0.1)
-                        .foregroundStyle(evidenceColor)
-                }
-
-                Text("We're sorry for the hassle. We're actively working on improving delivery rates.")
-                    .font(RFont.text(12))
-                    .tracking(-0.1)
-                    .foregroundStyle(theme.text3)
+                    .lineSpacing(2)
                     .fixedSize(horizontal: false, vertical: true)
             }
             .padding(.horizontal, 18)
@@ -113,13 +157,16 @@ struct DeliveryNotice: View {
         }
     }
 
+    /// The waiting screen. The apology belongs HERE and only here: by this
+    /// point the user has spent a credit and is watching a clock, so the hassle
+    /// is no longer hypothetical.
     private var compactNotice: some View {
         HStack(alignment: .top, spacing: 8) {
             Image(systemName: RIcon.info)
                 .font(.system(size: 12, weight: .medium))
                 .foregroundStyle(theme.text3)
                 .padding(.top, 1)
-            Text("Some services block temporary numbers, so a code may not arrive. Trying another is free — you only pay for one that works. Sorry for the hassle; we're working on it.")
+            Text("Some services block temporary numbers, so a code may not arrive. Your credits come back if it doesn't, and trying another is free. Sorry for the hassle; we're working on it.")
                 .font(RFont.text(12))
                 .tracking(-0.1)
                 .foregroundStyle(theme.text3)

@@ -1,6 +1,16 @@
 import SwiftUI
 import StoreKit
 
+/// The code arrived. The whole job of this screen is to get those digits into
+/// the other app and then get out of the way.
+///
+/// It used to have no way out at all except the ✕ in the corner — while
+/// `EmailCodeScreen`, the same moment one product line over, has a Done
+/// primary. And the second thing under the code, above anything telling the
+/// user what to do with it, was **"Get another \(service) number"**: an upsell
+/// offered at the instant of success, before the success has been used. The
+/// order is now Copy → what to do with it → Done, and the two "what next"
+/// affordances sit BELOW Done where they belong.
 struct OtpScreen: View {
     @Environment(\.theme) private var theme
     @Environment(AppState.self) private var state
@@ -8,6 +18,7 @@ struct OtpScreen: View {
 
     let order: Order
     @State private var copied = false
+    @State private var appeared = false
 
     private var otpValue: String { order.otp ?? "" }
     private var otpDigits: [String] { otpValue.map { String($0) } }
@@ -16,23 +27,51 @@ struct OtpScreen: View {
         ZStack {
             theme.bg.ignoresSafeArea()
             ScrollView {
-                VStack(alignment: .leading, spacing: 0) {
+                VStack(alignment: .leading, spacing: 14) {
                     topBar
                     serviceStrip
                     codeCard
                     messageBubble
+                    whatNext
                 }
                 .padding(.top, 6)
                 .padding(.bottom, 60)
             }
             .scrollIndicators(.hidden)
         }
-        .onAppear(perform: maybeAskForReview)
+        .onAppear(perform: arrive)
     }
 
-    /// The code just landed — the user's happiest moment. If the gate allows,
-    /// let the digit-reveal animation finish, then show Apple's native review
-    /// sheet. Never tied to any reward (App Store 5.6.4).
+    /// Everything that should happen the moment the digits are on screen.
+    ///
+    /// **The code is copied for the user.** It is a verification code with one
+    /// use and one destination; making someone tap a button to move six digits
+    /// they are about to paste is ceremony, not consent. The Copy button stays
+    /// (the clipboard can be overwritten between here and the other app, and
+    /// the button is the only way back) — it simply opens already confirmed.
+    private func arrive() {
+        guard !appeared else { return }
+        appeared = true
+        guard !otpValue.isEmpty else { return }
+
+        UIPasteboard.general.string = otpValue
+        copied = true
+        // The screen the product exists for. A silent success on iOS reads as a
+        // screen that did not respond.
+        RHaptic.success()
+
+        Task {
+            // Return the button to its resting label so it stays usable rather
+            // than sitting on a stale "Copied" for the life of the screen.
+            try? await Task.sleep(nanoseconds: 2_400_000_000)
+            withAnimation(RMotion.content) { copied = false }
+        }
+        maybeAskForReview()
+    }
+
+    /// The user's happiest moment. If the gate allows, let the digit-reveal
+    /// animation finish, then show Apple's native review sheet. Never tied to
+    /// any reward (App Store 5.6.4).
     private func maybeAskForReview() {
         guard state.shouldRequestReview(forOrderId: order.id) else { return }
         Task {
@@ -59,10 +98,9 @@ struct OtpScreen: View {
                     .frame(width: 36, height: 36)
                     .background(theme.chipBg, in: .circle)
             }
-            .buttonStyle(.plain)
+            .pressable()
         }
         .padding(.horizontal, 16)
-        .padding(.bottom, 8)
     }
 
     private var serviceStrip: some View {
@@ -85,76 +123,45 @@ struct OtpScreen: View {
             StatusBadge(status: order.status)
         }
         .padding(.horizontal, 20)
-        .padding(.top, 10)
-        .padding(.bottom, 6)
     }
 
     private var codeCard: some View {
-        Card {
-            ZStack(alignment: .top) {
-                Ellipse()
-                    .fill(theme.glow)
-                    .frame(width: 240, height: 160)
-                    .blur(radius: 40)
-                    .offset(y: -40)
-                    .opacity(0.7)
-                    .allowsHitTesting(false)
+        HeroCard {
+            VStack(spacing: 0) {
+                MicroLabel("Verification code")
 
-                VStack(spacing: 0) {
-                    Text("VERIFICATION CODE")
-                        .font(RFont.text(12, weight: .medium))
-                        .tracking(0.3)
-                        .foregroundStyle(theme.text2)
-                    HStack(spacing: 10) {
-                        ForEach(Array(otpDigits.enumerated()), id: \.offset) { idx, d in
-                            OtpDigit(digit: d, idx: idx, style: state.otpAnimation)
-                        }
+                HStack(spacing: 10) {
+                    ForEach(Array(otpDigits.enumerated()), id: \.offset) { idx, d in
+                        OtpDigit(digit: d, idx: idx, style: state.otpAnimation)
                     }
-                    .padding(.top, 18)
-                    VStack(spacing: 8) {
-                        PrimaryButton(
-                            label: copied ? "Copied" : "Copy code",
-                            icon: copied ? RIcon.check : RIcon.copy,
-                            action: copy
-                        )
-                        Button {
-                            state.flow = nil
-                            state.startCheckout(service: order.service, country: order.country)
-                        } label: {
-                            Text("Get another \(order.service.name) number")
-                                .font(RFont.text(14, weight: .medium))
-                                .tracking(-0.2)
-                                .foregroundStyle(theme.text2)
-                                .padding(.vertical, 10)
-                        }
-                        .buttonStyle(.plain)
-
-                        // The invite lived only in a card in the 4th tab, and
-                        // produced exactly ZERO referrals across 146 users —
-                        // a placement failure, not a demand failure. This is
-                        // the one moment a user is demonstrably happy.
-                        if let invite = state.inviteMessage {
-                            ShareLink(item: invite) {
-                                HStack(spacing: 6) {
-                                    Image(systemName: "square.and.arrow.up")
-                                        .font(.system(size: 12, weight: .semibold))
-                                    Text("Invite a friend — they start with \(AppState.inviteJoinerCredits) credits")
-                                        .font(RFont.text(13, weight: .medium))
-                                }
-                                .foregroundStyle(theme.text3)
-                                .padding(.vertical, 6)
-                            }
-                        }
-                    }
-                    .padding(.top, 24)
                 }
-                .padding(.horizontal, 18)
-                .padding(.vertical, 28)
+                .padding(.top, 16)
+
+                PrimaryButton(
+                    label: copied ? String(localized: "Copied") : String(localized: "Copy code"),
+                    icon: copied ? RIcon.check : RIcon.copy,
+                    action: copy
+                )
+                .padding(.top, 22)
+
+                // The instruction, not an upsell. This is the slot the "get
+                // another number" button used to occupy.
+                Text("Paste it into \(order.service.name) to finish verifying.")
+                    .font(RFont.text(13))
+                    .foregroundStyle(theme.text2)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.top, 12)
+
+                GhostButton(label: String(localized: "Done"), icon: RIcon.check) {
+                    state.finishOtp()
+                }
+                .padding(.top, 14)
             }
+            .padding(.horizontal, 20)
+            .padding(.vertical, 26)
         }
-        .clipShape(.rect(cornerRadius: 22))
         .padding(.horizontal, 16)
-        .padding(.top, 14)
     }
 
     private var messageBubble: some View {
@@ -163,13 +170,10 @@ struct OtpScreen: View {
                 HStack(spacing: 8) {
                     Image(systemName: RIcon.inbox)
                         .font(.system(size: 13, weight: .medium))
-                        .foregroundStyle(theme.text2)
+                        .foregroundStyle(theme.text3)
                     // Only claim "RAW MESSAGE" when it really is one.
-                    Text(hasRawMessage ? "RAW MESSAGE" : "CODE RECEIVED")
-                        .font(RFont.text(12, weight: .medium))
-                        .tracking(0.2)
-                        .foregroundStyle(theme.text2)
-                    Spacer()
+                    MicroLabel(hasRawMessage ? "Raw message" : "Code received")
+                    Spacer(minLength: 0)
                     Text(arrivedAgo)
                         .font(RFont.text(11))
                         .foregroundStyle(theme.text3)
@@ -182,7 +186,42 @@ struct OtpScreen: View {
             .padding(.vertical, 14)
         }
         .padding(.horizontal, 16)
-        .padding(.top, 14)
+    }
+
+    /// Everything that is about the NEXT thing rather than this one, kept
+    /// below Done and rendered as quiet chrome.
+    ///
+    /// The invite lived only in a card in the 4th tab and produced exactly ZERO
+    /// referrals across 146 users — a placement failure, not a demand failure,
+    /// so it stays on this screen. It just no longer competes with the code.
+    private var whatNext: some View {
+        VStack(spacing: 4) {
+            Button {
+                state.flow = nil
+                state.startCheckout(service: order.service, country: order.country)
+            } label: {
+                Text("Get another \(order.service.name) number")
+                    .font(RFont.text(13, weight: .medium))
+                    .foregroundStyle(theme.text2)
+                    .padding(.vertical, 10)
+            }
+            .pressable()
+
+            if let invite = state.inviteMessage {
+                ShareLink(item: invite) {
+                    HStack(spacing: 6) {
+                        Image(systemName: "square.and.arrow.up")
+                            .font(.system(size: 12, weight: .semibold))
+                        Text("Invite a friend — they start with \(AppState.inviteJoinerCredits) credits")
+                            .font(RFont.text(13, weight: .medium))
+                    }
+                    .foregroundStyle(theme.text3)
+                    .padding(.vertical, 6)
+                }
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.top, 4)
     }
 
     private var hasRawMessage: Bool {
@@ -228,10 +267,11 @@ struct OtpScreen: View {
 
     private func copy() {
         UIPasteboard.general.string = otpValue
-        copied = true
+        RHaptic.copied()
+        withAnimation(RMotion.content) { copied = true }
         Task {
             try? await Task.sleep(nanoseconds: 1_600_000_000)
-            copied = false
+            withAnimation(RMotion.content) { copied = false }
         }
     }
 }
@@ -249,7 +289,7 @@ private struct OtpDigit: View {
             .font(RFont.mono(30, weight: .medium))
             .foregroundStyle(theme.text)
             .frame(width: 44, height: 56)
-            .background(theme.chipBg, in: .rect(cornerRadius: 12))
+            .background(theme.chipBg, in: .rect(cornerRadius: RRadius.sm))
             .offset(y: revealed ? 0 : offset)
             .blur(radius: revealed ? 0 : blur)
             .opacity(revealed ? 1 : 0)

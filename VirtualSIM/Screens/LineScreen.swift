@@ -153,14 +153,31 @@ private struct LiveLineView: View {
 
     // MARK: - Messages
 
+    /// The empty inbox is what a user who just paid $9.99 actually looks at for
+    /// their first hour, so it is the screen that most deserves designing — and
+    /// it was one grey glyph and "Give it out and see", which tells them
+    /// nothing to DO. Sharing the number is the actual next step, so the empty
+    /// state offers it rather than describing it.
     @ViewBuilder
     private var messages: some View {
         if state.lineThreads.isEmpty {
-            emptyState(
-                icon: RIcon.message,
-                title: "No messages yet",
-                body: "Texts sent to your number appear here. Give it out and see."
-            )
+            VStack(spacing: 14) {
+                EmptyState(
+                    icon: RIcon.message,
+                    title: "Your number is ready",
+                    message: "Texts sent to it land here. Share it with someone to get started."
+                )
+                ShareLink(item: PhoneFormat.national(line.e164)) {
+                    Text("Share my number")
+                        .font(RFont.text(15, weight: .medium))
+                        .foregroundStyle(theme.text)
+                        .frame(height: 48)
+                        .padding(.horizontal, 22)
+                        .background(theme.chipBg, in: Capsule())
+                }
+                .simultaneousGesture(TapGesture().onEnded { RHaptic.select() })
+            }
+            .padding(.top, 20)
         } else {
             ScrollView {
                 LazyVStack(spacing: 8) {
@@ -182,10 +199,15 @@ private struct LiveLineView: View {
     @ViewBuilder
     private var calls: some View {
         if state.lineCalls.isEmpty {
-            emptyState(
+            // ⚠️ Must not imply calling works. There is no dialer — `flow =
+            // .dialer` is assigned nowhere — so "calls appear here" reads as a
+            // feature that is merely unused rather than one that does not
+            // exist. Same rule as the paywall: sell what ships.
+            EmptyState(
                 icon: RIcon.phone,
-                title: "No calls yet",
-                body: "Calls to and from your number appear here."
+                title: "Calling is coming",
+                message: "Your number can't make or take calls yet. Texting works now, and calls arrive in a future update.",
+                tint: theme.text3
             )
         } else {
             ScrollView {
@@ -227,17 +249,30 @@ private struct LiveLineView: View {
 private struct NumberDetailView: View {
     @Environment(\.theme) private var theme
     @Environment(AppState.self) private var state
+    @Environment(SubscriptionStore.self) private var subs
     let line: Line
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
                 SectionHeader(label: "Your plan")
+                    // An existing subscriber never passes through the store or
+                    // the paywall, so nothing else would have loaded the
+                    // product and the price would read as its fallback forever.
+                    .task { await subs.loadProduct() }
                 Card {
                     VStack(spacing: 0) {
                         row(label: "Number", value: PhoneFormat.national(line.e164))
                         divider
-                        row(label: "Price", value: "$9.99 / month")
+                        // ⚠️ NEVER a literal. This read "$9.99 / month" while
+                        // the paywall's own button read StoreKit's localized
+                        // price — so a euro subscriber saw "9,99 €/mo" to buy
+                        // and "$9.99 / month" on the plan screen for the same
+                        // subscription. Exactly the drift that put $4.99
+                        // against €5.99 on the credit ladder's top product.
+                        row(label: "Price",
+                            value: subs.displayPrice.map { "\($0) / month" }
+                                ?? String(localized: "Monthly"))
                         divider
                         row(label: renewLabel, value: renewValue)
                         divider
