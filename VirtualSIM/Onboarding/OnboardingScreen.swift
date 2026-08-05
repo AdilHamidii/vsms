@@ -1,10 +1,29 @@
 import SwiftUI
 
-// Two-page onboarding. Page 1: the product itself doing its one job — a
-// temporary number sitting on a card, a verification SMS typing in, and the
-// code landing highlighted in brand green — the same surfaces the user meets
-// on the Waiting/OTP screens. Page 2: the refund guarantee. No abstract icon
-// badges anywhere.
+// Two-page onboarding, each page showing the product doing its actual job on
+// the same surfaces the user will meet inside the app. No abstract icon badges
+// anywhere.
+//
+// ⚠️ THE ORDER ENCODES THE BUSINESS, AND THE BUSINESS CHANGED ON 2026-08-05:
+// rented second numbers first, temp SMS second, temp e-mail as a hook, eSIM
+// eventually. Page 1 used to be the temp-SMS pitch ("Get the code, keep your
+// number"), which described the app's SECOND product as though it were the
+// whole thing — the first screen of the app contradicting its own front tab.
+//
+// Page 1 is now the rented line, and its demo is deliberately a TWO-WAY thread:
+// an inbound message and a reply. That is the entire difference between this
+// product and the other three, all of which are receive-only and disposable,
+// and a one-sided demo would look identical to page 2.
+//
+// Page 2 keeps temp SMS AND carries the refund promise, rather than splitting
+// them across a third page. Activation here is a single-session event — median
+// signup → first order is 123 seconds — so every extra page is real friction
+// paid by every user forever.
+//
+// ⚠️ THE REFUND PROMISE BELONGS TO TEMP SMS ONLY, which is why it sits on page
+// 2 and not page 1. Credits come back when no code arrives; the rented line is
+// a StoreKit subscription with no refund path we control. Moving that sentence
+// onto the line's page would promise something Apple, not us, decides.
 //
 // Page 2 USED TO PROMISE WELCOME CREDITS ("you'll find 3 free credits
 // waiting"), and this header used to warn that the number must match
@@ -46,16 +65,16 @@ struct OnboardingScreen: View {
                 Group {
                     if page == 0 {
                         VStack(spacing: 30) {
-                            InboxDemo(reduceMotion: reduceMotion)
+                            LineDemo(reduceMotion: reduceMotion)
                                 .padding(.horizontal, 22)
-                            copyBlock
+                            lineCopyBlock
                         }
                         .transition(pageTransition)
                     } else {
                         VStack(spacing: 30) {
-                            RefundCard()
+                            InboxDemo(reduceMotion: reduceMotion)
                                 .padding(.horizontal, 22)
-                            refundCopyBlock
+                            copyBlock
                         }
                         .transition(pageTransition)
                     }
@@ -83,34 +102,38 @@ struct OnboardingScreen: View {
         .frame(height: 44)
     }
 
-    private var copyBlock: some View {
-        VStack(spacing: 14) {
-            Text("Get the code,\nkeep your number.")
-                .font(RFont.display(30, weight: .bold))
-                .tracking(-0.8)
-                .lineSpacing(2)
-                .multilineTextAlignment(.center)
-                .foregroundStyle(theme.text)
-            Text("Rent a throwaway phone number, catch the verification SMS right here, and keep your real one off every signup form.")
-                .font(RFont.text(15))
-                .lineSpacing(3)
-                .multilineTextAlignment(.center)
-                .foregroundStyle(theme.text2)
-                .fixedSize(horizontal: false, vertical: true)
-                .padding(.horizontal, 14)
-        }
-        .padding(.horizontal, 24)
+    /// Page 1 — the rented line. No price: the store screen holds that back
+    /// until the user has chosen a city and their own digits, and quoting
+    /// $9.99 before sign-in would front-load the one number this screen has no
+    /// context for.
+    private var lineCopyBlock: some View {
+        copy(
+            title: "A second number\nthat's yours.",
+            body: "Rent a real phone number and text and call from it right here — while your own number stays private."
+        )
     }
 
-    private var refundCopyBlock: some View {
+    /// Page 2 — temp SMS, and the refund promise that belongs to it.
+    ///
+    /// The promise holds at ANY signup-grant amount including zero, which is
+    /// what makes it safe on a pre-sign-in screen: a number that never delivers
+    /// a code is refunded in full, enforced on every terminal path.
+    private var copyBlock: some View {
+        copy(
+            title: "Or just need\none code?",
+            body: "Grab a throwaway number for a single verification. No code, no charge — your credits go straight back, every time."
+        )
+    }
+
+    private func copy(title: LocalizedStringKey, body: LocalizedStringKey) -> some View {
         VStack(spacing: 14) {
-            Text("You only pay when the code arrives.")
+            Text(title)
                 .font(RFont.display(30, weight: .bold))
                 .tracking(-0.8)
                 .lineSpacing(2)
                 .multilineTextAlignment(.center)
                 .foregroundStyle(theme.text)
-            Text("Numbers are bought with credits. If no code turns up, your credits go straight back to your balance — every time.")
+            Text(body)
                 .font(RFont.text(15))
                 .lineSpacing(3)
                 .multilineTextAlignment(.center)
@@ -123,11 +146,19 @@ struct OnboardingScreen: View {
 
     private var footer: some View {
         VStack(spacing: 14) {
+            // Per page, because the two claims belong to two different
+            // products. "Refunded instantly" is a credits promise and is only
+            // true of temp SMS; the rented line is a subscription, where the
+            // honest reassurance is that cancelling is one tap in Settings and
+            // not something we gate. One line covering both would be wrong on
+            // whichever page the reader is looking at.
             HStack(spacing: 7) {
                 Image(systemName: "checkmark.shield.fill")
                     .font(.system(size: 12, weight: .semibold))
                     .foregroundStyle(theme.live)
-                Text("No ads or tracking. No code, no charge — refunded instantly.")
+                Text(page == 0
+                     ? "No ads or tracking. Cancel anytime from your Apple ID settings."
+                     : "No ads or tracking. No code, no charge — refunded instantly.")
                     .font(RFont.text(12.5))
                     .foregroundStyle(theme.text3)
                     .multilineTextAlignment(.center)
@@ -166,58 +197,116 @@ struct OnboardingScreen: View {
     }
 }
 
-// MARK: - Refund guarantee card
+// MARK: - Rented line demo
 
-// The hero line is a STATEMENT, not an amount. That is the whole point: this
-// card replaced one that rendered a hardcoded "+3 credits", which became a lie
-// the moment the signup grant changed on the server (see the header). Nothing
-// here may be re-numbered back into a promise — a claim that survives every
-// grant value is the only kind this pre-sign-in screen can safely make.
-private struct RefundCard: View {
+// Page 1's card. Deliberately a TWO-WAY thread — an inbound message and a reply
+// leaving the card — because that is the only thing separating this product
+// from the other three, which are all receive-only and disposable. A one-sided
+// demo here would be indistinguishable from `InboxDemo` on the next page.
+//
+// No price and no credit amount, per the rule in this file's header: onboarding
+// runs before sign-in, so it can assert only what holds regardless of what the
+// server is configured to do. The price is shown on `LineCheckoutScreen`, after
+// the user has picked a city and their own digits.
+private struct LineDemo: View {
     @Environment(\.theme) private var theme
+    let reduceMotion: Bool
+
+    // 0 = number only, 1 = incoming typing, 2 = incoming, 3 = reply sent.
+    @State private var phase = 0
+    @State private var livePulse = false
 
     var body: some View {
         Card {
             VStack(alignment: .leading, spacing: 0) {
-                HStack {
-                    Text("IF NO CODE ARRIVES")
-                        .font(RFont.text(11, weight: .semibold))
-                        .tracking(0.6)
-                        .foregroundStyle(theme.text3)
-                    Spacer()
-                    Image(systemName: "checkmark.shield.fill")
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(theme.live)
-                }
-                HStack(spacing: 10) {
-                    Text("Full refund")
-                        .font(RFont.display(28, weight: .bold))
-                        .tracking(-0.6)
-                        .foregroundStyle(theme.text)
-                    Spacer(minLength: 0)
-                }
-                .padding(.top, 14)
+                cardHeader
+                numberRow
                 Rectangle().fill(theme.sep).frame(height: 0.5)
-                    .padding(.vertical, 16)
-                VStack(alignment: .leading, spacing: 10) {
-                    refundRow(symbol: "arrow.uturn.left", text: "Credits go straight back")
-                    refundRow(symbol: "bolt.fill", text: "Automatic, every single time")
-                }
+                    .padding(.vertical, 18)
+                thread
             }
             .padding(20)
         }
+        .task { await run() }
     }
 
-    private func refundRow(symbol: String, text: LocalizedStringKey) -> some View {
-        HStack(spacing: 9) {
-            Image(systemName: symbol)
-                .font(.system(size: 12, weight: .semibold))
-                .foregroundStyle(theme.live)
-                .frame(width: 16)
-            Text(text)
-                .font(RFont.text(14))
-                .foregroundStyle(theme.text2)
+    private var cardHeader: some View {
+        HStack {
+            Text("YOUR SECOND NUMBER")
+                .font(RFont.text(11, weight: .semibold))
+                .tracking(0.6)
+                .foregroundStyle(theme.text3)
+            Spacer()
+            HStack(spacing: 5) {
+                Circle()
+                    .fill(theme.live)
+                    .frame(width: 6, height: 6)
+                    .opacity(livePulse ? 1 : 0.3)
+                    .animation(reduceMotion ? nil : .easeInOut(duration: 0.9).repeatForever(autoreverses: true), value: livePulse)
+                Text("Yours")
+                    .font(RFont.text(11, weight: .semibold))
+                    .foregroundStyle(theme.live)
+            }
         }
+    }
+
+    private var numberRow: some View {
+        HStack(spacing: 10) {
+            Text("🇨🇦").font(.system(size: 26))
+            MonoText("+1 (437) 555-0128", size: 20, weight: .medium, color: theme.text)
+            Spacer(minLength: 0)
+        }
+        .padding(.top, 14)
+    }
+
+    private var thread: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            if phase >= 2 {
+                incoming.transition(.move(edge: .bottom).combined(with: .opacity))
+            } else if phase == 1 {
+                TypingDots().transition(.opacity)
+            }
+            if phase >= 3 {
+                outgoing.transition(.move(edge: .bottom).combined(with: .opacity))
+            }
+        }
+        // Hold the full height from the start so the card does not grow under
+        // the copy as the thread fills in.
+        .frame(maxWidth: .infinity, minHeight: 96, alignment: .topLeading)
+    }
+
+    private var incoming: some View {
+        Text("Hey — are we still on for Friday?")
+            .font(RFont.text(14))
+            .foregroundStyle(theme.text)
+            .padding(.horizontal, 13)
+            .padding(.vertical, 10)
+            .background(theme.elev2, in: .rect(cornerRadius: 15))
+            .overlay(RoundedRectangle(cornerRadius: 15).stroke(theme.sep, lineWidth: 0.5))
+            .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    /// The reply is tinted `ink` and sits on the trailing edge — the standard
+    /// "this one is from you" grammar, and the whole point of the page.
+    private var outgoing: some View {
+        Text("Yes, 7pm 👍")
+            .font(RFont.text(14))
+            .foregroundStyle(theme.onInk)
+            .padding(.horizontal, 13)
+            .padding(.vertical, 10)
+            .background(theme.ink, in: .rect(cornerRadius: 15))
+            .frame(maxWidth: .infinity, alignment: .trailing)
+    }
+
+    private func run() async {
+        livePulse = true
+        if reduceMotion { phase = 3; return }
+        try? await Task.sleep(nanoseconds: 600_000_000)
+        withAnimation(.easeInOut(duration: 0.25)) { phase = 1 }
+        try? await Task.sleep(nanoseconds: 1_100_000_000)
+        withAnimation(.spring(response: 0.5, dampingFraction: 0.82)) { phase = 2 }
+        try? await Task.sleep(nanoseconds: 900_000_000)
+        withAnimation(.spring(response: 0.5, dampingFraction: 0.82)) { phase = 3 }
     }
 }
 

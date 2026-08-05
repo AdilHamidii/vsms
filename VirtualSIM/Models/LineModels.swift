@@ -251,6 +251,45 @@ struct LineCall: Codable, Identifiable, Hashable {
 struct LineCity: Codable, Identifiable, Hashable {
     let id: String
     let label: String
+
+    /// Rendered immediately so the picker is on screen before any network call,
+    /// then REPLACED by whatever the server returns — exactly how `SeedData`
+    /// seeds the service catalogue.
+    ///
+    /// Safe to seed because a city is stable while an AREA CODE is not: the
+    /// server owns which codes it walks and in what order, and that is the part
+    /// that goes dry. The worst case here is offering a city the server has
+    /// since dropped, which fails honestly on the next screen ("no numbers in
+    /// this city") instead of showing an empty picker for two seconds.
+    static let seeded: [LineCity] = [
+        .init(id: "toronto",   label: "Toronto"),
+        .init(id: "montreal",  label: "Montreal"),
+        .init(id: "vancouver", label: "Vancouver"),
+        .init(id: "calgary",   label: "Calgary"),
+        .init(id: "ottawa",    label: "Ottawa"),
+        .init(id: "halifax",   label: "Halifax"),
+        .init(id: "winnipeg",  label: "Winnipeg"),
+    ]
+
+    /// Province, for the city cards. Purely cosmetic — a bare city list reads
+    /// as a dropdown, and this is meant to feel like choosing where you live.
+    ///
+    /// Resolved through `String(localized:)` here rather than handed out as a
+    /// `LocalizedStringKey`, so this file stays free of SwiftUI. Call sites
+    /// render it with plain `Text(_:)`, which is correct precisely because the
+    /// catalog lookup already happened.
+    var region: String {
+        switch id {
+        case "toronto":   String(localized: "Ontario")
+        case "montreal":  String(localized: "Quebec")
+        case "vancouver": String(localized: "British Columbia")
+        case "calgary":   String(localized: "Alberta")
+        case "ottawa":    String(localized: "Ontario")
+        case "halifax":   String(localized: "Nova Scotia")
+        case "winnipeg":  String(localized: "Manitoba")
+        default:          String(localized: "Canada")
+        }
+    }
 }
 
 /// One number on offer, from `search-line-numbers`.

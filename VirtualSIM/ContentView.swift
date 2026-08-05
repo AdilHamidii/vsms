@@ -315,7 +315,9 @@ struct ContentView: View {
         // already assigns `flow = .thread`, and because a cover with no case
         // presents `emptyFlow` — a blank screen with no way out, which is the
         // exact failure the eSIM empty state was rebuilt to avoid.
-        case .lineCheckout, .lineProvisioning:
+        case .lineCheckout:
+            LineCheckoutScreen()
+        case .lineProvisioning:
             comingSoonFlow("Second numbers open for purchase very soon.")
         case .thread:
             comingSoonFlow("Your conversations will appear here.")

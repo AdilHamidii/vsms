@@ -283,11 +283,15 @@ final class AppState {
     /// read does not blank the screen while the fetch runs.
     var lineMessages: [String: [LineMessage]] = [:]
     var lineCalls: [LineCall] = []
-    /// Cities we sell numbers in, as reported by the server. Never hardcoded
-    /// client-side: an area code that runs dry is a server-side ordering
-    /// decision, and a stale client list would offer a city we cannot fill.
-    var lineCities: [LineCity] = []
-    /// The number currently on offer, and the hold on it if we have one.
+    /// Cities we sell numbers in. Seeded so the picker renders instantly, then
+    /// replaced by the server's list on the first search — see `LineCity.seeded`
+    /// for why a city is safe to seed when an area code is not.
+    var lineCities: [LineCity] = LineCity.seeded
+    /// Every number the search returned, for the user to pick from. Showing one
+    /// number is a take-it-or-leave-it; showing eight is a choice, and the
+    /// search already returns up to eight at no extra cost.
+    var lineOffers: [LineNumberOffer] = []
+    /// The one the user picked, and the hold on it if we have one.
     /// Owned by the Number TAB (read at `flow == nil`), so it is cleared on
     /// leaving the tab rather than in `flow.didSet` — see the note there.
     var lineOffer: LineNumberOffer?
@@ -1464,13 +1468,17 @@ final class AppState {
             let res = try await api.availability(city: city ?? lineCity)
             if !res.cities.isEmpty { lineCities = res.cities }
             lineCity = res.city
+            lineOffers = res.numbers
+            // Preselect the first so the confirm step always has something, but
+            // the user can pick any of them.
             lineOffer = res.first
-            lineUnavailableReason = res.first == nil ? .noStock : nil
+            lineUnavailableReason = res.numbers.isEmpty ? .noStock : nil
             // A fresh search invalidates any hold on the PREVIOUS number.
             // Leaving it would let the card show one number and the countdown
             // describe another.
             lineReservation = nil
         } catch {
+            lineOffers = []
             lineOffer = nil
             lineReservation = nil
             lineUnavailableReason = Self.lineReason(from: error)
@@ -1505,9 +1513,11 @@ final class AppState {
     /// cleared by `flow.didSet` — see the note there.
     @MainActor
     func clearLineDraft() {
+        lineOffers = []
         lineOffer = nil
         lineReservation = nil
         lineUnavailableReason = nil
+        lineCity = nil
     }
 
     /// Map a refusal onto the one thing we actually know. `lines_paused` is a
