@@ -4,7 +4,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-**vSMS** (App Store display name; formerly "vSIM OTP" — the Xcode target/scheme is still `VirtualSIM`) — iOS app selling three products, all paid with in-app **credits**: (1) **temporary phone numbers** for SMS verification codes, (2) **temporary e-mail addresses**, and (3) **eSIM data plans** priced at 4× wholesale (line currently PAUSED). iOS frontend in SwiftUI + Supabase backend (Postgres + Auth + Edge Functions + pg_cron).
+**vSMS** (App Store display name; formerly "vSIM OTP" — the Xcode target/scheme is still `VirtualSIM`) — iOS app selling three products, all paid with in-app **credits**: (1) **temporary phone numbers** for SMS verification codes, (2) **temporary e-mail addresses**, and (3) **eSIM data plans** priced at 4× wholesale (line currently PAUSED). A
+**fourth** line — rentable second numbers with two-way SMS and voice, billed by
+StoreKit subscription rather than credits — is PARTLY BUILT and unreachable; see
+"Rentable second numbers". iOS frontend in SwiftUI + Supabase backend (Postgres + Auth + Edge Functions + pg_cron).
 
 **Provider split as of 2026-08-03 — 5sim is the PRIMARY SMS provider; HeroSMS
 and SMSPVA still serve the services 5sim does not map; HeroSMS also serves the
@@ -1318,6 +1321,106 @@ picker rather than failing at checkout.
 
 **First real activation delivered 2026-07-30**: leboncoin, free tier,
 `status = received`.
+
+### Rentable second numbers — the FOURTH product line (IN PROGRESS, 2026-08-05)
+
+🚧 **NOT SHIPPED, NOT REACHABLE, AND MOSTLY NOT BUILT.** As of 2026-08-05 the
+schema exists and two shared modules exist. There are **no edge functions, no
+client, and no Telnyx account.** `app_config.lines_paused` ships **`true`**, so
+`begin_line_rental` refuses everything. Full design: the approved plan at
+`~/.claude/plans/binary-humming-moonbeam.md`.
+
+**What it is:** a phone number the user KEEPS — rented monthly, with two-way
+SMS and two-way voice in-app. Owner decisions, all settled, do not re-litigate:
+**rent-only** (no "buy outright" — a CPaaS rents from carriers forever, so a
+one-time sale is an unbounded liability), **SMS + voice in one release**,
+**auto-renewable StoreKit subscription** (the app's first), **Telnyx**,
+**launch US/CA toll-free while pursuing 10DLC**, and a **hard-stop allowance**
+with a visible meter rather than credit overage.
+
+**Four properties that differ from the other three lines. Every one is load-bearing.**
+
+**1. It NEVER touches the credit wallet.** Hard-stop billing means no
+per-message charge and no refund path — so no `wallet_*` calls, no ledger FK,
+and no new `wallet_reason`. That deletes the surface this repo has got wrong
+more than any other ("a claim and its refund must be ONE transaction", which
+seven paths violated). Money here is 100% Apple's. **Keep it that way.** If
+overage credits are ever added they need a ledger FK plus a partial unique
+index on `reason='refund'`, exactly like email and eSIM.
+
+**2. ONE live line per user**, enforced by `phone_lines_one_live_per_user`, a
+partial unique index — not by convention. Apple allows one active subscription
+per group with no quantity on iOS, so **the subscription IS the line**. More
+lines later means **TIERS inside the same group**, never a second group.
+
+**3. `line_subscriptions` has NO foreign key to `auth.users`.** Same class as
+the three credit-grant tombstones, but worse: without it, delete-account →
+re-signin re-provisions a **second** Telnyx number while the first bills us
+forever with no row pointing at it. Recurring, and invisible until the invoice.
+`begin_line_rental` returns `subscription_bound` on that replay.
+
+**4. Clients read the `my_line` VIEW, never `phone_lines`.** RLS is row-level
+and cannot restrict columns, and the table holds `monthly_cost_cents` plus
+every Telnyx id. SELECT is revoked outright from `anon` and `authenticated`.
+This is the fix `routes` and `esim_plans` still need — consider back-porting.
+⚠️ The view is deliberately **not** `security_invoker`: an invoker-rights view
+would need the caller to hold SELECT on the base table, which is exactly what
+was revoked. Its `where user_id = (select auth.uid())` IS the security
+boundary. Do not "fix" it.
+
+**🔴 `ON CONFLICT` CANNOT USE A PARTIAL UNIQUE INDEX unless the clause repeats
+the index predicate.** Both idempotency guards — `line_messages_provider_key`
+and `line_calls_session_key` — raised `42P10 no unique or exclusion constraint
+matching the ON CONFLICT specification` until `where provider_message_id is not
+null` was added to the statement. The indexes existed; they were simply not
+reachable from the code depending on them, and every inbound webhook would have
+500'd (which Telnyx retries). **A structural check cannot catch this** — the
+index is present and correct. Only a behavioural test found it. The email line
+uses the same partial-index pattern and never hit this because it never uses
+`ON CONFLICT` against it.
+
+**Every Swift enum mirroring these PG enums needs an `unknown` fallback in
+`init(from:)`, in the first client commit.** iOS `OrderStatus` is a plain
+String enum with no unknown case, which is why `begin_order` had to write a
+semantically wrong `'waiting'`. Six lines each, and it permanently removes the
+client-first-schema-second ordering constraint for this line.
+
+**Landed so far (all verified against live DB state, not deploy logs):**
+- `20260805170000_phone_lines.sql` — 6 enums, 7 tables, the `my_line` view,
+  19 SECURITY DEFINER RPCs, `set_lines_paused`, the `app_config_read`
+  whitelist widened to a **fourth** key, `telegram_events` kinds widened.
+  Verified by 14 structural + 18 behavioural assertions (the latter inside a
+  transaction that rolls back).
+- `_shared/iap.ts` — `verifyAppleJWS<T>()` extracted so ASSN V2 reuses the
+  root pin and the P-384 workaround instead of growing a second verifier;
+  plus `verifyNotificationJWS`, `verifyRenewalInfoJWS`, and
+  `isSubscriptionProduct`. ⚠️ **`PRODUCT_TO_CREDITS` must NEVER gain the
+  subscription id** — one entry pays credits on every renewal forever.
+  ⚠️ **`iap-verify` is NOT redeployed**; `_shared` is bundled per function, so
+  it still runs the pre-refactor copy. Deploy it with `apple-notifications` in
+  Phase 2, where Apple's test-notification endpoint can exercise it in the real
+  runtime. `iap-verify:121` returns 400 `unknown_product` and PAGES — a
+  renewal reaching that branch pages on every renewal.
+- `_shared/telnyx.ts` — **signature verifier and fault vocabulary ONLY.** No
+  endpoint wrappers on purpose: adapters here are written AFTER probing the
+  live API. `classifyTelnyxFault` is marked PROVISIONAL.
+- `scripts/verify-telnyx-signature.ts` (21 assertions, self-contained) and
+  `scripts/verify-apple-jws.ts` (12, against REAL receipts). Run the latter
+  after ANY change to `iap.ts`; a local pass is necessary but **not
+  sufficient**, which is exactly how the P-384 outage hid for weeks.
+
+**Blocked on external clocks, none of them code:** a Telnyx account and test
+DID; toll-free verification and/or 10DLC brand+campaign (weeks, can fail
+outright — fanning many end users through one Standard 10DLC campaign is what
+carriers police); the ASC subscription group with **Billing Grace Period ON**;
+and an App Store Server API key.
+
+**Three traps the plan calls out that are easy to lose:** the reviewer will use
+a **Sandbox** subscription, and `iap-verify`'s `environment === "Production"`
+gate applied to provisioning means the reviewer subscribes, gets nothing, and
+rejects. **Inbound SMS/calls are the uncapped cost risk** — the user cannot
+control them, so never bill for inbound and cap it server-side. And E911 must
+be **disabled and unmissably disclosed**, not buried in a Terms link.
 
 ### Support chat — user types in-app, owner answers from Telegram (2026-07-30)
 
@@ -2690,8 +2793,10 @@ It is a starting point for "is this roughly right", never a citation.
 
 - **iOS**: `MARKETING_VERSION 1.9`, `CURRENT_PROJECT_VERSION 31`, iOS min **18.0**,
   **96** Swift sources, **357** strings / 0 untranslated / 0 specifier reorders.
-- **Backend**: **26** edge function dirs besides `_shared`, **13** `_shared` files,
-  **136** migration files, **16** pg_cron jobs (all active).
+- **Backend**: **27** edge function dirs besides `_shared`, **14** `_shared` files,
+  **145** migration files, **16** pg_cron jobs (all active). (Counted 08-05.
+  The previous figures — 26 dirs, 13 shared, 136 migrations — were stale by 1,
+  1 and 8 respectively; `ls | wc -l` rather than trusting this line.)
 - **Catalog** (08-04 20:35, after BOTH +100 batches): **9,312** active routes,
   5sim **7,704**. **468 services**, 454 with at least one bookable route. 69
   countries, **60** of them mapped to 5sim. eSIM 1,081 plans, **0 active — line
@@ -2984,6 +3089,10 @@ Also this day, each verified against live DB state rather than a deploy log:
 Reasoning for each of these lives in the topic section above; this is only an
 index, so "why is it like this" has a date to search for.
 
+- **08-05** Fourth product line STARTED — rentable second numbers with two-way
+  SMS + voice (Telnyx, StoreKit subscription). Schema, the `verifyAppleJWS`
+  extraction and the Telnyx signature verifier only; unreachable behind
+  `lines_paused`. See "Rentable second numbers".
 - **08-05** `MIN_MARGIN` made true (`NET_USD_PER_CREDIT` 0.30 → the measured
   0.40, 5sim divisor 0.03 → 0.04); the country row switched from `rate24` to
   `rate168`; e-mail added to the digest / `/stats`; `dev_hidden` so an
@@ -3071,6 +3180,16 @@ ads.apple.com → Settings → Billing.
   HeroSMS funds SMS *and* the whole e-mail line, so it is the one that takes two
   products down. Re-query rather than quoting these:
   `select key, value->>'balance_usd' from app_config where key like '%_health';`
+- 🚧 **The fourth product line (rentable second numbers) is PARTLY BUILT and
+  deliberately unreachable.** Schema + two shared modules landed 2026-08-05;
+  no edge functions, no client, no Telnyx account, and `lines_paused = true`.
+  See "Rentable second numbers" above for the full state and the four
+  load-bearing properties. Two things a future session must not trip over:
+  **`iap-verify` has NOT been redeployed** since `_shared/iap.ts` changed (it
+  still runs the pre-refactor bundle — deploy with `apple-notifications` in
+  Phase 2), and everything downstream is **blocked on external approvals**
+  (Telnyx account, toll-free/10DLC, ASC subscription group) that no amount of
+  code moves.
 - 🟠 **TWO fixes are worth nothing until a client release, and neither is in
   1.9.** Grouped because they share a failure mode: the server cannot reach
   either, so no amount of backend work moves them. Both are described in full
