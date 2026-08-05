@@ -965,52 +965,65 @@ A plain `0.5*new + 0.5*prev` averages a rise against yesterday's cheaper price a
 
 **eSIM** plans (`sync-esim-plans`) are priced **separately** at 4× wholesale (raised 3× → 4× on 2026-07-25) — `ESIM_MARGIN = 4`, `CREDIT_VALUE_USD = 0.48`, `retail_credits = ceil(usd * 4 / 0.48)` — NOT via `CREDIT_DIVISOR`, so the two product lines never collide. Inverted, the order-time ceiling in `create-esim-order` is `credits * 0.12`: SMSPool's `/esim/purchase` accepts no price cap and its response reports **no cost at all**, so the function takes a fresh `/esim/plans` quote, blocks above the ceiling, and writes that real number into `actual_cost_cents`. It fails **closed** on a bad price and **open** on a failed lookup — an unreachable SMSPool must not make eSIMs unbuyable. (Before this, `actual_cost_cents` echoed the cached catalog price, so margin analysis over it was circular and could never reveal drift.)
 
-**The divisor is PER PROVIDER — 5sim 0.03 (10×, owner 2026-08-03), HeroSMS
-0.025 (12×), SMSPVA 0.05 (6×). Each provider's sync sets its own
-`retail_credits`.**
+**The divisor is PER PROVIDER, and since 2026-08-05 `MIN_MARGIN` finally MEANS
+the margin we earn.** Each provider's sync sets its own `retail_credits`.
 
-| provider | priced by | divisor | `MIN_MARGIN` | `0.30 / MARGIN` | **actual net ×** | `MAX_WHOLESALE_CENTS` |
-|---|---|---|---|---|---|---|
-| **5sim** | `sync-5sim` | **0.03** | **10.0** | 0.03 ✓ | **13.2×** | **450** |
-| herosms | `sync-herosms` | 0.025 | 12.0 | 0.025 ✓ | **15.9×** | 375 |
-| smspva | `sync-prices` | 0.05 | 6.0 | 0.05 ✓ | **7.9×** | 750 |
+| provider | priced by | divisor | `MIN_MARGIN` | `0.40 / MARGIN` | `MAX_WHOLESALE_CENTS` |
+|---|---|---|---|---|---|
+| **5sim** | `sync-5sim` | **0.04** | **10.0** | 0.04 ✓ | 100_000 |
+| herosms | `sync-herosms` | 0.025 | 16.0 | 0.025 ✓ | 100_000 |
+| smspva | `sync-prices` | 0.05 | 8.0 | 0.05 ✓ | 100_000 |
 
-🔴 **`MIN_MARGIN` IS NOT THE MARGIN WE EARN — every provider runs ~32% above
-its stated multiple, and the lockstep ✓ does not catch it.** The divisor is
-`NET_USD_PER_CREDIT / MIN_MARGIN`, which is a true 10× only if a credit really
-nets $0.30. Measured 2026-08-05 over all 37 Production purchases (586 credits,
-$273.63): blended gross **$0.467/credit**, net after Apple's 15% **$0.397**.
-So the realised multiple is `0.397 / divisor`, giving the column above; the
-median 5sim route realises **13.7×** once `ceil()` rounding is counted.
+🔴 **THE TRAP THIS FIXED, because the lockstep ✓ cannot catch it.** The divisor
+is `NET_USD_PER_CREDIT / MIN_MARGIN`, so it is a true 10× only if a credit
+really nets what `NET_USD_PER_CREDIT` says. It said **0.30**, and measured over
+all 37 Production purchases (586 credits, $273.63) a credit grosses **$0.467**
+and nets **$0.397** after Apple's 15%. So every provider ran ~32% above its
+stated multiple — 5sim's "10×" was **13.2×**, HeroSMS's "12×" **15.9×**,
+SMSPVA's "6×" **7.9×** — while the arithmetic stayed perfectly self-consistent
+against the wrong input.
 
-The constant is commented "conservative", which is right for the ORDER CEILING
-(understating revenue makes us spend less) and backwards for PRICING (it makes
-us charge more). One constant, two opposite-signed jobs. If you ever recompute
-a margin, use the measured net per credit — not `NET_USD_PER_CREDIT`.
+`NET_USD_PER_CREDIT` was doing two opposite-signed jobs: understating revenue is
+**conservative for the order ceiling** (we spend less) and **backwards for
+pricing** (we charge more). It is now the measured 0.40. **Re-derive it from
+receipts if the pack mix shifts — never guess it**, and never reason about a
+margin from anything else.
 
-⚠️ **Owner decision 2026-08-05: KEEP IT AT 13.2×.** Presented with the
-correction (0.04 → a true 10×, tinder/co 6 → 5 credits, entry-pack reach
-36.7% → 49.9%) the owner chose no change. Do not "fix" this to 0.04 on the
-strength of the comment saying 10×; it is a known, deliberate 13.2×.
+⚠️ **HeroSMS 12 → 16 and SMSPVA 6 → 8 are RESTATEMENTS, not repricings.** Their
+divisors are unchanged (0.40/16 = the same 0.025; 0.40/8 = the same 0.05), so
+their prices are byte-identical across the change. Only 5sim's divisor moved.
 
-**The pack ladder, not the divisor, is what a new user actually meets.** Packs
-are 5/12/30/60/150 credits, and the median active route is **7 credits** — so
-the entry $2.99 pack cannot buy it. Measured over 9,306 priced active routes:
-**only 36.5% are reachable at $2.99**, 40.4% force the $5.99 pack, 8.8% need
-$24.99+. tinder/co is the worked example: 18¢ wholesale → 6 credits, one credit
-past the 5-pack, so the smallest possible purchase is **$5.99 for an 18¢ item**
-with 6 credits stranded. Since the signup grant went to 0, that purchase IS the
-activation event. A pack-ladder change (e.g. 8 credits at $2.99) addresses this
-without touching margin, but needs a client release — `PRODUCT_TO_CREDITS` is
-server-side, `CreditPack.swift` is not, and they must agree.
+*History: the owner was shown this correction on 2026-08-05 and first chose to
+keep 13.2×, then reversed the same day and asked for the true 10×. Both
+decisions are recorded because the file briefly documented "keep it at 13.2×"
+as settled.*
 
-`MIN_MARGIN_FALLBACK` is **12.0** — the strictest, never the loosest.
-Each `MAX_WHOLESALE_CENTS` is `150 credits × that provider's divisor`, i.e. the
-largest credit pack, so the rule stays "hide only what a user literally cannot
-buy". **There are now FIVE copies of a divisor and THREE of
-`MAX_WHOLESALE_CENTS` across four sync functions** — they are deliberately
-different values, so "consolidating them into `_shared/`" would silently reprice
-a whole provider. Change them in one commit, never one at a time.
+**Applied effect, measured after the resync** (9,281 priced active routes):
+median route **7 → 6 credits**, share reachable with the $2.99 entry pack
+**36.5% → 48.3%**, $5.99 covers 81.1%. tinder/co (18¢) went **6 → 5 credits**,
+which is the whole point — it now fits the smallest pack a new user can buy.
+Asserted zero rows for each of: priced below wholesale, order-time ceiling below
+the route's own cost, and `premium_credits < retail_credits`.
+
+**The pack ladder is the other half, and it is untouched.** Packs are
+5/12/30/60/150 credits. Even after the repricing, **51.7% of routes still need
+more than the $2.99 pack** and the median route is 6 credits — one past it.
+Since the signup grant is 0, that first purchase IS the activation event. A
+pack-ladder change (e.g. 8 credits at $2.99) addresses the rest without touching
+margin, but needs a client release — `PRODUCT_TO_CREDITS` is server-side,
+`CreditPack.swift` is not, and they must agree.
+
+`MIN_MARGIN_FALLBACK` is **16.0** — the strictest, never the loosest. Strictest
+means the LARGEST margin, i.e. the smallest divisor (HeroSMS's 0.025), so an
+unknown provider under-spends rather than overpaying on a route nobody priced.
+All four `MAX_WHOLESALE_CENTS` are **100_000** since the 2026-08-04 ceiling
+removal, i.e. non-binding — they are no longer `150 credits × divisor` and do
+not need to move when a divisor does. **There are FIVE copies of a divisor and
+FOUR of `MAX_WHOLESALE_CENTS` across four sync functions** — the divisors are
+deliberately different values, so "consolidating them into `_shared/`" would
+silently reprice a whole provider. Change them in one commit, never one at a
+time, and assert the lockstep mechanically rather than by eye: it fails silently
+as `margin_too_low` on every honestly-priced route.
 
 `create-order` resolves it via `marginFor(route.provider)`
 (`MIN_MARGIN_BY_PROVIDER`), falling back to the **strictest** value so an
