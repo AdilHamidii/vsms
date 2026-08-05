@@ -312,6 +312,44 @@ export async function getOrder(
   };
 }
 
+/** A hold on a specific number while the user decides.
+ *
+ *  ⚠️ **UNPROVEN AGAINST THE LIVE API.** Everything else in this file was
+ *  written after probing; this was not, because the account balance is $2.33
+ *  and the GB incident cost $3.83 by trusting a field that meant nothing. The
+ *  documented behaviour is a free ~30-minute hold, and `searchNumbers` does
+ *  report `reservable: true` — but "documented" and "measured" are different
+ *  things in this file, so:
+ *
+ *  - `reserve-line-number` snapshots the Telnyx balance either side of the
+ *    FIRST call and records the delta, which settles the cost question with
+ *    one real invocation.
+ *  - Every caller must treat a fault as ORDINARY. The store screen already
+ *    renders a number with no hold as "Available now" rather than showing a
+ *    countdown, so a reservation failing costs nothing but the countdown.
+ *
+ *  Returns `expiresAt` as an ISO string when Telnyx supplies one. A hold with
+ *  no expiry is returned as `null` rather than invented — the UI keys its
+ *  countdown on exactly that.
+ */
+export async function reserveNumber(
+  phoneNumber: string, customerReference: string,
+): Promise<{ reservationId: string; expiresAt: string | null } | TelnyxFault> {
+  const r = await call<Record<string, unknown>>("POST", "/number_reservations", {
+    phone_numbers: [{ phone_number: phoneNumber }],
+    customer_reference: customerReference,
+  });
+  if (faultOf(r)) return r;
+
+  const nums = (r.phone_numbers ?? []) as Array<Record<string, unknown>>;
+  const mine = nums.find((n) => String(n.phone_number) === phoneNumber) ?? nums[0];
+  const exp = mine?.expired_at ?? r.expired_at ?? null;
+  return {
+    reservationId: String(r.id),
+    expiresAt: exp ? String(exp) : null,
+  };
+}
+
 export async function findNumberId(e164: string): Promise<string | null | TelnyxFault> {
   const r = await call<Array<Record<string, unknown>>>(
     "GET", "/phone_numbers?" + new URLSearchParams({ "filter[phone_number]": e164 }));

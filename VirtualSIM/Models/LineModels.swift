@@ -336,6 +336,33 @@ struct LineReservation: Codable, Hashable {
     }
 }
 
+/// What `reserve-line-number` returns.
+///
+/// `monthlyCents` / `upfrontCents` are OUR wholesale and are never rendered —
+/// they exist so the purchase can stamp the cost onto the line, because Telnyx
+/// reports it nowhere afterwards.
+struct LineReservationQuote: Codable, Hashable {
+    let phoneNumber: String
+    let region: String?
+    let city: String
+    /// nil when Telnyx would not hold it. The UI renders "Available now" rather
+    /// than a countdown in that case — see `LineCheckoutScreen.holdLine`.
+    let heldUntil: Date?
+    let reservationId: String?
+    let monthlyCents: Int?
+    let upfrontCents: Int?
+
+    var reservation: LineReservation {
+        LineReservation(phoneNumber: phoneNumber, city: city, heldUntil: heldUntil)
+    }
+}
+
+struct LineProvisionResult: Codable, Hashable {
+    let ok: Bool
+    let lineId: String?
+    let e164: String?
+}
+
 /// Why the store has nothing to sell.
 ///
 /// Three cases and not two, because an empty catalogue has more than one cause

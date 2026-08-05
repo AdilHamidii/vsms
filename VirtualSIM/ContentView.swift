@@ -10,6 +10,7 @@ struct ContentView: View {
     @Environment(PushManager.self) private var push
     @Environment(Session.self) private var session
     @Environment(IAPStore.self) private var iap
+    @Environment(SubscriptionStore.self) private var subs
     @Environment(\.scenePhase) private var scenePhase
 
     @State private var state = AppState()
@@ -254,14 +255,14 @@ struct ContentView: View {
         }
         .sheet(item: $sheet) { which in
             sheetContent(which)
-                .modifier(EnvBundle(theme: theme, state: state, api: api, push: push, session: session, iap: iap))
+                .modifier(EnvBundle(theme: theme, state: state, api: api, push: push, session: session, iap: iap, subs: subs))
                 .presentationDetents([.large])
                 .presentationDragIndicator(.visible)
                 .presentationBackground(theme.bg)
         }
         .fullScreenCover(item: $state.flow) { stage in
             flowContent(stage)
-                .modifier(EnvBundle(theme: theme, state: state, api: api, push: push, session: session, iap: iap))
+                .modifier(EnvBundle(theme: theme, state: state, api: api, push: push, session: session, iap: iap, subs: subs))
                 .preferredColorScheme(state.appearance.colorScheme)
                 .overlay(alignment: .top) {
                     ErrorBanner()
@@ -271,7 +272,7 @@ struct ContentView: View {
                 }
                 .sheet(item: $flowSheet) { which in
                     sheetContent(which)
-                        .modifier(EnvBundle(theme: theme, state: state, api: api, push: push, session: session, iap: iap))
+                        .modifier(EnvBundle(theme: theme, state: state, api: api, push: push, session: session, iap: iap, subs: subs))
                         .presentationDetents([.large])
                         .presentationDragIndicator(.visible)
                         .presentationBackground(theme.bg)
@@ -318,7 +319,7 @@ struct ContentView: View {
         case .lineCheckout:
             LineCheckoutScreen()
         case .lineProvisioning:
-            comingSoonFlow("Second numbers open for purchase very soon.")
+            LineProvisioningScreen()
         case .thread:
             comingSoonFlow("Your conversations will appear here.")
         case .dialer:
@@ -423,6 +424,7 @@ private struct EnvBundle: ViewModifier {
     let push: PushManager
     let session: Session
     let iap: IAPStore
+    let subs: SubscriptionStore
 
     func body(content: Content) -> some View {
         content
@@ -432,6 +434,7 @@ private struct EnvBundle: ViewModifier {
             .environment(push)
             .environment(session)
             .environment(iap)
+            .environment(subs)
     }
 }
 

@@ -5,6 +5,11 @@ struct AuthGate: View {
     @State private var session: Session
     @State private var push = PushManager()
     @State private var iap = IAPStore()
+    /// The rented line's subscription. Separate from `IAPStore` because a
+    /// subscription is an entitlement rather than a credit grant — but it
+    /// deliberately does NOT open its own `Transaction.updates` listener; see
+    /// `SubscriptionStore`.
+    @State private var subs = SubscriptionStore()
     @AppStorage("onboardingComplete") private var onboardingComplete = false
     // Pre-sign-in screens (onboarding, sign-in, splash) run before AppState
     // exists, so they read the same UserDefaults it will. Via @AppStorage so a
@@ -67,9 +72,13 @@ struct AuthGate: View {
         .environment(session)
         .environment(push)
         .environment(iap)
+        .environment(subs)
         .task {
             push.attach(api: api, session: session)
             iap.attach(api: api)
+            // AFTER iap.attach, because this registers the subscription handler
+            // on the single shared transaction listener that IAPStore owns.
+            subs.attach(api: api, iap: iap)
             AppDelegate.push = push
             await session.bootstrap()
         }

@@ -120,6 +120,24 @@ export interface AppleTransactionPayload {
   inAppOwnershipType?: string;
   signedDate: number;
   environment: "Sandbox" | "Xcode" | "Production";
+
+  // ── Auto-renewable subscriptions only ──────────────────────────────────
+  // All optional: the five credit packs are consumables and carry none of
+  // these, so requiring them would break the path that funds the app today.
+  /** ms since epoch. The line's `current_period_end` comes from HERE and
+   *  nowhere else — never `purchaseDate + 30 days`, which drifts against
+   *  Apple's own clock and is flatly wrong in Sandbox, where a month is five
+   *  minutes. */
+  expiresDate?: number;
+  /** MILLIUNITS — 9990 = 9.99. Same convention as `jws_payload()` in
+   *  revenue_snapshot; a hardcoded USD ladder mis-states every non-USD sale. */
+  price?: number;
+  currency?: string;
+  storefront?: string;
+  /** Present only on a refunded/revoked transaction. Its presence is the
+   *  signal, not its value. */
+  revocationDate?: number;
+  revocationReason?: number;
 }
 
 /** Thrown for anything that fails the trust checks. Carries a short stable

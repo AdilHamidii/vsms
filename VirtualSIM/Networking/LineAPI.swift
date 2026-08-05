@@ -58,6 +58,47 @@ struct LineAPI {
         )
     }
 
+    /// Hold a specific number, and — the real point — find out BEFORE the
+    /// paywall whether we could actually deliver it.
+    ///
+    /// The server re-quotes the price itself rather than trusting anything sent
+    /// from here, and refuses on a Telnyx float shortfall, an existing line, or
+    /// a paused product. That refusal has to happen now: once StoreKit takes
+    /// the money, the only remedy left is an Apple refund, which is the one
+    /// money path this app cannot drive.
+    func reserve(city: String, phoneNumber: String) async throws -> LineReservationQuote {
+        struct Body: Encodable { let city: String; let phone_number: String }
+        return try await client.request(
+            .post, path: "functions/v1/reserve-line-number",
+            body: Body(city: city, phone_number: phoneNumber)
+        )
+    }
+
+    /// Hand Apple's signed transaction to the server, which verifies it against
+    /// the pinned root, records the cascade-free subscription tombstone, then
+    /// buys and configures the number.
+    ///
+    /// `monthlyCents` comes from the reservation quote and is carried purely so
+    /// the server can stamp it onto the line: Telnyx reports the cost nowhere
+    /// after purchase — the order response returns `cost_information: null` and
+    /// the number resource has no price field at all.
+    func verifySubscription(
+        signedTransaction: String, phoneNumber: String,
+        city: String, monthlyCents: Int?
+    ) async throws -> LineProvisionResult {
+        struct Body: Encodable {
+            let signed_transaction: String
+            let phone_number: String
+            let city: String
+            let monthly_cents: Int?
+        }
+        return try await client.request(
+            .post, path: "functions/v1/verify-line-subscription",
+            body: Body(signed_transaction: signedTransaction, phone_number: phoneNumber,
+                       city: city, monthly_cents: monthlyCents)
+        )
+    }
+
     // MARK: - Threads and messages
     //
     // Not yet reachable — the inbox ships with the messaging step. Written now

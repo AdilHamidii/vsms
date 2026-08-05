@@ -15,9 +15,12 @@ import SwiftUI
 struct LineCheckoutScreen: View {
     @Environment(\.theme) private var theme
     @Environment(AppState.self) private var state
+    @Environment(APIClient.self) private var api
+    @Environment(SubscriptionStore.self) private var subs
 
     @State private var appeared = false
     @State private var now = Date()
+    @State private var isReserving = false
 
     var body: some View {
         ZStack {
@@ -37,7 +40,12 @@ struct LineCheckoutScreen: View {
                 cta
             }
         }
-        .task { withAnimation(RMotion.content) { appeared = true } }
+        .task {
+            withAnimation(RMotion.content) { appeared = true }
+            // Loads the localized price. Cheap and idempotent, and without it
+            // the CTA falls back to a label with no price at all.
+            await subs.loadProduct()
+        }
         .task {
             while !Task.isCancelled {
                 try? await Task.sleep(for: .seconds(1))
@@ -173,17 +181,77 @@ struct LineCheckoutScreen: View {
 
     private var cta: some View {
         VStack(spacing: 0) {
-            PrimaryButton(label: "Get this number") {
-                // The subscription purchase lands with the next step. Saying so
-                // beats a dead button: an unexplained no-op reads as breakage,
-                // and this number really is available today.
-                state.lastError = String(
-                    localized: "Second numbers open for purchase very soon — this number is real and available today.")
-            }
+            PrimaryButton(
+                label: ctaLabel,
+                disabled: busy || state.lineOffer == nil,
+                action: buy
+            )
         }
         .padding(.horizontal, 20)
         .padding(.top, 10)
         .padding(.bottom, 28)
         .background(theme.bg)
+    }
+
+    private var busy: Bool { isReserving || subs.isPurchasing }
+
+    /// Names the step in progress rather than showing a spinner on a button
+    /// whose label still says "Get this number". Reserving involves a live
+    /// Telnyx round trip, so the pause is real and unexplained silence there
+    /// reads as a dead tap.
+    private var ctaLabel: String {
+        if isReserving { return String(localized: "Checking availability…") }
+        if subs.isPurchasing { return String(localized: "Confirming…") }
+        // StoreKit's own localized price, never a hardcoded "$9.99" — the
+        // credit ladder drifted to $4.99-vs-€5.99 on its top product precisely
+        // because prices were assumed instead of read.
+        if let p = subs.displayPrice { return String(localized: "Get this number · \(p)/mo") }
+        return String(localized: "Get this number")
+    }
+
+    /// Reserve → pay → provision, in that order.
+    ///
+    /// The reservation is what makes the whole flow safe: it is the last moment
+    /// we can refuse. Once StoreKit takes the money the only remedy is an Apple
+    /// refund, which is the one money path this app cannot drive — so the float
+    /// check, the one-line-per-user check and the paused check all live in
+    /// `reserve-line-number`, before the paywall rather than after it.
+    private func buy() {
+        guard let offer = state.lineOffer, let city = state.lineCity else { return }
+        Task {
+            isReserving = true
+            let quote: LineReservationQuote?
+            do {
+                quote = try await LineAPI(client: api)
+                    .reserve(city: city, phoneNumber: offer.phoneNumber)
+            } catch let err as APIError {
+                isReserving = false
+                state.lastError = err.userMessage
+                // The number went between the picker and the tap. Re-search so
+                // the screen never offers digits we can no longer deliver, and
+                // make the user tap again — provisioning a DIFFERENT number
+                // than the one on screen is the failure this avoids.
+                await state.loadLineNumbers(using: LineAPI(client: api), city: city)
+                state.flow = nil
+                return
+            } catch {
+                isReserving = false
+                state.lastError = String(localized: "Couldn't reach the server. Check your connection and try again.")
+                return
+            }
+            isReserving = false
+            guard let quote else { return }
+
+            state.lineReservation = quote.reservation
+            let ok = await subs.purchase(
+                phoneNumber: quote.phoneNumber, city: city,
+                monthlyCents: quote.monthlyCents)
+
+            if ok {
+                state.flow = .lineProvisioning
+            } else if let msg = subs.lastError {
+                state.lastError = msg
+            }
+        }
     }
 }
