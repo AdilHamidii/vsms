@@ -100,7 +100,6 @@ struct EmailWaitingScreen: View {
         HeroCard {
             VStack(spacing: 14) {
                 MicroLabel(addressLabel)
-                    .multilineTextAlignment(.center)
 
                 switch addressState {
                 case .provisioning:
@@ -135,7 +134,7 @@ struct EmailWaitingScreen: View {
             }
             .frame(maxWidth: .infinity)
             .padding(.vertical, 28)
-            .padding(.horizontal, 8)
+            .padding(.horizontal, 20)
         }
         .animation(RMotion.content, value: address)
     }
