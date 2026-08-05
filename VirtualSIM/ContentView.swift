@@ -43,6 +43,8 @@ struct ContentView: View {
 
             Group {
                 switch state.tab {
+                case .line:
+                    LineScreen(onOpenSms: { state.tab = .home })
                 case .home:
                     HomeScreen(
                         openServices: { sheet = .services },
@@ -87,7 +89,7 @@ struct ContentView: View {
                 // reasonably assumes it died.
                 ResumeBar()
                     .padding(.horizontal, 16)
-                TabBar(tab: $state.tab)
+                TabBar(tab: $state.tab, lineUnread: state.lineUnreadCount)
                     .padding(.horizontal, 12)
             }
             .padding(.bottom, 28)
@@ -177,6 +179,19 @@ struct ContentView: View {
         .onChange(of: state.lastService.id) { _, _ in
             guard state.emailMode else { return }
             Task { await state.loadEmailDomains(using: EmailAPI(client: api)) }
+        }
+        // The Number tab owns the held number and the quote behind it, and both
+        // are read at `flow == nil` — so `flow`'s didSet cannot clear them
+        // without throwing away the number the moment the paywall closes. They
+        // are cleared on LEAVING the tab instead, which is also where `intent`
+        // is set, mirroring `.onChange(of: state.emailMode)` above.
+        .onChange(of: state.tab) { _, tab in
+            if tab == .line {
+                state.intent = .line
+            } else {
+                state.clearLineDraft()
+                if state.intent == .line { state.intent = .sms }
+            }
         }
         .onChange(of: scenePhase) { _, phase in
             if phase == .active {
@@ -295,11 +310,40 @@ struct ContentView: View {
             EmailWaitingScreen()
         case .emailCode:
             EmailCodeScreen()
+        // The rented line's covers land with the purchase, messaging and voice
+        // steps. They are routed rather than omitted because `ThreadRow`
+        // already assigns `flow = .thread`, and because a cover with no case
+        // presents `emptyFlow` — a blank screen with no way out, which is the
+        // exact failure the eSIM empty state was rebuilt to avoid.
+        case .lineCheckout, .lineProvisioning:
+            comingSoonFlow("Second numbers open for purchase very soon.")
+        case .thread:
+            comingSoonFlow("Your conversations will appear here.")
+        case .dialer:
+            comingSoonFlow("Calling from your number is coming very soon.")
         }
     }
 
     private var emptyFlow: some View {
         ZStack { theme.bg.ignoresSafeArea() }
+    }
+
+    /// A placeholder that SAYS what it is and can always be dismissed. Deleted
+    /// case by case as each screen lands.
+    private func comingSoonFlow(_ message: LocalizedStringKey) -> some View {
+        ZStack {
+            theme.bg.ignoresSafeArea()
+            VStack(spacing: 14) {
+                Image(systemName: RIcon.phone)
+                    .font(.system(size: 30)).foregroundStyle(theme.text3)
+                Text(message)
+                    .font(RFont.text(15))
+                    .foregroundStyle(theme.text2)
+                    .multilineTextAlignment(.center)
+                GhostButton(label: "Close", fillsWidth: false) { state.flow = nil }
+            }
+            .padding(.horizontal, 40)
+        }
     }
 
     @ViewBuilder

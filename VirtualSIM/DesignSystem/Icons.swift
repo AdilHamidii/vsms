@@ -24,6 +24,9 @@ enum RIcon {
     static let trash   = "trash"
     static let back    = "chevron.left"
     static let info    = "info.circle"
+    static let phone   = "phone"
+    static let message = "message"
+    static let send    = "arrow.up"
 }
 
 struct CoinIcon: View {

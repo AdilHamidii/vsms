@@ -1,12 +1,30 @@
 import SwiftUI
 
+/// Tab order encodes the business, and the business changed on 2026-08-05:
+/// rented numbers first, temp SMS second, temp e-mail as an acquisition hook,
+/// eSIM eventually. `line` therefore leads and is the launch tab.
+///
+/// ⚠️ Defaulting the launch tab to `.line` is a product bet worth watching. A
+/// new user used to land on a free-to-browse SMS catalogue and now lands on a
+/// $9.99/month pitch, while signup → first-order is already the app's weakest
+/// step (21.7% lifetime). `LineStoreScreen` keeps an explicit route across to
+/// the SMS product for exactly that reason. The revert is one line here.
+///
+/// `tab` is not persisted, so growing this enum and moving its default carry no
+/// decode risk — unlike `OrderStatus`, which ships to every phone.
 enum AppTab: String, Hashable, CaseIterable {
-    case home, esim, orders, account
+    case line, home, esim, orders, account
 }
 
 enum FlowStage: String, Hashable, Identifiable {
     case checkout, waiting, otp, recovery, esimCheckout, esimDetail
     case emailWaiting, emailCode
+    /// The rented line. `thread` and `dialer` are covers rather than navigation
+    /// pushes, and that is forced by the layout rather than chosen: `TabBar` is
+    /// a ZStack overlay pinned to the bottom of `ContentView` on every tab, so
+    /// a NavigationStack push would leave the floating tab bar sitting on top
+    /// of the message composer.
+    case lineCheckout, lineProvisioning, thread, dialer
     var id: String { rawValue }
 }
 
@@ -30,8 +48,13 @@ enum FlowStage: String, Hashable, Identifiable {
 /// therefore set explicitly at each entry point and cleared centrally in
 /// `flow`'s `didSet`, exactly as `configuringService`/`configuringCountry`
 /// already discipline the SMS draft.
+/// `.line` is the odd one out and deliberately so: the rented line is billed by
+/// StoreKit subscription and spends NO credits, so `creditsShortfall` returns 0
+/// for it rather than answering with whatever SMS route was last configured.
+/// The Number tab also renders no credit pill at all, which removes the read
+/// path this whole enum exists to discipline.
 enum PurchaseIntent: String, Hashable {
-    case sms, esim, email
+    case sms, esim, email, line
 }
 
 /// What the post-failure recovery card needs to know. Stored on AppState
@@ -86,7 +109,9 @@ enum PrefKey {
 
 @Observable
 final class AppState {
-    var tab: AppTab = .home
+    /// See `AppTab` — the rented line is the primary product, so it is the
+    /// launch tab. Seeded with the matching `intent` in `init`.
+    var tab: AppTab = .line
     var balance: Int = 0
     var services: [Service] = SeedData.services
     var countries: [Country] = SeedData.countries
@@ -206,7 +231,15 @@ final class AppState {
             if flow == nil {
                 checkoutEsimPlan = nil
                 emailDomain = nil
-                intent = .sms
+                // The line's per-flow drafts. `lineReservation` is NOT cleared
+                // here on purpose — it belongs to the Number TAB and is read by
+                // `LineStoreScreen` at `flow == nil`, so clearing it on every
+                // flow exit would throw away the held number the moment the
+                // user closed the paywall. It is cleared on leaving the tab
+                // instead, in ContentView's `.onChange(of: state.tab)`.
+                openThreadId = nil
+                dialerDigits = ""
+                intent = tab == .line ? .line : .sms
             }
             guard flow != .checkout else { return }
             checkoutService = nil
@@ -240,6 +273,34 @@ final class AppState {
     var emailDomain: EmailDomainOption?
     var activeEmailOrder: ServerEmailOrder?
     var isBuyingEmail = false
+
+    // ── Rented second number (the fourth product line) ───────────────────
+    /// The caller's line, from the `my_line` VIEW. nil = they have never had
+    /// one; a `.released` line is still returned so its history survives.
+    var line: Line?
+    var lineThreads: [LineThread] = []
+    /// Messages keyed by thread id, so opening a thread the user has already
+    /// read does not blank the screen while the fetch runs.
+    var lineMessages: [String: [LineMessage]] = [:]
+    var lineCalls: [LineCall] = []
+    /// Cities we sell numbers in, as reported by the server. Never hardcoded
+    /// client-side: an area code that runs dry is a server-side ordering
+    /// decision, and a stale client list would offer a city we cannot fill.
+    var lineCities: [LineCity] = []
+    /// The number currently on offer, and the hold on it if we have one.
+    /// Owned by the Number TAB (read at `flow == nil`), so it is cleared on
+    /// leaving the tab rather than in `flow.didSet` — see the note there.
+    var lineOffer: LineNumberOffer?
+    var lineReservation: LineReservation?
+    var lineCity: String?
+    var isLoadingLineNumbers = false
+    /// Set when a search came back empty so the store can say WHICH of the two
+    /// causes it knows about, instead of rendering a blank screen.
+    var lineUnavailableReason: LineUnavailableReason?
+    /// Thread open in the `.thread` cover. Cleared in `flow.didSet`.
+    var openThreadId: String?
+    /// Digits typed into the dialer. Cleared in `flow.didSet`.
+    var dialerDigits = ""
 
     var esimPlans: [EsimPlan] = []
     var esimOrders: [EsimOrder] = []
@@ -446,6 +507,11 @@ final class AppState {
             rawValue: defaults.string(forKey: PrefKey.otpAnimation) ?? ""
         ) ?? .cascade
         self.showMetrics = defaults.object(forKey: PrefKey.showMetrics) as? Bool ?? true
+        // Seed the intent to match the launch tab. Everywhere else it is set by
+        // a tab change or a flow entry, and neither fires on the tab the app
+        // opens ON — so without this the app would boot on the Number tab
+        // holding `.sms`.
+        self.intent = tab == .line ? .line : .sms
     }
 
     var deliveredCount: Int { orders.filter { $0.status == .received }.count }
@@ -916,6 +982,14 @@ final class AppState {
             // rather than a spurious "buy credits" nudge.
             guard let c = emailDomain?.credits, c > 0 else { return 0 }
             return max(0, c - balance)
+        case .line:
+            // The rented line is paid entirely through a StoreKit subscription
+            // and never spends credits, so there is no shortfall it could
+            // create. Returning 0 rather than falling through is what stops it
+            // answering with whatever SMS route was last configured — the exact
+            // failure this enum exists to prevent, and the reason the Number
+            // tab renders no credit pill at all.
+            return 0
         case .sms:
             break
         }
@@ -1362,6 +1436,105 @@ final class AppState {
     @MainActor
     func loadEmailOrders(using api: EmailAPI) async {
         do { emailOrders = try await api.list() } catch { /* keep what we have */ }
+    }
+
+    // MARK: - Rented second number
+
+    /// Refresh the caller's line. Swallows its own failure: the Number tab
+    /// renders the store when `line == nil`, and blanking a live line because
+    /// one request timed out would tell a paying subscriber they have no
+    /// number. Keeping the previous value is strictly better.
+    @MainActor
+    func loadLine(using api: LineAPI) async {
+        if let fresh = try? await api.fetch() { line = fresh }
+    }
+
+    /// Quote live availability for a city.
+    ///
+    /// `city == nil` asks the server for its default, which is also how the
+    /// city LIST is discovered — the server owns which area codes it will try,
+    /// so a client-side list would offer cities we can no longer fill. The
+    /// error paths carry that list too, which is why they are decoded rather
+    /// than dropped: "no numbers in Toronto" has to be able to offer Montreal.
+    @MainActor
+    func loadLineNumbers(using api: LineAPI, city: String? = nil) async {
+        isLoadingLineNumbers = true
+        defer { isLoadingLineNumbers = false }
+        do {
+            let res = try await api.availability(city: city ?? lineCity)
+            if !res.cities.isEmpty { lineCities = res.cities }
+            lineCity = res.city
+            lineOffer = res.first
+            lineUnavailableReason = res.first == nil ? .noStock : nil
+            // A fresh search invalidates any hold on the PREVIOUS number.
+            // Leaving it would let the card show one number and the countdown
+            // describe another.
+            lineReservation = nil
+        } catch {
+            lineOffer = nil
+            lineReservation = nil
+            lineUnavailableReason = Self.lineReason(from: error)
+            // Recover the city list even from a refusal, so a paused or dry
+            // store can still offer somewhere else to look.
+            if let list = Self.lineCities(from: error), !list.isEmpty {
+                lineCities = list
+            }
+        }
+    }
+
+    /// Conversation list. Swallows its own failure — an empty inbox and a
+    /// failed fetch look identical on screen, and blanking a thread list the
+    /// user was reading is the worse of the two.
+    @MainActor
+    func loadLineThreads(using api: LineAPI) async {
+        if let fresh = try? await api.threads() { lineThreads = fresh }
+    }
+
+    @MainActor
+    func loadLineCalls(using api: LineAPI) async {
+        if let fresh = try? await api.calls() { lineCalls = fresh }
+    }
+
+    /// Unread across every conversation, for the tab-bar dot.
+    var lineUnreadCount: Int {
+        lineThreads.reduce(0) { $0 + $1.unreadCount }
+    }
+
+    /// Clear everything the Number tab owns. Called on LEAVING the tab, because
+    /// the reservation and the quote are read at `flow == nil` and so cannot be
+    /// cleared by `flow.didSet` — see the note there.
+    @MainActor
+    func clearLineDraft() {
+        lineOffer = nil
+        lineReservation = nil
+        lineUnavailableReason = nil
+    }
+
+    /// Map a refusal onto the one thing we actually know. `lines_paused` is a
+    /// statement; everything else is not, and must not be dressed up as one —
+    /// an empty result and a failed fetch look identical from here.
+    private static func lineReason(from error: Error) -> LineUnavailableReason {
+        guard case let APIError.http(_, body) = error,
+              let code = errorCode(in: body) else { return .unknown }
+        switch code {
+        case "lines_paused":         return .paused
+        case "no_numbers_available": return .noStock
+        case "provider_unreachable": return .unknown
+        default:                     return .unknown
+        }
+    }
+
+    private static func lineCities(from error: Error) -> [LineCity]? {
+        guard case let APIError.http(_, body) = error,
+              let data = body?.data(using: .utf8) else { return nil }
+        struct Envelope: Decodable { let cities: [LineCity]? }
+        return (try? JSONDecoder.relay.decode(Envelope.self, from: data))?.cities
+    }
+
+    private static func errorCode(in body: String?) -> String? {
+        guard let data = body?.data(using: .utf8) else { return nil }
+        struct Envelope: Decodable { let error: String? }
+        return (try? JSONDecoder.relay.decode(Envelope.self, from: data))?.error
     }
 
     /// Buy the selected address. Free domains move no credits, so the balance
