@@ -1324,13 +1324,55 @@ picker rather than failing at checkout.
 
 ### Rentable second numbers — the FOURTH product line (IN PROGRESS, 2026-08-05)
 
-🚧 **NOT SHIPPED AND NOT REACHABLE.** As of 2026-08-05: the schema exists, two
-shared modules exist, and `telnyx-webhook` is deployed in a **capture-only**
-phase (verifies and records; writes no messages, sends no pushes). There is
-**no client at all**, and `app_config.lines_paused` ships **`true`**, so
-`begin_line_rental` refuses everything. A Telnyx account exists with one test
-DID. Full design: the approved plan at
-`~/.claude/plans/binary-humming-moonbeam.md`.
+🚧 **BUILT BUT UNSOLD.** As of 2026-08-05 late: the Number tab is the app's
+FIRST tab and launch tab, purchase and messaging are built and deployed, and
+`lines_paused` is now **`false`**. Nobody has bought one — **the only hard
+blocker is Telnyx float** ($2.33; a number costs $1 + $1/month), deferred by
+the owner. Full design: `~/.claude/plans/binary-humming-moonbeam.md`.
+
+| | state |
+|---|---|
+| Number tab, city→number→price store | ✅ shipped in the repo (not App Store) |
+| `reserve-line-number` / `verify-line-subscription` | ✅ deployed |
+| `apple-notifications` (ASSN V2) | ✅ deployed, **verified end to end** |
+| messaging (webhook in, `send-line-message` out, threads, block/report) | ✅ deployed |
+| `mint-line-token` | ✅ deployed, adapters **unproven** |
+| calling client (TelnyxRTC, CallKit, PushKit, dialer) | ❌ not started |
+| `begin-line-call`, `sync-telnyx-cdr` | ❌ not started |
+
+✅ **ASSN IS PROVEN, not assumed.** Apple's own test-notification endpoint
+(`POST /inApps/v1/notifications/test`) returned **`sendAttemptResult:
+SUCCESS`**, and the row landed in `line_notifications` with `processed_at` set
+and no error. That is the check the P-384 incident demands — verification that
+passes locally and throws `NotSupportedError` in the hosted runtime looks
+identical until a real request arrives. ASSN URLs are set for **both**
+environments.
+
+⚠️ **The ASC URL and the Server API do not agree instantly.** After
+`PATCH /v1/apps/{id}` accepted the URL and read it back correctly,
+`notifications/test` still returned **404 `4040007` "No App Store Server
+Notification URL found"** for several minutes. That 404 is propagation, not a
+broken key — a 401 is the auth failure. Poll rather than concluding anything.
+
+⚠️ **The original migration shipped `line_subscriptions` with SIX updaters and
+no INSERT.** The first subscribe had nowhere to write its row, every later
+UPDATE would have matched zero rows, and the whole lapse state machine would
+have run against a permanently empty table — silently, because an UPDATE
+matching nothing is not an error. Fixed by `20260805190000_record_line_
+subscription.sql`. Likewise `line_threads.blocked` shipped with no writer at
+all (`20260805200000_line_thread_actions.sql`). **When a migration adds a
+column or a table, grep for something that WRITES it.**
+
+⚠️ **`settle_outbound_message_claim` keys on the MESSAGE UUID, not the provider
+id** — `where id = p_message for update` is what makes it a claim. A delivery
+receipt carries only Telnyx's id, so `telnyx-webhook` resolves the row first.
+Passing the provider id there matches nothing and fails silently.
+
+⚠️ **The voice adapters in `_shared/telnyx.ts` are written from the DOCS, not
+probed** — the only block in that file that is. Every other function was probed
+live first, which is why the traps in it are documented rather than guessed.
+`mint-line-token` records each fault to `app_config.telnyx_voice_faults` so the
+first real call doubles as the probe. Re-verify before trusting the shapes.
 
 ⚠️ **The Telnyx API key passed through a chat transcript on 2026-08-05 and
 should be rotated** — same category as the HeroSMS key noted below. It lives
