@@ -1458,6 +1458,32 @@ numbers.** Do not build a country picker that offers CA toll-free.
 **No `regulatory_requirements` on any US or CA number** — no address documents,
 which is what makes US+CA the frictionless launch pair.
 
+🔴 **US NUMBERS ARE DOMESTIC-ONLY FOR SMS, AND YOU CANNOT TURN THAT OFF.**
+Measured on the live number: `features.sms` reads
+`{domestic_two_way: true, international_inbound: false, international_outbound:
+false}`. A European phone texting the number produces **nothing at all** — not a
+failure, not a webhook, not a `detail_record`. The message leaves the sender's
+handset looking sent and simply never reaches Telnyx.
+
+⚠️ **`PATCH /v2/phone_numbers/{id}/messaging` with
+`features.sms.international_inbound = true` returns 200, no error, AND CHANGES
+NOTHING.** The write is silently ignored — the same silent-no-op class as
+`getPrices` accepting an `operator` param it discards, and as the column-revoke
+migration that edits `pg_attribute` while the table grant still wins. **Read the
+value back; do not trust the 200.** Enabling international messaging is an
+account-level capability that needs Telnyx to grant it, not an API call.
+
+**What that means for who this line is for.** It is a **US product**, and that
+is fine: measured over all 39 Production purchases, **USA is 53.8% of purchases
+and 9 of 21 buyers** (FRA 23.1%, then ESP/BGR/TUR/POL/AUT/SVK/SWE at 1–2 each).
+The single largest market gets a fully working product. But a European user who
+rents a US number **cannot text their own contacts with it**, which is a
+refund-generating surprise rather than a limitation they will infer. Either gate
+the line to the US/CA storefronts or say plainly on the store screen that a US
+number exchanges messages only with US and Canadian numbers. European local
+numbers are not the escape hatch — those are exactly the ones needing
+regulatory bundles with an end-user address.
+
 Other measured facts: number orders are **asynchronous** (`pending` → `success`,
 under 5s here, but build the poller anyway — it is what survives a webhook
 outage); `reservable: true`, so the reserve-then-paywall flow is available;
