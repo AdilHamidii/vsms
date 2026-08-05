@@ -1455,8 +1455,42 @@ every type probed** — US local, US toll-free, CA local alike.
 shared NANP pool, so 833/855/877 are not Canadian. **Canada needs LOCAL
 numbers.** Do not build a country picker that offers CA toll-free.
 
-**No `regulatory_requirements` on any US or CA number** — no address documents,
-which is what makes US+CA the frictionless launch pair.
+🔴 **`regulatory_requirements` IN SEARCH RESULTS IS ALWAYS NULL AND MEANS
+NOTHING. IT COST $3.83 TO LEARN THIS.** `GET /v2/available_phone_numbers`
+returned `regulatory_requirements: null` for every country probed, which reads
+as "no paperwork needed". A GB mobile number was then bought on the strength of
+it and arrived **`status: requirement-info-pending`** with **six** outstanding
+requirements — it can never be used, and the money is spent. It was released
+immediately to stop the recurring charge.
+
+**The reliable pre-purchase source is
+`GET /v2/requirements?filter[country_code]=XX&filter[action]=ordering`**, and it
+is unambiguous:
+
+| country | ordering rules |
+|---|---|
+| **US** | **0** |
+| **CA** | **0** |
+| GB, BE, LT, NL, BR, AU, PL, SE, ZA | **3–5** |
+
+**Only the US and Canada are documentation-free. Every other country needs an
+in-country physical address**, and that is fatal rather than inconvenient — GB's
+six requirements include *"a valid, real-world physical address located in the
+same country as the phone number"*, national proof of address (utility bill),
+a government ID or company registration certificate, a company website, contact
+details, and a business use-case description with sub-allocation disclosure.
+Selling UK numbers needs a UK address; Dutch numbers a Dutch address. The only
+alternative is collecting ID documents from every individual customer, which is
+a privacy liability and a terrible checkout.
+
+**So the line is US + CA, exactly as first scoped**, and there is no clever way
+around 10DLC or toll-free verification. A multi-country catalogue was
+investigated on 2026-08-05 and is closed — do not re-open it on the strength of
+the search endpoint's null field.
+
+**A corollary worth keeping:** the two-tier pricing designed for a 36-country
+catalogue is unnecessary. US and CA are both $1.00/month, so **one product at
+$9.99 covers the whole catalogue.**
 
 🔴 **US NUMBERS ARE DOMESTIC-ONLY FOR SMS, AND YOU CANNOT TURN THAT OFF.**
 Measured on the live number: `features.sms` reads
