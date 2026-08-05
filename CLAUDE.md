@@ -953,11 +953,40 @@ A plain `0.5*new + 0.5*prev` averages a rise against yesterday's cheaper price a
 0.025 (12×), SMSPVA 0.05 (6×). Each provider's sync sets its own
 `retail_credits`.**
 
-| provider | priced by | divisor | `MIN_MARGIN` | `0.30 / MARGIN` | `MAX_WHOLESALE_CENTS` |
-|---|---|---|---|---|---|
-| **5sim** | `sync-5sim` | **0.03** | **10.0** | 0.03 ✓ | **450** |
-| herosms | `sync-herosms` | 0.025 | 12.0 | 0.025 ✓ | 375 |
-| smspva | `sync-prices` | 0.05 | 6.0 | 0.05 ✓ | 750 |
+| provider | priced by | divisor | `MIN_MARGIN` | `0.30 / MARGIN` | **actual net ×** | `MAX_WHOLESALE_CENTS` |
+|---|---|---|---|---|---|---|
+| **5sim** | `sync-5sim` | **0.03** | **10.0** | 0.03 ✓ | **13.2×** | **450** |
+| herosms | `sync-herosms` | 0.025 | 12.0 | 0.025 ✓ | **15.9×** | 375 |
+| smspva | `sync-prices` | 0.05 | 6.0 | 0.05 ✓ | **7.9×** | 750 |
+
+🔴 **`MIN_MARGIN` IS NOT THE MARGIN WE EARN — every provider runs ~32% above
+its stated multiple, and the lockstep ✓ does not catch it.** The divisor is
+`NET_USD_PER_CREDIT / MIN_MARGIN`, which is a true 10× only if a credit really
+nets $0.30. Measured 2026-08-05 over all 37 Production purchases (586 credits,
+$273.63): blended gross **$0.467/credit**, net after Apple's 15% **$0.397**.
+So the realised multiple is `0.397 / divisor`, giving the column above; the
+median 5sim route realises **13.7×** once `ceil()` rounding is counted.
+
+The constant is commented "conservative", which is right for the ORDER CEILING
+(understating revenue makes us spend less) and backwards for PRICING (it makes
+us charge more). One constant, two opposite-signed jobs. If you ever recompute
+a margin, use the measured net per credit — not `NET_USD_PER_CREDIT`.
+
+⚠️ **Owner decision 2026-08-05: KEEP IT AT 13.2×.** Presented with the
+correction (0.04 → a true 10×, tinder/co 6 → 5 credits, entry-pack reach
+36.7% → 49.9%) the owner chose no change. Do not "fix" this to 0.04 on the
+strength of the comment saying 10×; it is a known, deliberate 13.2×.
+
+**The pack ladder, not the divisor, is what a new user actually meets.** Packs
+are 5/12/30/60/150 credits, and the median active route is **7 credits** — so
+the entry $2.99 pack cannot buy it. Measured over 9,306 priced active routes:
+**only 36.5% are reachable at $2.99**, 40.4% force the $5.99 pack, 8.8% need
+$24.99+. tinder/co is the worked example: 18¢ wholesale → 6 credits, one credit
+past the 5-pack, so the smallest possible purchase is **$5.99 for an 18¢ item**
+with 6 credits stranded. Since the signup grant went to 0, that purchase IS the
+activation event. A pack-ladder change (e.g. 8 credits at $2.99) addresses this
+without touching margin, but needs a client release — `PRODUCT_TO_CREDITS` is
+server-side, `CreditPack.swift` is not, and they must agree.
 
 `MIN_MARGIN_FALLBACK` is **12.0** — the strictest, never the loosest.
 Each `MAX_WHOLESALE_CENTS` is `150 credits × that provider's divisor`, i.e. the
