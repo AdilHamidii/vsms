@@ -1473,6 +1473,19 @@ migration that edits `pg_attribute` while the table grant still wins. **Read the
 value back; do not trust the 200.** Enabling international messaging is an
 account-level capability that needs Telnyx to grant it, not an API call.
 
+**The P2P lane is a DEAD END — settled 2026-08-05, do not re-probe.** The
+number advertises `eligible_messaging_products: ["A2P", "P2P"]`, which reads
+like an unregistered person-to-person route and is exactly what a
+rent-a-number product wants. It is not available:
+`PATCH /v2/phone_numbers/{id}/messaging` with `{"messaging_product":"P2P"}`
+returns **200 with no error and changes nothing** — `messaging_product` stays
+`A2P` on read-back. Same silent-no-op as the international flag above, in the
+same session, on the same endpoint. **"Eligible" describes the number, not your
+account.** US carriers closed the unregistered P2P lane to CPaaS traffic;
+10DLC registration is genuinely unavoidable for outbound, with any provider,
+because it is a carrier rule rather than a Telnyx one.
+(`/v2/10dlc/brand` currently reports `totalRecords: 0` — nothing registered.)
+
 **What that means for who this line is for.** It is a **US product**, and that
 is fine: measured over all 39 Production purchases, **USA is 53.8% of purchases
 and 9 of 21 buyers** (FRA 23.1%, then ESP/BGR/TUR/POL/AUT/SVK/SWE at 1–2 each).
