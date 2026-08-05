@@ -23,6 +23,14 @@ interface Snapshot {
     numberless?: number;
     by_provider?: ProviderRow[];
   };
+  /** Temp-EMAIL line. Same evidence shape as `orders`: `placed` counts only
+   *  orders that got a usable mailbox, and `unprovisioned` (status='failed',
+   *  create-email-order never provisioned one) is reported separately for the
+   *  same reason `numberless` is — it is not a delivery failure. */
+  emails?: {
+    placed?: number; received?: number; failed?: number; pct?: number | null;
+    unprovisioned?: number; free?: number; credits?: number;
+  };
   esims?: { count?: number; credits?: number };
   herosms_usd?: number | null;
   fivesim_usd?: number | null;
@@ -304,6 +312,33 @@ export function formatDigest(raw: Record<string, unknown>): string {
   const numberless = o.numberless ?? 0;
   if (numberless > 0) {
     lines.push(`   ⚠️ ${numberless} never got a number (price/stock, refunded)`);
+  }
+
+  // Temp e-mail, rendered in the same shape as Numbers so the two read as one
+  // activity view. It was absent from every ops surface from launch (07-30)
+  // until 08-05 — 29 orders across 10 users with no operational visibility.
+  //
+  // `free` is always shown when non-zero: 28 of the first 29 orders were the
+  // free tier, so an order count alone reads as revenue when it is nearly all
+  // cost. Same honesty rule as printing the FX rate next to /revenue.
+  const m = s.emails ?? {};
+  const mailPlaced = m.placed ?? 0;
+  const unprovisioned = m.unprovisioned ?? 0;
+  if (mailPlaced > 0 || unprovisioned > 0) {
+    const freeNote = (m.free ?? 0) > 0 ? ` · ${m.free} free` : "";
+    lines.push(`📧 E-mails: <b>${mailPlaced}</b> ordered${freeNote}`);
+    if (mailPlaced > 0) {
+      lines.push(`   ✅ ${m.received ?? 0} delivered (${m.pct ?? 0}%)`);
+      lines.push(`   ❌ ${m.failed ?? 0} failed`);
+    }
+    // The mailbox itself was never issued — the e-mail analogue of a numberless
+    // SMS order, and deliberately outside the rate above. Five of these in one
+    // 7-minute burst is what exposed the free tier running dry.
+    if (unprovisioned > 0) {
+      lines.push(`   ⚠️ ${unprovisioned} never got an address (stock, refunded)`);
+    }
+  } else {
+    lines.push(`📧 E-mails: none ordered`);
   }
 
   const e = s.esims ?? {};
