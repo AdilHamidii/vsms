@@ -311,11 +311,27 @@ GET /v1/user/buy/activation/{country}/{operator}/{product}    # pins the pool
 GET /v1/user/profile                  # {balance, rating}
 ```
 
-**`rate720` (30 days) is the base number we use, stored in `routes.pool_rate_pct`
-and rendered in the picker.** It has the best coverage of any window *and* is the
-most stable. Do not read 5sim's own website as a reference: its operator list
-shows the **max across all seven windows**, and its Statistics tab shows
-`rate72`, so our figures will look lower than theirs. That is correct, not a bug.
+⚠️ **TWO DIFFERENT WINDOWS DO TWO DIFFERENT JOBS — do not collapse them
+(2026-08-05).** `sync-5sim` computes both on every run:
+
+| | function | window | used for |
+|---|---|---|---|
+| **selection** | `rateOf` | `rate24` → `rate168` → `rate720` | which pool `choosePool` pins. Never stored. |
+| **display** | `displayRateOf` | `rate168` → `rate720` | `routes.pool_rate_pct` — what the country row renders and what the client sorts on. |
+
+**Choose on freshness, display on stability.** Leading with `rate24` is right for
+selection (fastest way to notice a dead pool, and reacting to noise is worth it
+there) and wrong for a number a user reads as their odds. See "The pool rate is
+the tie-break" for the incident that forced the split.
+
+`routes.pool_rate_window` records which window each stored figure came from —
+`168h` or `720h`. It used to be the hardcoded literal `"720h"` on every row while
+the value was whatever the ladder landed on, so it never described the number
+beside it until 2026-08-05. **Read it before quoting a rate.**
+
+Do not read 5sim's own website as a reference: its operator list shows the **max
+across all seven windows**, and its Statistics tab shows `rate72`, so our figures
+will look lower than theirs. That is correct, not a bug.
 
 🔴 **`rate720` ALONE IS NOT SAFE — it lags a pool's death by up to three weeks,
 and that cost us a whole route (2026-08-04).** olx/us pinned `virtual63` at a
@@ -1474,12 +1490,57 @@ provider reports 59.3%**. Price picked Kenya every time.
 
 ### The pool rate is the tie-break (1.8, 2026-08-03)
 
-`routes.pool_rate_pct` is 5sim's published 30-day rate for the **exact pool the
+`routes.pool_rate_pct` is 5sim's published **7-day** rate for the **exact pool the
 route buys from** (`routes.pool_operator`), written hourly by `sync-5sim`. It
-covers roughly **1,760 of 4,420** active 5sim routes (08-04: 1,373 positive,
-389 zero) and is
-the number the country row renders. This replaced `service_country_ranks` as the
-tie-break. Coverage moves every hour — re-query before quoting it.
+covers **2,638 of ~7,700** active 5sim routes (08-05: 1,540 on the 7-day window,
+1,097 falling back to 30-day because the pool saw no activations in a week) and
+is the number the country row renders. This replaced `service_country_ranks` as
+the tie-break. Coverage moves every hour — re-query before quoting it.
+
+🔴 **IT WAS `rate24` UNTIL 2026-08-05, AND THAT MISLED USERS IN BOTH
+DIRECTIONS.** `pool_rate_pct` was written from the same `rateOf` ladder that
+PICKS the pool, so the row rendered the shortest, noisiest window 5sim
+publishes. The incident: one user ran **seven** Tinder orders in 8.5 minutes.
+
+| route | rendered (`rate24`) | `rate168` | `rate720` | what happened |
+|---|---|---|---|---|
+| tinder/co `virtual34` | **88** | 71.4 | 71.2 | 4 orders, 3 real attempts, **1 code** |
+| tinder/us `virtual63` | **15** | 47.1 | 57.3 | 2 orders, both cancelled early |
+| tinder/ar `virtual4` | **61** | 13 | — | 1 order, cancelled |
+
+So the app oversold Colombia, undersold a usable US route, and oversold
+Argentina — all from the same defect. Measured over 3,320 in-stock pools
+publishing a positive rate somewhere (12 countries): median
+|`rate24` − `rate720`| **9.6 points**, **16.6% differ by 30+ points**, only
+50.8% agree within 10.
+
+**The fix was display-only and cost nothing in coverage.** 5sim's rate fields
+are perfectly nested by window length (0 violations over 14,892 in-stock pools),
+so any pool publishing `rate24` also publishes `rate168` — both rules rate
+exactly 8,791. Aggregate barely moved (mean 10.9 → 10.7; green 528 → 495, amber
+808 → 834, red 7,455 → 7,462); **6.9% of pools changed colour band, 296 up and
+310 down.** It is noise reduction, not a repricing of optimism.
+
+⚠️ **The catalog is genuinely red-heavy and that is not a bug in this change** —
+median rated route is **9%**, 814 routes publish exactly 0, only 292 are green.
+That was equally true before. It is what the inventory is.
+
+⚠️ **This changed what `orders.pool_rate_pct` stamps at reservation.** Orders
+before 2026-08-05 carry `rate24`, after carry `rate168`. **Split the pending
+correlation study on that date** or the halves are not comparable.
+
+**STILL OUTSTANDING: the rendered number is ~2× our realised delivery.** Across
+every 5sim order that got a number and was NOT cancelled: published 80+ → **40%**
+(5 orders), 60–79 → **25%** (8), 30–59 → **0%** (9), <30 → **0%** (4). The
+ranking is **monotone**, which is the first positive read on the correlation
+study — the steering works. The LEVEL does not. n = 27, so treat the ordering as
+the finding and the percentages as indicative. Re-run at ~100 non-cancelled
+orders before acting. The candidate fix is to stop quoting a bare percentage at
+all and render the colour band as a word (High/Medium/Low) — a third-party
+aggregate with no published denominator should not wear two significant figures,
+which is this repo's own standing rule (see Badge confidence, and the SMSPVA
+seeded grade that had to be demoted to `.notTested`). That needs a client
+release.
 
 **Colour bands (owner, 2026-08-03): >60 green, 30–60 amber, <30 red.**
 `CountrySheet.poolRateColor`. Sort options are exactly three — **Best success,
