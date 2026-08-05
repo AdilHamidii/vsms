@@ -1324,11 +1324,17 @@ picker rather than failing at checkout.
 
 ### Rentable second numbers — the FOURTH product line (IN PROGRESS, 2026-08-05)
 
-🚧 **NOT SHIPPED, NOT REACHABLE, AND MOSTLY NOT BUILT.** As of 2026-08-05 the
-schema exists and two shared modules exist. There are **no edge functions, no
-client, and no Telnyx account.** `app_config.lines_paused` ships **`true`**, so
-`begin_line_rental` refuses everything. Full design: the approved plan at
+🚧 **NOT SHIPPED AND NOT REACHABLE.** As of 2026-08-05: the schema exists, two
+shared modules exist, and `telnyx-webhook` is deployed in a **capture-only**
+phase (verifies and records; writes no messages, sends no pushes). There is
+**no client at all**, and `app_config.lines_paused` ships **`true`**, so
+`begin_line_rental` refuses everything. A Telnyx account exists with one test
+DID. Full design: the approved plan at
 `~/.claude/plans/binary-humming-moonbeam.md`.
+
+⚠️ **The Telnyx API key passed through a chat transcript on 2026-08-05 and
+should be rotated** — same category as the HeroSMS key noted below. It lives
+only as the `TELNYX_API_KEY` Supabase secret and is in no commit.
 
 **What it is:** a phone number the user KEEPS — rented monthly, with two-way
 SMS and two-way voice in-app. Owner decisions, all settled, do not re-litigate:
@@ -1409,11 +1415,75 @@ client-first-schema-second ordering constraint for this line.
   after ANY change to `iap.ts`; a local pass is necessary but **not
   sufficient**, which is exactly how the P-384 outage hid for weeks.
 
-**Blocked on external clocks, none of them code:** a Telnyx account and test
-DID; toll-free verification and/or 10DLC brand+campaign (weeks, can fail
-outright — fanning many end users through one Standard 10DLC campaign is what
-carriers police); the ASC subscription group with **Billing Grace Period ON**;
-and an App Store Server API key.
+**Pricing (owner decision 2026-08-05): $9.99/month, 200 SMS + 100 minutes,
+hard stop.** Nets $8.49 after Apple's 15% against a worst case of ~$4.30, so
+margin holds even on the heaviest user. ⚠️ **You cannot apply the 10× credit
+rule here — the market sets this price** (Burner/Hushed $4.99, Sideline $9.99,
+Google Voice free). At $4.99 with the same allowance the line LOSES money on a
+heavy user, and hard-stop billing means there is no overage to recover it.
+The schema defaults already encode this (`sms_allowance 200`,
+`voice_allowance_seconds 6000`).
+
+### Telnyx API — what live probing found (2026-08-05)
+
+Probed with a real account and one purchased DID (**+1 415 329 3816**, id
+`3019915491322889224`, `customer_reference = vsms-test-line`). Balance went
+$10.00 → **$8.13**. Everything below is measured, not read off the docs.
+
+🔴 **NOTHING TELLS YOU WHAT YOU PAID.** The number-order response returns
+`cost_information: null`, and `GET /v2/phone_numbers/{id}` has no price field
+at all — 35 keys, none of them a cost. This is the SMSPool eSIM trap exactly
+(*"its response reports no cost at all"*, which made margin analysis circular).
+**Capture the price from the SEARCH quote at purchase time** into
+`phone_lines.monthly_cost_cents`; `activate_line_claim` already takes it. There
+is no way to recover it afterwards.
+
+**Two request shapes that fail if you write them from the docs:**
+- `POST /v2/messaging_profiles` **requires `whitelisted_destinations`** (e.g.
+  `["US","CA"]`) or returns **40331 `Missing whitelisted destinations`**.
+- **`messaging_profile_id` is NOT settable on `PATCH /v2/phone_numbers/{id}`** —
+  it returns **10027 "not reachable here"**. Number config is split across
+  sub-resources: `/v2/phone_numbers/{id}/messaging` and `.../voice`. The main
+  resource does take `customer_reference` and `tags`.
+
+**Prices are FLAT and half what was estimated: $1.00 upfront + $1.00/month for
+every type probed** — US local, US toll-free, CA local alike.
+
+⚠️ **"CA toll-free" IS A FICTION.** Filtering `country_code=CA` +
+`phone_number_type=toll_free` returns the **identical numbers** as the US query
+(+18779074790, +18338471334, +18556650304) — North American toll-free is one
+shared NANP pool, so 833/855/877 are not Canadian. **Canada needs LOCAL
+numbers.** Do not build a country picker that offers CA toll-free.
+
+**No `regulatory_requirements` on any US or CA number** — no address documents,
+which is what makes US+CA the frictionless launch pair.
+
+Other measured facts: number orders are **asynchronous** (`pending` → `success`,
+under 5s here, but build the poller anyway — it is what survives a webhook
+outage); `reservable: true`, so the reserve-then-paywall flow is available;
+`emergency_status` is **`disabled` by default**, so our E911 stance is "never
+enable it" rather than "remember to turn it off"; US local has `hd_voice`,
+toll-free does not; and the default US local search returns obscure rate
+centers (a Texas one), so the picker must filter by `national_destination_code`
+— area code 415 correctly returned San Francisco numbers.
+
+✅ **`@noble/curves/ed25519` RUNS on the Supabase edge runtime — verified in the
+hosted runtime, not assumed.** A well-formed but wrong signature was rejected
+as `bad_signature`, which means the curve math executed. This is the check the
+P-384 incident demands: that failure passed locally and threw
+`NotSupportedError` in production, rejecting every purchase for weeks.
+
+**Blocked on external clocks, none of them code:** toll-free verification and/or
+10DLC brand+campaign (weeks, can fail outright — fanning many end users through
+one Standard 10DLC campaign is what carriers police; note the purchased local
+number has `messaging_campaign_id: null` and cannot send US A2P until
+registered); the ASC subscription group with **Billing Grace Period ON**; and an
+App Store Server API key (an **In-App Purchase** key from Users and Access →
+Integrations — *not* the existing `AuthKey_R5ZVLBTUR6.p8`, which is an App Store
+Connect API key and will not work for subscription lookups).
+
+⚠️ **Float:** each line costs $1 upfront + $1/month, so 50 subscribers is $50/mo
+of Telnyx float. The $8.13 balance is a test balance, not a launch balance.
 
 **Three traps the plan calls out that are easy to lose:** the reviewer will use
 a **Sandbox** subscription, and `iap-verify`'s `environment === "Production"`
