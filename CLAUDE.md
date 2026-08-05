@@ -2681,14 +2681,14 @@ SMS provider again, walk this list:
 8. **Re-check `active_sms_provider()` AFTER the dust settles, not just after the re-home.** Added 2026-07-30, learned the hard way. It picks by *active route count*, which silently assumed one provider owns the catalog. A per-service split plus a sync that hides unfulfillable rows can leave the **retired** provider holding more rows than the live one — which is exactly what happened (SMSPVA 7,757 vs HeroSMS 5,198), pointing all five `refresh_*` evidence functions at the wrong provider with no error anywhere. Assert it returns what you expect, and re-assert it after the first sync run, not before.
 9. **Give the new provider its own cost column, and scope every cached-cost fallback to the provider that owns the row.** `sync-prices` only maintains SMSPVA's `last_cost_cents`, so any other provider's rows carry a frozen number from a provider you are no longer buying from. A `??` onto that stale value passes the margin gate and then fails at reservation — a charge-and-refund that looks like a stockout. See `sync-herosms`.
 
-## Current state (2026-08-04)
+## Current state (2026-08-05)
 
 ### Inventory — these move hourly. RE-QUERY, don't quote this block.
 
 Every number below has been wrong within a day of being written at least once.
 It is a starting point for "is this roughly right", never a citation.
 
-- **iOS**: `MARKETING_VERSION 1.9`, `CURRENT_PROJECT_VERSION 30`, iOS min **18.0**,
+- **iOS**: `MARKETING_VERSION 1.9`, `CURRENT_PROJECT_VERSION 31`, iOS min **18.0**,
   **96** Swift sources, **357** strings / 0 untranslated / 0 specifier reorders.
 - **Backend**: **26** edge function dirs besides `_shared`, **13** `_shared` files,
   **136** migration files, **16** pg_cron jobs (all active).
@@ -2699,22 +2699,17 @@ It is a starting point for "is this roughly right", never a citation.
 - **Evidence**: `rate_source='measured'` = **3 routes**, rebuilding from 0 after
   the cutover. That reset is CORRECT — see "Evidence must describe the provider
   that serves the NEXT order".
-- **Balances: 5sim $9.37 (rating 96/96), HeroSMS $9.62.** Both `low`, both at
-  alert tier 3 on a `[37.50, 22.50, 11.25, 7.50]` ladder. **Both are near the
-  $7.50 single-order ceiling — top up.**
-- **App Store**: **1.8 (build 28) is `READY_FOR_SALE`**, and has been since
-  2026-08-03 07:03Z — this file claimed `WAITING_FOR_REVIEW` for a full day
-  after it went live, which matters because 1.8 is what every current user and
-  every new signup is actually running. **Read ASC, not this line.**
-  **1.9 is `WAITING_FOR_REVIEW` on build 31** since 2026-08-04 16:07Z, notes in
-  13 locales. 1.7/1.6 `READY_FOR_SALE`. All five packs `APPROVED`.
-  Builds 29 and 30 are superseded (29 carried the "+3 credits" card; 30 was
-  uploaded before the `inviteJoinerCredits` bug was caught). **Cancel-and-
-  replace took ~90 seconds end to end** and confirms the note under Release
-  prep: an app-version submission is not a one-way door. `PATCH
-  reviewSubmissions/<id> {"canceled": true}` → version goes `DEVELOPER_REJECTED`
-  → `PATCH appStoreVersions/<id>/relationships/build` → new `reviewSubmission`
-  + item + `{"submitted": true}`.
+- **Balances: 5sim $8.89 (rating 96/96), HeroSMS $9.41** (08-05 15:05Z). Both
+  `low`, both at alert tier 3 on a `[37.50, 22.50, 11.25, 7.50]` ladder. **Both
+  are near the $7.50 single-order ceiling — top up.**
+- **App Store**: **1.9 (build 31) is `READY_FOR_SALE`** — verified against ASC
+  2026-08-05. This file has now claimed `WAITING_FOR_REVIEW` past the release
+  date for **two versions running** (1.8 for a full day, then 1.9), and it is
+  never harmless: what shipped decides whether a client-side fix is worth
+  anything. **Read ASC, not this line.** 1.8/1.7/1.6 `READY_FOR_SALE`. All five
+  packs `APPROVED`. Builds 29 and 30 are superseded (29 carried the "+3 credits"
+  card; 30 predated the `inviteJoinerCredits` fix); the cancel-and-replace
+  recipe lives under Release prep.
 - **Signup grant: 0 — REMOVED PERMANENTLY** (owner decision 2026-08-04 15:42Z,
   `20260804160000`). The product is paid: you want a number, you buy credits.
   It had been 5 → 0 → 1 → 3 → 0 in two days; the reach table that used to live
@@ -2750,9 +2745,12 @@ refunded. Before suspecting users, check what the app pre-selected — and note 
 cluster was on the CHEAPEST route in the catalog, the opposite of what someone
 burning your money would pick.
 
-✅ **FIXED 2026-08-04 (`804a6dd`) — the candidates are now ranked by pool rate,
-not by array position. NOT IN BUILD 28**, so every shipped build still has the
-behaviour above; it needs a release to reach anyone.
+✅ **FIXED and SHIPPED — the candidates are ranked by pool rate, not by array
+position.** Landed as **`a14fb86`** (on this branch; `804a6dd` is the same
+change under a duplicate hash left by another worktree and is reachable from no
+branch) and rides in **build 31 = 1.9, `READY_FOR_SALE`**, confirmed against the
+archive's dSYM. **Everything below describes the pre-1.9 behaviour**, which
+users on 1.8 and earlier still have.
 
 `preferred` is kept as the CANDIDATE SET and its order survives only as the
 FINAL tie-break, so brand recognition still decides where the evidence is silent
@@ -2986,6 +2984,11 @@ Also this day, each verified against live DB state rather than a deploy log:
 Reasoning for each of these lives in the topic section above; this is only an
 index, so "why is it like this" has a date to search for.
 
+- **08-05** `MIN_MARGIN` made true (`NET_USD_PER_CREDIT` 0.30 → the measured
+  0.40, 5sim divisor 0.03 → 0.04); the country row switched from `rate24` to
+  `rate168`; e-mail added to the digest / `/stats`; `dev_hidden` so an
+  all-dev-orders window stops reading as no activity. 1.9 build 31 confirmed
+  `READY_FOR_SALE`, which resolved the starter-list entry.
 - **08-04** 5sim freshness ladder (`rate720` lags — see the 5sim section); signup
   grant 1 → 3; the olx/us cohort diagnosed as our own default funnel.
 - **08-03** 5sim cutover; IAP P-384 fix; `MIN_HOLD_SECONDS` 180 → 90; pool-rate
@@ -3018,14 +3021,28 @@ ads.apple.com → Settings → Billing.
 
 ### Known-open
 
-**Top of the list as of 2026-08-04:**
+**Top of the list as of 2026-08-05:**
 
-- 🟠 **The starter list is FIXED in the repo but NOT SHIPPED.** `804a6dd` ranks
-  the candidates by pool rate instead of array position; every released build,
-  28 included, still lands the whole new-user cohort on one position-picked
-  route. See "The grant size decides which ONE route new users land on" for the
-  before/after table. **This needs a build to be worth anything** — it is the
-  only fix in the tree whose entire value is in a release.
+- ✅ **RESOLVED 2026-08-05 — the starter-list fix IS SHIPPED.** It is in **build
+  31 = 1.9, `READY_FOR_SALE`**, so the new-user cohort is now steered by pool
+  rate rather than array position. See "The grant size decides which ONE route
+  new users land on" for the before/after table.
+
+  **Two corrections worth keeping, because both cost time to unwind.** This
+  entry read "FIXED in the repo but NOT SHIPPED" for a day after it went live,
+  purely because the App Store line above it was stale — a doc-drift bug that
+  turns into a *decision* bug, since "unshipped" is the argument for cutting
+  another release. And the commit it named, `804a6dd`, is **unreachable from
+  every branch**: it is a duplicate hash left by another worktree, and the
+  commit actually on this branch is **`a14fb86`** (identical message and date).
+  `git log -S` finds all three copies; `git branch --contains` finds none.
+
+  **Verify a client fix against the BINARY, not the commit graph.** Private
+  Swift symbols are stripped from the shipped binary, so `strings` and `nm` on
+  `.app/VirtualSIM` return nothing and read as "the fix is absent". The archive's
+  **dSYM** keeps them: `nm -a <archive>/dSYMs/*.dSYM/Contents/Resources/DWARF/<binary>
+  | grep bestStarter` is what settled it (mangled
+  `$s10VirtualSIM8AppStateC11bestStarter…`, plus `routeKey`).
 - ✅ **RESOLVED 2026-08-04 — the IAP fix is CONFIRMED working.** A Production
   receipt at 2026-08-03 16:41Z granted credits (`granted_credits > 0`), which is
   the settling evidence this entry asked for. Revenue is proven, not assumed.
@@ -3033,17 +3050,42 @@ ads.apple.com → Settings → Billing.
   because the Supabase edge runtime does not implement ECDSA P-384; fixed in
   pure JS via `@noble/curves/p384`.
 - 🔴 **Does `pool_rate_pct` predict OUR delivery? Unverified, and the obvious
-  query is now KNOWN-CONTAMINATED.** Against HeroSMS orders the same vendor's
-  rates correlated **negatively** (r = −0.51, n = 16). Stamped per order as
-  `orders.pool_rate_pct` / `pool_pinned`. **Exclude default-landed orders before
-  running it** — 16 of the last 20 5sim orders were the app's own pre-selected
-  route, placed by users who had no reason to want that service and almost
-  certainly never submitted the number anywhere. Scoring those as delivery
-  failures measures our steering, not the pool. **If the correlation is not
-  positive, the number must come off the row.**
-- ⚠️ **Both provider balances are near the funding floor** — 5sim $9.37, HeroSMS
-  $9.62, against a $7.50 single-order ceiling. HeroSMS funds SMS *and* the whole
-  e-mail line.
+  query is now KNOWN-CONTAMINATED TWICE OVER — do not run it as one window.**
+  Against HeroSMS orders the same vendor's rates correlated **negatively**
+  (r = −0.51, n = 16). Stamped per order as `orders.pool_rate_pct` /
+  `pool_pinned`. Two independent filters are mandatory before reading anything:
+
+  1. **SPLIT ON 2026-08-05.** Orders before that date stamped **`rate24`**;
+     after, **`rate168`**. Measured over 3,320 pools the two windows differ by a
+     median 9.6 points and by 30+ points on 16.6% — so the halves are not the
+     same measurement and pooling them mixes two variables. See "The pool rate
+     is the tie-break".
+  2. **EXCLUDE default-landed orders.** 16 of the last 20 5sim orders were the
+     app's own pre-selected route, placed by users who had no reason to want
+     that service and almost certainly never submitted the number anywhere.
+     Scoring those as delivery failures measures our steering, not the pool.
+
+  **If the correlation is not positive, the number must come off the row.**
+- ⚠️ **Both provider balances are near the funding floor** — 5sim **$8.89**,
+  HeroSMS **$9.41** (08-05 15:05Z), against a $7.50 single-order ceiling.
+  HeroSMS funds SMS *and* the whole e-mail line, so it is the one that takes two
+  products down. Re-query rather than quoting these:
+  `select key, value->>'balance_usd' from app_config where key like '%_health';`
+- 🟠 **TWO fixes are worth nothing until a client release, and neither is in
+  1.9.** Grouped because they share a failure mode: the server cannot reach
+  either, so no amount of backend work moves them. Both are described in full
+  elsewhere — this is the index so they are not rediscovered a third time.
+  - **The review prompt sits on `OtpScreen`/`EmailCodeScreen` `.onAppear`,
+    while the delivery push already carries the code.** A user who reads the
+    code off the lock screen and types it straight into the target app is never
+    prompted — and that is the *designed* flow, since the ✕ was made
+    non-destructive precisely so users can leave. Not measurable server-side.
+    Fix is to fire on app-foreground after a recent delivered code. See ASO.
+  - **The pack ladder still starts at 5 credits / $2.99** while **51.7% of
+    routes need more than that** and the median route is 6 credits — one past
+    it. With the signup grant at 0, that first purchase IS activation. See
+    "The pack ladder is the other half". ⚠️ `PRODUCT_TO_CREDITS` is
+    server-side and `CreditPack.swift` is not; **they must ship together.**
 - ⚠️ **`sync-5sim` still takes 10× HTTP 429 per run** at `CALL_SPACING_MS = 600`.
   The retry rescues almost all of them, but a country lost for an hour reads as
   "5sim does not serve it". Watch `fetch_faults`; raise spacing on more than one
@@ -3554,7 +3596,7 @@ users in; that trades real UX for a review.
 
 vSMS is a single-target app, so only one `Info.plist` needs patching. The real fixes are building on stable macOS or Xcode Cloud; patch is the interim path while on the beta.
 
-**Submitting is fully headless via the App Store Connect API** (no Xcode Organizer) — see the `app-store-submission-asc` memory for the exact working pipeline: `xcodebuild archive` with `-allowProvisioningUpdates -authenticationKeyPath/-authenticationKeyID/-authenticationKeyIssuerID` (auto-provisions the Distribution cert; the Mac only has an *Apple Development* cert locally, which is fine) → patch `BuildMachineOSBuild` (above) → `xcodebuild -exportArchive` → `xcrun altool --upload-app` → ASC REST API (`POST /v1/appStoreVersions`, attach build, set `whatsNew`, `reviewSubmissions` submit). ASC API key lives at `~/.appstoreconnect/private_keys/AuthKey_R5ZVLBTUR6.p8` (key id `R5ZVLBTUR6`); app id `6774768570`. **The issuer id IS available: `4644ed13-4d98-489e-a94b-687f63946f46`** — an earlier note here claimed the machine had no issuer id and that API checks return `NO_ISSUER_ID`. That was wrong, and it cost real time: every "verify in ASC first" instruction was being skipped as impossible when the whole REST pipeline in fact works headlessly. The repo is at **`MARKETING_VERSION 1.8` / `CURRENT_PROJECT_VERSION 28`**. **Always verify live store state via the API before submitting** — the notes here drift within hours, and did twice on 2026-07-31 alone. **Release notes (`whatsNew`) are per-locale and there are 13 of them** — PATCH every `appStoreVersionLocalizations` row, or twelve storefronts ship the previous version's notes. Historical: 1.3 (build 12) released; 1.4 (build 13) submitted 2026-07-19; build 16 shipped as 1.5 in `a9b92c0` (which lowered the iOS floor to 18.0); build 17 submitted then cancelled 2026-07-25; build 18 submitted 2026-07-25 and released as **1.5**; build 19 submitted 2026-07-31 13:56Z and released as **1.6** the same day; build 20 submitted 2026-07-31 20:05Z as **1.7**, then **cancelled and replaced by build 21** (submitted 21:26Z; build 21 released as **1.7**, `READY_FOR_SALE` verified 2026-08-02) to strip the word "supplier" from shipped copy — cancelling an app-version submission is NOT the one-way door an IAP cancellation is: the version simply goes `DEVELOPER_REJECTED`, and re-attaching a build plus a fresh `reviewSubmission` recovers it in about a minute. **1.8**: build 23 submitted 2026-08-03 then cancelled; **build 28 submitted 13:18Z the same day and is `WAITING_FOR_REVIEW`** — the DEVELOPER_REJECTED recovery path above was exercised again and took under a minute (attach build → `POST /v1/reviewSubmissions` → `POST /v1/reviewSubmissionItems` → `PATCH {submitted:true}`). Export compliance is already declared in `Info.plist` (`ITSAppUsesNonExemptEncryption = false`), so nothing stalls on that question.
+**Submitting is fully headless via the App Store Connect API** (no Xcode Organizer) — see the `app-store-submission-asc` memory for the exact working pipeline: `xcodebuild archive` with `-allowProvisioningUpdates -authenticationKeyPath/-authenticationKeyID/-authenticationKeyIssuerID` (auto-provisions the Distribution cert; the Mac only has an *Apple Development* cert locally, which is fine) → patch `BuildMachineOSBuild` (above) → `xcodebuild -exportArchive` → `xcrun altool --upload-app` → ASC REST API (`POST /v1/appStoreVersions`, attach build, set `whatsNew`, `reviewSubmissions` submit). ASC API key lives at `~/.appstoreconnect/private_keys/AuthKey_R5ZVLBTUR6.p8` (key id `R5ZVLBTUR6`); app id `6774768570`. **The issuer id IS available: `4644ed13-4d98-489e-a94b-687f63946f46`** — an earlier note here claimed the machine had no issuer id and that API checks return `NO_ISSUER_ID`. That was wrong, and it cost real time: every "verify in ASC first" instruction was being skipped as impossible when the whole REST pipeline in fact works headlessly. The repo is at **`MARKETING_VERSION 1.9` / `CURRENT_PROJECT_VERSION 31`**. **Always verify live store state via the API before submitting** — the notes here drift within hours, and did twice on 2026-07-31 alone. **Release notes (`whatsNew`) are per-locale and there are 13 of them** — PATCH every `appStoreVersionLocalizations` row, or twelve storefronts ship the previous version's notes. Historical: 1.3 (build 12) released; 1.4 (build 13) submitted 2026-07-19; build 16 shipped as 1.5 in `a9b92c0` (which lowered the iOS floor to 18.0); build 17 submitted then cancelled 2026-07-25; build 18 submitted 2026-07-25 and released as **1.5**; build 19 submitted 2026-07-31 13:56Z and released as **1.6** the same day; build 20 submitted 2026-07-31 20:05Z as **1.7**, then **cancelled and replaced by build 21** (submitted 21:26Z; build 21 released as **1.7**, `READY_FOR_SALE` verified 2026-08-02) to strip the word "supplier" from shipped copy — cancelling an app-version submission is NOT the one-way door an IAP cancellation is: the version simply goes `DEVELOPER_REJECTED`, and re-attaching a build plus a fresh `reviewSubmission` recovers it in about a minute. **1.8**: build 23 submitted 2026-08-03 then cancelled; build 28 submitted 13:18Z the same day and **released as 1.8**. **1.9**: builds 29 and 30 superseded (29 carried the "+3 credits" card; 30 predated the `inviteJoinerCredits` fix), **build 31 uploaded 2026-08-04 16:04Z and released as 1.9** — cancel-and-replace took ~90 seconds end to end, exercising the DEVELOPER_REJECTED recovery path a third time (`PATCH reviewSubmissions/<id> {"canceled": true}` → `PATCH appStoreVersions/<id>/relationships/build` → `POST /v1/reviewSubmissions` → `POST /v1/reviewSubmissionItems` → `PATCH {submitted:true}`). Export compliance is already declared in `Info.plist` (`ITSAppUsesNonExemptEncryption = false`), so nothing stalls on that question.
 
 **Use the committed `ExportOptions.plist`; do NOT hand-write one.** (It genuinely is committed as of 2026-07-31 — this line previously said so while the file existed in no commit and no checkout, so the first export after a fresh clone had to invent one.) `-exportArchive` needs `teamID = UDMK379475` and fails with the useless pair *"No Account for Team X"* + *"No profiles for 'com.anthersystems.VirtualSIM' were found"* when it is wrong — which reads like a signing/provisioning problem and is not. Read the real value from the archive if ever in doubt: `PlistBuddy -c "Print :ApplicationProperties:Team" <archive>/Info.plist`. Note the archive is signed *Apple Development* locally and re-signed for distribution on export; that is expected, not a fault.
 
