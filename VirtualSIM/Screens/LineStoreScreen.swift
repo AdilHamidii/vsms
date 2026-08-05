@@ -26,6 +26,7 @@ struct LineStoreScreen: View {
     @Environment(\.theme) private var theme
     @Environment(AppState.self) private var state
     @Environment(APIClient.self) private var api
+    @Environment(SubscriptionStore.self) private var subs
 
     /// Jump to the temp-SMS product. Passed in rather than reaching for
     /// `state.tab` directly so the caller owns navigation, matching
@@ -48,7 +49,13 @@ struct LineStoreScreen: View {
         // call first left the entire screen at opacity 0 until Telnyx answered —
         // which is exactly what "the rent number screen takes too long to show
         // up" was. Nothing on the city step needs the network at all.
-        .task { withAnimation(RMotion.content) { appeared = true } }
+        .task {
+            withAnimation(RMotion.content) { appeared = true }
+            // Fetched here rather than at the paywall so step one can state the
+            // price. Idempotent, and the store screen is the first thing the
+            // app shows, so the product is warm by the time checkout opens.
+            await subs.loadProduct()
+        }
     }
 
     private func stepTransition(forward: Bool) -> AnyTransition {
@@ -66,6 +73,7 @@ struct LineStoreScreen: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
                 header(kicker: "Second number", title: "Your own number")
+                priceAnchor.padding(.top, 10).riseIn(appeared, index: 0)
                 pitch.padding(.top, 16).riseIn(appeared, index: 0)
 
                 SectionHeader(label: "Where should it be?")
@@ -87,14 +95,18 @@ struct LineStoreScreen: View {
         }
     }
 
+    /// ⚠️ **Must not advertise calling.** There is no dialer — `flow = .dialer`
+    /// is assigned nowhere and `ContentView` answers that case with "coming
+    /// very soon". This card previously promised "texts and calls right here",
+    /// which is a capability the buyer cannot use after paying.
     private var pitch: some View {
-        Card {
+        Card(elevation: .raised) {
             VStack(alignment: .leading, spacing: 12) {
                 HStack(spacing: 22) {
-                    capability(icon: RIcon.message, title: "Text")
-                    capability(icon: RIcon.phone, title: "Call")
+                    capability(icon: RIcon.message, title: "Send texts")
+                    capability(icon: "tray.and.arrow.down", title: "Receive texts")
                 }
-                Text("A real Canadian phone number that stays yours — send and receive texts and calls right here, and keep your own number private.")
+                Text("A real Canadian phone number that stays yours — text from it right here, and keep your own number private.")
                     .font(RFont.text(14))
                     .foregroundStyle(theme.text2)
                     .lineSpacing(3)
@@ -102,6 +114,30 @@ struct LineStoreScreen: View {
             }
             .padding(18)
             .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    /// The price, stated on step ONE.
+    ///
+    /// Nothing before the paywall used to contain the word "monthly" or a
+    /// figure, so a user picked a city, waited on a live search, picked their
+    /// digits, and only then met a recurring charge. That shape makes a paywall
+    /// feel like a trap however well it is designed — the user feels walked
+    /// into it. This is not "leading with the price", it is qualifying: people
+    /// who will not pay leave at step one instead of after two investments, and
+    /// everyone who continues arrives having already accepted the number.
+    ///
+    /// Read from StoreKit, never a literal — the credit ladder drifted to
+    /// $4.99-vs-€5.99 on its top product precisely because a price was assumed.
+    @ViewBuilder
+    private var priceAnchor: some View {
+        if let price = subs.displayPrice {
+            Text("\(price) a month · cancel any time")
+                .font(RFont.text(13, weight: .medium))
+                .foregroundStyle(theme.text2)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 6)
+                .background(theme.chipBg, in: Capsule())
         }
     }
 

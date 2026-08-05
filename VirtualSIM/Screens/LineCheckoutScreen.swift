@@ -2,25 +2,36 @@ import SwiftUI
 
 /// The last screen before paying, and the FIRST one that mentions money.
 ///
+/// ── Why it is shaped like this ────────────────────────────────────────────
+///
 /// Everything before it asks the user to choose — a city, then their actual
 /// digits. By the time they land here the number on screen is already theirs in
 /// every sense except the payment, which is the moment a price is worth
 /// reading. Leading with "$9.99/month" asks someone to value a product they
 /// have not seen.
 ///
-/// It also carries the App Store **3.1.2(a)** disclosures — price, billing
-/// period, renewal terms and links to Terms and Privacy, all in-app and all
-/// before the purchase. That is the most common subscription rejection, and
-/// this is the screen the requirement is actually about.
+/// The previous version failed on exactly one measurable thing: `theme.text`
+/// appeared **twice** in the whole file. Everything below the number — the
+/// benefits, the renewal terms, the emergency warning, the legal links —
+/// rendered in `text2`/`text3` at 12–13pt, so the screen was one number sitting
+/// on top of a grey column with no hierarchy at all. It also had no headline,
+/// so the screen had no name; the city the user picked three taps earlier was
+/// never mentioned; and the price appeared twice within 200pt.
+///
+/// It carries the App Store **3.1.2(a)** disclosures — price, billing period,
+/// renewal terms and links to Terms and Privacy, all in-app and all before the
+/// purchase. That is the most common subscription rejection.
 struct LineCheckoutScreen: View {
     @Environment(\.theme) private var theme
     @Environment(AppState.self) private var state
     @Environment(APIClient.self) private var api
     @Environment(SubscriptionStore.self) private var subs
+    @Environment(IAPStore.self) private var iap
 
     @State private var appeared = false
     @State private var now = Date()
     @State private var isReserving = false
+    @State private var isRestoring = false
 
     var body: some View {
         ZStack {
@@ -28,16 +39,24 @@ struct LineCheckoutScreen: View {
             VStack(spacing: 0) {
                 header
                 ScrollView {
-                    VStack(spacing: 0) {
-                        numberCard.riseIn(appeared, index: 0)
-                        included.padding(.top, 22).riseIn(appeared, index: 1)
-                        priceBlock.padding(.top, 24).riseIn(appeared, index: 2)
-                        emergency.padding(.top, 18).riseIn(appeared, index: 3)
+                    VStack(alignment: .leading, spacing: 0) {
+                        intro.riseIn(appeared, index: 0)
+                        numberCard.padding(.top, 20).riseIn(appeared, index: 1)
+                        included.padding(.top, 26).riseIn(appeared, index: 2)
+                        priceBlock.padding(.top, 22).riseIn(appeared, index: 3)
+                        // The safety disclosure sits ABOVE the action, not
+                        // between the price and the button. Price -> CTA has to
+                        // be adjacent: the last thing read before a purchase
+                        // decision should not be a liability warning.
+                        emergency.padding(.top, 18).riseIn(appeared, index: 4)
+                        legal.padding(.top, 14).riseIn(appeared, index: 5)
                     }
                     .padding(.horizontal, 20)
-                    .padding(.bottom, 24)
+                    .padding(.bottom, 20)
                 }
-                cta
+                .scrollIndicators(.hidden)
+
+                BottomBar { cta }
             }
         }
         .task {
@@ -54,6 +73,13 @@ struct LineCheckoutScreen: View {
         }
     }
 
+    // MARK: - Chrome
+
+    /// Restore lives here, not only in Account.
+    ///
+    /// A user who was charged and has no number is standing on this screen, not
+    /// three taps deep in settings — and App Review 3.1.1 expects the control
+    /// to be reachable wherever a purchase is offered.
     private var header: some View {
         HStack {
             Button { state.flow = nil } label: {
@@ -63,36 +89,110 @@ struct LineCheckoutScreen: View {
                     .frame(width: 34, height: 34)
                     .background(theme.chipBg, in: .circle)
             }
-            .buttonStyle(.plain)
+            .pressable(0.92)
+
             Spacer()
+
+            Button {
+                Task {
+                    isRestoring = true
+                    defer { isRestoring = false }
+                    _ = await iap.restorePurchases()
+                    await state.loadLine(using: LineAPI(client: api))
+                    if state.line != nil {
+                        RHaptic.success()
+                        state.flow = nil
+                    }
+                }
+            } label: {
+                Text(isRestoring ? "Restoring…" : "Restore")
+                    .font(RFont.text(13, weight: .medium))
+                    .foregroundStyle(theme.text2)
+            }
+            .pressable(0.94)
+            .disabled(isRestoring)
         }
         .padding(.horizontal, 20)
         .padding(.top, 12)
-        .padding(.bottom, 6)
+        .padding(.bottom, 4)
+    }
+
+    // MARK: - What this screen is
+
+    private var intro: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            MicroLabel("Second number")
+
+            // Names the city the user chose three taps ago. The old screen
+            // never said the word, so the thing they had just picked did not
+            // appear on the screen confirming it.
+            Text(cityLabel.map { "Your \($0) number, ready now." }
+                 ?? String(localized: "Your new number, ready now."))
+                .displayType(29)
+                .foregroundStyle(theme.text)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.top, 8)
+
+            Text("Send and receive texts right here. Your real number stays private.")
+                .font(RFont.text(15))
+                .foregroundStyle(theme.text2)
+                .lineSpacing(3)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.top, 8)
+        }
+    }
+
+    private var cityLabel: String? {
+        guard let id = state.lineCity else { return nil }
+        return state.lineCities.first { $0.id == id }?.label
+    }
+
+    /// The area code, read off the number itself rather than tracked in state —
+    /// the server decides which code a city resolves to, and the digits on
+    /// screen are the only authority on what it chose.
+    private var areaCode: String? {
+        let digits = (state.lineOffer?.phoneNumber ?? "").filter(\.isNumber)
+        guard digits.count >= 11 else { return nil }
+        let start = digits.index(digits.startIndex, offsetBy: 1)
+        return String(digits[start..<digits.index(start, offsetBy: 3)])
     }
 
     // MARK: - The number
 
+    /// The one object this screen is about, and the only elevated thing on it.
+    ///
+    /// It used to be `theme.elev` on `theme.bg` with no shadow and no border —
+    /// in light mode a ~1.5% luminance step — so the emotional centre of the
+    /// purchase rendered as a flat white rectangle indistinguishable from a
+    /// settings row.
     private var numberCard: some View {
-        VStack(spacing: 10) {
-            Text("Your new number")
-                .font(RFont.text(12, weight: .medium))
-                .tracking(0.2)
-                .foregroundStyle(theme.text2)
+        HeroCard {
+            VStack(spacing: 12) {
+                HStack(spacing: 7) {
+                    Text(verbatim: "🇨🇦").font(.system(size: 15))
+                    Text(placeLine)
+                        .font(RFont.text(12, weight: .semibold))
+                        .foregroundStyle(theme.text2)
+                }
 
-            Text(PhoneFormat.national(state.lineOffer?.phoneNumber ?? ""))
-                .font(RFont.mono(26, weight: .semibold))
-                .foregroundStyle(theme.text)
-                .minimumScaleFactor(0.7)
-                .lineLimit(1)
+                Text(PhoneFormat.national(state.lineOffer?.phoneNumber ?? ""))
+                    .font(RFont.mono(31, weight: .semibold))
+                    .foregroundStyle(theme.text)
+                    .minimumScaleFactor(0.6)
+                    .lineLimit(1)
 
-            holdLine
+                holdLine
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 28)
+            .padding(.horizontal, 18)
         }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 26)
-        .padding(.horizontal, 18)
-        .background(theme.elev, in: .rect(cornerRadius: 22))
-        .padding(.top, 4)
+    }
+
+    private var placeLine: String {
+        let city = cityLabel ?? String(localized: "Canada")
+        if let areaCode { return "\(city) · \(areaCode)" }
+        return city
     }
 
     /// The hold, or an honest absence of one.
@@ -100,32 +200,56 @@ struct LineCheckoutScreen: View {
     /// `heldUntil` is optional because Telnyx reservations have not been
     /// exercised live — only `reservable: true` from a search response is on
     /// record. With no hold this says **"Available now"** and shows no
-    /// countdown, rather than claiming a reservation we did not place. Same
-    /// rule as `DataRing`'s "no reading": say what is observable, never what
-    /// would be reassuring.
+    /// countdown, rather than claiming a reservation we did not place.
+    ///
+    /// It is a `StatusPill` rather than 12pt `text3`, which is the faintest ink
+    /// on the screen: the one slot designed to carry presence was spending
+    /// itself on the least visible thing available. Same words, actual weight.
     @ViewBuilder
     private var holdLine: some View {
         if let until = state.lineReservation?.heldUntil, until > now {
-            Text("Held for you · \(PhoneFormat.duration(Int(until.timeIntervalSince(now))))")
-                .font(RFont.text(12, weight: .medium))
-                .foregroundStyle(theme.live)
+            StatusPill(
+                text: "Held for you · \(PhoneFormat.duration(Int(until.timeIntervalSince(now))))")
                 .contentTransition(.numericText())
         } else {
-            Text("Available now")
-                .font(RFont.text(12))
-                .foregroundStyle(theme.text3)
+            StatusPill(text: "Available now")
         }
     }
 
     // MARK: - What you get
 
+    /// ⚠️ **This must never advertise calling.**
+    ///
+    /// It previously read "100 minutes of calls every month" and the store
+    /// screen said texts and calls "happen right here". There is no dialer:
+    /// `flow = .dialer` is assigned nowhere in the app, and `ContentView`
+    /// renders "Calling from your number is coming very soon" for that case.
+    /// Selling a capability the buyer cannot use after paying is a refund
+    /// driver and an App Review 2.3.1 exposure. Calling appears here only as an
+    /// explicitly unavailable line, and moves into the paid list on the day the
+    /// dialer ships — not before.
     private var included: some View {
         VStack(alignment: .leading, spacing: 0) {
-            SectionHeader(label: "What you get")
-            Bullet(text: "200 texts every month")
-            Bullet(text: "100 minutes of calls every month")
-            Bullet(text: "Keep this number for as long as you stay subscribed")
-            Bullet(text: "Texts and calls happen inside vSMS — your own number stays private")
+            MicroLabel("What you get")
+                .padding(.bottom, 10)
+
+            Card(elevation: .raised) {
+                VStack(spacing: 0) {
+                    BenefitRow(icon: RIcon.message, figure: "200",
+                               label: "texts a month, in and out")
+                    RowRule()
+                    BenefitRow(icon: "infinity",
+                               label: "Keep this number for as long as you subscribe")
+                    RowRule()
+                    BenefitRow(icon: "lock.fill",
+                               label: "Your own number never leaves your phone")
+                    RowRule()
+                    BenefitRow(icon: RIcon.phone,
+                               label: "Calling", hint: "Coming soon",
+                               tint: theme.text3)
+                }
+                .padding(.vertical, 4)
+            }
         }
     }
 
@@ -134,67 +258,88 @@ struct LineCheckoutScreen: View {
     // App Store 3.1.2(a): price, period, renewal terms and the two legal links
     // must all appear in-app before the purchase.
 
+    /// Stated **once**, from StoreKit, in a bordered container.
+    ///
+    /// The old block printed the price at `display(30)` and then again inside
+    /// the CTA label 200pt below, and it wrapped BOTH the figure and its "per
+    /// month" label in `if let price` — so before StoreKit answered, the whole
+    /// row collapsed and the renewal sentence slid up under the bullets and
+    /// then jumped back down. A visible layout jump on the paywall's first
+    /// paint. The height is now reserved, so nothing reflows.
     private var priceBlock: some View {
-        VStack(spacing: 8) {
-            HStack(alignment: .firstTextBaseline, spacing: 5) {
-                // StoreKit's own localized price, never a literal. This block
-                // IS the 3.1.2(a) disclosure, so a hardcoded "$9.99" beside a
-                // button reading "9,99 €/mo" discloses a price the user will
-                // not be billed — the same drift that put $4.99 against €5.99
-                // on the credit ladder's top product. Hidden entirely when the
-                // real price is unknown, rather than guessed.
-                if let price = subs.displayPrice {
-                    Text(price)
-                        .font(RFont.display(30, weight: .bold))
-                        .tracking(-0.8)
-                        .foregroundStyle(theme.text)
-                    Text("per month")
-                        .font(RFont.text(15))
-                        .foregroundStyle(theme.text2)
+        Card(radius: RRadius.md, elevation: .flat,
+             fill: theme.inkSoft.opacity(0.5), border: theme.ink.opacity(0.28)) {
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    if let price = subs.displayPrice {
+                        Text(price)
+                            .displayType(30)
+                            .foregroundStyle(theme.text)
+                        Text("per month")
+                            .font(RFont.text(15))
+                            .foregroundStyle(theme.text2)
+                    } else {
+                        Text(verbatim: "—")
+                            .displayType(30)
+                            .foregroundStyle(theme.text3)
+                            .redacted(reason: subs.isLoadingProduct ? .placeholder : [])
+                    }
+                    Spacer(minLength: 0)
                 }
+                .frame(height: 36)
+
+                Text("Renews every month until you cancel. Cancel any time in your Apple ID settings.")
+                    .font(RFont.text(12))
+                    .foregroundStyle(theme.text2)
+                    .lineSpacing(2)
+                    .fixedSize(horizontal: false, vertical: true)
             }
-            Text("Renews automatically each month until you cancel. Cancel anytime in your Apple ID settings.")
-                .font(RFont.text(12))
-                .foregroundStyle(theme.text2)
-                .multilineTextAlignment(.center)
-                .fixedSize(horizontal: false, vertical: true)
-            HStack(spacing: 14) {
-                Link("Terms", destination: LegalLinks.terms)
-                Text("·").foregroundStyle(theme.text3)
-                Link("Privacy", destination: LegalLinks.privacy)
-            }
-            .font(RFont.text(12))
-            .tint(theme.text2)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 14)
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .frame(maxWidth: .infinity)
     }
 
     /// Disclosed here as well as in the store and the manage screen —
     /// unmissably, never behind a Terms link. A reviewer will look for it, and
     /// so would a regulator.
+    ///
+    /// It gets a real container so it cannot be confused with the roadmap note
+    /// on the store screen, which was rendered with identical weight and
+    /// spacing: a safety warning and a "coming soon" should not look alike.
     private var emergency: some View {
-        HStack(alignment: .top, spacing: 9) {
-            Image(systemName: "exclamationmark.triangle")
-                .font(.system(size: 12, weight: .semibold))
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .font(.system(size: 13, weight: .semibold))
                 .foregroundStyle(theme.warn)
-                .padding(.top, 2)
+                .padding(.top, 1)
             Text("This number can't call 911 or any emergency service. Always use your phone's own number for emergencies.")
-                .font(RFont.text(12))
-                .foregroundStyle(theme.text2)
+                .font(RFont.text(12, weight: .medium))
+                .foregroundStyle(theme.text)
                 .lineSpacing(2)
                 .fixedSize(horizontal: false, vertical: true)
             Spacer(minLength: 0)
         }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
+        .background(theme.warnSoft, in: .rect(cornerRadius: RRadius.sm))
     }
 
-    /// Disabled WITH its reason showing, never failing on tap.
-    ///
-    /// When the App Store has not returned the product — it is unreleased,
-    /// StoreKit is unreachable, or the storefront does not carry it — the
-    /// purchase cannot succeed, and a live-looking button that throws an error
-    /// is the worst version of that. Same rule as `ThreadScreen`'s composer.
+    private var legal: some View {
+        HStack(spacing: 12) {
+            Link("Terms", destination: LegalLinks.terms)
+            Text(verbatim: "·").foregroundStyle(theme.text3)
+            Link("Privacy", destination: LegalLinks.privacy)
+            Spacer(minLength: 0)
+        }
+        .font(RFont.text(12))
+        .tint(theme.text2)
+    }
+
+    // MARK: - Action
+
     private var cta: some View {
-        VStack(spacing: 8) {
+        VStack(spacing: 10) {
             if unavailable {
                 Text("The App Store isn't offering this subscription right now. Please try again in a moment.")
                     .font(RFont.text(12))
@@ -202,16 +347,18 @@ struct LineCheckoutScreen: View {
                     .multilineTextAlignment(.center)
                     .fixedSize(horizontal: false, vertical: true)
             }
+
             PrimaryButton(
                 label: ctaLabel,
+                sub: busy ? nil : subs.displayPrice.map { "\($0)/mo" },
                 disabled: busy || state.lineOffer == nil || subs.product == nil,
                 action: buy
             )
+
+            Text("Cancel any time in Settings")
+                .font(RFont.text(12))
+                .foregroundStyle(theme.text3)
         }
-        .padding(.horizontal, 20)
-        .padding(.top, 10)
-        .padding(.bottom, 28)
-        .background(theme.bg)
     }
 
     private var busy: Bool { isReserving || subs.isPurchasing }
@@ -224,17 +371,15 @@ struct LineCheckoutScreen: View {
     /// Names the step in progress rather than showing a spinner on a button
     /// whose label still says "Get this number". Reserving involves a live
     /// Telnyx round trip, so the pause is real and unexplained silence there
-    /// reads as a dead tap.
+    /// reads as a dead tap. The price rides in the `sub` slot, which
+    /// `PrimaryButton` has for exactly this and which the old label crammed
+    /// into its own text.
     private var ctaLabel: String {
         if isReserving { return String(localized: "Checking availability…") }
         if subs.isPurchasing { return String(localized: "Confirming…") }
         if subs.isLoadingProduct { return String(localized: "Loading…") }
         if unavailable { return String(localized: "Temporarily unavailable") }
-        // StoreKit's own localized price, never a hardcoded "$9.99" — the
-        // credit ladder drifted to $4.99-vs-€5.99 on its top product precisely
-        // because prices were assumed instead of read.
-        if let p = subs.displayPrice { return String(localized: "Get this number · \(p)/mo") }
-        return String(localized: "Get this number")
+        return String(localized: "Subscribe")
     }
 
     /// Reserve → pay → provision, in that order.
@@ -254,6 +399,7 @@ struct LineCheckoutScreen: View {
                     .reserve(city: city, phoneNumber: offer.phoneNumber)
             } catch let err as APIError {
                 isReserving = false
+                RHaptic.warn()
                 state.lastError = err.userMessage
                 // The number went between the picker and the tap. Re-search so
                 // the screen never offers digits we can no longer deliver, and
@@ -264,6 +410,7 @@ struct LineCheckoutScreen: View {
                 return
             } catch {
                 isReserving = false
+                RHaptic.warn()
                 state.lastError = String(localized: "Couldn't reach the server. Check your connection and try again.")
                 return
             }
@@ -276,6 +423,7 @@ struct LineCheckoutScreen: View {
                 monthlyCents: quote.monthlyCents)
 
             if ok {
+                RHaptic.success()
                 state.flow = .lineProvisioning
             } else if let msg = subs.lastError {
                 state.lastError = msg
