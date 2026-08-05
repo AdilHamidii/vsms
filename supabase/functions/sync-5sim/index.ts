@@ -22,9 +22,21 @@ import { handleCors, json } from "../_shared/cors.ts";
 import { admin } from "../_shared/supabaseAdmin.ts";
 import { getPricesForCountry, type FivePool } from "../_shared/fivesim.ts";
 
-// LOCKSTEP with create-order's MIN_MARGIN_BY_PROVIDER["5sim"] = 10.0.
-// 0.30 / 10 = 0.03. Owner decision 2026-08-03 (10x markup).
-const CREDIT_DIVISOR = 0.03;
+// LOCKSTEP with create-order's MIN_MARGIN_BY_PROVIDER["5sim"] = 10.0 and its
+// NET_USD_PER_CREDIT = 0.40, because 0.40 / 10 = 0.04 exactly.
+//
+// 0.03 → 0.04, owner decision 2026-08-05, to make the 10x REAL. The old pair
+// (0.30 / 10) was self-consistent arithmetic against a revenue figure no pack
+// sells at: measured over all 37 Production purchases a credit nets $0.397, so
+// 0.03 was charging 13.2x, not 10x. Nothing about the intent changed — only the
+// input that was wrong.
+//
+// Effect on the catalog, simulated over all 9,306 priced active routes before
+// applying: median route 7 → 6 credits, share reachable with the $2.99 entry
+// pack 36.7% → 49.9%. tinder/co (18c wholesale) goes 6 → 5 credits, which is
+// what moves it inside the smallest pack a new user can buy — the case that
+// prompted this.
+const CREDIT_DIVISOR = 0.04;
 const MIN_CREDITS = 1;
 const MAX_CREDITS = 999;
 
