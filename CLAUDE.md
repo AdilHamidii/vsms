@@ -1646,13 +1646,42 @@ P-384 incident demands: that failure passed locally and threw
 10DLC brand+campaign (weeks, can fail outright — fanning many end users through
 one Standard 10DLC campaign is what carriers police; note the purchased local
 number has `messaging_campaign_id: null` and cannot send US A2P until
-registered); the ASC subscription group with **Billing Grace Period ON**; and an
-App Store Server API key (an **In-App Purchase** key from Users and Access →
-Integrations — *not* the existing `AuthKey_R5ZVLBTUR6.p8`, which is an App Store
-Connect API key and will not work for subscription lookups).
+registered). ⚠️ **US only** — Canada needs none of it, which is why the launch
+is Canadian; see "CANADA NEEDS NO 10DLC".
 
-⚠️ **Float:** each line costs $1 upfront + $1/month, so 50 subscribers is $50/mo
-of Telnyx float. The $8.13 balance is a test balance, not a launch balance.
+✅ **The App Store Server API key EXISTS and is WIRED (2026-08-05).**
+`SubscriptionKey_BTPZRH3GW3.p8` (Users and Access → Integrations → **In-App
+Purchase**), stored at `~/.appstoreconnect/private_keys/` and mirrored into four
+Supabase secrets: `APPSTORE_KEY_ID` / `APPSTORE_ISSUER_ID` /
+`APPSTORE_BUNDLE_ID` / `APPSTORE_KEY_P8`.
+
+Three facts settled by probing, none of them obvious from Apple's docs:
+
+- **The issuer id is the SAME as the ASC API one** (`4644ed13-…`). The In-App
+  Purchase keys page shows an issuer id and it is easy to assume it differs; it
+  does not. Nothing extra to obtain.
+- **The JWT needs `bid` (the bundle id)**, which the App Store Connect API JWT
+  does not. Omitting it returns **401**, indistinguishable from a wrong key.
+- **`AuthKey_R5ZVLBTUR6.p8` genuinely will not work here** — it is an App Store
+  Connect key. Keep the two straight; they live in the same directory.
+
+Verified against `POST /inApps/v1/notifications/test` on **both**
+`api.storekit-sandbox.itunes.apple.com` and `api.storekit.itunes.apple.com`:
+both returned **404 `4040007` "No App Store Server Notification URL found"**,
+which is a *business* error and therefore proof the auth passed. A 401 is the
+auth failure; do not read a 404 here as a broken key.
+
+That 404 also states the remaining blocker exactly: **`subscriptionStatusUrl`
+and its sandbox twin are still `null`** and can only be set once
+`apple-notifications` is deployed, because Apple validates reachability.
+
+⚠️ **Float — this is the ONE hard blocker left, and it is money, not code**
+(owner deferred it 2026-08-05: *"ill do that when i got funds"*). Each line
+costs $1 upfront + $1/month, Apple pays ~45 days in arrears, so the float is
+carried ahead of any revenue: 50 subscribers is $50/mo out before a cent comes
+back. Last reading **$2.33** — that is a test balance, not a launch balance.
+Everything downstream of provisioning can be BUILT and tested against Sandbox
+without it; only actually buying a DID needs it.
 
 **Three traps the plan calls out that are easy to lose:** the reviewer will use
 a **Sandbox** subscription, and `iap-verify`'s `environment === "Production"`
