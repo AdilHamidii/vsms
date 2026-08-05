@@ -3095,10 +3095,12 @@ are as load-bearing as the findings:
   Home greeting, every order-history status pill and the metric labels ship
   English to all six locales. Matters now that 13 storefront localizations are
   live. Fix the components, not the call sites.
-- ⚠️ **The e-mail waiting screen still hangs forever.** `refreshEmailOrder`
-  transitions on `hasCode` only, no branch for expired/canceled/failed, and the
-  poll loop is gated on a `flow` nothing else clears. This file previously said
-  it ships in 1.6/1.7 — **verified against current code, it does not**.
+- ✅ **RESOLVED — the e-mail waiting screen no longer hangs.**
+  `refreshEmailOrder` gained a terminal branch (`fresh.status.isTerminal, !fresh.hasCode`)
+  in `0552d53` on 2026-08-02, shipped in **1.8 build 28**, live since 08-03. It
+  states whether the credits came back and clears `flow`. *This entry claimed it
+  was still open for three days after it shipped — verify against
+  `AppState.refreshEmailOrder` before re-opening it.*
 - ⚠️ **`intent` leaks out of e-mail mode — the THIRD instance of the
   `PurchaseIntent` bug class.** Turning e-mail mode OFF is a no-op
   (`ContentView.swift:145-148` guards `else { return }`), clearing neither
@@ -3341,9 +3343,18 @@ refused.
   only. The email money path is proven at SQL level and one activation was
   bought via the API; the support round trip (send → Accept → reply → push) has
   **never run**, because it needs `TELEGRAM_BOT_TOKEN` / `TELEGRAM_WEBHOOK_SECRET`.
-- ⚠️ **Email is absent from `ops_snapshot` / `revenue_snapshot` /
-  `_shared/opsFormat.ts`.** Per the third-product-line checklist it must be added
-  to all three or it is invisible in the digest, `/stats` and `/profit`.
+- ⚠️ **Email is in `ops_snapshot` + `_shared/opsFormat.ts` as of 2026-08-05
+  (`20260805110000`) but STILL ABSENT from `revenue_snapshot`**, so it is
+  visible in the digest / `/stats` / `/today` / `/week` and invisible in
+  `/revenue` and `/profit`. Low urgency — the line has earned **1 credit**
+  lifetime — but the moment a paid tier matters, `/profit` is understating.
+
+  The digest block mirrors `orders` exactly, including `unprovisioned`
+  (`status='failed'`, no mailbox ever issued) being reported OUTSIDE the
+  delivery rate — the same rule as `numberless` for SMS. Do not fold them
+  together: on 2026-08-05, 7 of 29 lifetime orders were `unprovisioned`, five
+  of them one user retrying TikTok in a 7-minute burst, and merging them turns
+  "the free tier ran dry" into "email delivers 24%".
 - ⚠️ **The HeroSMS API key passed through a chat transcript and should be
   rotated.** It lives only as the `HEROSMS_API_KEY` Supabase secret and appears in
   no commit (verified), but rotate it.
@@ -3475,10 +3486,46 @@ and India's default is English (U.K.), not Hindi.
 analytics rows), so keyword attribution is before/after inference only. Change
 one layer at a time and allow 7–14 days.
 
-**Ratings cap position; keywords only buy eligibility.** The US storefront shows
-**0 ratings** (3 reviews exist, FR/POL). That is why `shouldRequestReview` now
-fires on the **first** delivered code — only 7 users in the app's history ever
-reached two, and those 7 produced all 3 reviews.
+**Ratings cap position; keywords only buy eligibility.** That is why
+`shouldRequestReview` fires on the **first** delivered code.
+
+**Live review state, read from ASC 2026-08-05 — there are FIVE, not three, and
+the US still has zero:**
+
+| date | rating | store | |
+|---|---|---|---|
+| 08-02 | 5★ | ESP | "Best app ever !!!! Really useful" |
+| 08-02 | **1★** | DEU | "Scam" — turkey number unavailable, **"after one day price increased"**, UK not working |
+| 07-10 | 5★ | FRA | |
+| 07-09 | 5★ | POL | |
+| 06-22 | 5★ | POL | |
+
+Two landed on 08-02, two days after the threshold dropped to one code (and
+after 1.6/1.7 shipped, which re-arms the per-version gate). **Apple gives no
+attribution**, so that is timing, not proof — and note one of the two was the
+1★. The DEU complaint about the price rising overnight is the **cost ratchet**
+working as designed (rises apply immediately, falls are smoothed); it is
+correct and it reads as bait-and-switch.
+
+**Why there are no US reviews: the eligible pool is ~5.** Only 26 users have
+ever received a code; by storefront (buyers only — the other 16 coded users
+never bought, so their storefront is unknowable) that is USA 5, FRA 2, ESP 2,
+SWE 1. At the ~10% prompt→review rate the rest of the data implies, five
+eligible users predicts 0.5 reviews. **The prompt is not the constraint; the
+number of people who ever receive a code is.**
+
+⚠️ **A second, unquantified leak: the review prompt lives on
+`OtpScreen.onAppear`, but the delivery push already contains the code**
+(`Your code is ${result.code}` in `poll-active-orders`). A user who reads it
+off the lock screen and types it straight into the target app never opens that
+screen and is never prompted — and that is the *designed* flow, since the ✕ was
+made non-destructive precisely because users must leave to paste the number.
+How often is **not measurable server-side**: whether `OtpScreen` appeared is
+device-side UserDefaults, and `push_devices.updated_at` cannot separate "warm
+foreground" from "never came back". The fix, if wanted, is to fire the prompt
+on app-foreground after a recent delivered code rather than tying it to one
+screen — a client release. Do **not** strip the code out of the push to force
+users in; that trades real UX for a review.
 
 ⚠️ **Never let email keywords go live ahead of the build that ships email.**
 
