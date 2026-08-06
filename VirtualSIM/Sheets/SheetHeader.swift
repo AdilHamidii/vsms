@@ -23,8 +23,9 @@ struct SheetHeader: View {
                     .foregroundStyle(theme.text2)
                     .frame(width: 32, height: 32)
                     .background(theme.chipBg, in: .circle)
+                    .contentShape(.circle)
             }
-            .buttonStyle(.plain)
+            .pressable(0.9)
         }
         .padding(.horizontal, 16)
         .padding(.top, 10)

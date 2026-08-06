@@ -103,8 +103,13 @@ struct GhostButton: View {
             .frame(maxWidth: fillsWidth ? .infinity : nil)
             .frame(height: 48)
             .padding(.horizontal, 16)
-            .background(theme.chipBg, in: .rect(cornerRadius: 14))
+            .background(theme.chipBg, in: .capsule)
+            .contentShape(.capsule)
         }
-        .buttonStyle(.plain)
+        // Was `.plain`, i.e. no response to touch at all — while PrimaryButton
+        // right above it scaled. Half the tappable surfaces in the app
+        // acknowledging a tap and half not reads as parts of the interface
+        // being broken, rather than as a deliberate style.
+        .pressable(0.96)
     }
 }
