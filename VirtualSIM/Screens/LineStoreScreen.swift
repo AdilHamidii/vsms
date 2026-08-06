@@ -108,7 +108,15 @@ struct LineStoreScreen: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
                     header(kicker: "Second number", title: "Your own number")
-                    pitch.padding(.top, 16).riseIn(appeared, index: 0)
+
+                    // Two spacers, not one. With a single spacer under the
+                    // card the whole pitch clung to the top and left a third
+                    // of the screen empty above the button; equal-priority
+                    // spacers split the slack so the card floats between the
+                    // title and the CTA instead.
+                    Spacer(minLength: 16)
+
+                    pitch.riseIn(appeared, index: 0)
                     usSoon.padding(.top, 16).riseIn(appeared, index: 1)
 
                     Spacer(minLength: 24)
