@@ -10,6 +10,9 @@ final class PushManager: NSObject {
     /// When a push arrives carrying an order_id, we stash it so the app can
     /// route to the OTP screen once the catalog/orders have loaded.
     var pendingOrderId: String?
+    /// A tapped inbound-text push. Routed on `kind`, never on `orderId` — see
+    /// the note in `userNotificationCenter(_:didReceive:)`.
+    var pendingLineThreadId: String?
 
     private var apiClient: APIClient?
     private var session: Session?
@@ -121,6 +124,24 @@ extension PushManager: UNUserNotificationCenterDelegate {
         didReceive response: UNNotificationResponse
     ) async {
         let info = response.notification.request.content.userInfo
+
+        // ⚠️ `kind` is checked FIRST. Routing used to be `orderId`-only, so an
+        // inbound text carrying an orderId-shaped key would deep-link into the
+        // SMS refund screen — the same trap the late-code rescue push had to
+        // avoid by carrying no orderId at all. A push with a `kind` we do not
+        // recognise falls through to nothing rather than guessing a screen.
+        if let kind = info["kind"] as? String {
+            switch kind {
+            case "line_message":
+                if let threadId = info["threadId"] as? String {
+                    await MainActor.run { self.pendingLineThreadId = threadId }
+                }
+                return
+            default:
+                break
+            }
+        }
+
         if let orderId = info["orderId"] as? String {
             await MainActor.run { self.pendingOrderId = orderId }
         }

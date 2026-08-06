@@ -120,6 +120,24 @@ export interface AppleTransactionPayload {
   inAppOwnershipType?: string;
   signedDate: number;
   environment: "Sandbox" | "Xcode" | "Production";
+
+  // ── Auto-renewable subscriptions only ──────────────────────────────────
+  // All optional: the five credit packs are consumables and carry none of
+  // these, so requiring them would break the path that funds the app today.
+  /** ms since epoch. The line's `current_period_end` comes from HERE and
+   *  nowhere else — never `purchaseDate + 30 days`, which drifts against
+   *  Apple's own clock and is flatly wrong in Sandbox, where a month is five
+   *  minutes. */
+  expiresDate?: number;
+  /** MILLIUNITS — 9990 = 9.99. Same convention as `jws_payload()` in
+   *  revenue_snapshot; a hardcoded USD ladder mis-states every non-USD sale. */
+  price?: number;
+  currency?: string;
+  storefront?: string;
+  /** Present only on a refunded/revoked transaction. Its presence is the
+   *  signal, not its value. */
+  revocationDate?: number;
+  revocationReason?: number;
 }
 
 /** Thrown for anything that fails the trust checks. Carries a short stable
@@ -169,7 +187,28 @@ async function sha256Thumbprint(cert: x509.X509Certificate): Promise<string> {
     .map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
-export async function verifyTransactionJWS(jws: string): Promise<AppleTransactionPayload> {
+/** Verify ANY Apple-signed JWS: the x5c chain, the pinned root, the leaf's
+ *  receipt-signing purpose, and the JWS signature itself.
+ *
+ *  Apple signs several different things with this same chain — StoreKit
+ *  transactions, App Store Server Notifications V2 (`signedPayload`), and the
+ *  `signedTransactionInfo` / `signedRenewalInfo` nested inside those. They
+ *  differ only in PAYLOAD SHAPE, so the trust half is extracted here and the
+ *  shape half stays with each caller.
+ *
+ *  Writing a second verifier for notifications instead would mean maintaining
+ *  two copies of the root pin, the P-384 workaround and the OID check — and the
+ *  copy that drifts is the one that stops rejecting forgeries.
+ *
+ *  Returns the leaf alongside the payload so callers can run
+ *  `assertSignedWithinValidity` at the right point in their OWN check order.
+ *  This function deliberately does NOT do that check itself: moving it here
+ *  would reorder the error codes `verifyTransactionJWS` reports, and those
+ *  codes are what distinguish "someone is attacking us" from "we just broke
+ *  every legitimate purchase". */
+export async function verifyAppleJWS<T>(
+  jws: string,
+): Promise<{ payload: T; leaf: x509.X509Certificate }> {
   let header: ReturnType<typeof decodeProtectedHeader>;
   try {
     header = decodeProtectedHeader(jws);
@@ -235,24 +274,113 @@ export async function verifyTransactionJWS(jws: string): Promise<AppleTransactio
     throw new IapVerificationError("bad_jws_signature", String(e));
   }
 
-  const t = payload as AppleTransactionPayload;
+  return { payload: payload as T, leaf };
+}
+
+/** Validity is checked at SIGNING time, not now. Checking against now() would
+ *  reject genuine old receipts every time Apple rotates its leaf. */
+export function assertSignedWithinValidity(
+  leaf: x509.X509Certificate,
+  signedDate: number | undefined,
+): void {
+  const signed = new Date(signedDate as number);
+  if (!Number.isFinite(signed.getTime())) return;
+  if (signed < leaf.notBefore || signed > leaf.notAfter) {
+    throw new IapVerificationError("cert_not_valid_at_signing");
+  }
+}
+
+export async function verifyTransactionJWS(jws: string): Promise<AppleTransactionPayload> {
+  const { payload: t, leaf } = await verifyAppleJWS<AppleTransactionPayload>(jws);
+
   if (!t.transactionId || !t.bundleId || !t.productId) {
     throw new IapVerificationError("malformed_payload");
   }
   if (!ALLOWED_BUNDLE_IDS.includes(t.bundleId)) {
     throw new IapVerificationError("bundle_mismatch", t.bundleId);
   }
-
-  // Validity is checked at SIGNING time, not now. Checking against now() would
-  // reject genuine old receipts every time Apple rotates its leaf.
-  const signed = new Date(t.signedDate);
-  if (Number.isFinite(signed.getTime())) {
-    if (signed < leaf.notBefore || signed > leaf.notAfter) {
-      throw new IapVerificationError("cert_not_valid_at_signing");
-    }
-  }
+  assertSignedWithinValidity(leaf, t.signedDate);
 
   return t;
+}
+
+// ───────────────────────────────────────────────────────────────────────────
+// App Store Server Notifications V2
+//
+// Apple POSTs `{signedPayload}` to our endpoint. That JWS carries the SAME x5c
+// chain as a transaction, so it goes through the same verifier — but its
+// payload is a notification envelope, and the interesting parts
+// (`signedTransactionInfo`, `signedRenewalInfo`) are themselves JWSs that must
+// be verified separately. Verifying only the envelope and then trusting its
+// nested strings would re-open the exact hole the chain check exists to close.
+
+export interface AppleNotificationData {
+  bundleId?: string;
+  bundleVersion?: string;
+  environment?: "Sandbox" | "Production";
+  /** A JWS — verify with verifyTransactionJWS, never decode and trust. */
+  signedTransactionInfo?: string;
+  /** A JWS — verify with verifyRenewalInfoJWS. */
+  signedRenewalInfo?: string;
+  status?: number;
+}
+
+export interface AppleNotificationPayload {
+  notificationType: string;
+  subtype?: string;
+  /** Apple's idempotency key. Persist BEFORE acting: notifications retry at
+   *  1h/12h/24h/48h/72h and reconcile-subscriptions replays the same state
+   *  change from the other direction. */
+  notificationUUID: string;
+  version: string;
+  signedDate: number;
+  data?: AppleNotificationData;
+  summary?: Record<string, unknown>;
+  externalPurchaseToken?: Record<string, unknown>;
+}
+
+export interface AppleRenewalInfoPayload {
+  originalTransactionId: string;
+  autoRenewProductId?: string;
+  productId?: string;
+  autoRenewStatus?: number;          // 1 = on, 0 = off
+  expirationIntent?: number;
+  isInBillingRetryPeriod?: boolean;
+  gracePeriodExpiresDate?: number;
+  offerType?: number;
+  environment?: "Sandbox" | "Production";
+  signedDate: number;
+  renewalDate?: number;
+}
+
+export async function verifyNotificationJWS(jws: string): Promise<AppleNotificationPayload> {
+  const { payload: n, leaf } = await verifyAppleJWS<AppleNotificationPayload>(jws);
+
+  if (!n.notificationType || !n.notificationUUID) {
+    throw new IapVerificationError("malformed_payload");
+  }
+  // `bundleId` lives under `data` here, not at the top level as it does on a
+  // transaction. It is absent on some notification types (e.g. the CONSUMPTION
+  // family), so this is checked only when present rather than required —
+  // requiring it would drop legitimate notifications on the floor.
+  const bundleId = n.data?.bundleId;
+  if (bundleId && !ALLOWED_BUNDLE_IDS.includes(bundleId)) {
+    throw new IapVerificationError("bundle_mismatch", bundleId);
+  }
+  assertSignedWithinValidity(leaf, n.signedDate);
+
+  return n;
+}
+
+export async function verifyRenewalInfoJWS(jws: string): Promise<AppleRenewalInfoPayload> {
+  const { payload: r, leaf } = await verifyAppleJWS<AppleRenewalInfoPayload>(jws);
+
+  if (!r.originalTransactionId) {
+    throw new IapVerificationError("malformed_payload");
+  }
+  assertSignedWithinValidity(leaf, r.signedDate);
+
+  return r;
 }
 
 const PRODUCT_TO_CREDITS: Record<string, number> = {
@@ -265,4 +393,26 @@ const PRODUCT_TO_CREDITS: Record<string, number> = {
 
 export function creditsForProduct(productId: string): number | null {
   return PRODUCT_TO_CREDITS[productId] ?? null;
+}
+
+/** The rented-line subscription. ⚠️ DELIBERATELY NOT IN `PRODUCT_TO_CREDITS`.
+ *
+ *  That map feeds `credit_iap_purchase`, which grants wallet credits. A
+ *  subscription grants an ENTITLEMENT — a phone number — and must never be
+ *  reachable from the credit path: one stray entry there would pay out credits
+ *  on every monthly renewal, forever, with the tombstone happily recording each
+ *  one as legitimate.
+ *
+ *  Auto-renewables allow one active subscription per group with no quantity, so
+ *  this single product IS the line. More lines later means TIERS inside this
+ *  same group, never a second product family here. */
+export const LINE_SUBSCRIPTION_PRODUCT_ID =
+  "com.anthersystems.VirtualSIM.line.monthly";
+
+/** `iap-verify` must call this BEFORE `creditsForProduct`. Its unmapped-product
+ *  branch returns HTTP 400 `unknown_product` and fires a Telegram alert — so
+ *  without this guard, every single renewal pages the owner and 400s a
+ *  perfectly legitimate transaction. */
+export function isSubscriptionProduct(productId: string): boolean {
+  return productId === LINE_SUBSCRIPTION_PRODUCT_ID;
 }

@@ -19,10 +19,24 @@ struct EmailOrderRow: View {
         return state.services.first { $0.id == id }
     }
 
+    /// A Button ONLY when the tap leads somewhere.
+    ///
+    /// `OrdersScreen` used to pass an `onTap` for every row, so a terminal
+    /// codeless activation was wrapped in a Button whose handler fell through
+    /// every branch and returned. It looked tappable, pressed like a button,
+    /// and did nothing — no navigation, no feedback, no disabled styling. The
+    /// caller now passes nil for those and this renders plain content, which
+    /// is also what the chevron below keys on.
     var body: some View {
         Group {
             if let onTap {
-                Button(action: onTap) { content }.buttonStyle(.plain)
+                Button {
+                    RHaptic.select()
+                    onTap()
+                } label: {
+                    content
+                }
+                .pressable()
             } else {
                 content
             }
@@ -74,6 +88,12 @@ struct EmailOrderRow: View {
                             .font(RFont.text(10, weight: .medium))
                             .foregroundStyle(theme.text3)
                     }
+                }
+
+                if onTap != nil {
+                    Image(systemName: RIcon.chev)
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(theme.text3)
                 }
             }
             .padding(.horizontal, 14)

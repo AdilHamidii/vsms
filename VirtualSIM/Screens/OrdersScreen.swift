@@ -11,6 +11,15 @@ struct OrdersScreen: View {
 
     @State private var tab: OrdersTab = .all
 
+    /// Whether this screen has completed a fetch of its own.
+    ///
+    /// Without it an empty list during the very first load is byte-identical to
+    /// having no orders at all — on the app's second-most-visited tab, the two
+    /// answers are "wait a second" and "you have never bought anything", and
+    /// showing the second while the first is true is the more damaging way to
+    /// be wrong.
+    @State private var loaded = false
+
     /// History holds two products now, so the list is a merged, date-sorted
     /// sequence rather than `[Order]`. Email activations were previously absent
     /// from history entirely — `loadEmailOrders` had no caller and this screen
@@ -87,7 +96,9 @@ struct OrdersScreen: View {
                 .padding(.top, 14)
 
                 Group {
-                    if list.isEmpty {
+                    if isLoading {
+                        skeleton
+                    } else if list.isEmpty {
                         empty
                     } else {
                         Card {
@@ -99,15 +110,24 @@ struct OrdersScreen: View {
                                                  isLast: idx == list.count - 1,
                                                  onTap: { tap(order) })
                                     case .email(let mail):
+                                        // `onTap` is nil for a row that leads
+                                        // nowhere, so EmailOrderRow renders
+                                        // plain content instead of a Button —
+                                        // a terminal codeless row used to be a
+                                        // Button whose action did nothing at
+                                        // all: it pressed, and then nothing
+                                        // happened, which reads as a broken
+                                        // app rather than as a dead end.
                                         EmailOrderRow(order: mail,
                                                       isLast: idx == list.count - 1,
-                                                      onTap: { tapEmail(mail) })
+                                                      onTap: emailTap(mail))
                                     }
                                 }
                             }
                         }
                     }
                 }
+                .animation(RMotion.content, value: isLoading)
                 .padding(.horizontal, 16)
                 .padding(.top, 14)
             }
@@ -115,55 +135,149 @@ struct OrdersScreen: View {
             .padding(.bottom, 140)
         }
         .scrollIndicators(.hidden)
-        .refreshable {
-            await state.loadOrders(using: OrdersAPI(client: api))
-            // This screen renders BOTH products' history — pull-to-refresh
-            // skipping email meant a waiting email row never updated here.
-            await state.loadEmailOrders(using: EmailAPI(client: api))
-            await state.refreshWallet(using: WalletAPI(client: api))
+        .task {
+            // Only fetches when there is genuinely nothing to show. Cold start
+            // already loads both lists, so the common case is that this screen
+            // opens straight onto real rows and never renders a skeleton.
+            if allItems.isEmpty { await refresh() }
+            loaded = true
         }
+        .refreshable { await refresh() }
+    }
+
+    private var isLoading: Bool { !loaded && allItems.isEmpty }
+
+    private func refresh() async {
+        await state.loadOrders(using: OrdersAPI(client: api))
+        // This screen renders BOTH products' history — pull-to-refresh
+        // skipping email meant a waiting email row never updated here.
+        await state.loadEmailOrders(using: EmailAPI(client: api))
+        await state.refreshWallet(using: WalletAPI(client: api))
+    }
+
+    /// Placeholder rows with a travelling highlight.
+    ///
+    /// Motion is the entire signal that a placeholder is a placeholder — a
+    /// static grey stack reads as a list of broken rows.
+    private var skeleton: some View {
+        Card {
+            VStack(spacing: 0) {
+                ForEach(0..<4, id: \.self) { i in
+                    HStack(spacing: 12) {
+                        RoundedRectangle(cornerRadius: RRadius.xs, style: .continuous)
+                            .fill(theme.track)
+                            .frame(width: 36, height: 36)
+                        VStack(alignment: .leading, spacing: 6) {
+                            Capsule().fill(theme.track).frame(width: 108, height: 11)
+                            Capsule().fill(theme.track).frame(width: 74, height: 9)
+                        }
+                        Spacer(minLength: 0)
+                        Capsule().fill(theme.track).frame(width: 56, height: 18)
+                    }
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 13)
+
+                    if i < 3 {
+                        Rectangle().fill(theme.sep).frame(height: 0.5)
+                            .padding(.leading, 62)
+                    }
+                }
+            }
+            .shimmer()
+        }
+        .accessibilityLabel(Text("Loading your orders"))
     }
 
     private var header: some View {
         HStack {
             Text("Orders")
-                .font(RFont.display(28, weight: .bold))
-                .tracking(-0.7)
+                .displayType(28)
                 .foregroundStyle(theme.text)
             Spacer()
             CreditPill(value: state.balance, action: openCredits)
         }
     }
 
+    /// Per-tab copy.
+    ///
+    /// One string — "No orders yet." at 14pt grey, centred, no icon, no
+    /// explanation, no way out — served all three filters, so a user with six
+    /// completed orders who tapped **Active** was told they had never ordered
+    /// anything. That is not a thin empty state, it is a false one.
+    @ViewBuilder
     private var empty: some View {
-        VStack(spacing: 6) {
-            Text("No orders yet.")
-                .font(RFont.text(14))
-                .foregroundStyle(theme.text2)
+        switch tab {
+        case .all:
+            EmptyState(
+                icon: RIcon.inbox,
+                title: "No orders yet",
+                message: "Numbers and email addresses you buy show up here — with the code, and the refund if one never arrived.",
+                primary: (label: String(localized: "Get a number"),
+                          action: { state.tab = .home })
+            )
+        case .active:
+            EmptyState(
+                icon: RIcon.clock,
+                title: "Nothing in flight",
+                message: allItems.isEmpty
+                    ? "Orders waiting on a code appear here while they run."
+                    : "None of your orders are waiting on a code right now. Finished ones are under Past.",
+                secondary: allItems.isEmpty ? nil
+                    : jump(to: .past, String(localized: "See past orders"))
+            )
+        case .past:
+            EmptyState(
+                icon: RIcon.check,
+                title: "No finished orders",
+                message: active.isEmpty
+                    ? "Once an order ends — with a code or with a refund — it lands here."
+                    : "Your orders are all still running. They move here as soon as they finish.",
+                secondary: active.isEmpty ? nil
+                    : jump(to: .active, String(localized: "See active orders"))
+            )
         }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 40)
     }
 
-    /// Same shape as `tap`, and the same rule: a code that EXISTS wins over the
-    /// status, so a code delivered onto a closed row is still reachable.
-    private func tapEmail(_ mail: ServerEmailOrder) {
-        // intent/activeEmailOrder are written ONLY on the branches that open a
-        // flow. Writing them unconditionally leaked `.email` intent from a tap
-        // on a dead row — no flow opened, so flow.didSet (the only clearer)
-        // never ran, and the credits sheet then sized for a 1-credit email.
-        if mail.hasCode {
-            state.activeEmailOrder = mail
-            state.intent = .email
-            state.flow = .emailCode
-        } else if mail.status == .waiting {
-            state.activeEmailOrder = mail
-            state.intent = .email
-            state.flow = .emailWaiting
-        }
+    private func jump(to target: OrdersTab, _ label: String)
+        -> (label: String, action: () -> Void) {
+        (label: label, action: {
+            RHaptic.select()
+            withAnimation(RMotion.select) { tab = target }
+        })
+    }
+
+    private func emailTap(_ mail: ServerEmailOrder) -> (() -> Void)? {
+        guard let destination = emailDestination(mail) else { return nil }
+        return { open(mail, destination) }
+    }
+
+    /// Where an email row leads, or **nil when it leads nowhere**.
+    ///
+    /// Returning nil is the whole point: `OrdersScreen` used to hand every
+    /// email row an `onTap`, so `EmailOrderRow` wrapped every one in a Button
+    /// — including terminal codeless rows, whose handler fell through all its
+    /// branches and did nothing. The row looked tappable, pressed like a
+    /// button, and produced no navigation and no feedback.
+    ///
+    /// Same rule as `tap`: a code that EXISTS wins over the status, so a code
+    /// delivered onto a closed row is still reachable.
+    private func emailDestination(_ mail: ServerEmailOrder) -> FlowStage? {
+        if mail.hasCode { return .emailCode }
+        if mail.status == .waiting { return .emailWaiting }
         // Terminal and codeless: nothing to reopen. Deliberately no "buy again"
         // here — the domain may be out of stock and the price is chosen in the
         // picker, so silently starting a purchase would be guessing.
+        return nil
+    }
+
+    private func open(_ mail: ServerEmailOrder, _ destination: FlowStage) {
+        // intent/activeEmailOrder are written ONLY when a flow actually opens.
+        // Writing them unconditionally leaked `.email` intent from a tap on a
+        // dead row — no flow opened, so flow.didSet (the only clearer) never
+        // ran, and the credits sheet then sized for a 1-credit email.
+        state.activeEmailOrder = mail
+        state.intent = .email
+        state.flow = destination
     }
 
     private func tap(_ order: Order) {

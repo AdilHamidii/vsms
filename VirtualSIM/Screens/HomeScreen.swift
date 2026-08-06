@@ -1,9 +1,48 @@
 import SwiftUI
+// `approxMoney` reads `Product.price` / `priceFormatStyle` off IAPStore. The
+// type is never named here, but a missing StoreKit import has already
+// type-checked clean in this repo and then failed the real build — see the
+// gotcha in CLAUDE.md.
+import StoreKit
 
+/// The screen 78% of users die on.
+///
+/// ── What the 2026-08 audit found, and what changed ───────────────────────
+///
+/// **Nothing on it said what the product does.** The top 60pt was a time-of-day
+/// greeting and the words "Get a number." — a command, not a proposition, and
+/// ambiguous besides ("a number" for what?). Both are gone. The eyebrow now
+/// names the outcome and the headline names the specific next action, with the
+/// selected service in it.
+///
+/// **There were THREE stacked decision surfaces and one was a pure
+/// duplicate**: the mode switch, the hero (service + country + price + metrics
+/// + CTA), and then a section literally headed "CHANGE" holding the same
+/// service and the same country as two more tappable cards. That section is
+/// deleted. The hero's service and country are now tappable `ReceiptRow`s — the
+/// component Checkout already uses for exactly this — which removes ~120pt, a
+/// whole decision layer, and the visual discontinuity between the two screens.
+///
+/// **"Start here" / "Last used" / "Change" were unactionable headers.**
+/// "CHANGE" is a verb with no object; "LAST USED" describes the past on the
+/// app's only buy button. All three deleted.
+///
+/// **Two disabled buttons gave instructions.** In e-mail mode the CTA read
+/// "Choose a domain / Tap Domain below" and "Not available for this service /
+/// Pick another service" — a dead control telling you to go tap something else,
+/// while the thing it named was the section this change deleted. Both are now
+/// live buttons that open what they name.
+///
+/// **`freeCreditHint` was dead code.** It required `isFirstRun && balance >=
+/// routeCost`, and the signup grant is 0, so the only first-run users who could
+/// see it were ones who had already paid. Its slot now holds the three-step
+/// explainer, shown to first-run users who are SHORT — which is the state
+/// almost everyone who never orders is actually in.
 struct HomeScreen: View {
     @Environment(\.theme) private var theme
     @Environment(AppState.self) private var state
     @Environment(APIClient.self) private var api
+    @Environment(IAPStore.self) private var iap
 
     var openServices: () -> Void = {}
     var openCountries: () -> Void = {}
@@ -15,12 +54,15 @@ struct HomeScreen: View {
     var onSeeAllOrders: () -> Void = {}
     var onOpenEsim: () -> Void = {}
 
+    @State private var appeared = false
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
                 header
                     .padding(.horizontal, 20)
                     .padding(.top, 6)
+                    .riseIn(appeared, index: 0)
 
                 // First on the screen on purpose: an announcement is the
                 // owner telling users something about the service right now
@@ -50,19 +92,18 @@ struct HomeScreen: View {
                 modeSwitch
                     .padding(.horizontal, 16)
                     .padding(.top, 18)
+                    .riseIn(appeared, index: 1)
 
                 heroSection
                     .padding(.horizontal, 16)
-                    .padding(.top, 22)
-
-                pickersSection
-                    .padding(.horizontal, 16)
-                    .padding(.top, 22)
+                    .padding(.top, 18)
+                    .riseIn(appeared, index: 2)
 
                 if !state.orders.isEmpty {
                     recentSection
                         .padding(.horizontal, 16)
-                        .padding(.top, 22)
+                        .padding(.top, 26)
+                        .riseIn(appeared, index: 3)
                 }
 
                 // eSIM lived only behind the 2nd tab. It is the healthier of
@@ -70,20 +111,28 @@ struct HomeScreen: View {
                 // ~100% delivery, and 9 of its 12 buyers never ordered SMS at
                 // all — so hiding it behind a tab was costing the line its
                 // only discovery path.
-                if !state.esimCountries.isEmpty {
+                //
+                // ⚠️ Gated on `!esimPaused`. The line has been paused since
+                // 2026-07-31 and while it is, this teaser advertised a product
+                // whose own tab answers "eSIMs are unavailable right now" — an
+                // ad for a dead end, on the screen where first-session users
+                // are already deciding whether the app works.
+                if !state.esimCountries.isEmpty, !state.esimPaused {
                     esimTeaser
                         .padding(.horizontal, 16)
-                        .padding(.top, 22)
+                        .padding(.top, 26)
+                        .riseIn(appeared, index: 4)
                 }
-
-                trustFooter
-                    .padding(.horizontal, 24)
-                    .padding(.top, 20)
             }
             .padding(.top, 8)
             .padding(.bottom, 140)
         }
         .scrollIndicators(.hidden)
+        .task { withAnimation(RMotion.content) { appeared = true } }
+        // The segmented control is a shared component with no haptic of its
+        // own; switching product line is the biggest state change on the
+        // screen and should be felt.
+        .onChange(of: state.emailMode) { _, _ in RHaptic.select() }
     }
 
     /// Confirms credits actually landed after a purchase. Without a visible
@@ -114,34 +163,54 @@ struct HomeScreen: View {
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 10)
-        .background(theme.liveSoft, in: .rect(cornerRadius: 14))
+        .background(theme.liveSoft, in: .rect(cornerRadius: RRadius.sm))
     }
 
+    // MARK: - What this app is for
+
+    /// Eyebrow states the OUTCOME; headline states the next action.
+    ///
+    /// The greeting it replaced is the purest example of the problem: it took
+    /// the most valuable 60pt on the app's entry screen, was different on every
+    /// visit, and told the user nothing they did not already know. Median
+    /// signup → first order is ~2 minutes, so this block is very close to the
+    /// entire pitch.
     private var header: some View {
-        HStack(alignment: .top) {
-            VStack(alignment: .leading, spacing: 2) {
-                // LocalizedStringKey: "Good morning/afternoon/evening" have
-                // translations in the catalog that Text(String) never used.
-                Text(LocalizedStringKey(greeting))
-                    .font(RFont.text(13))
-                    .tracking(-0.1)
-                    .foregroundStyle(theme.text2)
-                Text(state.emailMode ? "Get an email." : "Get a number.")
-                    .font(RFont.display(28, weight: .bold))
-                    .tracking(-0.7)
-                    .foregroundStyle(theme.text)
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .center, spacing: 12) {
+                eyebrow
+                Spacer(minLength: 0)
+                CreditPill(value: state.balance, action: openCredits)
             }
-            Spacer()
-            CreditPill(value: state.balance, action: openCredits)
+            headline
         }
     }
 
-    private var greeting: String {
-        let h = Calendar.current.component(.hour, from: Date())
-        switch h {
-        case 5..<12:  return "Good morning"
-        case 12..<18: return "Good afternoon"
-        default:      return "Good evening"
+    // Both of these are written as an if/else over two `Text("literal")` calls
+    // rather than one ternary. A ternary between two string literals resolves
+    // to `String`, which selects `Text.init<S: StringProtocol>` — so the copy
+    // silently stops being localized and never reaches the catalog at all.
+    @ViewBuilder
+    private var eyebrow: some View {
+        if state.emailMode {
+            MicroLabel("Sign up without your real e-mail").lineLimit(2)
+        } else {
+            MicroLabel("Verify any account without your real number").lineLimit(2)
+        }
+    }
+
+    @ViewBuilder
+    private var headline: some View {
+        if state.emailMode {
+            Text("Get an e-mail for \(state.lastService.name)")
+                .displayType(28)
+                .foregroundStyle(theme.text)
+                .fixedSize(horizontal: false, vertical: true)
+        } else {
+            Text("Get a number for \(state.lastService.name)")
+                .displayType(28)
+                .foregroundStyle(theme.text)
+                .fixedSize(horizontal: false, vertical: true)
         }
     }
 
@@ -155,9 +224,320 @@ struct HomeScreen: View {
         state.deliveryRecord(for: state.lastService, country: state.lastCountry)
     }
 
-    /// A user who has never placed an order — show them a "start here" framing
-    /// and, when their free credits cover the default, say so.
+    /// A user who has never placed an order.
     private var isFirstRun: Bool { state.orders.isEmpty }
+
+    /// First run AND cannot afford the route in front of them — including the
+    /// `nil` price case, which is also "you cannot buy this right now".
+    ///
+    /// This is the condition `freeCreditHint` should have had. With the signup
+    /// grant at 0 this is where essentially every new user stands, and 159 of
+    /// 203 signups have never placed a single order while holding idle credits.
+    private var needsExplainer: Bool {
+        guard isFirstRun else { return false }
+        guard let routeCost else { return true }
+        return state.balance < routeCost
+    }
+
+    // MARK: - Money in plain words
+
+    /// What a credit price is worth in the user's own currency.
+    ///
+    /// "cr" is never defined anywhere on this screen, and it is the unit of the
+    /// only price shown. This is arithmetic on OUR OWN retail price — the live
+    /// StoreKit price of the pack most people buy, divided by its credits — so
+    /// it is not a provider figure and not a guess.
+    ///
+    /// Returns nil until StoreKit answers, and renders nothing in that case. A
+    /// hard-coded dollar fallback would be wrong in every non-USD storefront,
+    /// and this app already shipped a USD/EUR ladder that silently disagreed
+    /// with itself for weeks.
+    private func approxMoney(_ credits: Int) -> String? {
+        guard credits > 0,
+              // The reference is the 12-credit pack: it carries MOST POPULAR,
+              // it is the middle of the ladder, and per-credit prices differ by
+              // pack, so quoting the cheapest would understate and the dearest
+              // overstate. "about" carries the rest.
+              let pack = CreditPack.all.first(where: { $0.credits == 12 })
+                  ?? CreditPack.all.first,
+              pack.credits > 0,
+              let product = iap.products[pack.productId]
+        else { return nil }
+        let total = product.price / Decimal(pack.credits) * Decimal(credits)
+        return total.formatted(product.priceFormatStyle)
+    }
+
+    // MARK: - Hero
+
+    /// One object: what you are buying, what it costs, what we know about it,
+    /// and the button. Service and country are rows INSIDE it rather than a
+    /// second set of cards below it.
+    private var heroSection: some View {
+        HeroCard {
+            VStack(alignment: .leading, spacing: 0) {
+                ReceiptRow(label: "Service", onTap: openServices, leading: {
+                    ServiceLogo(service: state.lastService, size: 32, radius: 9)
+                }, trailing: {
+                    ReceiptValue(primary: state.lastService.name,
+                                 secondaryText: state.lastService.category,
+                                 chev: true)
+                })
+
+                if state.emailMode {
+                    // The domain replaces the country: an e-mail address has no
+                    // country, and showing one would imply a choice that does
+                    // not exist.
+                    ReceiptRow(label: "Domain", onTap: openEmailDomains, leading: {
+                        Image(systemName: "envelope.fill")
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundStyle(theme.accent2)
+                            .frame(width: 32, height: 32)
+                            .background(theme.inkSoft, in: .rect(cornerRadius: 9))
+                    }, trailing: {
+                        ReceiptValue(primary: state.emailDomain?.displayName
+                                         ?? String(localized: "Choose one"),
+                                     chev: true)
+                    })
+                } else {
+                    ReceiptRow(label: "Country", onTap: openCountries, leading: {
+                        FlagImage(country: state.lastCountry, size: 32, radius: 9)
+                    }, trailing: {
+                        ReceiptValue(primary: state.lastCountry.name, secondary: {
+                            MonoText(state.lastCountry.dialCode, size: 11, color: theme.text2)
+                        }, chev: true)
+                    })
+                }
+
+                ReceiptRow(label: "Cost", last: true, leading: {
+                    CoinIconBox()
+                }, trailing: {
+                    priceValue
+                })
+
+                evidenceStrip
+
+                // VStack, NOT Group: a modifier on a `Group` is applied to each
+                // child individually, so `.padding(.top, 16)` here would space
+                // the explainer, the button and the promise apart by 16 each
+                // instead of insetting the block once.
+                VStack(spacing: 0) {
+                    if needsExplainer { explainer.padding(.bottom, 16) }
+
+                    if state.emailMode { emailCTA } else { heroCTA }
+
+                    // The ONE refund promise on this screen, and the sentence
+                    // that used to be `trustFooter`: 12pt at 38% opacity
+                    // (~2.5:1, below WCAG AA) sitting below the fold, i.e. the
+                    // most reassuring thing the app can say rendered as the
+                    // least legible thing on the page. It is also why the
+                    // metrics row no longer carries a "No code → Refunded"
+                    // cell: a refund POLICY formatted identically to a
+                    // MEASUREMENT makes the row assert that the policy is one.
+                    Text(refundPromise)
+                        .font(RFont.text(13, weight: .medium))
+                        .tracking(-0.1)
+                        .foregroundStyle(theme.text2)
+                        .multilineTextAlignment(.center)
+                        .frame(maxWidth: .infinity)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(.top, 12)
+                }
+                .padding(.horizontal, 16)
+                // Always 16 here, and `evidenceStrip` deliberately adds no
+                // bottom padding of its own — otherwise the gap above the CTA
+                // would differ between SMS (strip present) and e-mail (absent).
+                .padding(.top, 16)
+                .padding(.bottom, 18)
+            }
+        }
+    }
+
+    /// The 8-minute window is the SMS order's. An e-mail activation runs
+    /// ~20 minutes (measured), and a FREE one has nothing to refund — so
+    /// promising a refund there would be meaningless at best.
+    private var refundPromise: String {
+        guard state.emailMode else {
+            return String(localized: "No code in 8 minutes → refunded automatically.")
+        }
+        if state.emailDomain?.isFree == true {
+            return String(localized: "Free addresses cost you nothing if no code arrives.")
+        }
+        return String(localized: "No code in 20 minutes → refunded automatically.")
+    }
+
+    @ViewBuilder
+    private var priceValue: some View {
+        if state.emailMode {
+            emailHeroPrice
+        } else if let routeCost {
+            VStack(alignment: .trailing, spacing: 1) {
+                HStack(alignment: .firstTextBaseline, spacing: 3) {
+                    Text("\(routeCost)")
+                        .font(RFont.display(22, weight: .bold))
+                        .tracking(-0.5)
+                        .foregroundStyle(theme.text)
+                        .monospacedDigit()
+                    Text("cr")
+                        .font(RFont.text(13, weight: .medium))
+                        .foregroundStyle(theme.text2)
+                }
+                if let money = approxMoney(routeCost) {
+                    Text("about \(money)")
+                        .font(RFont.text(12))
+                        .foregroundStyle(theme.text3)
+                }
+            }
+        } else {
+            VStack(alignment: .trailing, spacing: 1) {
+                Text("Unavailable")
+                    .font(RFont.display(15, weight: .semibold))
+                    .foregroundStyle(theme.text2)
+                Text("Pick another country")
+                    .font(RFont.text(12))
+                    .foregroundStyle(theme.text3)
+            }
+        }
+    }
+
+    // MARK: - Evidence
+
+    /// Two FIXED-WIDTH cells and an odds chip.
+    ///
+    /// The old row was three cells separated by `Spacer()`, so the columns
+    /// re-flowed with content length and nothing lined up between visits — and
+    /// one of the three was the refund POLICY, formatted exactly like the two
+    /// measurements beside it. Fixed widths mean the layout is the same every
+    /// time the screen is opened, which is what makes a value worth glancing at.
+    ///
+    /// SMS-only ON PURPOSE. Typical wait and the delivery record are measured
+    /// for phone numbers on a specific route; rendering them on an e-mail
+    /// purchase would restate another product's evidence as this one's, and we
+    /// have measured nothing for e-mail yet.
+    ///
+    /// ⚠️ E-mail mode gets a SENTENCE, not silence. Switching product line used
+    /// to delete this whole block with no explanation, so the screen quietly
+    /// lost its evidence and looked like it had simply broken. Saying that we
+    /// have not measured e-mail yet is both the honest answer and the reason
+    /// the row is gone.
+    @ViewBuilder
+    private var evidenceStrip: some View {
+        if state.showMetrics, state.emailMode {
+            VStack(alignment: .leading, spacing: 0) {
+                Rectangle()
+                    .fill(theme.sep)
+                    .frame(height: 0.5)
+                Text("No delivery record yet — e-mail is new and we only show what we've measured.")
+                    .font(RFont.text(12))
+                    .foregroundStyle(theme.text3)
+                    .lineSpacing(2)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.horizontal, 16)
+                    .padding(.top, 14)
+            }
+        } else if state.showMetrics, !state.emailMode {
+            VStack(alignment: .leading, spacing: 0) {
+                // Full-bleed, matching the rules ReceiptRow draws above it —
+                // an inset rule here would read as a second, unrelated card.
+                Rectangle()
+                    .fill(theme.sep)
+                    .frame(height: 0.5)
+
+                VStack(alignment: .leading, spacing: 0) {
+                    HStack(alignment: .top, spacing: 0) {
+                        VStack(alignment: .leading, spacing: 6) {
+                            MicroLabel("Typical wait")
+                            // Measured p50, or "—" when we have no sample.
+                            // Never the seed etaSeconds.
+                            Text(state.lastService.typicalWaitShort ?? "—")
+                                .font(RFont.display(16, weight: .semibold))
+                                .tracking(-0.3)
+                                .foregroundStyle(theme.text)
+                        }
+                        .frame(width: 100, alignment: .leading)
+
+                        VStack(alignment: .leading, spacing: 6) {
+                            // The 30-day window, stated once on this screen.
+                            MicroLabel("Delivery · 30 days")
+                            // Colour and wording both come from SuccessBadge
+                            // now. The inline `100 * codes / attempts >= 70`
+                            // arithmetic that used to live in this view body
+                            // was the app's FOURTH definition of green.
+                            SuccessBadge(record: routeRecord, compact: true)
+                        }
+                        .frame(width: 138, alignment: .leading)
+
+                        Spacer(minLength: 0)
+                    }
+
+                    if let odds = oddsPhrase {
+                        StatusPill(text: odds.text, tint: odds.tint, soft: odds.soft)
+                            .padding(.top, 12)
+                    }
+                }
+                .padding(.horizontal, 16)
+                .padding(.top, 14)
+            }
+        }
+    }
+
+    /// A plain-English odds chip for the selected service.
+    ///
+    /// `Service.deliveryOdds` already produces this judgement and it appeared
+    /// ONLY on Checkout — i.e. after the decision it exists to inform. It is
+    /// honest here for the same reason it is honest there: the tier needs 8
+    /// conclusive attempts before it says anything at all, and `.unknown`
+    /// renders nothing rather than a reassuring shrug.
+    private var oddsPhrase: (text: LocalizedStringKey, tint: Color, soft: Color)? {
+        switch state.lastService.deliveryOdds {
+        case .good:
+            return ("Usually works for \(state.lastService.name)",
+                    theme.deliveryColor(.strong), theme.deliverySoft(.strong))
+        case .mixed:
+            return ("Hit or miss for \(state.lastService.name)",
+                    theme.deliveryColor(.mixed), theme.deliverySoft(.mixed))
+        case .poor:
+            return ("Rarely works for \(state.lastService.name)",
+                    theme.deliveryColor(.weak), theme.deliverySoft(.weak))
+        case .unknown:
+            return nil
+        }
+    }
+
+    // MARK: - First run
+
+    /// Three steps, for someone who has never seen a temporary number work.
+    ///
+    /// It replaces `freeCreditHint`, which could not render. The point is not
+    /// reassurance — it is that "get a number" is meaningless until you know
+    /// the code comes back to this app and you paste it somewhere else.
+    private var explainer: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            explainerStep(1, "Pick the service you're verifying")
+            explainerStep(2, "We hand you a real, working number")
+            explainerStep(3, "The code lands here — paste it back")
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(theme.chipBg, in: .rect(cornerRadius: RRadius.sm))
+    }
+
+    private func explainerStep(_ n: Int, _ label: LocalizedStringKey) -> some View {
+        HStack(spacing: 10) {
+            Text("\(n)")
+                .font(RFont.text(11, weight: .heavy))
+                .foregroundStyle(theme.accent2)
+                .frame(width: 20, height: 20)
+                .background(theme.inkSoft, in: .circle)
+            Text(label)
+                .font(RFont.text(13, weight: .medium))
+                .foregroundStyle(theme.text)
+                .fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 0)
+        }
+    }
+
+    // MARK: - Actions
 
     /// The hero's primary action. Mirrors CheckoutScreen: a real "Buy credits"
     /// path when short, instead of a dead greyed-out button.
@@ -169,146 +549,25 @@ struct HomeScreen: View {
                     label: "Buy credits",
                     sub: String(localized: "Need \(routeCost - state.balance) more"),
                     icon: RIcon.plus,
-                    action: openCredits
+                    action: { RHaptic.select(); openCredits() }
                 )
             } else {
                 PrimaryButton(
                     label: "Get number",
                     sub: "\(routeCost) cr",
                     icon: RIcon.bolt,
-                    action: onStart
+                    action: { RHaptic.select(); onStart() }
                 )
             }
         } else {
+            // The one honest dead end left: this pair is not bookable at all,
+            // so the button that fixes it is the country picker.
             PrimaryButton(
-                label: "Unavailable",
-                sub: "Pick another country",
-                icon: RIcon.bolt,
-                disabled: true,
-                action: {}
+                label: "Pick another country",
+                sub: String(localized: "Not available here"),
+                icon: RIcon.globe,
+                action: { RHaptic.select(); openCountries() }
             )
-        }
-    }
-
-    private var freeCreditHint: some View {
-        HStack(spacing: 8) {
-            CoinIcon(size: 15, color: theme.live)
-            // Deliberately does NOT call the balance "free". This is gated on
-            // `isFirstRun && balance >= routeCost`, and with the signup grant
-            // disabled (app_config.signup_bonus_credits = 0) the only way to
-            // hold a balance before your first order is to have PAID for it —
-            // so "your free credits" told a paying customer their purchase was
-            // a gift. The wording below is true at any grant amount, which is
-            // the property the onboarding copy lost by quoting a number.
-            Text("Your balance covers this — nothing more to pay.")
-                .font(RFont.text(12, weight: .medium))
-                .tracking(-0.1)
-                .foregroundStyle(theme.text2)
-            Spacer(minLength: 0)
-        }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 10)
-        .background(theme.liveSoft, in: .rect(cornerRadius: 12))
-    }
-
-    private var heroSection: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            SectionHeader(label: isFirstRun ? "Start here" : "Last used")
-            Card {
-                VStack(alignment: .leading, spacing: 0) {
-                    HStack(alignment: .center, spacing: 14) {
-                        ServiceLogo(service: state.lastService, size: 52, radius: 14)
-                        VStack(alignment: .leading, spacing: 3) {
-                            Text(state.lastService.name)
-                                .font(RFont.display(18, weight: .semibold))
-                                .tracking(-0.4)
-                                .foregroundStyle(theme.text)
-                            // An email address has no country and no dial code,
-                            // so the SMS subtitle would be inventing both.
-                            if state.emailMode {
-                                Text(verbatim: state.emailDomain?.displayName ?? "—")
-                                    .font(RFont.text(13))
-                                    .foregroundStyle(theme.text2)
-                            } else {
-                                HStack(spacing: 6) {
-                                    FlagImage(country: state.lastCountry, size: 14, radius: 3)
-                                    Text(state.lastCountry.name)
-                                        .font(RFont.text(13))
-                                        .foregroundStyle(theme.text2)
-                                    Text("·").foregroundStyle(theme.text3)
-                                    MonoText(state.lastCountry.dialCode, size: 12, color: theme.text2)
-                                }
-                            }
-                        }
-                        Spacer(minLength: 0)
-                        VStack(alignment: .trailing, spacing: 4) {
-                            if state.emailMode {
-                                emailHeroPrice
-                            } else if let routeCost {
-                                HStack(alignment: .firstTextBaseline, spacing: 3) {
-                                    Text("\(routeCost)")
-                                        .font(RFont.display(22, weight: .semibold))
-                                        .tracking(-0.5)
-                                        .foregroundStyle(theme.text)
-                                    Text("cr")
-                                        .font(RFont.text(13, weight: .medium))
-                                        .foregroundStyle(theme.text2)
-                                }
-                            } else {
-                                Text("—")
-                                    .font(RFont.display(22, weight: .semibold))
-                                    .foregroundStyle(theme.text3)
-                            }
-                        }
-                    }
-                    // The metrics row is SMS-only ON PURPOSE. Typical wait,
-                    // "No code → Refunded" and the delivery record are all
-                    // measured for phone numbers on a specific route. Rendering
-                    // them on an email purchase would restate another product's
-                    // evidence as this one's — the same mistake as quoting the
-                    // seed etaSeconds, and we have measured nothing for email
-                    // yet. Silence is the honest answer until we have.
-                    if state.showMetrics && !state.emailMode {
-                        Rectangle()
-                            .fill(theme.sep)
-                            .frame(height: 0.5)
-                            .padding(.top, 16)
-                        HStack(spacing: 8) {
-                            // Measured p50, or "—" when we have no sample.
-                            // Never the seed etaSeconds.
-                            Metric(label: "Typical wait",
-                                   value: state.lastService.typicalWaitShort ?? "—")
-                            Spacer()
-                            Metric(label: "No code", value: "Refunded", accent: theme.live)
-                            Spacer()
-                            // Always a delivery record, never an omission.
-                            // Colour still signals CONFIDENCE: "Not tested" is
-                            // muted, and only a measured record earns green.
-                            switch routeRecord {
-                            case .notTested:
-                                Metric(label: "Delivery", value: "Not tested", accent: theme.text3)
-                            case let .measured(codes, attempts):
-                                Metric(label: "Delivery",
-                                       value: "\(codes) of \(attempts)",
-                                       accent: attempts > 0 && 100 * codes / attempts >= 70
-                                           ? theme.live
-                                           : (attempts > 0 && 100 * codes / attempts >= 40
-                                              ? theme.warn : theme.fail))
-                            }
-                        }
-                        .padding(.top, 14)
-                    }
-                    Group {
-                        if state.emailMode { emailCTA } else { heroCTA }
-                    }
-                    .padding(.top, 16)
-                }
-                .padding(18)
-            }
-            if isFirstRun, let routeCost, state.balance >= routeCost {
-                freeCreditHint
-                    .padding(.top, 10)
-            }
         }
     }
 
@@ -324,99 +583,98 @@ struct HomeScreen: View {
         )
     }
 
-    private var pickersSection: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            SectionHeader(label: "Change")
-            HStack(spacing: 10) {
-                PickerCard(label: "Service", value: state.lastService.name, icon: {
-                    ServiceLogo(service: state.lastService, size: 32, radius: 9)
-                }, onTap: openServices)
-                if state.emailMode {
-                    // The domain replaces the country: an email address has no
-                    // country, and showing one would imply a choice that does
-                    // not exist.
-                    PickerCard(label: "Domain",
-                               value: state.emailDomain?.displayName
-                                   ?? String(localized: "Choose"),
-                               icon: {
-                        Image(systemName: "envelope.fill")
-                            .font(.system(size: 15, weight: .semibold))
-                            .foregroundStyle(theme.ink)
-                            .frame(width: 32, height: 32)
-                            .background(theme.inkSoft, in: .rect(cornerRadius: 9))
-                    }, onTap: openEmailDomains)
-                } else {
-                    PickerCard(label: "Country", value: state.lastCountry.name, icon: {
-                        FlagImage(country: state.lastCountry, size: 32, radius: 9)
-                    }, onTap: openCountries)
-                }
-            }
-        }
-    }
-
-    /// Price in the email hero. "Free" is a word, not a 0 — rendering "0 cr"
+    /// Price in the e-mail hero. "Free" is a word, not a 0 — rendering "0 cr"
     /// reads as a broken price rather than a gift.
     @ViewBuilder
     private var emailHeroPrice: some View {
         if let dom = state.emailDomain {
             if dom.isFree {
                 Text("Free")
-                    .font(RFont.display(19, weight: .semibold))
+                    .font(RFont.display(19, weight: .bold))
                     .tracking(-0.4)
                     .foregroundStyle(theme.live)
             } else {
-                HStack(alignment: .firstTextBaseline, spacing: 3) {
-                    Text("\(dom.credits)")
-                        .font(RFont.display(22, weight: .semibold))
-                        .tracking(-0.5)
-                        .foregroundStyle(theme.text)
-                    Text("cr")
-                        .font(RFont.text(13, weight: .medium))
-                        .foregroundStyle(theme.text2)
+                VStack(alignment: .trailing, spacing: 1) {
+                    HStack(alignment: .firstTextBaseline, spacing: 3) {
+                        Text("\(dom.credits)")
+                            .font(RFont.display(22, weight: .bold))
+                            .tracking(-0.5)
+                            .foregroundStyle(theme.text)
+                            .monospacedDigit()
+                        Text("cr")
+                            .font(RFont.text(13, weight: .medium))
+                            .foregroundStyle(theme.text2)
+                    }
+                    if let money = approxMoney(dom.credits) {
+                        Text("about \(money)")
+                            .font(RFont.text(12))
+                            .foregroundStyle(theme.text3)
+                    }
                 }
             }
         } else {
             Text("—")
-                .font(RFont.display(22, weight: .semibold))
+                .font(RFont.display(22, weight: .bold))
                 .foregroundStyle(theme.text3)
         }
     }
 
-    /// CTA for the email line.
+    /// CTA for the e-mail line.
+    ///
+    /// ⚠️ **Every branch here is ENABLED and opens the thing it names.** Two of
+    /// them used to be `disabled: true` buttons whose subtitle was an
+    /// instruction — "Tap Domain below", "Pick another service" — which is a
+    /// control that refuses to work while telling you to go and work it
+    /// yourself. Worse, "below" pointed at the picker section this redesign
+    /// deleted. A primary button is the screen's answer to "what now?"; if the
+    /// answer is "choose a domain", it should choose a domain.
     ///
     /// Three distinct states, and the differences matter: a service with no
-    /// domain cannot offer email AT ALL (11 of 265), a domain can be out of
+    /// domain cannot offer e-mail AT ALL (11 of 265), a domain can be out of
     /// stock, and the free tier must never render a credit price.
     @ViewBuilder
     private var emailCTA: some View {
         if !state.emailSupported {
-            PrimaryButton(label: "Not available for this service",
-                          sub: "Pick another service",
-                          icon: RIcon.bolt, disabled: true, action: {})
+            PrimaryButton(label: "Pick another service",
+                          sub: String(localized: "No e-mail here"),
+                          icon: RIcon.search,
+                          action: { RHaptic.select(); openServices() })
         } else if let dom = state.emailDomain, dom.inStock {
             if dom.credits > 0 && state.balance < dom.credits {
                 PrimaryButton(label: "Buy credits",
-                              sub: "Need \(dom.credits - state.balance) more",
-                              icon: RIcon.plus, action: openCredits)
+                              sub: String(localized: "Need \(dom.credits - state.balance) more"),
+                              icon: RIcon.plus,
+                              action: { RHaptic.select(); openCredits() })
             } else {
                 PrimaryButton(
                     label: "Get email address",
                     sub: dom.isFree ? String(localized: "Free") : "\(dom.credits) cr",
                     icon: RIcon.bolt,
                     disabled: state.isBuyingEmail,
-                    action: onStartEmail
+                    action: { RHaptic.select(); onStartEmail() }
                 )
             }
         } else {
             PrimaryButton(label: "Choose a domain",
-                          sub: "Tap Domain below",
-                          icon: RIcon.bolt, disabled: true, action: {})
+                          sub: String(localized: "Pick where it lives"),
+                          icon: "envelope.fill",
+                          action: { RHaptic.select(); openEmailDomains() })
         }
     }
 
+    // MARK: - Recent
+
     private var recentSection: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            SectionHeader(label: "Recent", action: "See all", onAction: onSeeAllOrders)
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .firstTextBaseline) {
+                MicroLabel("Recent")
+                Button(action: { RHaptic.select(); onSeeAllOrders() }) {
+                    Text("See all")
+                        .font(RFont.text(13, weight: .medium))
+                        .foregroundStyle(theme.text2)
+                }
+                .pressable(0.94)
+            }
             Card {
                 VStack(spacing: 0) {
                     let recent = Array(state.orders.prefix(3))
@@ -435,17 +693,19 @@ struct HomeScreen: View {
     /// Quotes the CHEAPEST plan actually in the catalog rather than a made-up
     /// "from" price, and names the real country count. Both come from
     /// `state.esimCountries`, so an empty or unpriced catalog renders nothing
-    /// instead of "from 0 credits".
+    /// instead of "from 0 credits" — and the whole teaser is suppressed while
+    /// the line is paused, so it can never advertise a tab that answers
+    /// "eSIMs are unavailable right now".
     private var esimTeaser: some View {
         let cheapest = state.esimCountries.map(\.fromCredits).min() ?? 0
         let countries = state.esimCountries.count
-        return Button(action: onOpenEsim) {
+        return Button(action: { RHaptic.select(); onOpenEsim() }) {
             HStack(spacing: 12) {
                 Image(systemName: "globe")
                     .font(.system(size: 18, weight: .medium))
-                    .foregroundStyle(theme.text2)
+                    .foregroundStyle(theme.accent2)
                     .frame(width: 40, height: 40)
-                    .background(theme.chipBg, in: .rect(cornerRadius: 12))
+                    .background(theme.inkSoft, in: .rect(cornerRadius: RRadius.sm))
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Travelling? Get data abroad")
                         .font(RFont.display(15, weight: .semibold))
@@ -461,28 +721,9 @@ struct HomeScreen: View {
                     .foregroundStyle(theme.text3)
             }
             .padding(14)
-            .background(theme.elev, in: .rect(cornerRadius: 18))
+            .background(theme.elev, in: .rect(cornerRadius: RRadius.md))
             .contentShape(.rect)
         }
-        .buttonStyle(.plain)
-    }
-
-    private var trustFooter: some View {
-        HStack(spacing: 8) {
-            Image(systemName: RIcon.shield)
-                .font(.system(size: 13, weight: .medium))
-                .foregroundStyle(theme.text3)
-            // The 8-minute window is the SMS order's. An email activation runs
-            // ~20 minutes (measured), and a FREE one has nothing to refund —
-            // so promising a refund there would be meaningless at best.
-            Text(state.emailMode
-                 ? (state.emailDomain?.isFree == true
-                    ? String(localized: "Free addresses cost you nothing if no code arrives.")
-                    : String(localized: "No code in 20 minutes → refunded automatically."))
-                 : String(localized: "No code in 8 minutes → refunded automatically."))
-                .font(RFont.text(12))
-                .tracking(-0.1)
-                .foregroundStyle(theme.text3)
-        }
+        .pressable()
     }
 }

@@ -1,5 +1,26 @@
 import SwiftUI
 
+/// The screen a user stares at with their money already spent.
+///
+/// It used to show FIVE controls at t=0, three of them about failure: the
+/// number, Copy, "Check now", "<service> rejected it — get another" under a
+/// three-line 11pt disclaimer, and "You can cancel in 90s". All of that before
+/// the user had time to switch apps and paste the number anywhere. A screen
+/// that opens by listing the ways this can go wrong teaches the user to expect
+/// it to.
+///
+/// It is now staged on `elapsed`, which already ticks once per second:
+///
+/// | from | what appears |
+/// |---|---|
+/// | 0s  | the number, one full-width Copy, the ring |
+/// | 25s | the rejection path, the delivery notice, our record |
+/// | 90s | Cancel & refund (the server's own `MIN_HOLD_SECONDS`) |
+///
+/// 25s is not arbitrary: a site rejects a number at its signup form within
+/// ~20 seconds, so that is the first moment the "it was rejected" escape is
+/// information rather than a suggestion. Before it, the only thing the user can
+/// usefully do is copy the number, so that is the only thing offered.
 struct WaitingScreen: View {
     @Environment(\.theme) private var theme
     @Environment(AppState.self) private var state
@@ -21,18 +42,54 @@ struct WaitingScreen: View {
     /// a dead countdown as if it were still a countdown.
     private var isFinalizing: Bool { remaining == 0 }
 
+    /// How long we have been finalizing. Derived from `elapsed` rather than a
+    /// second timer so it ticks with everything else on the screen.
+    private var finalizingFor: Int { max(0, elapsed - reservation) }
+
+    /// Reconcile has not resolved in a minute and a half.
+    ///
+    /// `isFinalizing` had NO timeout: if the order row never came back the
+    /// user sat on "Time's up — confirming with the network…" forever, with no
+    /// statement about their credits and nowhere to go. The server has already
+    /// refunded by this point — both terminal paths refund unconditionally —
+    /// so the honest thing is to say so and offer history, not to keep
+    /// spinning.
+    private var isStalled: Bool { isFinalizing && finalizingFor >= 90 }
+
+    // MARK: - Disclosure
+
+    private enum Phase { case fresh, options, full }
+
+    /// The first moment the "rejected it" escape is information rather than a
+    /// suggestion. See the type comment.
+    private static let disclosureSeconds = 25
+
+    private var phase: Phase {
+        if elapsed >= Self.minHoldSeconds { return .full }
+        if elapsed >= Self.disclosureSeconds { return .options }
+        return .fresh
+    }
+
     var body: some View {
         ZStack {
             theme.bg.ignoresSafeArea()
             ScrollView {
-                VStack(alignment: .leading, spacing: 0) {
+                VStack(alignment: .leading, spacing: 14) {
                     topBar
                     serviceStrip
                     numberCard
                     waitingCard
-                    refundReassurance
-                    if state.showMetrics { metric }
+
+                    if phase != .fresh {
+                        recoveryBlock.transition(revealTransition)
+                        refundReassurance.transition(revealTransition)
+                        if state.showMetrics { metric.transition(revealTransition) }
+                    }
+                    if phase == .full {
+                        cancelAction.transition(revealTransition)
+                    }
                 }
+                .animation(RMotion.panel, value: phase)
                 .padding(.top, 6)
                 .padding(.bottom, 60)
             }
@@ -52,6 +109,11 @@ struct WaitingScreen: View {
             // Conversely resumeInFlightOrder() showed a 7-minute-old order as
             // ELAPSED 00:00 and locked cancel for longer than the order had
             // left to live.
+            //
+            // It is now load-bearing for the DISCLOSURE too: a resumed order
+            // arrives with its controls already unlocked, which is correct —
+            // staging is about the user's first 90 seconds with a number, not
+            // about how long this view has been on screen.
             while !Task.isCancelled {
                 elapsed = max(0, Int(Date().timeIntervalSince(order.createdAt)))
                 try? await Task.sleep(nanoseconds: 1_000_000_000)
@@ -95,6 +157,7 @@ struct WaitingScreen: View {
             titleVisibility: .visible
         ) {
             Button("Cancel order & refund \(order.costCredits) credits", role: .destructive) {
+                RHaptic.warn()
                 Task {
                     await state.cancelWaiting(
                         using: OrdersAPI(client: api),
@@ -106,6 +169,13 @@ struct WaitingScreen: View {
         } message: {
             Text("Your \(order.costCredits) credits go back to your balance. If a code is already on its way, you'll lose it.")
         }
+    }
+
+    private var revealTransition: AnyTransition {
+        .asymmetric(
+            insertion: .opacity.combined(with: .scale(scale: 0.97, anchor: .top)),
+            removal: .opacity
+        )
     }
 
     /// Minimum hold before a paid order can be destroyed. Mirrors
@@ -148,7 +218,7 @@ struct WaitingScreen: View {
             // makes non-destructive close honest rather than a disappearance.
             //
             // Cancelling is still available, as an explicit labelled action
-            // lower down (`cancelAction`), still gated by the 180s hold.
+            // lower down (`cancelAction`), still gated by the 90s hold.
             //
             // ⚠️ It must NOT be gated on `holdRemaining`. It was, until
             // 2026-08-01 — a leftover from when this button was the cancel,
@@ -167,7 +237,7 @@ struct WaitingScreen: View {
                     .frame(width: 36, height: 36)
                     .background(theme.chipBg, in: .circle)
             }
-            .buttonStyle(.plain)
+            .pressable()
             // isPlacingOrder stays: leaving the ✕ live during a reroll let
             // cancelWaiting fire mid-reroll and null activeOrder after the
             // fresh one was installed, rendering an empty screen over a live
@@ -176,7 +246,6 @@ struct WaitingScreen: View {
             .accessibilityLabel(Text("Close — your number keeps running"))
         }
         .padding(.horizontal, 16)
-        .padding(.bottom, 8)
     }
 
     private var serviceStrip: some View {
@@ -198,123 +267,166 @@ struct WaitingScreen: View {
             StatusBadge(status: .waiting)
         }
         .padding(.horizontal, 20)
-        .padding(.top, 10)
-        .padding(.bottom, 6)
     }
 
+    // MARK: - The number
+
+    /// The one object this screen is about, so it is the one hero surface.
+    ///
+    /// Copy is a full-width PRIMARY. It used to be a grey chip sharing its row
+    /// with "Check now", which put the only useful action at t=0 at the same
+    /// visual weight as a button that did nothing the 4-second poll wasn't
+    /// already doing.
     private var numberCard: some View {
-        Card {
+        HeroCard {
             VStack(alignment: .leading, spacing: 0) {
-                Text("YOUR NUMBER")
-                    .font(RFont.text(12, weight: .medium))
-                    .tracking(0.2)
+                MicroLabel("Your number")
+                MonoText(order.number, size: 32, weight: .medium, color: theme.text)
+                    .padding(.top, 10)
+                    .textSelection(.enabled)
+                    .minimumScaleFactor(0.6)
+                    .lineLimit(1)
+
+                PrimaryButton(
+                    label: copied ? String(localized: "Copied") : String(localized: "Copy number"),
+                    icon: copied ? RIcon.check : RIcon.copy,
+                    action: copy
+                )
+                .padding(.top, 18)
+
+                Text("Paste it into \(order.service.name), then come back — the code lands here.")
+                    .font(RFont.text(12))
                     .foregroundStyle(theme.text2)
-                MonoText(order.number, size: 30, weight: .medium, color: theme.text)
-                    .padding(.top, 8)
-                HStack(spacing: 8) {
-                    Button(action: copy) {
-                        HStack(spacing: 7) {
-                            Image(systemName: copied ? RIcon.check : RIcon.copy)
-                                .font(.system(size: 14, weight: .semibold))
-                                .foregroundStyle(copied ? theme.live : theme.text)
-                            Text(copied ? "Copied" : "Copy number")
-                                .font(RFont.text(14, weight: .medium))
-                                .foregroundStyle(copied ? theme.live : theme.text)
-                        }
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 44)
-                        .background(theme.chipBg, in: .rect(cornerRadius: 14))
-                    }
-                    .buttonStyle(.plain)
-
-                    Button {
-                        // checkNow, not pollActiveOrder: an explicit tap must
-                        // always resolve to truth, falling back to the order
-                        // row when the provider check fails.
-                        Task {
-                            await state.checkNow(
-                                using: OrdersAPI(client: api),
-                                wallet: WalletAPI(client: api)
-                            )
-                        }
-                    } label: {
-                        HStack(spacing: 6) {
-                            Image(systemName: RIcon.refresh)
-                                .font(.system(size: 13, weight: .semibold))
-                            Text("Check now")
-                                .font(RFont.text(13, weight: .medium))
-                        }
-                        .foregroundStyle(theme.text)
-                        .padding(.horizontal, 14)
-                        .frame(height: 44)
-                        .background(theme.chipBg, in: .rect(cornerRadius: 14))
-                    }
-                    .buttonStyle(.plain)
-                }
-                .padding(.top, 16)
-
-                // During the hold the reroll buttons are dead, because a reroll
-                // RELEASES this number and that is what the hold forbids. But
-                // "the site rejected it" happens within ~20 seconds — squarely
-                // inside the hold — so the one moment the user most needs an
-                // out was the one moment the screen offered none.
-                //
-                // So inside the hold, offer the ADDITIVE path instead: a second
-                // number alongside this one. It costs another order's credits
-                // (stated on the button) and this number keeps running, keeps
-                // its hold, and still refunds itself on expiry. Once the hold
-                // lifts, the reroll is strictly better — it releases the first
-                // number and refunds it — so the buttons swap back.
-                if holdRemaining != nil {
-                    concurrentAction
-                        .padding(.top, 10)
-                } else {
-                    rerollActions
-                        .padding(.top, 10)
-                }
-
-                cancelAction
-                    .frame(maxWidth: .infinity)
-                    .padding(.top, 14)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.top, 12)
             }
-            .padding(.horizontal, 18)
+            .padding(.horizontal, 20)
             .padding(.vertical, 22)
         }
         .padding(.horizontal, 16)
-        .padding(.top, 14)
     }
+
+    // MARK: - The wait
+
+    /// Where the measured p90 sits inside the reservation window, or nil when
+    /// we have measured nothing for this service.
+    ///
+    /// Nil is a real answer and must stay one — see `WaitingAnimationView`,
+    /// which then draws no milestone at all rather than inventing a plausible
+    /// place to put it.
+    private var expectedFraction: Double? {
+        guard let p90 = order.service.arrivalP90Seconds, p90 > 0 else { return nil }
+        return min(1, Double(p90) / Double(reservation))
+    }
+
+    /// The countdown appears ONLY in the final minute.
+    ///
+    /// The rule this screen broke: never put a running deadline next to a
+    /// destructive button. In the last 60 seconds it stops being pressure and
+    /// becomes information — the number is genuinely about to be released — so
+    /// it renders, once, in `theme.warn`.
+    private var countdownText: String? {
+        guard !isFinalizing, remaining <= 60 else { return nil }
+        return String(format: "%d:%02d", remaining / 60, remaining % 60)
+    }
+
+    private var waitingCard: some View {
+        Card {
+            VStack(spacing: 18) {
+                WaitingAnimationView(
+                    kind: state.waitingAnimation,
+                    progress: Double(elapsed) / Double(reservation),
+                    expectedFraction: expectedFraction,
+                    countdown: countdownText,
+                    isFinalizing: isFinalizing
+                )
+
+                VStack(spacing: 5) {
+                    Text(headline)
+                        .font(RFont.display(18, weight: .semibold))
+                        .tracking(-0.3)
+                        .foregroundStyle(theme.text)
+                        .multilineTextAlignment(.center)
+                    // MEASURED arrival only. This used to quote the seed
+                    // `etaSeconds` (~28s) against a measured ~53s median —
+                    // promising a deadline we miss, right after payment,
+                    // which is what makes people cancel at 63s.
+                    Text(subheadline)
+                        .font(RFont.text(13))
+                        .tracking(-0.1)
+                        .foregroundStyle(theme.text2)
+                        .multilineTextAlignment(.center)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                // Only when reconcile has genuinely stalled. Anything sooner
+                // would be an escape hatch offered before there is anything to
+                // escape from.
+                if isStalled {
+                    GhostButton(label: String(localized: "See it in Orders"),
+                                icon: RIcon.inbox,
+                                fillsWidth: false) {
+                        state.flow = nil
+                        state.tab = .orders
+                    }
+                }
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.horizontal, 18)
+            .padding(.vertical, 26)
+        }
+        .padding(.horizontal, 16)
+    }
+
+    private var headline: String {
+        if isStalled {
+            return String(localized: "Still confirming")
+        }
+        if isFinalizing {
+            return String(localized: "Time's up — confirming with the network…")
+        }
+        return String(localized: "Waiting for \(order.service.name) code…")
+    }
+
+    private var subheadline: String {
+        if isStalled {
+            // The server refunds unconditionally on both terminal paths, so
+            // this is a statement of what has ALREADY happened, not a promise.
+            return String(localized: "Your \(order.costCredits) credits are safe — every order that ends without a code is refunded in full. The outcome will show in Orders.")
+        }
+        if isFinalizing {
+            return String(localized: "If no code arrived, your \(order.costCredits) credits are refunded automatically.")
+        }
+        return order.service.typicalWaitSentence
+            ?? String(localized: "Your code appears here the moment it arrives.")
+    }
+
+    // MARK: - Recovery (25s+)
 
     /// The two ways a number dies, each with a one-tap recovery.
     ///
     /// "Rejected" is the common case for high-security services: the site
     /// refuses the number at its signup form within ~20 seconds, so no timer
-    /// can detect it — only the user knows. That path must move to a DIFFERENT
-    /// country, because a rejection usually means the whole range is flagged.
-    /// Cancel + refund, as an explicit labelled action rather than a ✕.
-    ///
-    /// The ✕ used to be this, which is why it needed a confirmation dialog: a
-    /// glyph that reads as "back" must not destroy a paid order. As a named
-    /// destructive action it can be plain, and it keeps the 180s hold — cancels
-    /// landed at a median of 57s while codes land at a median of 58s, so an
-    /// early cancel usually throws away a code that was already on its way.
+    /// can detect it — only the user knows. Inside the hold the escape has to
+    /// be ADDITIVE (a second number alongside this one) because a reroll
+    /// releases the first, which is exactly what the hold forbids. Once the
+    /// hold lifts the reroll is strictly better — it refunds what it releases —
+    /// so the block swaps over.
     @ViewBuilder
-    private var cancelAction: some View {
-        if let left = holdRemaining {
-            Text("You can cancel in \(left)s")
-                .font(RFont.text(12))
-                .monospacedDigit()
-                .foregroundStyle(theme.text3)
-        } else {
-            Button {
-                showCancelConfirm = true
-            } label: {
-                Text("Cancel & refund \(order.costCredits) cr")
-                    .font(RFont.text(13, weight: .medium))
-                    .foregroundStyle(theme.text2)
+    private var recoveryBlock: some View {
+        Card(elevation: .flat, fill: theme.elev2) {
+            VStack(alignment: .leading, spacing: 10) {
+                MicroLabel("If the site rejected it")
+                if holdRemaining != nil {
+                    concurrentAction
+                } else {
+                    rerollActions
+                }
             }
-            .buttonStyle(.plain)
-            .disabled(state.isPlacingOrder)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 16)
         }
+        .padding(.horizontal, 16)
     }
 
     /// "Get another number" — additive, not a swap.
@@ -328,30 +440,33 @@ struct WaitingScreen: View {
     /// still arrives — so ordering a second number never forfeits the first.
     @ViewBuilder
     private var concurrentAction: some View {
-        VStack(spacing: 6) {
+        VStack(alignment: .leading, spacing: 8) {
             Button {
+                RHaptic.select()
                 state.orderAnotherNumber()
             } label: {
                 HStack(spacing: 8) {
                     Image(systemName: RIcon.refresh)
                         .font(.system(size: 13, weight: .semibold))
-                    Text("\(order.service.name) rejected it — get another")
-                        .font(RFont.text(13, weight: .semibold))
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.85)
+                    Text("Get another number")
+                        .font(RFont.text(14, weight: .semibold))
+                    Spacer(minLength: 0)
+                    Text("\(order.costCredits) cr")
+                        .font(RFont.mono(13, weight: .medium))
+                        .foregroundStyle(theme.text2)
                 }
                 .foregroundStyle(theme.text)
+                .padding(.horizontal, 14)
                 .frame(maxWidth: .infinity)
-                .frame(height: 44)
-                .background(theme.chipBg, in: .rect(cornerRadius: 14))
+                .frame(height: 46)
+                .background(theme.elev, in: .rect(cornerRadius: RRadius.sm))
             }
-            .buttonStyle(.plain)
+            .pressable()
             .disabled(state.isPlacingOrder)
 
-            Text("Costs another \(order.costCredits) cr. This number keeps running and still refunds itself if no code arrives.")
+            Text("This number keeps running and still refunds itself if no code arrives.")
                 .font(RFont.text(11))
                 .foregroundStyle(theme.text3)
-                .multilineTextAlignment(.center)
                 .fixedSize(horizontal: false, vertical: true)
         }
     }
@@ -359,12 +474,12 @@ struct WaitingScreen: View {
     private var rerollActions: some View {
         HStack(spacing: 8) {
             rerollButton(
-                title: "\(order.service.name) rejected it",
-                icon: RIcon.close,
+                title: String(localized: "Another country"),
+                icon: RIcon.globe,
                 differentCountry: true
             )
             rerollButton(
-                title: "Try another number",
+                title: String(localized: "Another number"),
                 icon: RIcon.refresh,
                 differentCountry: false
             )
@@ -372,10 +487,11 @@ struct WaitingScreen: View {
     }
 
     // Reroll releases the number exactly like a cancel, so it is held for the
-    // same 180s. Without this the button would just surface a server error.
+    // same 90s. Without this the button would just surface a server error.
     private func rerollButton(title: String, icon: String,
                               differentCountry: Bool) -> some View {
         Button {
+            RHaptic.select()
             Task {
                 await state.rerollNumber(
                     using: OrdersAPI(client: api),
@@ -387,149 +503,94 @@ struct WaitingScreen: View {
             HStack(spacing: 6) {
                 Image(systemName: icon)
                     .font(.system(size: 12, weight: .semibold))
-                Text(title)
+                Text(LocalizedStringKey(title))
                     .font(RFont.text(13, weight: .medium))
                     .lineLimit(1)
                     .minimumScaleFactor(0.85)
             }
-            .foregroundStyle(theme.text2)
+            .foregroundStyle(theme.text)
             .frame(maxWidth: .infinity)
-            .frame(height: 40)
-            .background(theme.chipBg, in: .rect(cornerRadius: 12))
+            .frame(height: 44)
+            .background(theme.elev, in: .rect(cornerRadius: RRadius.sm))
         }
-        .buttonStyle(.plain)
-        .disabled(state.isPlacingOrder || holdRemaining != nil)
-        .opacity(state.isPlacingOrder || holdRemaining != nil ? 0.5 : 1)
+        .pressable()
+        .disabled(state.isPlacingOrder)
+        .opacity(state.isPlacingOrder ? 0.5 : 1)
     }
 
-    private var waitingCard: some View {
-        Card {
-            VStack(spacing: 0) {
-                VStack(spacing: 18) {
-                    WaitingAnimationView(kind: state.waitingAnimation)
-                    VStack(spacing: 4) {
-                        Text(isFinalizing
-                             ? String(localized: "Time's up — confirming with the network…")
-                             : String(localized: "Waiting for \(order.service.name) code…"))
-                            .font(RFont.display(17, weight: .semibold))
-                            .tracking(-0.3)
-                            .foregroundStyle(theme.text)
-                            .multilineTextAlignment(.center)
-                        // MEASURED arrival only. This used to quote the seed
-                        // `etaSeconds` (~28s) against a measured ~53s median —
-                        // promising a deadline we miss, right after payment,
-                        // which is what makes people cancel at 63s.
-                        Text(isFinalizing
-                             ? String(localized: "If no code arrived, your \(order.costCredits) credits are refunded automatically.")
-                             : (order.service.typicalWaitSentence
-                                ?? String(localized: "Your code appears here the moment it arrives.")))
-                            .font(RFont.text(13))
-                            .tracking(-0.1)
-                            .foregroundStyle(theme.text2)
-                            .multilineTextAlignment(.center)
-                    }
-                }
-                .padding(.vertical, 6)
+    // MARK: - Cancel (90s+)
 
-                Rectangle().fill(theme.sep).frame(height: 0.5)
-                    .padding(.top, 22)
-
-                HStack(spacing: 0) {
-                    timerCell(label: "ELAPSED", seconds: elapsed)
-                    Rectangle().fill(theme.sep).frame(width: 0.5)
-                    if isFinalizing {
-                        // Never render a stopped clock as a running one.
-                        labelCell(label: "EXPIRES IN", text: "Closing…")
-                    } else {
-                        timerCell(label: "EXPIRES IN", seconds: remaining)
-                    }
-                }
-                .padding(.top, 16)
-            }
-            .padding(.horizontal, 18)
-            .padding(.vertical, 24)
+    /// Cancel + refund, as an explicit labelled action rather than a ✕.
+    ///
+    /// The ✕ used to be this, which is why it needed a confirmation dialog: a
+    /// glyph that reads as "back" must not destroy a paid order. It is now
+    /// simply ABSENT until the hold lifts, rather than present-but-refusing
+    /// with a "You can cancel in 90s" countdown — that line was a third clock
+    /// on a screen whose whole problem was clocks, and it advertised quitting
+    /// during the exact window where most codes land.
+    private var cancelAction: some View {
+        Button {
+            showCancelConfirm = true
+        } label: {
+            Text("Cancel & refund \(order.costCredits) cr")
+                .font(RFont.text(13, weight: .medium))
+                .foregroundStyle(theme.text2)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 8)
         }
+        .pressable()
+        .disabled(state.isPlacingOrder)
         .padding(.horizontal, 16)
-        .padding(.top, 14)
-    }
-
-    private func timerCell(label: String, seconds: Int) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(LocalizedStringKey(label))
-                .font(RFont.text(11, weight: .medium))
-                .tracking(0.2)
-                .foregroundStyle(theme.text2)
-            MonoText(formatMMSS(seconds), size: 20, weight: .medium, color: theme.text)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, 12)
-    }
-
-    /// Same cell, non-numeric — used once the countdown has no meaning left.
-    private func labelCell(label: String, text: String) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(LocalizedStringKey(label))
-                .font(RFont.text(11, weight: .medium))
-                .tracking(0.2)
-                .foregroundStyle(theme.text2)
-            Text(LocalizedStringKey(text))
-                .font(RFont.text(17, weight: .medium))
-                .foregroundStyle(theme.text2)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, 12)
-    }
-
-    private func formatMMSS(_ s: Int) -> String {
-        String(format: "%02d:%02d", s / 60, s % 60)
     }
 
     // No SMS provider delivers 100% of the time (numbers get flagged, some
     // services block non-native SIMs). Make the safety net explicit so an
     // undelivered code costs the user nothing and doesn't read as a scam —
-    // cancelWaiting (the ✕ above) issues a full refund.
+    // cancelWaiting issues a full refund.
     private var refundReassurance: some View {
         DeliveryNotice(density: .compact)
             .padding(.horizontal, 24)
-        .padding(.top, 14)
     }
 
     // MEASURED delivery only, and nothing at all when we have no measurement.
     //
     // This used to render `order.service.successRate` — seed data that sits at
     // 86-99% for all 268 services (avg 91%) and which Service.swift explicitly
-    // says "must never be shown as fact". It was the last place in the app
-    // still doing so: Checkout, ServiceSheet and CountrySheet were all moved to
-    // the measured route rate. Worst of all it fired here, right after the user
-    // paid, promising ~91% on clusters that actually measure ~9% delivered.
-    // Inventing a comforting number at the moment of maximum anxiety is how you
-    // turn one failed order into a refund request and a 1-star review.
-    // Gated further 2026-07-24: seeded (conversion-prior) route rates also
-    // read as fact in this past-tense sentence, so only rate_source='measured'
-    // may render here. The compact DeliveryNotice above covers the rest.
+    // says "must never be shown as fact". Worst of all it fired here, right
+    // after the user paid, promising ~91% on clusters that actually measure ~9%.
+    //
+    // It then spent a year rendering the MEASURED rate as a PERCENTAGE, which
+    // is the other half of the same mistake: "0% of Facebook codes in Denmark
+    // have arrived" is routinely a 2-sample claim (the demotion gate is
+    // asymmetric — migration 20260725120000) wearing the confidence of a
+    // 200-sample one. `deliveryRecord` gives the raw pair, which carries its
+    // own uncertainty and needs no asterisk. Same rule, same wording, as
+    // `SuccessBadge`.
     @ViewBuilder
     private var metric: some View {
-        if let info = state.rateInfo(for: order.service, country: order.country), info.isMeasured {
+        if case let .measured(codes, attempts) = state.deliveryRecord(
+            for: order.service, country: order.country), attempts > 0 {
             HStack(spacing: 8) {
                 Image(systemName: RIcon.spark)
                     .font(.system(size: 13, weight: .medium))
                     .foregroundStyle(theme.text3)
-                Text("\(info.rate)% of \(order.service.name) codes in \(order.country.name) have arrived.")
+                Text("\(order.service.name) in \(order.country.name) has worked \(codes) of \(attempts) times.")
                     .font(RFont.text(12))
                     .tracking(-0.1)
                     .foregroundStyle(theme.text3)
+                    .fixedSize(horizontal: false, vertical: true)
             }
             .padding(.horizontal, 24)
-            .padding(.top, 14)
         }
     }
 
     private func copy() {
         UIPasteboard.general.string = order.number
-        copied = true
+        RHaptic.copied()
+        withAnimation(RMotion.content) { copied = true }
         Task {
             try? await Task.sleep(nanoseconds: 1_600_000_000)
-            copied = false
+            withAnimation(RMotion.content) { copied = false }
         }
     }
 }

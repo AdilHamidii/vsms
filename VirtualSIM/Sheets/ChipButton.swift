@@ -9,7 +9,10 @@ struct ChipButton: View {
     var onTap: () -> Void
 
     var body: some View {
-        Button(action: onTap) {
+        Button {
+            RHaptic.select()
+            onTap()
+        } label: {
             HStack(spacing: 5) {
                 if let icon {
                     Image(systemName: icon)
@@ -27,8 +30,9 @@ struct ChipButton: View {
             .padding(.vertical, 6)
             .background(backgroundColor, in: .capsule)
             .fixedSize(horizontal: true, vertical: false)
+            .contentShape(.capsule)
         }
-        .buttonStyle(.plain)
+        .pressable(0.94)
     }
 
     private var foregroundColor: Color {

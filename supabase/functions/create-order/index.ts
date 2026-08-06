@@ -36,10 +36,21 @@ const DEDUPE_CONCURRENT_SECONDS = 3;
 // MIN_MARGIN× that cost. Runs per candidate provider so we never lose money on
 // a price spike, and we skip a provider (falling back) rather than overpay.
 //
-// NET_USD_PER_CREDIT: conservative net revenue per credit — the 30-credit pack
-// ($12.99 ≈ $0.433) after Apple's cut, which is the least favourable rung of the
-// live ladder. Deliberately pessimistic: valuing a credit high here would let a
-// route clear the margin gate on revenue we might not actually collect.
+// NET_USD_PER_CREDIT: the MEASURED net revenue per credit. Raised 0.30 → 0.40 on
+// 2026-08-05 because 0.30 was doing two opposite-signed jobs and getting one of
+// them wrong.
+//
+// It bounds the order-time ceiling, where understating revenue is conservative
+// (we spend less). But it ALSO defines every pricing divisor via
+// NET / MIN_MARGIN, where understating revenue makes us CHARGE MORE. At 0.30
+// every provider ran ~32% above its stated multiple: 5sim's "10×" was really
+// 13.2×, HeroSMS's "12×" 15.9×, SMSPVA's "6×" 7.9×, and the lockstep ✓ below
+// could not catch it because the arithmetic was self-consistent — just against
+// a revenue figure no pack sells at.
+//
+// 0.40 is measured over all 37 Production purchases (586 credits, $273.63):
+// blended gross $0.467/credit, $0.397 net after Apple's 15%, rounded to 0.40.
+// Re-derive from receipts if the pack mix shifts; do not guess it.
 //
 // The floor itself is the credits charged being worth at least MARGIN× the
 // wholesale cost. That makes the order-time ceiling exactly the pricing sync's
@@ -49,9 +60,16 @@ const DEDUPE_CONCURRENT_SECONDS = 3;
 // PER-PROVIDER since 2026-07-31. The ceiling below is `credits * NET / MARGIN`
 // and MUST equal the divisor the route was PRICED with, exactly:
 //
-//   provider   priced by            divisor    MIN_MARGIN   0.30 / MARGIN
-//   herosms    sync-herosms           0.025        12.0         0.025  ✓
-//   smspva     sync-prices            0.05          6.0         0.05   ✓
+//   provider   priced by            divisor    MIN_MARGIN   0.40 / MARGIN
+//   5sim       sync-5sim              0.04         10.0         0.04   ✓
+//   herosms    sync-herosms           0.025        16.0         0.025  ✓
+//   smspva     sync-prices            0.05          8.0         0.05   ✓
+//
+// EACH MIN_MARGIN NOW MEANS THE MARGIN WE ACTUALLY EARN, because NET is the
+// measured figure. Only 5sim's DIVISOR moved (0.03 → 0.04, owner 2026-08-05);
+// HeroSMS and SMSPVA keep their exact divisors and only had their MIN_MARGIN
+// restated from the fictional 12/6 to the real 16/8, so their prices are
+// byte-identical before and after this change.
 //
 // A single global constant cannot express this any more, and getting it wrong
 // is silent in the worst direction: too low and every honestly-priced route is
@@ -65,17 +83,22 @@ const DEDUPE_CONCURRENT_SECONDS = 3;
 // double SMSPVA — 60% of the catalog, and the better-delivering provider — and
 // take its 3-credit reach from 729 routes to 16. See the block in sync-herosms.
 const MIN_MARGIN_BY_PROVIDER: Record<string, number> = {
-  // 10x (owner, 2026-08-03). LOCKSTEP with sync-5sim's CREDIT_DIVISOR = 0.03,
-  // because 0.30 / 10 = 0.03 exactly. Move one without the other and you either
-  // refuse honest routes (margin_too_low, charged then refunded) or sell under
-  // cost on every order.
+  // A TRUE 10x (owner, 2026-08-05 — it read 10.0 before but delivered 13.2x).
+  // LOCKSTEP with sync-5sim's CREDIT_DIVISOR = 0.04, because 0.40 / 10 = 0.04
+  // exactly. Move one without the other and you either refuse honest routes
+  // (margin_too_low, charged then refunded) or sell under cost on every order.
   "5sim": 10.0,
-  herosms: 12.0,
-  smspva: 6.0,
+  // 16 and 8, not 12 and 6. These are RESTATEMENTS, not repricings: 0.40/16 is
+  // the same 0.025 sync-herosms already uses and 0.40/8 the same 0.05
+  // sync-prices already uses, so neither provider's prices move. The old 12/6
+  // described a margin these routes never earned.
+  herosms: 16.0,
+  smspva: 8.0,
 };
 /** Falls back to the strictest value we use, never to the loosest: an unknown
- *  provider must under-spend rather than overpay on a route nobody priced. */
-const MIN_MARGIN_FALLBACK = 12.0;
+ *  provider must under-spend rather than overpay on a route nobody priced.
+ *  Strictest = LARGEST margin = smallest divisor, i.e. HeroSMS's 0.025. */
+const MIN_MARGIN_FALLBACK = 16.0;
 const marginFor = (provider: string | null | undefined): number =>
   MIN_MARGIN_BY_PROVIDER[provider ?? ""] ?? MIN_MARGIN_FALLBACK;
 
@@ -97,7 +120,7 @@ function wrongMaxPriceUsd(raw: string | undefined): number | null {
   return Number.isFinite(usd) && usd > 0 ? usd : null;
 }
 
-const NET_USD_PER_CREDIT = 0.30;
+const NET_USD_PER_CREDIT = 0.40;
 
 // Absolute slack added to the order-time ceiling so a trivial provider price
 // tick doesn't take a route offline between hourly sync-prices runs. Flat, not

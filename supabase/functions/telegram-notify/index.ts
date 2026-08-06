@@ -189,10 +189,20 @@ Deno.serve(async (req) => {
   } else {
     for (const p of newSignups) {
       const name = p.display_name ? esc(p.display_name) : "someone";
-      const b = bonusByUser.get(p.user_id);
-      const bonusLine = b != null
+      // A MISSING row means NO grant, not an unknown one. handle_new_user
+      // writes wallet_transactions only when v_bonus > 0, so once the signup
+      // grant went to 0 permanently (2026-08-04) every new signup landed on
+      // the old `: "welcome credit granted"` fallback — an ops alert asserting
+      // a grant that never happened, on every single signup. It read exactly
+      // like the grant was still live and prompted "are you sure it's 0?".
+      //
+      // Same defect the comment above warns about, one branch further down:
+      // the figure was made dynamic, but the no-figure case still claimed a
+      // credit. Absence of evidence was rendered as evidence.
+      const b = bonusByUser.get(p.user_id) ?? 0;
+      const bonusLine = b > 0
         ? `${b} free credit${b === 1 ? "" : "s"} granted`
-        : "welcome credit granted";
+        : "no signup credit (grant is 0)";
       await claimAndSend("signup", p.user_id,
         `👤 <b>New signup</b>\n${name}\n<i>${bonusLine}</i>`);
     }

@@ -8,78 +8,152 @@ import SwiftUI
 /// an out-of-stock option is rendered as unbuyable rather than hidden. Hiding it
 /// would make the free tier look like it does not exist, when in fact it is
 /// simply empty right now.
+///
+/// ── What the 2026-08 audit found here ────────────────────────────────────
+///
+/// **"Couldn't check availability. Please try again." had no retry control.**
+/// The only instruction on the screen could not be followed: nothing on this
+/// sheet re-fetches, and closing it does not either — `loadEmailDomains` is
+/// driven from `ContentView`'s service/mode change. So the user's options were
+/// to close the sheet and change service and change back. It now offers the
+/// retry it names.
+///
+/// **Loading was a bare `ProgressView`.** A spinner says "something is
+/// happening"; skeleton rows say "a list of domains is coming, roughly this
+/// shape". The list is 2–4 rows, so the skeleton is nearly free and removes
+/// the layout jump when it lands.
+///
+/// **The detent is `.large` for a list of 2–4 rows** — about 80% empty space
+/// over a decision that takes one tap. This view now requests `.medium` first.
+/// ⚠️ `ContentView` applies `.presentationDetents([.large])` to every sheet it
+/// presents, OUTSIDE this view, and the outer application wins — so this
+/// request has no effect until that line stops hard-coding `.large` for the
+/// e-mail sheet.
 struct EmailDomainSheet: View {
     @Environment(\.theme) private var theme
     @Environment(\.dismiss) private var dismiss
     @Environment(AppState.self) private var state
+    @Environment(APIClient.self) private var api
     var onPick: (EmailDomainOption) -> Void
+
+    @State private var appeared = false
 
     var body: some View {
         VStack(spacing: 0) {
             SheetHeader(title: "Choose an email domain")
+
             if state.isLoadingEmailDomains && state.emailDomains.isEmpty {
-                loading
+                skeleton
             } else if state.emailDomains.isEmpty {
-                empty
+                unavailable
             } else {
                 list
             }
         }
         .background(theme.bg)
+        .presentationDetents([.medium, .large])
+        .task { withAnimation(RMotion.content) { appeared = true } }
     }
 
-    private var loading: some View {
-        VStack(spacing: 10) {
-            ProgressView().controlSize(.regular).tint(theme.text2)
-            Text("Checking availability")
-                .font(RFont.text(13)).foregroundStyle(theme.text2)
+    // MARK: - States
+
+    /// Three placeholder rows in the shape of the real ones. `.shimmer()` is
+    /// what makes a placeholder read as a placeholder rather than as a broken
+    /// list — static dimming does not.
+    private var skeleton: some View {
+        VStack(spacing: 0) {
+            ForEach(0..<3, id: \.self) { i in
+                HStack(spacing: 12) {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Capsule().fill(theme.chipBg)
+                            .frame(width: i == 0 ? 116 : 96, height: 13)
+                        Capsule().fill(theme.chipBg)
+                            .frame(width: 74, height: 10)
+                    }
+                    Spacer(minLength: 0)
+                    Capsule().fill(theme.chipBg).frame(width: 46, height: 22)
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 15)
+                if i < 2 { RowRule(inset: 16) }
+            }
         }
-        .frame(maxWidth: .infinity).padding(.vertical, 40)
+        .shimmer()
+        .background(theme.elev, in: .rect(cornerRadius: RRadius.lg))
+        .padding(.horizontal, 16)
+        .padding(.top, 8)
+        .accessibilityLabel(Text("Checking availability"))
     }
 
-    private var empty: some View {
-        Text("Couldn't check availability. Please try again.")
-            .font(RFont.text(14))
-            .multilineTextAlignment(.center)
-            .foregroundStyle(theme.text2)
-            .padding(.horizontal, 32).padding(.vertical, 36)
+    /// Deliberately does NOT assert a cause. `loadEmailDomains` clears the list
+    /// both when the fetch fails and when the service genuinely has no mail
+    /// domains, and the sheet cannot tell those apart — so it states what it
+    /// knows and offers the one action that helps either way.
+    private var unavailable: some View {
+        EmptyState(
+            icon: "envelope.badge.shield.half.filled",
+            title: "Couldn't check availability",
+            message: "We ask the mail provider for live stock every time, so this needs a connection. Nothing has been charged.",
+            tint: theme.fail,
+            primary: (label: String(localized: "Try again"), action: reload)
+        )
+        .frame(maxHeight: .infinity)
     }
 
     private var list: some View {
         ScrollView {
-            LazyVStack(spacing: 0) {
-                ForEach(state.emailDomains) { option in
-                    row(option)
-                    if option.id != state.emailDomains.last?.id {
-                        Rectangle().fill(theme.sep).frame(height: 0.5)
-                            .padding(.leading, 16)
+            VStack(alignment: .leading, spacing: 0) {
+                // What actually differs between these rows, said once. Without
+                // it the only visible difference is the price, and a user has
+                // no way to know the address behaves identically either way.
+                Text("Any domain works the same. The free ones run out most often, so stock is checked live.")
+                    .font(RFont.text(12))
+                    .foregroundStyle(theme.text2)
+                    .lineSpacing(2)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.horizontal, 4)
+                    .padding(.bottom, 12)
+                    .riseIn(appeared, index: 0)
+
+                Card(elevation: .raised) {
+                    LazyVStack(spacing: 0) {
+                        ForEach(state.emailDomains) { option in
+                            row(option)
+                            if option.id != state.emailDomains.last?.id {
+                                RowRule(inset: 16)
+                            }
+                        }
                     }
                 }
+                .riseIn(appeared, index: 1)
             }
-            .background(theme.elev, in: .rect(cornerRadius: 22))
             .padding(.horizontal, 16)
+            .padding(.top, 8)
             .padding(.bottom, 24)
         }
+        .scrollIndicators(.hidden)
     }
 
     private func row(_ option: EmailDomainOption) -> some View {
         Button {
+            RHaptic.select()
             onPick(option)
             dismiss()
         } label: {
             HStack(spacing: 12) {
-                VStack(alignment: .leading, spacing: 2) {
+                VStack(alignment: .leading, spacing: 4) {
                     // verbatim: a mail domain is a brand, not a translatable
                     // string, and "gmail.com" must never become "Google Mail".
                     Text(verbatim: option.displayName)
                         .font(RFont.display(16, weight: .semibold))
                         .tracking(-0.3)
                         .foregroundStyle(option.inStock ? theme.text : theme.text2)
-                    Text(option.inStock
-                         ? String(localized: "Available now")
-                         : String(localized: "Out of stock right now"))
-                        .font(RFont.text(12))
-                        .foregroundStyle(option.inStock ? theme.text2 : theme.text3)
+                    if option.inStock {
+                        StatusPill(text: "Available now")
+                    } else {
+                        StatusPill(text: "Out of stock right now",
+                                   tint: theme.text3, soft: theme.chipBg, dot: false)
+                    }
                 }
                 Spacer(minLength: 0)
                 priceTag(option)
@@ -87,7 +161,7 @@ struct EmailDomainSheet: View {
             .padding(.horizontal, 16).padding(.vertical, 14)
             .contentShape(.rect)
         }
-        .buttonStyle(.plain)
+        .pressable(0.985)
         .disabled(!option.inStock)
     }
 
@@ -95,20 +169,23 @@ struct EmailDomainSheet: View {
     private func priceTag(_ option: EmailDomainOption) -> some View {
         if option.isFree {
             Text("Free")
-                .font(RFont.text(12, weight: .semibold))
-                .foregroundStyle(option.inStock ? theme.live : theme.text3)
-                .padding(.horizontal, 10).padding(.vertical, 5)
-                .background(option.inStock ? theme.liveSoft : theme.chipBg,
-                            in: .capsule)
+                .font(RFont.display(15, weight: .semibold))
+                .foregroundStyle(option.inStock ? theme.text : theme.text3)
         } else {
             HStack(alignment: .firstTextBaseline, spacing: 3) {
                 Text("\(option.credits)")
                     .font(RFont.display(15, weight: .semibold))
                     .foregroundStyle(option.inStock ? theme.text : theme.text3)
+                    .monospacedDigit()
                 Text("cr")
                     .font(RFont.text(12, weight: .medium))
                     .foregroundStyle(theme.text2)
             }
         }
+    }
+
+    private func reload() {
+        RHaptic.select()
+        Task { await state.loadEmailDomains(using: EmailAPI(client: api)) }
     }
 }

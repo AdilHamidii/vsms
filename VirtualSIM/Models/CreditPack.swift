@@ -39,11 +39,20 @@ extension CreditPack {
         // Larger packs for eSIM data plans (which run pricier than OTP numbers).
         //
         // These strings are FALLBACKS shown only until StoreKit returns the real
-        // product — and because neither of these two is APPROVED in App Store
-        // Connect, StoreKit never returns them, so the fallback is all a user
-        // ever sees. They read $22.99/$49.99, which was never what the store
-        // would have billed; the live ASC prices are $24.99/$59.99. Keep these
-        // in sync with App Store Connect, not with intent.
+        // product. Keep them in sync with App Store Connect, not with intent —
+        // they once read $22.99/$49.99, which was never what the store would
+        // have billed.
+        //
+        // ⚠️ This comment used to assert that neither of these two was APPROVED
+        // and that "StoreKit never returns them, so the fallback is all a user
+        // ever sees". **That is FALSE and was already false when written**:
+        // both read `APPROVED` on
+        // `/v1/apps/6774768570/inAppPurchasesV2` (re-verified 2026-08-06), and
+        // credits.60 has been the top revenue product. The stale note is
+        // recorded rather than deleted because it nearly caused both packs to
+        // be filtered out of the paywall as unbuyable — including the one
+        // carrying BEST VALUE. **Read ASC before acting on any claim about
+        // product state.**
         .init(id: "xl", productId: "com.anthersystems.VirtualSIM.credits.60",
               credits: 60,  price: "$24.99", perCredit: "$0.42 / cr", badge: nil),
         .init(id: "xxl", productId: "com.anthersystems.VirtualSIM.credits.150",

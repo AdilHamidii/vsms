@@ -4,7 +4,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-**vSMS** (App Store display name; formerly "vSIM OTP" — the Xcode target/scheme is still `VirtualSIM`) — iOS app selling three products, all paid with in-app **credits**: (1) **temporary phone numbers** for SMS verification codes, (2) **temporary e-mail addresses**, and (3) **eSIM data plans** priced at 4× wholesale (line currently PAUSED). iOS frontend in SwiftUI + Supabase backend (Postgres + Auth + Edge Functions + pg_cron).
+**vSMS** (App Store display name; formerly "vSIM OTP" — the Xcode target/scheme is still `VirtualSIM`) — iOS app selling three products, all paid with in-app **credits**: (1) **temporary phone numbers** for SMS verification codes, (2) **temporary e-mail addresses**, and (3) **eSIM data plans** priced at 4× wholesale (line currently PAUSED). A
+**fourth** line — rentable second numbers with two-way SMS and voice, billed by
+StoreKit subscription rather than credits — is PARTLY BUILT and unreachable; see
+"Rentable second numbers". iOS frontend in SwiftUI + Supabase backend (Postgres + Auth + Edge Functions + pg_cron).
 
 **Provider split as of 2026-08-03 — 5sim is the PRIMARY SMS provider; HeroSMS
 and SMSPVA still serve the services 5sim does not map; HeroSMS also serves the
@@ -311,11 +314,27 @@ GET /v1/user/buy/activation/{country}/{operator}/{product}    # pins the pool
 GET /v1/user/profile                  # {balance, rating}
 ```
 
-**`rate720` (30 days) is the base number we use, stored in `routes.pool_rate_pct`
-and rendered in the picker.** It has the best coverage of any window *and* is the
-most stable. Do not read 5sim's own website as a reference: its operator list
-shows the **max across all seven windows**, and its Statistics tab shows
-`rate72`, so our figures will look lower than theirs. That is correct, not a bug.
+⚠️ **TWO DIFFERENT WINDOWS DO TWO DIFFERENT JOBS — do not collapse them
+(2026-08-05).** `sync-5sim` computes both on every run:
+
+| | function | window | used for |
+|---|---|---|---|
+| **selection** | `rateOf` | `rate24` → `rate168` → `rate720` | which pool `choosePool` pins. Never stored. |
+| **display** | `displayRateOf` | `rate168` → `rate720` | `routes.pool_rate_pct` — what the country row renders and what the client sorts on. |
+
+**Choose on freshness, display on stability.** Leading with `rate24` is right for
+selection (fastest way to notice a dead pool, and reacting to noise is worth it
+there) and wrong for a number a user reads as their odds. See "The pool rate is
+the tie-break" for the incident that forced the split.
+
+`routes.pool_rate_window` records which window each stored figure came from —
+`168h` or `720h`. It used to be the hardcoded literal `"720h"` on every row while
+the value was whatever the ladder landed on, so it never described the number
+beside it until 2026-08-05. **Read it before quoting a rate.**
+
+Do not read 5sim's own website as a reference: its operator list shows the **max
+across all seven windows**, and its Statistics tab shows `rate72`, so our figures
+will look lower than theirs. That is correct, not a bug.
 
 🔴 **`rate720` ALONE IS NOT SAFE — it lags a pool's death by up to three weeks,
 and that cost us a whole route (2026-08-04).** olx/us pinned `virtual63` at a
@@ -949,23 +968,65 @@ A plain `0.5*new + 0.5*prev` averages a rise against yesterday's cheaper price a
 
 **eSIM** plans (`sync-esim-plans`) are priced **separately** at 4× wholesale (raised 3× → 4× on 2026-07-25) — `ESIM_MARGIN = 4`, `CREDIT_VALUE_USD = 0.48`, `retail_credits = ceil(usd * 4 / 0.48)` — NOT via `CREDIT_DIVISOR`, so the two product lines never collide. Inverted, the order-time ceiling in `create-esim-order` is `credits * 0.12`: SMSPool's `/esim/purchase` accepts no price cap and its response reports **no cost at all**, so the function takes a fresh `/esim/plans` quote, blocks above the ceiling, and writes that real number into `actual_cost_cents`. It fails **closed** on a bad price and **open** on a failed lookup — an unreachable SMSPool must not make eSIMs unbuyable. (Before this, `actual_cost_cents` echoed the cached catalog price, so margin analysis over it was circular and could never reveal drift.)
 
-**The divisor is PER PROVIDER — 5sim 0.03 (10×, owner 2026-08-03), HeroSMS
-0.025 (12×), SMSPVA 0.05 (6×). Each provider's sync sets its own
-`retail_credits`.**
+**The divisor is PER PROVIDER, and since 2026-08-05 `MIN_MARGIN` finally MEANS
+the margin we earn.** Each provider's sync sets its own `retail_credits`.
 
-| provider | priced by | divisor | `MIN_MARGIN` | `0.30 / MARGIN` | `MAX_WHOLESALE_CENTS` |
+| provider | priced by | divisor | `MIN_MARGIN` | `0.40 / MARGIN` | `MAX_WHOLESALE_CENTS` |
 |---|---|---|---|---|---|
-| **5sim** | `sync-5sim` | **0.03** | **10.0** | 0.03 ✓ | **450** |
-| herosms | `sync-herosms` | 0.025 | 12.0 | 0.025 ✓ | 375 |
-| smspva | `sync-prices` | 0.05 | 6.0 | 0.05 ✓ | 750 |
+| **5sim** | `sync-5sim` | **0.04** | **10.0** | 0.04 ✓ | 100_000 |
+| herosms | `sync-herosms` | 0.025 | 16.0 | 0.025 ✓ | 100_000 |
+| smspva | `sync-prices` | 0.05 | 8.0 | 0.05 ✓ | 100_000 |
 
-`MIN_MARGIN_FALLBACK` is **12.0** — the strictest, never the loosest.
-Each `MAX_WHOLESALE_CENTS` is `150 credits × that provider's divisor`, i.e. the
-largest credit pack, so the rule stays "hide only what a user literally cannot
-buy". **There are now FIVE copies of a divisor and THREE of
-`MAX_WHOLESALE_CENTS` across four sync functions** — they are deliberately
-different values, so "consolidating them into `_shared/`" would silently reprice
-a whole provider. Change them in one commit, never one at a time.
+🔴 **THE TRAP THIS FIXED, because the lockstep ✓ cannot catch it.** The divisor
+is `NET_USD_PER_CREDIT / MIN_MARGIN`, so it is a true 10× only if a credit
+really nets what `NET_USD_PER_CREDIT` says. It said **0.30**, and measured over
+all 37 Production purchases (586 credits, $273.63) a credit grosses **$0.467**
+and nets **$0.397** after Apple's 15%. So every provider ran ~32% above its
+stated multiple — 5sim's "10×" was **13.2×**, HeroSMS's "12×" **15.9×**,
+SMSPVA's "6×" **7.9×** — while the arithmetic stayed perfectly self-consistent
+against the wrong input.
+
+`NET_USD_PER_CREDIT` was doing two opposite-signed jobs: understating revenue is
+**conservative for the order ceiling** (we spend less) and **backwards for
+pricing** (we charge more). It is now the measured 0.40. **Re-derive it from
+receipts if the pack mix shifts — never guess it**, and never reason about a
+margin from anything else.
+
+⚠️ **HeroSMS 12 → 16 and SMSPVA 6 → 8 are RESTATEMENTS, not repricings.** Their
+divisors are unchanged (0.40/16 = the same 0.025; 0.40/8 = the same 0.05), so
+their prices are byte-identical across the change. Only 5sim's divisor moved.
+
+*History: the owner was shown this correction on 2026-08-05 and first chose to
+keep 13.2×, then reversed the same day and asked for the true 10×. Both
+decisions are recorded because the file briefly documented "keep it at 13.2×"
+as settled.*
+
+**Applied effect, measured after the resync** (9,281 priced active routes):
+median route **7 → 6 credits**, share reachable with the $2.99 entry pack
+**36.5% → 48.3%**, $5.99 covers 81.1%. tinder/co (18¢) went **6 → 5 credits**,
+which is the whole point — it now fits the smallest pack a new user can buy.
+Asserted zero rows for each of: priced below wholesale, order-time ceiling below
+the route's own cost, and `premium_credits < retail_credits`.
+
+**The pack ladder is the other half, and it is untouched.** Packs are
+5/12/30/60/150 credits. Even after the repricing, **51.7% of routes still need
+more than the $2.99 pack** and the median route is 6 credits — one past it.
+Since the signup grant is 0, that first purchase IS the activation event. A
+pack-ladder change (e.g. 8 credits at $2.99) addresses the rest without touching
+margin, but needs a client release — `PRODUCT_TO_CREDITS` is server-side,
+`CreditPack.swift` is not, and they must agree.
+
+`MIN_MARGIN_FALLBACK` is **16.0** — the strictest, never the loosest. Strictest
+means the LARGEST margin, i.e. the smallest divisor (HeroSMS's 0.025), so an
+unknown provider under-spends rather than overpaying on a route nobody priced.
+All four `MAX_WHOLESALE_CENTS` are **100_000** since the 2026-08-04 ceiling
+removal, i.e. non-binding — they are no longer `150 credits × divisor` and do
+not need to move when a divisor does. **There are FIVE copies of a divisor and
+FOUR of `MAX_WHOLESALE_CENTS` across four sync functions** — the divisors are
+deliberately different values, so "consolidating them into `_shared/`" would
+silently reprice a whole provider. Change them in one commit, never one at a
+time, and assert the lockstep mechanically rather than by eye: it fails silently
+as `margin_too_low` on every honestly-priced route.
 
 `create-order` resolves it via `marginFor(route.provider)`
 (`MIN_MARGIN_BY_PROVIDER`), falling back to the **strictest** value so an
@@ -1261,6 +1322,462 @@ picker rather than failing at checkout.
 **First real activation delivered 2026-07-30**: leboncoin, free tier,
 `status = received`.
 
+### Rentable second numbers — the FOURTH product line (IN PROGRESS, 2026-08-05)
+
+🚧 **BUILT BUT UNSOLD.** As of 2026-08-05 late: the Number tab is the app's
+FIRST tab and launch tab, purchase and messaging are built and deployed, and
+`lines_paused` is now **`false`**. Nobody has bought one — **the only hard
+blocker is Telnyx float** ($2.33; a number costs $1 + $1/month), deferred by
+the owner. Full design: `~/.claude/plans/binary-humming-moonbeam.md`.
+
+| | state |
+|---|---|
+| Number tab, city→number→price store | ✅ shipped in the repo (not App Store) |
+| `reserve-line-number` / `verify-line-subscription` | ✅ deployed |
+| `apple-notifications` (ASSN V2) | ✅ deployed, **verified end to end** |
+| messaging (webhook in, `send-line-message` out, threads, block/report) | ✅ deployed |
+| `mint-line-token` | ✅ deployed, adapters **unproven** |
+| calling client (TelnyxRTC, CallKit, PushKit, dialer) | ❌ not started |
+| `begin-line-call`, `sync-telnyx-cdr` | ❌ not started |
+
+✅ **ASSN IS PROVEN, not assumed.** Apple's own test-notification endpoint
+(`POST /inApps/v1/notifications/test`) returned **`sendAttemptResult:
+SUCCESS`**, and the row landed in `line_notifications` with `processed_at` set
+and no error. That is the check the P-384 incident demands — verification that
+passes locally and throws `NotSupportedError` in the hosted runtime looks
+identical until a real request arrives. ASSN URLs are set for **both**
+environments.
+
+⚠️ **The ASC URL and the Server API do not agree instantly.** After
+`PATCH /v1/apps/{id}` accepted the URL and read it back correctly,
+`notifications/test` still returned **404 `4040007` "No App Store Server
+Notification URL found"** for several minutes. That 404 is propagation, not a
+broken key — a 401 is the auth failure. Poll rather than concluding anything.
+
+⚠️ **The original migration shipped `line_subscriptions` with SIX updaters and
+no INSERT.** The first subscribe had nowhere to write its row, every later
+UPDATE would have matched zero rows, and the whole lapse state machine would
+have run against a permanently empty table — silently, because an UPDATE
+matching nothing is not an error. Fixed by `20260805190000_record_line_
+subscription.sql`. Likewise `line_threads.blocked` shipped with no writer at
+all (`20260805200000_line_thread_actions.sql`). **When a migration adds a
+column or a table, grep for something that WRITES it.**
+
+⚠️ **`settle_outbound_message_claim` keys on the MESSAGE UUID, not the provider
+id** — `where id = p_message for update` is what makes it a claim. A delivery
+receipt carries only Telnyx's id, so `telnyx-webhook` resolves the row first.
+Passing the provider id there matches nothing and fails silently.
+
+⚠️ **The voice adapters in `_shared/telnyx.ts` are written from the DOCS, not
+probed** — the only block in that file that is. Every other function was probed
+live first, which is why the traps in it are documented rather than guessed.
+`mint-line-token` records each fault to `app_config.telnyx_voice_faults` so the
+first real call doubles as the probe. Re-verify before trusting the shapes.
+
+⚠️ **The Telnyx API key passed through a chat transcript on 2026-08-05 and
+should be rotated** — same category as the HeroSMS key noted below. It lives
+only as the `TELNYX_API_KEY` Supabase secret and is in no commit.
+
+**What it is:** a phone number the user KEEPS — rented monthly, with two-way
+SMS and two-way voice in-app. Owner decisions, all settled, do not re-litigate:
+**rent-only** (no "buy outright" — a CPaaS rents from carriers forever, so a
+one-time sale is an unbounded liability), **SMS + voice in one release**,
+**auto-renewable StoreKit subscription** (the app's first), **Telnyx**,
+**launch US/CA toll-free while pursuing 10DLC**, and a **hard-stop allowance**
+with a visible meter rather than credit overage.
+
+**Four properties that differ from the other three lines. Every one is load-bearing.**
+
+**1. It NEVER touches the credit wallet.** Hard-stop billing means no
+per-message charge and no refund path — so no `wallet_*` calls, no ledger FK,
+and no new `wallet_reason`. That deletes the surface this repo has got wrong
+more than any other ("a claim and its refund must be ONE transaction", which
+seven paths violated). Money here is 100% Apple's. **Keep it that way.** If
+overage credits are ever added they need a ledger FK plus a partial unique
+index on `reason='refund'`, exactly like email and eSIM.
+
+**2. ONE live line per user**, enforced by `phone_lines_one_live_per_user`, a
+partial unique index — not by convention. Apple allows one active subscription
+per group with no quantity on iOS, so **the subscription IS the line**. More
+lines later means **TIERS inside the same group**, never a second group.
+
+**3. `line_subscriptions` has NO foreign key to `auth.users`.** Same class as
+the three credit-grant tombstones, but worse: without it, delete-account →
+re-signin re-provisions a **second** Telnyx number while the first bills us
+forever with no row pointing at it. Recurring, and invisible until the invoice.
+`begin_line_rental` returns `subscription_bound` on that replay.
+
+**4. Clients read the `my_line` VIEW, never `phone_lines`.** RLS is row-level
+and cannot restrict columns, and the table holds `monthly_cost_cents` plus
+every Telnyx id. SELECT is revoked outright from `anon` and `authenticated`.
+This is the fix `routes` and `esim_plans` still need — consider back-porting.
+⚠️ The view is deliberately **not** `security_invoker`: an invoker-rights view
+would need the caller to hold SELECT on the base table, which is exactly what
+was revoked. Its `where user_id = (select auth.uid())` IS the security
+boundary. Do not "fix" it.
+
+**🔴 `ON CONFLICT` CANNOT USE A PARTIAL UNIQUE INDEX unless the clause repeats
+the index predicate.** Both idempotency guards — `line_messages_provider_key`
+and `line_calls_session_key` — raised `42P10 no unique or exclusion constraint
+matching the ON CONFLICT specification` until `where provider_message_id is not
+null` was added to the statement. The indexes existed; they were simply not
+reachable from the code depending on them, and every inbound webhook would have
+500'd (which Telnyx retries). **A structural check cannot catch this** — the
+index is present and correct. Only a behavioural test found it. The email line
+uses the same partial-index pattern and never hit this because it never uses
+`ON CONFLICT` against it.
+
+**Every Swift enum mirroring these PG enums needs an `unknown` fallback in
+`init(from:)`, in the first client commit.** iOS `OrderStatus` is a plain
+String enum with no unknown case, which is why `begin_order` had to write a
+semantically wrong `'waiting'`. Six lines each, and it permanently removes the
+client-first-schema-second ordering constraint for this line.
+
+**The subscription EXISTS in App Store Connect (created 2026-08-05 via the ASC
+API, headlessly):**
+
+| | |
+|---|---|
+| group | **`22289428`** "Second Number" (+ en-US localization) |
+| product | **`6798378879`** `com.anthersystems.VirtualSIM.line.monthly` |
+| period | `ONE_MONTH`, not family-shareable |
+| price | **$9.99 USD → proceeds $8.49** (base territory **USA**) |
+| availability | 32 territories, `availableInNewTerritories: true` |
+| grace period | **16 days, ALL_RENEWALS, sandboxOptIn ON** |
+| state | `MISSING_METADATA` |
+
+⚠️ **`subscriptionAvailability` MUST EXIST BEFORE PRICING.** Setting a price
+first returns a useless **409 `ENTITY_ERROR.RELATIONSHIP.INVALID`** pointing at
+`/data/relationships/subscriptionPricePoint/id` — which reads as a bad price
+point, and the price point is fine. Create `subscriptionAvailabilities`, then
+price. Nothing in the error says so.
+
+🔴 **A `MISSING_METADATA` PRODUCT IS NOT RETURNED BY StoreKit — NOT EVEN IN
+SANDBOX.** From the phone this looks like a bug in your own app:
+`Product.products(for:)` returns an empty array, so the app renders whatever
+its "no product" branch says. Ours said *"Second numbers are temporarily
+unavailable"* and the CTA still looked live, so tapping it ran the whole
+reserve-then-purchase path just to surface an error. **Check the ASC state
+before debugging the client.**
+
+⚠️ **CREATING A BASE PRICE OVER THE API DOES NOT PROPAGATE TO OTHER
+TERRITORIES.** The ASC web UI fills every territory from the base automatically;
+the API does not. Measured 2026-08-06: `subscriptionAvailability` listed **32**
+territories while `GET /v1/subscriptions/{id}/prices` returned **one** record
+(USA), i.e. 31 territories with no price at all. Confirm with
+`?filter[territory]=FRA` — it returns `total: 0`, not an error.
+
+The fix replicates what the UI does — take the base territory's price point,
+ask Apple for its equivalent everywhere else, and create each price:
+
+```
+GET  /v1/subscriptionPricePoints/{basePointId}/equalizations?include=territory&limit=200
+POST /v1/subscriptionPrices   { subscription, subscriptionPricePoint }
+```
+
+Script: `scripts/asc-equalize-subscription-prices.py` (supports `--dry`).
+
+⚠️ **ASC's IAP `state` RECOMPUTES LAZILY — but not THAT lazily.** A 20-minute
+poll after the screenshot landed, and a further 9 minutes after the 31 prices
+landed, both stayed `MISSING_METADATA`. So treat "no change after ~5 minutes"
+as a real missing field, not propagation. **The API will not name which field**
+— there is no reasons array anywhere on the resource. The web page flags it in
+red; that is the fastest diagnosis by a wide margin.
+
+**Do NOT use `POST /v1/subscriptionSubmissions` as a diagnostic.** It would name
+the missing field in its error — but if the read is wrong and the metadata is
+in fact complete, it SUBMITS, and cancelling an IAP submission leaves the
+version `DEVELOPER_REJECTED` and needs the web UI to recover (see Release prep).
+
+**Verified present on `6798378879` as of 2026-08-06, so do not re-check these:**
+en-US subscription localization (name + description), subscription **group**
+localization, review notes, `subscriptionPeriod`, `familySharable`, 32-territory
+availability, an `appStoreReviewScreenshot` attached and `COMPLETE` with no
+errors, and prices in all 32 territories. The app's `primaryLocale` is `en-US`,
+so the localization matches. The remaining untested hypothesis is that a
+**first** subscription must be attached to an app version before ASC will call
+it ready.
+
+⚠️ **Base territory is USA, deliberately.** The credit-pack ladder mixed FRA and
+USA bases and silently drifted to $4.99-vs-€5.99 on the top revenue product.
+One base per ladder.
+
+**`sandboxOptIn` on the grace period is not optional for us** — without it the
+`DID_FAIL_TO_RENEW`/`GRACE_PERIOD` branch of the line state machine cannot be
+exercised in Sandbox at all.
+
+**Two things still block the product, and both are genuinely blocked:**
+- **App Store review screenshot** — needs the in-app subscription UI to exist,
+  so it waits on the client. This is the whole of the remaining
+  `MISSING_METADATA`.
+- **ASSN V2 URL** (`subscriptionStatusUrl`, and the sandbox twin) — currently
+  `null`. Set both once `apple-notifications` is deployed; Apple validates
+  reachability, so pointing at a function that does not exist yet will fail.
+
+`VirtualSIM/Products.storekit` carries a matching local subscription group —
+local StoreKit testing does not read ASC, so the two must be kept in step by
+hand.
+
+**Landed so far (all verified against live DB state, not deploy logs):**
+- `20260805170000_phone_lines.sql` — 6 enums, 7 tables, the `my_line` view,
+  19 SECURITY DEFINER RPCs, `set_lines_paused`, the `app_config_read`
+  whitelist widened to a **fourth** key, `telegram_events` kinds widened.
+  Verified by 14 structural + 18 behavioural assertions (the latter inside a
+  transaction that rolls back).
+- `_shared/iap.ts` — `verifyAppleJWS<T>()` extracted so ASSN V2 reuses the
+  root pin and the P-384 workaround instead of growing a second verifier;
+  plus `verifyNotificationJWS`, `verifyRenewalInfoJWS`, and
+  `isSubscriptionProduct`. ⚠️ **`PRODUCT_TO_CREDITS` must NEVER gain the
+  subscription id** — one entry pays credits on every renewal forever.
+  ⚠️ **`iap-verify` is NOT redeployed**; `_shared` is bundled per function, so
+  it still runs the pre-refactor copy. Deploy it with `apple-notifications` in
+  Phase 2, where Apple's test-notification endpoint can exercise it in the real
+  runtime. `iap-verify:121` returns 400 `unknown_product` and PAGES — a
+  renewal reaching that branch pages on every renewal.
+- `_shared/telnyx.ts` — **signature verifier and fault vocabulary ONLY.** No
+  endpoint wrappers on purpose: adapters here are written AFTER probing the
+  live API. `classifyTelnyxFault` is marked PROVISIONAL.
+- `scripts/verify-telnyx-signature.ts` (21 assertions, self-contained) and
+  `scripts/verify-apple-jws.ts` (12, against REAL receipts). Run the latter
+  after ANY change to `iap.ts`; a local pass is necessary but **not
+  sufficient**, which is exactly how the P-384 outage hid for weeks.
+
+**Pricing (owner decision 2026-08-05): $9.99/month, 200 SMS + 100 minutes,
+hard stop.** Nets $8.49 after Apple's 15% against a worst case of ~$4.30, so
+margin holds even on the heaviest user. ⚠️ **You cannot apply the 10× credit
+rule here — the market sets this price** (Burner/Hushed $4.99, Sideline $9.99,
+Google Voice free). At $4.99 with the same allowance the line LOSES money on a
+heavy user, and hard-stop billing means there is no overage to recover it.
+The schema defaults already encode this (`sms_allowance 200`,
+`voice_allowance_seconds 6000`).
+
+### Telnyx API — what live probing found (2026-08-05)
+
+Probed with a real account and one purchased DID (**+1 415 329 3816**, id
+`3019915491322889224`, `customer_reference = vsms-test-line`). Balance went
+$10.00 → **$8.13**. Everything below is measured, not read off the docs.
+
+🔴 **NOTHING TELLS YOU WHAT YOU PAID.** The number-order response returns
+`cost_information: null`, and `GET /v2/phone_numbers/{id}` has no price field
+at all — 35 keys, none of them a cost. This is the SMSPool eSIM trap exactly
+(*"its response reports no cost at all"*, which made margin analysis circular).
+**Capture the price from the SEARCH quote at purchase time** into
+`phone_lines.monthly_cost_cents`; `activate_line_claim` already takes it. There
+is no way to recover it afterwards.
+
+**Two request shapes that fail if you write them from the docs:**
+- `POST /v2/messaging_profiles` **requires `whitelisted_destinations`** (e.g.
+  `["US","CA"]`) or returns **40331 `Missing whitelisted destinations`**.
+- **`messaging_profile_id` is NOT settable on `PATCH /v2/phone_numbers/{id}`** —
+  it returns **10027 "not reachable here"**. Number config is split across
+  sub-resources: `/v2/phone_numbers/{id}/messaging` and `.../voice`. The main
+  resource does take `customer_reference` and `tags`.
+
+**Prices are FLAT and half what was estimated: $1.00 upfront + $1.00/month for
+every type probed** — US local, US toll-free, CA local alike.
+
+⚠️ **"CA toll-free" IS A FICTION.** Filtering `country_code=CA` +
+`phone_number_type=toll_free` returns the **identical numbers** as the US query
+(+18779074790, +18338471334, +18556650304) — North American toll-free is one
+shared NANP pool, so 833/855/877 are not Canadian. **Canada needs LOCAL
+numbers.** Do not build a country picker that offers CA toll-free.
+
+🔴 **`regulatory_requirements` IN SEARCH RESULTS IS ALWAYS NULL AND MEANS
+NOTHING. IT COST $3.83 TO LEARN THIS.** `GET /v2/available_phone_numbers`
+returned `regulatory_requirements: null` for every country probed, which reads
+as "no paperwork needed". A GB mobile number was then bought on the strength of
+it and arrived **`status: requirement-info-pending`** with **six** outstanding
+requirements — it can never be used, and the money is spent. It was released
+immediately to stop the recurring charge.
+
+**The reliable pre-purchase source is
+`GET /v2/requirements?filter[country_code]=XX&filter[action]=ordering`**, and it
+is unambiguous:
+
+| country | ordering rules |
+|---|---|
+| **US** | **0** |
+| **CA** | **0** |
+| GB, BE, LT, NL, BR, AU, PL, SE, ZA | **3–5** |
+
+**Only the US and Canada are documentation-free. Every other country needs an
+in-country physical address**, and that is fatal rather than inconvenient — GB's
+six requirements include *"a valid, real-world physical address located in the
+same country as the phone number"*, national proof of address (utility bill),
+a government ID or company registration certificate, a company website, contact
+details, and a business use-case description with sub-allocation disclosure.
+Selling UK numbers needs a UK address; Dutch numbers a Dutch address. The only
+alternative is collecting ID documents from every individual customer, which is
+a privacy liability and a terrible checkout.
+
+**So the line is US + CA, exactly as first scoped**, and there is no clever way
+around 10DLC or toll-free verification. A multi-country catalogue was
+investigated on 2026-08-05 and is closed — do not re-open it on the strength of
+the search endpoint's null field.
+
+### The definitive sellable catalogue (exhaustive sweep, 2026-08-05)
+
+228 ISO codes → **138 carry ordering requirements** (fetched from
+`/v2/requirements?filter[action]=ordering`, 292 rows, the reliable source) →
+the remaining 92 were swept for live inventory. **Everything we can sell
+without paperwork is NANP (+1):**
+
+| country | type | $/mo | upfront | SMS |
+|---|---|---|---|---|
+| **US** | local | 1.00 | 1.00 | ✅ |
+| **CA** | local | 1.00 | 1.00 | ✅ |
+| **VI** US Virgin Is. | local | 1.00 | 3.00 | ✅ |
+| **PR** Puerto Rico | local | 3.00 | 3.00 | ✅ |
+| CD DR Congo | mobile | 27.00 | 27.00 | ❌ voice only |
+| BW Botswana | toll_free | 40.00 | 40.00 | ❌ voice only |
+
+The other **86** requirement-free codes have **no inventory at all**. CD and BW
+are voice-only and cost 3–5× the retail price, so they are unsellable.
+
+⚠️ **PR and VI are US area codes, not extra markets.** They are +1/NANP, so US
+carrier rules — including 10DLC — apply to them exactly as to any US number.
+Listing them as "4 countries" would be marketing fiction; it is one market with
+four flag icons.
+
+✅ **CANADA NEEDS NO 10DLC — MEASURED, AND IT IS THE LAUNCH PATH.** Tested
+2026-08-05 with a real purchase: `+1 343 513 1580` (Ottawa) went **`active`
+immediately** with no requirement pending, and sending from it to our US number
+with **no TCR brand and no campaign registered** was **`delivered`** at
+$0.0040. `/v2/10dlc/brand` reports `totalRecords: 0` — nothing is registered
+and it worked anyway.
+
+**So the zero-paperwork launch is: sell CANADIAN numbers.** No TCR brand, no
+campaign, no toll-free verification, no waiting on an external approval that
+can be rejected. A +1 number is equally credible to a US recipient, and CA
+costs the same $1.00/month as US.
+
+⚠️ **US numbers still need 10DLC to SEND.** The purchased US number carries
+`messaging_campaign_id: null` and is unregistered. Do not assume the Canadian
+result generalises to it — it does not, because TCR is a US carrier programme
+and the Canadian number is simply not subject to it. Offer US numbers only
+after the brand and campaign clear.
+
+⚠️ **Inbound to a Canadian number is still domestic-only** (`international_
+inbound: false`, same as US), so this fixes the *paperwork*, not the
+can-a-European-text-it problem.
+
+**The inbound path is now PROVEN END TO END.** The `message.received` webhook
+arrived, passed Ed25519 verification in production, and was captured. Replayed
+through the verifier: real bytes verify, one flipped byte fails, a re-serialized
+body fails, a replay past 300s fails, and a slid timestamp fails — 6/6.
+
+🔴 **The parse-after-verify rule is not theoretical: Telnyx sends
+PRETTY-PRINTED JSON.** The captured body is **1,703 bytes**; `JSON.parse` then
+`JSON.stringify` yields **1,203**. Parsing before verifying would silently
+discard 500 bytes of signed content and every signature would fail. Read
+`await req.text()` once, verify, *then* parse.
+
+**A corollary worth keeping:** the two-tier pricing designed for a 36-country
+catalogue is unnecessary. US and CA are both $1.00/month, so **one product at
+$9.99 covers the whole catalogue.**
+
+🔴 **US NUMBERS ARE DOMESTIC-ONLY FOR SMS, AND YOU CANNOT TURN THAT OFF.**
+Measured on the live number: `features.sms` reads
+`{domestic_two_way: true, international_inbound: false, international_outbound:
+false}`. A European phone texting the number produces **nothing at all** — not a
+failure, not a webhook, not a `detail_record`. The message leaves the sender's
+handset looking sent and simply never reaches Telnyx.
+
+⚠️ **`PATCH /v2/phone_numbers/{id}/messaging` with
+`features.sms.international_inbound = true` returns 200, no error, AND CHANGES
+NOTHING.** The write is silently ignored — the same silent-no-op class as
+`getPrices` accepting an `operator` param it discards, and as the column-revoke
+migration that edits `pg_attribute` while the table grant still wins. **Read the
+value back; do not trust the 200.** Enabling international messaging is an
+account-level capability that needs Telnyx to grant it, not an API call.
+
+**The P2P lane is a DEAD END — settled 2026-08-05, do not re-probe.** The
+number advertises `eligible_messaging_products: ["A2P", "P2P"]`, which reads
+like an unregistered person-to-person route and is exactly what a
+rent-a-number product wants. It is not available:
+`PATCH /v2/phone_numbers/{id}/messaging` with `{"messaging_product":"P2P"}`
+returns **200 with no error and changes nothing** — `messaging_product` stays
+`A2P` on read-back. Same silent-no-op as the international flag above, in the
+same session, on the same endpoint. **"Eligible" describes the number, not your
+account.** US carriers closed the unregistered P2P lane to CPaaS traffic;
+10DLC registration is genuinely unavoidable for outbound, with any provider,
+because it is a carrier rule rather than a Telnyx one.
+(`/v2/10dlc/brand` currently reports `totalRecords: 0` — nothing registered.)
+
+**What that means for who this line is for.** It is a **US product**, and that
+is fine: measured over all 39 Production purchases, **USA is 53.8% of purchases
+and 9 of 21 buyers** (FRA 23.1%, then ESP/BGR/TUR/POL/AUT/SVK/SWE at 1–2 each).
+The single largest market gets a fully working product. But a European user who
+rents a US number **cannot text their own contacts with it**, which is a
+refund-generating surprise rather than a limitation they will infer. Either gate
+the line to the US/CA storefronts or say plainly on the store screen that a US
+number exchanges messages only with US and Canadian numbers. European local
+numbers are not the escape hatch — those are exactly the ones needing
+regulatory bundles with an end-user address.
+
+Other measured facts: number orders are **asynchronous** (`pending` → `success`,
+under 5s here, but build the poller anyway — it is what survives a webhook
+outage); `reservable: true`, so the reserve-then-paywall flow is available;
+`emergency_status` is **`disabled` by default**, so our E911 stance is "never
+enable it" rather than "remember to turn it off"; US local has `hd_voice`,
+toll-free does not; and the default US local search returns obscure rate
+centers (a Texas one), so the picker must filter by `national_destination_code`
+— area code 415 correctly returned San Francisco numbers.
+
+✅ **`@noble/curves/ed25519` RUNS on the Supabase edge runtime — verified in the
+hosted runtime, not assumed.** A well-formed but wrong signature was rejected
+as `bad_signature`, which means the curve math executed. This is the check the
+P-384 incident demands: that failure passed locally and threw
+`NotSupportedError` in production, rejecting every purchase for weeks.
+
+**Blocked on external clocks, none of them code:** toll-free verification and/or
+10DLC brand+campaign (weeks, can fail outright — fanning many end users through
+one Standard 10DLC campaign is what carriers police; note the purchased local
+number has `messaging_campaign_id: null` and cannot send US A2P until
+registered). ⚠️ **US only** — Canada needs none of it, which is why the launch
+is Canadian; see "CANADA NEEDS NO 10DLC".
+
+✅ **The App Store Server API key EXISTS and is WIRED (2026-08-05).**
+`SubscriptionKey_BTPZRH3GW3.p8` (Users and Access → Integrations → **In-App
+Purchase**), stored at `~/.appstoreconnect/private_keys/` and mirrored into four
+Supabase secrets: `APPSTORE_KEY_ID` / `APPSTORE_ISSUER_ID` /
+`APPSTORE_BUNDLE_ID` / `APPSTORE_KEY_P8`.
+
+Three facts settled by probing, none of them obvious from Apple's docs:
+
+- **The issuer id is the SAME as the ASC API one** (`4644ed13-…`). The In-App
+  Purchase keys page shows an issuer id and it is easy to assume it differs; it
+  does not. Nothing extra to obtain.
+- **The JWT needs `bid` (the bundle id)**, which the App Store Connect API JWT
+  does not. Omitting it returns **401**, indistinguishable from a wrong key.
+- **`AuthKey_R5ZVLBTUR6.p8` genuinely will not work here** — it is an App Store
+  Connect key. Keep the two straight; they live in the same directory.
+
+Verified against `POST /inApps/v1/notifications/test` on **both**
+`api.storekit-sandbox.itunes.apple.com` and `api.storekit.itunes.apple.com`:
+both returned **404 `4040007` "No App Store Server Notification URL found"**,
+which is a *business* error and therefore proof the auth passed. A 401 is the
+auth failure; do not read a 404 here as a broken key.
+
+That 404 also states the remaining blocker exactly: **`subscriptionStatusUrl`
+and its sandbox twin are still `null`** and can only be set once
+`apple-notifications` is deployed, because Apple validates reachability.
+
+⚠️ **Float — this is the ONE hard blocker left, and it is money, not code**
+(owner deferred it 2026-08-05: *"ill do that when i got funds"*). Each line
+costs $1 upfront + $1/month, Apple pays ~45 days in arrears, so the float is
+carried ahead of any revenue: 50 subscribers is $50/mo out before a cent comes
+back. Last reading **$2.33** — that is a test balance, not a launch balance.
+Everything downstream of provisioning can be BUILT and tested against Sandbox
+without it; only actually buying a DID needs it.
+
+**Three traps the plan calls out that are easy to lose:** the reviewer will use
+a **Sandbox** subscription, and `iap-verify`'s `environment === "Production"`
+gate applied to provisioning means the reviewer subscribes, gets nothing, and
+rejects. **Inbound SMS/calls are the uncapped cost risk** — the user cannot
+control them, so never bill for inbound and cap it server-side. And E911 must
+be **disabled and unmissably disclosed**, not buried in a Terms link.
+
 ### Support chat — user types in-app, owner answers from Telegram (2026-07-30)
 
 `support_threads` + `support_messages`, `support-send`, and a widened
@@ -1445,12 +1962,57 @@ provider reports 59.3%**. Price picked Kenya every time.
 
 ### The pool rate is the tie-break (1.8, 2026-08-03)
 
-`routes.pool_rate_pct` is 5sim's published 30-day rate for the **exact pool the
+`routes.pool_rate_pct` is 5sim's published **7-day** rate for the **exact pool the
 route buys from** (`routes.pool_operator`), written hourly by `sync-5sim`. It
-covers roughly **1,760 of 4,420** active 5sim routes (08-04: 1,373 positive,
-389 zero) and is
-the number the country row renders. This replaced `service_country_ranks` as the
-tie-break. Coverage moves every hour — re-query before quoting it.
+covers **2,638 of ~7,700** active 5sim routes (08-05: 1,540 on the 7-day window,
+1,097 falling back to 30-day because the pool saw no activations in a week) and
+is the number the country row renders. This replaced `service_country_ranks` as
+the tie-break. Coverage moves every hour — re-query before quoting it.
+
+🔴 **IT WAS `rate24` UNTIL 2026-08-05, AND THAT MISLED USERS IN BOTH
+DIRECTIONS.** `pool_rate_pct` was written from the same `rateOf` ladder that
+PICKS the pool, so the row rendered the shortest, noisiest window 5sim
+publishes. The incident: one user ran **seven** Tinder orders in 8.5 minutes.
+
+| route | rendered (`rate24`) | `rate168` | `rate720` | what happened |
+|---|---|---|---|---|
+| tinder/co `virtual34` | **88** | 71.4 | 71.2 | 4 orders, 3 real attempts, **1 code** |
+| tinder/us `virtual63` | **15** | 47.1 | 57.3 | 2 orders, both cancelled early |
+| tinder/ar `virtual4` | **61** | 13 | — | 1 order, cancelled |
+
+So the app oversold Colombia, undersold a usable US route, and oversold
+Argentina — all from the same defect. Measured over 3,320 in-stock pools
+publishing a positive rate somewhere (12 countries): median
+|`rate24` − `rate720`| **9.6 points**, **16.6% differ by 30+ points**, only
+50.8% agree within 10.
+
+**The fix was display-only and cost nothing in coverage.** 5sim's rate fields
+are perfectly nested by window length (0 violations over 14,892 in-stock pools),
+so any pool publishing `rate24` also publishes `rate168` — both rules rate
+exactly 8,791. Aggregate barely moved (mean 10.9 → 10.7; green 528 → 495, amber
+808 → 834, red 7,455 → 7,462); **6.9% of pools changed colour band, 296 up and
+310 down.** It is noise reduction, not a repricing of optimism.
+
+⚠️ **The catalog is genuinely red-heavy and that is not a bug in this change** —
+median rated route is **9%**, 814 routes publish exactly 0, only 292 are green.
+That was equally true before. It is what the inventory is.
+
+⚠️ **This changed what `orders.pool_rate_pct` stamps at reservation.** Orders
+before 2026-08-05 carry `rate24`, after carry `rate168`. **Split the pending
+correlation study on that date** or the halves are not comparable.
+
+**STILL OUTSTANDING: the rendered number is ~2× our realised delivery.** Across
+every 5sim order that got a number and was NOT cancelled: published 80+ → **40%**
+(5 orders), 60–79 → **25%** (8), 30–59 → **0%** (9), <30 → **0%** (4). The
+ranking is **monotone**, which is the first positive read on the correlation
+study — the steering works. The LEVEL does not. n = 27, so treat the ordering as
+the finding and the percentages as indicative. Re-run at ~100 non-cancelled
+orders before acting. The candidate fix is to stop quoting a bare percentage at
+all and render the colour band as a word (High/Medium/Low) — a third-party
+aggregate with no published denominator should not wear two significant figures,
+which is this repo's own standing rule (see Badge confidence, and the SMSPVA
+seeded grade that had to be demoted to `.notTested`). That needs a client
+release.
 
 **Colour bands (owner, 2026-08-03): >60 green, 30–60 amber, <30 red.**
 `CountrySheet.poolRateColor`. Sort options are exactly three — **Best success,
@@ -2578,34 +3140,44 @@ SMS provider again, walk this list:
 8. **Re-check `active_sms_provider()` AFTER the dust settles, not just after the re-home.** Added 2026-07-30, learned the hard way. It picks by *active route count*, which silently assumed one provider owns the catalog. A per-service split plus a sync that hides unfulfillable rows can leave the **retired** provider holding more rows than the live one — which is exactly what happened (SMSPVA 7,757 vs HeroSMS 5,198), pointing all five `refresh_*` evidence functions at the wrong provider with no error anywhere. Assert it returns what you expect, and re-assert it after the first sync run, not before.
 9. **Give the new provider its own cost column, and scope every cached-cost fallback to the provider that owns the row.** `sync-prices` only maintains SMSPVA's `last_cost_cents`, so any other provider's rows carry a frozen number from a provider you are no longer buying from. A `??` onto that stale value passes the margin gate and then fails at reservation — a charge-and-refund that looks like a stockout. See `sync-herosms`.
 
-## Current state (2026-08-04)
+## Current state (2026-08-05)
 
 ### Inventory — these move hourly. RE-QUERY, don't quote this block.
 
 Every number below has been wrong within a day of being written at least once.
 It is a starting point for "is this roughly right", never a citation.
 
-- **iOS**: `MARKETING_VERSION 1.8`, `CURRENT_PROJECT_VERSION 28`, iOS min **18.0**,
+- **iOS**: `MARKETING_VERSION 1.9`, `CURRENT_PROJECT_VERSION 31`, iOS min **18.0**,
   **96** Swift sources, **357** strings / 0 untranslated / 0 specifier reorders.
-- **Backend**: **26** edge function dirs besides `_shared`, **13** `_shared` files,
-  **136** migration files, **16** pg_cron jobs (all active).
-- **Catalog** (08-04 07:15): **5,905** active routes, 5sim **4,417**. Pool rate:
-  **1,373 positive / 389 zero / 2,655 unrated**. 268 services (254 visible), 69
-  countries. eSIM 1,081 plans, **0 active — line PAUSED**.
+- **Backend**: **27** edge function dirs besides `_shared`, **14** `_shared` files,
+  **145** migration files, **16** pg_cron jobs (all active). (Counted 08-05.
+  The previous figures — 26 dirs, 13 shared, 136 migrations — were stale by 1,
+  1 and 8 respectively; `ls | wc -l` rather than trusting this line.)
+- **Catalog** (08-04 20:35, after BOTH +100 batches): **9,312** active routes,
+  5sim **7,704**. **468 services**, 454 with at least one bookable route. 69
+  countries, **60** of them mapped to 5sim. eSIM 1,081 plans, **0 active — line
+  PAUSED**.
 - **Evidence**: `rate_source='measured'` = **3 routes**, rebuilding from 0 after
   the cutover. That reset is CORRECT — see "Evidence must describe the provider
   that serves the NEXT order".
-- **Balances: 5sim $9.37 (rating 96/96), HeroSMS $9.62.** Both `low`, both at
-  alert tier 3 on a `[37.50, 22.50, 11.25, 7.50]` ladder. **Both are near the
-  $7.50 single-order ceiling — top up.**
-- **App Store**: 1.8 (build 28) `WAITING_FOR_REVIEW` since 2026-08-03 13:18Z,
-  notes refreshed in 13 locales. 1.7/1.6 `READY_FOR_SALE`. All five packs
-  `APPROVED`. One review slot free.
-- **Signup grant: 3 credits** (`app_config.signup_bonus_credits`, set 08-04
-  07:09). It has been 5 → 0 → 1 → 3 in two days. Reach at each size, measured
-  08-04: **1 cr → 67 routes / 36 services; 3 cr → 618 / 112; 5 cr → 1,486 / 132.**
-  ⚠️ Migration `20260803070000` hardcodes **0**, so a from-scratch replay
-  silently disables the grant.
+- **Balances: 5sim $8.89 (rating 96/96), HeroSMS $9.41** (08-05 15:05Z). Both
+  `low`, both at alert tier 3 on a `[37.50, 22.50, 11.25, 7.50]` ladder. **Both
+  are near the $7.50 single-order ceiling — top up.**
+- **App Store**: **1.9 (build 31) is `READY_FOR_SALE`** — verified against ASC
+  2026-08-05. This file has now claimed `WAITING_FOR_REVIEW` past the release
+  date for **two versions running** (1.8 for a full day, then 1.9), and it is
+  never harmless: what shipped decides whether a client-side fix is worth
+  anything. **Read ASC, not this line.** 1.8/1.7/1.6 `READY_FOR_SALE`. All five
+  packs `APPROVED`. Builds 29 and 30 are superseded (29 carried the "+3 credits"
+  card; 30 predated the `inviteJoinerCredits` fix); the cancel-and-replace
+  recipe lives under Release prep.
+- **Signup grant: 0 — REMOVED PERMANENTLY** (owner decision 2026-08-04 15:42Z,
+  `20260804160000`). The product is paid: you want a number, you buy credits.
+  It had been 5 → 0 → 1 → 3 → 0 in two days; the reach table that used to live
+  here (1 cr → 67 routes, 3 cr → 618, 5 cr → 1,486) is kept only in that
+  migration, because reach was never the reason the grant mattered — see the
+  two sections below. Rollback is one UPDATE and takes effect on the next
+  signup with no deploy.
 
 ### ⚠️ The grant size decides which ONE route new users land on
 
@@ -2634,9 +3206,12 @@ refunded. Before suspecting users, check what the app pre-selected — and note 
 cluster was on the CHEAPEST route in the catalog, the opposite of what someone
 burning your money would pick.
 
-✅ **FIXED 2026-08-04 (`804a6dd`) — the candidates are now ranked by pool rate,
-not by array position. NOT IN BUILD 28**, so every shipped build still has the
-behaviour above; it needs a release to reach anyone.
+✅ **FIXED and SHIPPED — the candidates are ranked by pool rate, not by array
+position.** Landed as **`a14fb86`** (on this branch; `804a6dd` is the same
+change under a duplicate hash left by another worktree and is reachable from no
+branch) and rides in **build 31 = 1.9, `READY_FOR_SALE`**, confirmed against the
+archive's dSYM. **Everything below describes the pre-1.9 behaviour**, which
+users on 1.8 and earlier still have.
 
 `preferred` is kept as the CANDIDATE SET and its order survives only as the
 FINAL tie-break, so brand recognition still decides where the evidence is silent
@@ -2667,6 +3242,174 @@ proof its pool was dead; that was wrong, and only 5sim's own `rate168 = 0`
 (measured across all their customers) actually supported it. The pending
 `pool_rate_pct` correlation study must exclude default-landed orders or it will
 measure our own steering.
+
+### Adding services — the catalog was the bottleneck, not the provider
+
+**5sim offers 1,276 products. We listed 147.** The other 1,133 were absent
+because `services` is a hand-built table, not because of anything 5sim does.
+**TWO batches of 100 were added on 2026-08-04** (`20260804200000`,
+`20260804220000`) — every one became bookable:
+
+| batch | services | active routes | price range |
+|---|---|---|---|
+| 1 | 100 | 1,945 | 1–66 cr (avg 7.3) |
+| 2 | 100 | 1,148 | 1–68 cr (avg 6.2) |
+
+Catalog went 268 → **468** services and 5,905 → **9,312** active routes.
+`scripts/gen-fivesim-services.py` does the next batch; **~930 products remain**.
+
+**Coverage per service is very uneven and that is normal.** Of batch 1, 24
+services reached 45+ countries while 27 reached only 1–2. Stock is per (service,
+country) and `sync-5sim` re-evaluates hourly, so thin services fill in on their
+own. Do not read a 1-country service as broken.
+
+**No app release is needed.** The catalog is fetched from the server and
+`ServiceLogo` falls back to the favicon cascade for unbundled domains, so new
+services appear on shipped builds immediately. Run
+`scripts/fetch-bundled-assets.sh --refresh` before the next release to bundle
+the logos.
+
+Four traps, each of which fails SILENTLY:
+
+1. **Seed the routes yourself.** `sync-5sim` builds its write set from routes it
+   has READ and never inserts — a service with no route rows is invisible to it
+   forever. 100 services × 60 fivesim-mapped countries = 6,000 rows.
+2. **`routes.status` defaults to `'active'` and `routes.provider` to
+   `'smspva'`** — both wrong. An unpriced active route renders "Unavailable",
+   and the default provider hands ownership to one with no code for the service,
+   because `providerOrder()` resolves ownership from `routes.provider`. Seed
+   `hidden` + `'5sim'` and let the sync decide.
+3. **`services.smspva_code` is NOT NULL, and you must NOT drop that
+   constraint.** `Service.swift` declares `let smspvaCode: String`,
+   non-optional, so a null throws on decode and takes the WHOLE catalog down for
+   every shipped build. Use `''` — it decodes, and it is falsy in the router.
+   Client first, schema second, as with every other column change.
+4. **The "missing" set is keyed on 5SIM PRODUCT SLUGS, so a brand you already
+   carry under a different slug does not appear in it.** Four did — g2a,
+   hepsiburada, grab, claude — and `on conflict (id) do nothing` would have
+   swallowed them without a word. Always diff against `services.id` too.
+
+**A country that FAILS a sync run is skipped, not hidden — and you will see it.**
+Batch 2's run reported `countries_failed: 1` (germany, 429s) and
+`skipped_failed_country: 468`. Germany kept its 112 active routes instead of
+being wiped to zero, because sync-5sim distinguishes "we could not read this
+country" from "this country has no stock". That distinction is the difference
+between a transient rate-limit and deleting a market from the catalog. The
+next hourly run picks it up. Also note `fetch_faults` counted 10–12 `429`s per
+run at 60 countries — 5sim rate-limits, so do not add more parallelism.
+
+**Re-homing an existing service: country OVERLAP decides, not "do they carry
+it".** Claude/Grab/Hepsiburada moved to 5sim (`20260804210000`) and went 7→21,
+6→60 and 5→59 active routes — their routes in the 9 countries with no
+`fivesim_country` stayed on HeroSMS, so nothing was lost. **g2a was excluded**:
+5sim carries it in exactly ONE of our 60 countries against the 9 it serves on
+SMSPVA, so the swap would have cut it to a ninth of its coverage.
+
+### The default-landed orders were numbers NOBODY EVER SUBMITTED (2026-08-04)
+
+The section above established that the grant picks the route. This settles what
+those cohorts actually *did* with it, and it is the reason the grant is now 0.
+
+**The decisive test was manual and takes two minutes.** A deliveroo/us order was
+cancelled with ~15 minutes still on the provider's clock. The number was still
+visible on the 5sim dashboard, so it was used by hand to start a real Deliveroo
+signup — **and the code arrived.** Corroborated the same hour from the other
+side: user `45dd50c8` ordered deliveroo/us on `+13025795171` and received a
+code in 324s, while `+13025795294` from the same number block expired codeless.
+
+So the pool was never the problem. Neither olx/us nor deliveroo/us was
+"failing". Those orders were **free numbers nobody had a reason to use** — the
+app handed a brand-new user a phone number they never pasted anywhere, and the
+order then expired or was cancelled at the first instant the hold allowed.
+
+**Do not read those orders as evidence about the route.** They are the
+strongest form of the warning already recorded above: an order on a route the
+user did not choose is not evidence about that route. Here it is worse — they
+are not evidence about *delivery* at all, because no verification was ever
+attempted. `pool_rate_pct` correlation work must exclude them.
+
+**It was investigated as sabotage and the specific checks came back negative.**
+Recorded because the pattern genuinely looks coordinated and will look that way
+again: over 30h, 32 signups clustered on one route with zero codes.
+
+| check | result |
+|---|---|
+| shared devices | **31 distinct push tokens / 32 accounts**; the one reused token dates to 07-30 |
+| accounts that never ordered | **19 of 32**, sitting on untouched credits |
+| identities with `grant_count > 1` | **0** |
+| emails | 19 Apple relay + real distinct icloud/gmail/usa.com addresses |
+| paying customers in the cohort | **1** (`7d5c1844`) |
+| reopen rate, exposure-matched | **17.9%** vs 0% and 5.4% for older cohorts — *higher*, not lower |
+
+⚠️ **The reopen comparison is easy to get backwards.** The naive cut (any
+reopen, all 48h signups) reads 7.1% against 19–25% and looks like a red flag.
+That is censoring — most of the cohort has not had a next day yet. Restrict to
+accounts ≥24h old and count reopens inside their first 24h and it inverts.
+Also note `push_devices.updated_at` only moves on a **cold** launch, so a user
+who signs up, orders, waits 500s and quits records a ~1s gap; it measures
+return visits, never session length.
+
+**A contributing cause, now fixed, worth knowing for the shape of it:** in
+**1.7** the waiting screen's ✕ was `.disabled(holdRemaining != nil || ...)`
+labelled *"Cancel available in 180 seconds"*. A user could not leave the screen
+to go and paste the number for three minutes. Fixed in `c0b76fc` and shipped in
+1.8, so it does not explain the 08-04 cluster — but the cancel distribution
+still shows the wall it left behind (nothing under 89s, then a pile at 179,
+180, 183, 189, 194, 200, 202, 210, 220, 221, 225).
+
+### ⚠️ Onboarding may never quote a credit amount
+
+Got wrong twice, both times shipping to users. Onboarding page 2 rendered a
+hardcoded **"WELCOME GIFT / +3 credits / Covers your first number"** card. When
+the grant was zeroed on 08-03 the page's *prose* was rewritten and its header
+comment updated to say the promise was gone — **but the card was left in
+place**, and shipped that way in 1.8 and in build 29 of 1.9.
+
+The screen runs **before sign-in**, so it cannot read `app_config` even if we
+wanted it to, while the grant is a server value that changes with no release —
+it has been 0, 1, 3 and 5. Any number there is a promise the server has not
+agreed to keep. `RefundCard` (build 30) states the one thing true at **any**
+grant including zero: a number that never delivers a code is refunded in full.
+
+Same class as the seeded-success-rate rule — do not put a figure in front of a
+user that something else is free to change underneath you.
+
+**The same audit caught a SECOND one, and it is the more instructive of the
+two.** `AppState.inviteJoinerCredits` was **5**, documented as the deliberate
+SUM of `handle_new_user`'s 3 and `redeem_referral`'s 2 — correct the day it was
+written, a 150% overstatement the moment the grant went to 0. It feeds three
+shipped surfaces: the share text, the Account invite card and the OTP screen
+prompt. Now **2**, tracking `redeem_referral` alone.
+
+**Do not re-sum it if the signup grant is ever restored.** That is the whole
+lesson: a client constant derived from a value the server changes without a
+release cannot be kept honest, and the client cannot even *read* this one —
+`app_config`'s RLS whitelist exposes only `maintenance` / `announcement` /
+`esim_paused`. The referral half is safe to mirror because it changes only by
+migration. When a grant amount moves, grep for every client constant derived
+from it; there were two, and the second was found only by looking.
+
+**It is not only client copy — the OPS channel had it too, and that one fooled
+the owner.** `telegram-notify` rendered the signup alert as
+`b != null ? "N free credits granted" : "welcome credit granted"`. But
+`handle_new_user` writes a `wallet_transactions` row **only when the bonus is
+> 0**, so at a grant of 0 the lookup misses and *every* signup alert claimed
+"welcome credit granted". It read exactly like the grant was still live, and
+produced the question "are you sure it's 0?" within four hours. Now
+`?? 0` with `b > 0`, else *"no signup credit (grant is 0)"*.
+
+**The general trap: a MISSING row means the grant did not happen, not that its
+size is unknown.** Any code that renders a grant by looking one up must treat
+absence as zero. Three of the four instances today were a fallback branch
+asserting something the primary branch could no longer support.
+
+**How to answer "did this user actually get a bonus?" — use
+`public.signup_grants`, not `wallet_transactions`.** It has no FK to
+`auth.users`, so it survives Delete Account, and `handle_new_user` writes to it
+**only when the amount is > 0**. `wallet_transactions` cascades, so a deleted
+account looks identical to one that was never granted. This mattered
+immediately: three accounts that signed up after the flip had already been
+deleted, and only the tombstone could prove they were granted nothing.
 
 ### What 2026-08-03 changed — the 5sim cutover
 
@@ -2702,6 +3445,15 @@ Also this day, each verified against live DB state rather than a deploy log:
 Reasoning for each of these lives in the topic section above; this is only an
 index, so "why is it like this" has a date to search for.
 
+- **08-05** Fourth product line STARTED — rentable second numbers with two-way
+  SMS + voice (Telnyx, StoreKit subscription). Schema, the `verifyAppleJWS`
+  extraction and the Telnyx signature verifier only; unreachable behind
+  `lines_paused`. See "Rentable second numbers".
+- **08-05** `MIN_MARGIN` made true (`NET_USD_PER_CREDIT` 0.30 → the measured
+  0.40, 5sim divisor 0.03 → 0.04); the country row switched from `rate24` to
+  `rate168`; e-mail added to the digest / `/stats`; `dev_hidden` so an
+  all-dev-orders window stops reading as no activity. 1.9 build 31 confirmed
+  `READY_FOR_SALE`, which resolved the starter-list entry.
 - **08-04** 5sim freshness ladder (`rate720` lags — see the 5sim section); signup
   grant 1 → 3; the olx/us cohort diagnosed as our own default funnel.
 - **08-03** 5sim cutover; IAP P-384 fix; `MIN_HOLD_SECONDS` 180 → 90; pool-rate
@@ -2734,14 +3486,28 @@ ads.apple.com → Settings → Billing.
 
 ### Known-open
 
-**Top of the list as of 2026-08-04:**
+**Top of the list as of 2026-08-05:**
 
-- 🟠 **The starter list is FIXED in the repo but NOT SHIPPED.** `804a6dd` ranks
-  the candidates by pool rate instead of array position; every released build,
-  28 included, still lands the whole new-user cohort on one position-picked
-  route. See "The grant size decides which ONE route new users land on" for the
-  before/after table. **This needs a build to be worth anything** — it is the
-  only fix in the tree whose entire value is in a release.
+- ✅ **RESOLVED 2026-08-05 — the starter-list fix IS SHIPPED.** It is in **build
+  31 = 1.9, `READY_FOR_SALE`**, so the new-user cohort is now steered by pool
+  rate rather than array position. See "The grant size decides which ONE route
+  new users land on" for the before/after table.
+
+  **Two corrections worth keeping, because both cost time to unwind.** This
+  entry read "FIXED in the repo but NOT SHIPPED" for a day after it went live,
+  purely because the App Store line above it was stale — a doc-drift bug that
+  turns into a *decision* bug, since "unshipped" is the argument for cutting
+  another release. And the commit it named, `804a6dd`, is **unreachable from
+  every branch**: it is a duplicate hash left by another worktree, and the
+  commit actually on this branch is **`a14fb86`** (identical message and date).
+  `git log -S` finds all three copies; `git branch --contains` finds none.
+
+  **Verify a client fix against the BINARY, not the commit graph.** Private
+  Swift symbols are stripped from the shipped binary, so `strings` and `nm` on
+  `.app/VirtualSIM` return nothing and read as "the fix is absent". The archive's
+  **dSYM** keeps them: `nm -a <archive>/dSYMs/*.dSYM/Contents/Resources/DWARF/<binary>
+  | grep bestStarter` is what settled it (mangled
+  `$s10VirtualSIM8AppStateC11bestStarter…`, plus `routeKey`).
 - ✅ **RESOLVED 2026-08-04 — the IAP fix is CONFIRMED working.** A Production
   receipt at 2026-08-03 16:41Z granted credits (`granted_credits > 0`), which is
   the settling evidence this entry asked for. Revenue is proven, not assumed.
@@ -2749,17 +3515,52 @@ ads.apple.com → Settings → Billing.
   because the Supabase edge runtime does not implement ECDSA P-384; fixed in
   pure JS via `@noble/curves/p384`.
 - 🔴 **Does `pool_rate_pct` predict OUR delivery? Unverified, and the obvious
-  query is now KNOWN-CONTAMINATED.** Against HeroSMS orders the same vendor's
-  rates correlated **negatively** (r = −0.51, n = 16). Stamped per order as
-  `orders.pool_rate_pct` / `pool_pinned`. **Exclude default-landed orders before
-  running it** — 16 of the last 20 5sim orders were the app's own pre-selected
-  route, placed by users who had no reason to want that service and almost
-  certainly never submitted the number anywhere. Scoring those as delivery
-  failures measures our steering, not the pool. **If the correlation is not
-  positive, the number must come off the row.**
-- ⚠️ **Both provider balances are near the funding floor** — 5sim $9.37, HeroSMS
-  $9.62, against a $7.50 single-order ceiling. HeroSMS funds SMS *and* the whole
-  e-mail line.
+  query is now KNOWN-CONTAMINATED TWICE OVER — do not run it as one window.**
+  Against HeroSMS orders the same vendor's rates correlated **negatively**
+  (r = −0.51, n = 16). Stamped per order as `orders.pool_rate_pct` /
+  `pool_pinned`. Two independent filters are mandatory before reading anything:
+
+  1. **SPLIT ON 2026-08-05.** Orders before that date stamped **`rate24`**;
+     after, **`rate168`**. Measured over 3,320 pools the two windows differ by a
+     median 9.6 points and by 30+ points on 16.6% — so the halves are not the
+     same measurement and pooling them mixes two variables. See "The pool rate
+     is the tie-break".
+  2. **EXCLUDE default-landed orders.** 16 of the last 20 5sim orders were the
+     app's own pre-selected route, placed by users who had no reason to want
+     that service and almost certainly never submitted the number anywhere.
+     Scoring those as delivery failures measures our steering, not the pool.
+
+  **If the correlation is not positive, the number must come off the row.**
+- ⚠️ **Both provider balances are near the funding floor** — 5sim **$8.89**,
+  HeroSMS **$9.41** (08-05 15:05Z), against a $7.50 single-order ceiling.
+  HeroSMS funds SMS *and* the whole e-mail line, so it is the one that takes two
+  products down. Re-query rather than quoting these:
+  `select key, value->>'balance_usd' from app_config where key like '%_health';`
+- 🚧 **The fourth product line (rentable second numbers) is PARTLY BUILT and
+  deliberately unreachable.** Schema + two shared modules landed 2026-08-05;
+  no edge functions, no client, no Telnyx account, and `lines_paused = true`.
+  See "Rentable second numbers" above for the full state and the four
+  load-bearing properties. Two things a future session must not trip over:
+  **`iap-verify` has NOT been redeployed** since `_shared/iap.ts` changed (it
+  still runs the pre-refactor bundle — deploy with `apple-notifications` in
+  Phase 2), and everything downstream is **blocked on external approvals**
+  (Telnyx account, toll-free/10DLC, ASC subscription group) that no amount of
+  code moves.
+- 🟠 **TWO fixes are worth nothing until a client release, and neither is in
+  1.9.** Grouped because they share a failure mode: the server cannot reach
+  either, so no amount of backend work moves them. Both are described in full
+  elsewhere — this is the index so they are not rediscovered a third time.
+  - **The review prompt sits on `OtpScreen`/`EmailCodeScreen` `.onAppear`,
+    while the delivery push already carries the code.** A user who reads the
+    code off the lock screen and types it straight into the target app is never
+    prompted — and that is the *designed* flow, since the ✕ was made
+    non-destructive precisely so users can leave. Not measurable server-side.
+    Fix is to fire on app-foreground after a recent delivered code. See ASO.
+  - **The pack ladder still starts at 5 credits / $2.99** while **51.7% of
+    routes need more than that** and the median route is 6 credits — one past
+    it. With the signup grant at 0, that first purchase IS activation. See
+    "The pack ladder is the other half". ⚠️ `PRODUCT_TO_CREDITS` is
+    server-side and `CreditPack.swift` is not; **they must ship together.**
 - ⚠️ **`sync-5sim` still takes 10× HTTP 429 per run** at `CALL_SPACING_MS = 600`.
   The retry rescues almost all of them, but a country lost for an hour reads as
   "5sim does not serve it". Watch `fetch_faults`; raise spacing on more than one
@@ -2824,10 +3625,12 @@ are as load-bearing as the findings:
   Home greeting, every order-history status pill and the metric labels ship
   English to all six locales. Matters now that 13 storefront localizations are
   live. Fix the components, not the call sites.
-- ⚠️ **The e-mail waiting screen still hangs forever.** `refreshEmailOrder`
-  transitions on `hasCode` only, no branch for expired/canceled/failed, and the
-  poll loop is gated on a `flow` nothing else clears. This file previously said
-  it ships in 1.6/1.7 — **verified against current code, it does not**.
+- ✅ **RESOLVED — the e-mail waiting screen no longer hangs.**
+  `refreshEmailOrder` gained a terminal branch (`fresh.status.isTerminal, !fresh.hasCode`)
+  in `0552d53` on 2026-08-02, shipped in **1.8 build 28**, live since 08-03. It
+  states whether the credits came back and clears `flow`. *This entry claimed it
+  was still open for three days after it shipped — verify against
+  `AppState.refreshEmailOrder` before re-opening it.*
 - ⚠️ **`intent` leaks out of e-mail mode — the THIRD instance of the
   `PurchaseIntent` bug class.** Turning e-mail mode OFF is a no-op
   (`ContentView.swift:145-148` guards `else { return }`), clearing neither
@@ -3070,9 +3873,18 @@ refused.
   only. The email money path is proven at SQL level and one activation was
   bought via the API; the support round trip (send → Accept → reply → push) has
   **never run**, because it needs `TELEGRAM_BOT_TOKEN` / `TELEGRAM_WEBHOOK_SECRET`.
-- ⚠️ **Email is absent from `ops_snapshot` / `revenue_snapshot` /
-  `_shared/opsFormat.ts`.** Per the third-product-line checklist it must be added
-  to all three or it is invisible in the digest, `/stats` and `/profit`.
+- ⚠️ **Email is in `ops_snapshot` + `_shared/opsFormat.ts` as of 2026-08-05
+  (`20260805110000`) but STILL ABSENT from `revenue_snapshot`**, so it is
+  visible in the digest / `/stats` / `/today` / `/week` and invisible in
+  `/revenue` and `/profit`. Low urgency — the line has earned **1 credit**
+  lifetime — but the moment a paid tier matters, `/profit` is understating.
+
+  The digest block mirrors `orders` exactly, including `unprovisioned`
+  (`status='failed'`, no mailbox ever issued) being reported OUTSIDE the
+  delivery rate — the same rule as `numberless` for SMS. Do not fold them
+  together: on 2026-08-05, 7 of 29 lifetime orders were `unprovisioned`, five
+  of them one user retrying TikTok in a 7-minute burst, and merging them turns
+  "the free tier ran dry" into "email delivers 24%".
 - ⚠️ **The HeroSMS API key passed through a chat transcript and should be
   rotated.** It lives only as the `HEROSMS_API_KEY` Supabase secret and appears in
   no commit (verified), but rotate it.
@@ -3204,10 +4016,46 @@ and India's default is English (U.K.), not Hindi.
 analytics rows), so keyword attribution is before/after inference only. Change
 one layer at a time and allow 7–14 days.
 
-**Ratings cap position; keywords only buy eligibility.** The US storefront shows
-**0 ratings** (3 reviews exist, FR/POL). That is why `shouldRequestReview` now
-fires on the **first** delivered code — only 7 users in the app's history ever
-reached two, and those 7 produced all 3 reviews.
+**Ratings cap position; keywords only buy eligibility.** That is why
+`shouldRequestReview` fires on the **first** delivered code.
+
+**Live review state, read from ASC 2026-08-05 — there are FIVE, not three, and
+the US still has zero:**
+
+| date | rating | store | |
+|---|---|---|---|
+| 08-02 | 5★ | ESP | "Best app ever !!!! Really useful" |
+| 08-02 | **1★** | DEU | "Scam" — turkey number unavailable, **"after one day price increased"**, UK not working |
+| 07-10 | 5★ | FRA | |
+| 07-09 | 5★ | POL | |
+| 06-22 | 5★ | POL | |
+
+Two landed on 08-02, two days after the threshold dropped to one code (and
+after 1.6/1.7 shipped, which re-arms the per-version gate). **Apple gives no
+attribution**, so that is timing, not proof — and note one of the two was the
+1★. The DEU complaint about the price rising overnight is the **cost ratchet**
+working as designed (rises apply immediately, falls are smoothed); it is
+correct and it reads as bait-and-switch.
+
+**Why there are no US reviews: the eligible pool is ~5.** Only 26 users have
+ever received a code; by storefront (buyers only — the other 16 coded users
+never bought, so their storefront is unknowable) that is USA 5, FRA 2, ESP 2,
+SWE 1. At the ~10% prompt→review rate the rest of the data implies, five
+eligible users predicts 0.5 reviews. **The prompt is not the constraint; the
+number of people who ever receive a code is.**
+
+⚠️ **A second, unquantified leak: the review prompt lives on
+`OtpScreen.onAppear`, but the delivery push already contains the code**
+(`Your code is ${result.code}` in `poll-active-orders`). A user who reads it
+off the lock screen and types it straight into the target app never opens that
+screen and is never prompted — and that is the *designed* flow, since the ✕ was
+made non-destructive precisely because users must leave to paste the number.
+How often is **not measurable server-side**: whether `OtpScreen` appeared is
+device-side UserDefaults, and `push_devices.updated_at` cannot separate "warm
+foreground" from "never came back". The fix, if wanted, is to fire the prompt
+on app-foreground after a recent delivered code rather than tying it to one
+screen — a client release. Do **not** strip the code out of the push to force
+users in; that trades real UX for a review.
 
 ⚠️ **Never let email keywords go live ahead of the build that ships email.**
 
@@ -3223,7 +4071,7 @@ reached two, and those 7 produced all 3 reviews.
 
 vSMS is a single-target app, so only one `Info.plist` needs patching. The real fixes are building on stable macOS or Xcode Cloud; patch is the interim path while on the beta.
 
-**Submitting is fully headless via the App Store Connect API** (no Xcode Organizer) — see the `app-store-submission-asc` memory for the exact working pipeline: `xcodebuild archive` with `-allowProvisioningUpdates -authenticationKeyPath/-authenticationKeyID/-authenticationKeyIssuerID` (auto-provisions the Distribution cert; the Mac only has an *Apple Development* cert locally, which is fine) → patch `BuildMachineOSBuild` (above) → `xcodebuild -exportArchive` → `xcrun altool --upload-app` → ASC REST API (`POST /v1/appStoreVersions`, attach build, set `whatsNew`, `reviewSubmissions` submit). ASC API key lives at `~/.appstoreconnect/private_keys/AuthKey_R5ZVLBTUR6.p8` (key id `R5ZVLBTUR6`); app id `6774768570`. **The issuer id IS available: `4644ed13-4d98-489e-a94b-687f63946f46`** — an earlier note here claimed the machine had no issuer id and that API checks return `NO_ISSUER_ID`. That was wrong, and it cost real time: every "verify in ASC first" instruction was being skipped as impossible when the whole REST pipeline in fact works headlessly. The repo is at **`MARKETING_VERSION 1.8` / `CURRENT_PROJECT_VERSION 28`**. **Always verify live store state via the API before submitting** — the notes here drift within hours, and did twice on 2026-07-31 alone. **Release notes (`whatsNew`) are per-locale and there are 13 of them** — PATCH every `appStoreVersionLocalizations` row, or twelve storefronts ship the previous version's notes. Historical: 1.3 (build 12) released; 1.4 (build 13) submitted 2026-07-19; build 16 shipped as 1.5 in `a9b92c0` (which lowered the iOS floor to 18.0); build 17 submitted then cancelled 2026-07-25; build 18 submitted 2026-07-25 and released as **1.5**; build 19 submitted 2026-07-31 13:56Z and released as **1.6** the same day; build 20 submitted 2026-07-31 20:05Z as **1.7**, then **cancelled and replaced by build 21** (submitted 21:26Z; build 21 released as **1.7**, `READY_FOR_SALE` verified 2026-08-02) to strip the word "supplier" from shipped copy — cancelling an app-version submission is NOT the one-way door an IAP cancellation is: the version simply goes `DEVELOPER_REJECTED`, and re-attaching a build plus a fresh `reviewSubmission` recovers it in about a minute. **1.8**: build 23 submitted 2026-08-03 then cancelled; **build 28 submitted 13:18Z the same day and is `WAITING_FOR_REVIEW`** — the DEVELOPER_REJECTED recovery path above was exercised again and took under a minute (attach build → `POST /v1/reviewSubmissions` → `POST /v1/reviewSubmissionItems` → `PATCH {submitted:true}`). Export compliance is already declared in `Info.plist` (`ITSAppUsesNonExemptEncryption = false`), so nothing stalls on that question.
+**Submitting is fully headless via the App Store Connect API** (no Xcode Organizer) — see the `app-store-submission-asc` memory for the exact working pipeline: `xcodebuild archive` with `-allowProvisioningUpdates -authenticationKeyPath/-authenticationKeyID/-authenticationKeyIssuerID` (auto-provisions the Distribution cert; the Mac only has an *Apple Development* cert locally, which is fine) → patch `BuildMachineOSBuild` (above) → `xcodebuild -exportArchive` → `xcrun altool --upload-app` → ASC REST API (`POST /v1/appStoreVersions`, attach build, set `whatsNew`, `reviewSubmissions` submit). ASC API key lives at `~/.appstoreconnect/private_keys/AuthKey_R5ZVLBTUR6.p8` (key id `R5ZVLBTUR6`); app id `6774768570`. **The issuer id IS available: `4644ed13-4d98-489e-a94b-687f63946f46`** — an earlier note here claimed the machine had no issuer id and that API checks return `NO_ISSUER_ID`. That was wrong, and it cost real time: every "verify in ASC first" instruction was being skipped as impossible when the whole REST pipeline in fact works headlessly. The repo is at **`MARKETING_VERSION 1.9` / `CURRENT_PROJECT_VERSION 31`**. **Always verify live store state via the API before submitting** — the notes here drift within hours, and did twice on 2026-07-31 alone. **Release notes (`whatsNew`) are per-locale and there are 13 of them** — PATCH every `appStoreVersionLocalizations` row, or twelve storefronts ship the previous version's notes. Historical: 1.3 (build 12) released; 1.4 (build 13) submitted 2026-07-19; build 16 shipped as 1.5 in `a9b92c0` (which lowered the iOS floor to 18.0); build 17 submitted then cancelled 2026-07-25; build 18 submitted 2026-07-25 and released as **1.5**; build 19 submitted 2026-07-31 13:56Z and released as **1.6** the same day; build 20 submitted 2026-07-31 20:05Z as **1.7**, then **cancelled and replaced by build 21** (submitted 21:26Z; build 21 released as **1.7**, `READY_FOR_SALE` verified 2026-08-02) to strip the word "supplier" from shipped copy — cancelling an app-version submission is NOT the one-way door an IAP cancellation is: the version simply goes `DEVELOPER_REJECTED`, and re-attaching a build plus a fresh `reviewSubmission` recovers it in about a minute. **1.8**: build 23 submitted 2026-08-03 then cancelled; build 28 submitted 13:18Z the same day and **released as 1.8**. **1.9**: builds 29 and 30 superseded (29 carried the "+3 credits" card; 30 predated the `inviteJoinerCredits` fix), **build 31 uploaded 2026-08-04 16:04Z and released as 1.9** — cancel-and-replace took ~90 seconds end to end, exercising the DEVELOPER_REJECTED recovery path a third time (`PATCH reviewSubmissions/<id> {"canceled": true}` → `PATCH appStoreVersions/<id>/relationships/build` → `POST /v1/reviewSubmissions` → `POST /v1/reviewSubmissionItems` → `PATCH {submitted:true}`). Export compliance is already declared in `Info.plist` (`ITSAppUsesNonExemptEncryption = false`), so nothing stalls on that question.
 
 **Use the committed `ExportOptions.plist`; do NOT hand-write one.** (It genuinely is committed as of 2026-07-31 — this line previously said so while the file existed in no commit and no checkout, so the first export after a fresh clone had to invent one.) `-exportArchive` needs `teamID = UDMK379475` and fails with the useless pair *"No Account for Team X"* + *"No profiles for 'com.anthersystems.VirtualSIM' were found"* when it is wrong — which reads like a signing/provisioning problem and is not. Read the real value from the archive if ever in doubt: `PlistBuddy -c "Print :ApplicationProperties:Team" <archive>/Info.plist`. Note the archive is signed *Apple Development* locally and re-signed for distribution on export; that is expected, not a fault.
 

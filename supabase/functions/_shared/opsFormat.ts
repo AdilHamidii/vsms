@@ -21,7 +21,19 @@ interface Snapshot {
     /** Charged-and-refunded attempts that never reserved a number. Excluded
      *  from `placed` so they cannot masquerade as delivery failures. */
     numberless?: number;
+    /** Dev-account orders in the window. Excluded from every figure here, as
+     *  always — reported only so an empty Numbers line can say why it is empty
+     *  rather than reading as "the product is dead". */
+    dev_hidden?: number;
     by_provider?: ProviderRow[];
+  };
+  /** Temp-EMAIL line. Same evidence shape as `orders`: `placed` counts only
+   *  orders that got a usable mailbox, and `unprovisioned` (status='failed',
+   *  create-email-order never provisioned one) is reported separately for the
+   *  same reason `numberless` is — it is not a delivery failure. */
+  emails?: {
+    placed?: number; received?: number; failed?: number; pct?: number | null;
+    unprovisioned?: number; free?: number; credits?: number;
   };
   esims?: { count?: number; credits?: number };
   herosms_usd?: number | null;
@@ -293,7 +305,16 @@ export function formatDigest(raw: Record<string, unknown>): string {
       }
     }
   } else {
-    lines.push(`📱 Numbers: none ordered`);
+    // Say WHY it is empty when the dev account was the only thing ordering.
+    // Every figure here excludes dev by design, so an owner testing the app
+    // watches their own order vanish and reads "none ordered" as an outage.
+    // Reported 2026-08-05 as "I see people ordering numbers yet I don't see
+    // that on the telegram stats" — it was one dev order and two real
+    // purchases, all behaving correctly.
+    const dev = o.dev_hidden ?? 0;
+    lines.push(dev > 0
+      ? `📱 Numbers: none ordered · ${dev} dev order${dev === 1 ? "" : "s"} hidden`
+      : `📱 Numbers: none ordered`);
   }
 
   // Orders that never got a number: charged and instantly refunded because the
@@ -304,6 +325,33 @@ export function formatDigest(raw: Record<string, unknown>): string {
   const numberless = o.numberless ?? 0;
   if (numberless > 0) {
     lines.push(`   ⚠️ ${numberless} never got a number (price/stock, refunded)`);
+  }
+
+  // Temp e-mail, rendered in the same shape as Numbers so the two read as one
+  // activity view. It was absent from every ops surface from launch (07-30)
+  // until 08-05 — 29 orders across 10 users with no operational visibility.
+  //
+  // `free` is always shown when non-zero: 28 of the first 29 orders were the
+  // free tier, so an order count alone reads as revenue when it is nearly all
+  // cost. Same honesty rule as printing the FX rate next to /revenue.
+  const m = s.emails ?? {};
+  const mailPlaced = m.placed ?? 0;
+  const unprovisioned = m.unprovisioned ?? 0;
+  if (mailPlaced > 0 || unprovisioned > 0) {
+    const freeNote = (m.free ?? 0) > 0 ? ` · ${m.free} free` : "";
+    lines.push(`📧 E-mails: <b>${mailPlaced}</b> ordered${freeNote}`);
+    if (mailPlaced > 0) {
+      lines.push(`   ✅ ${m.received ?? 0} delivered (${m.pct ?? 0}%)`);
+      lines.push(`   ❌ ${m.failed ?? 0} failed`);
+    }
+    // The mailbox itself was never issued — the e-mail analogue of a numberless
+    // SMS order, and deliberately outside the rate above. Five of these in one
+    // 7-minute burst is what exposed the free tier running dry.
+    if (unprovisioned > 0) {
+      lines.push(`   ⚠️ ${unprovisioned} never got an address (stock, refunded)`);
+    }
+  } else {
+    lines.push(`📧 E-mails: none ordered`);
   }
 
   const e = s.esims ?? {};

@@ -3,6 +3,22 @@ import SwiftUI
 enum ActiveSheet: String, Identifiable {
     case services, country, credits, emailDomain
     var id: String { rawValue }
+
+    /// Height belongs to the SHEET, not to the presenter.
+    ///
+    /// Every sheet was presented `.large` from one place out here, which is
+    /// right for a 265-row service list and wrong for the domain picker: that
+    /// one typically renders two to four rows, so roughly 80% of a full-height
+    /// sheet was empty. The domain sheet asked for its own detents from inside
+    /// its body and it had no effect — an OUTER `.presentationDetents` wins
+    /// over one applied to the content, so the fix has to live at the
+    /// presentation site.
+    var detents: Set<PresentationDetent> {
+        switch self {
+        case .emailDomain: [.medium, .large]
+        default:           [.large]
+        }
+    }
 }
 
 struct ContentView: View {
@@ -10,6 +26,8 @@ struct ContentView: View {
     @Environment(PushManager.self) private var push
     @Environment(Session.self) private var session
     @Environment(IAPStore.self) private var iap
+    @Environment(SubscriptionStore.self) private var subs
+    @Environment(CallController.self) private var calls
     @Environment(\.scenePhase) private var scenePhase
 
     @State private var state = AppState()
@@ -43,6 +61,8 @@ struct ContentView: View {
 
             Group {
                 switch state.tab {
+                case .line:
+                    LineScreen(onOpenSms: { state.tab = .home })
                 case .home:
                     HomeScreen(
                         openServices: { sheet = .services },
@@ -87,7 +107,7 @@ struct ContentView: View {
                 // reasonably assumes it died.
                 ResumeBar()
                     .padding(.horizontal, 16)
-                TabBar(tab: $state.tab)
+                TabBar(tab: $state.tab, lineUnread: state.lineUnreadCount)
                     .padding(.horizontal, 12)
             }
             .padding(.bottom, 28)
@@ -104,6 +124,23 @@ struct ContentView: View {
                 .environment(state)
                 .animation(.easeOut(duration: 0.25), value: state.lastError)
         }
+        // A live call sits ABOVE the flow cover and BELOW maintenance/splash.
+        //
+        // It cannot be a `FlowStage`: a call can arrive while a
+        // `fullScreenCover` is already open, `fullScreenCover(item:)` cannot
+        // present a second cover, and swapping `flow` would destroy whatever
+        // the user had in progress — including a half-finished checkout. The
+        // environment is re-injected because a ZStack layer at this level does
+        // not inherit reliably, the same reason `EnvBundle` exists.
+        .overlay {
+            if calls.isLive {
+                InCallOverlay()
+                    .environment(\.theme, theme)
+                    .environment(calls)
+                    .transition(.opacity)
+            }
+        }
+        .animation(.easeOut(duration: 0.22), value: calls.isLive)
         .overlay {
             if state.maintenance.isActiveNow {
                 MaintenanceView(
@@ -178,6 +215,19 @@ struct ContentView: View {
             guard state.emailMode else { return }
             Task { await state.loadEmailDomains(using: EmailAPI(client: api)) }
         }
+        // The Number tab owns the held number and the quote behind it, and both
+        // are read at `flow == nil` — so `flow`'s didSet cannot clear them
+        // without throwing away the number the moment the paywall closes. They
+        // are cleared on LEAVING the tab instead, which is also where `intent`
+        // is set, mirroring `.onChange(of: state.emailMode)` above.
+        .onChange(of: state.tab) { _, tab in
+            if tab == .line {
+                state.intent = .line
+            } else {
+                state.clearLineDraft()
+                if state.intent == .line { state.intent = .sms }
+            }
+        }
         .onChange(of: scenePhase) { _, phase in
             if phase == .active {
                 Task {
@@ -197,6 +247,21 @@ struct ContentView: View {
                     await state.loadOrders(using: OrdersAPI(client: api))
                     await state.loadEmailOrders(using: EmailAPI(client: api))
                 }
+            }
+        }
+        // Tapping an inbound-text push opens that conversation. Sets the tab
+        // too: the thread cover renders over whatever tab is behind it, and
+        // closing it should land the user on their number rather than back on
+        // an unrelated product.
+        .onChange(of: push.pendingLineThreadId) { _, newValue in
+            guard let threadId = newValue else { return }
+            push.pendingLineThreadId = nil
+            Task {
+                await state.loadLineThreads(using: LineAPI(client: api))
+                state.tab = .line
+                state.intent = .line
+                state.openThreadId = threadId
+                state.flow = .thread
             }
         }
         .onChange(of: push.pendingOrderId) { _, newValue in
@@ -239,14 +304,14 @@ struct ContentView: View {
         }
         .sheet(item: $sheet) { which in
             sheetContent(which)
-                .modifier(EnvBundle(theme: theme, state: state, api: api, push: push, session: session, iap: iap))
-                .presentationDetents([.large])
+                .modifier(EnvBundle(theme: theme, state: state, api: api, push: push, session: session, iap: iap, subs: subs, calls: calls))
+                .presentationDetents(which.detents)
                 .presentationDragIndicator(.visible)
                 .presentationBackground(theme.bg)
         }
         .fullScreenCover(item: $state.flow) { stage in
             flowContent(stage)
-                .modifier(EnvBundle(theme: theme, state: state, api: api, push: push, session: session, iap: iap))
+                .modifier(EnvBundle(theme: theme, state: state, api: api, push: push, session: session, iap: iap, subs: subs, calls: calls))
                 .preferredColorScheme(state.appearance.colorScheme)
                 .overlay(alignment: .top) {
                     ErrorBanner()
@@ -256,8 +321,8 @@ struct ContentView: View {
                 }
                 .sheet(item: $flowSheet) { which in
                     sheetContent(which)
-                        .modifier(EnvBundle(theme: theme, state: state, api: api, push: push, session: session, iap: iap))
-                        .presentationDetents([.large])
+                        .modifier(EnvBundle(theme: theme, state: state, api: api, push: push, session: session, iap: iap, subs: subs, calls: calls))
+                        .presentationDetents(which.detents)
                         .presentationDragIndicator(.visible)
                         .presentationBackground(theme.bg)
                 }
@@ -295,11 +360,50 @@ struct ContentView: View {
             EmailWaitingScreen()
         case .emailCode:
             EmailCodeScreen()
+        // The rented line's covers land with the purchase, messaging and voice
+        // steps. They are routed rather than omitted because `ThreadRow`
+        // already assigns `flow = .thread`, and because a cover with no case
+        // presents `emptyFlow` — a blank screen with no way out, which is the
+        // exact failure the eSIM empty state was rebuilt to avoid.
+        case .lineCheckout:
+            LineCheckoutScreen()
+        case .lineProvisioning:
+            LineProvisioningScreen()
+        case .thread:
+            ThreadScreen()
+        case .dialer:
+            // Gated on a real WebRTC client being attached. The dialer, CallKit
+            // and the allowance gate are all built and wired, but the TelnyxRTC
+            // package is not added yet — so without this the keypad would place
+            // calls that always fail. Ship the plumbing, not the dead button.
+            if calls.isVoiceAvailable {
+                DialerScreen()
+            } else {
+                comingSoonFlow("Calling from your number is coming very soon.")
+            }
         }
     }
 
     private var emptyFlow: some View {
         ZStack { theme.bg.ignoresSafeArea() }
+    }
+
+    /// A placeholder that SAYS what it is and can always be dismissed. Deleted
+    /// case by case as each screen lands.
+    private func comingSoonFlow(_ message: LocalizedStringKey) -> some View {
+        ZStack {
+            theme.bg.ignoresSafeArea()
+            VStack(spacing: 14) {
+                Image(systemName: RIcon.phone)
+                    .font(.system(size: 30)).foregroundStyle(theme.text3)
+                Text(message)
+                    .font(RFont.text(15))
+                    .foregroundStyle(theme.text2)
+                    .multilineTextAlignment(.center)
+                GhostButton(label: "Close", fillsWidth: false) { state.flow = nil }
+            }
+            .padding(.horizontal, 40)
+        }
     }
 
     @ViewBuilder
@@ -377,6 +481,13 @@ private struct EnvBundle: ViewModifier {
     let push: PushManager
     let session: Session
     let iap: IAPStore
+    let subs: SubscriptionStore
+    /// Required here specifically: the dialer is presented INSIDE the flow
+    /// cover, and a cover's content does not inherit `@Observable` environment
+    /// objects from its presenter — which is the whole reason this modifier
+    /// exists. Omitting it crashes the dialer on presentation rather than
+    /// failing gracefully.
+    let calls: CallController
 
     func body(content: Content) -> some View {
         content
@@ -386,6 +497,8 @@ private struct EnvBundle: ViewModifier {
             .environment(push)
             .environment(session)
             .environment(iap)
+            .environment(subs)
+            .environment(calls)
     }
 }
 

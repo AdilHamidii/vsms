@@ -126,9 +126,27 @@ final class IAPStore {
     /// confirm "+N credits" instead of silently closing the sheet.
     private(set) var lastGrantedCredits: Int?
 
+    /// Subscription transactions are forwarded here rather than to a second
+    /// `Transaction.updates` listener.
+    ///
+    /// `Transaction.updates` is NOT multicast: a second `for await` over it
+    /// splits the stream, so two listeners would each see roughly half the
+    /// transactions and neither would know it. `SubscriptionStore.attach` sets
+    /// this; nothing else may open a listener.
+    var onSubscription: ((VerificationResult<Transaction>) async -> Bool)?
+
     /// Server-verify the signed transaction. Returns true if accepted.
     private func handle(_ result: VerificationResult<Transaction>) async -> Bool {
         guard let api = apiClient else { return false }
+
+        // Dispatch by product BEFORE the credits path. `iap-verify` returns 400
+        // `unknown_product` for anything not in PRODUCT_TO_CREDITS *and pages
+        // the owner*, so a renewal falling through to it would page on every
+        // renewal forever and 400 a legitimate transaction.
+        if case .verified(let tx) = result, tx.productID == LineProduct.monthlyId {
+            return await onSubscription?(result) ?? false
+        }
+
         switch result {
         case .verified(let tx):
             let jws = result.jwsRepresentation

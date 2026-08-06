@@ -21,7 +21,31 @@ LIVE NOW (read from ASC 2026-07-31):
 PROPOSED for 1.6:
   Name      (30/30):   vSMS: Temp Number, Receive SMS      ← unchanged
   Subtitle  (30/30):   Temp Mail & Phone Verification      ← replaces the above
+
+QUEUED for the release that SHIPS the rentable-line product (owner, 2026-08-05):
+  Name      (30/30):   vSMS: Second Number & Temp SMS
 ```
+
+⚠️ **The owner's original string was `vSMS : Second Number - Temp SMS`, which is
+31 characters — one over Apple's hard 30-char limit.** Dropping the space before
+the colon fixes it. Both of these fit, pick either:
+`vSMS: Second Number & Temp SMS` (30) or `vSMS: Second Number, Temp SMS` (29).
+
+🔴 **DO NOT SHIP THIS NAME BEFORE THE LINE PRODUCT EXISTS.** This file's own
+standing rule is *"never let email keywords go live ahead of the build that
+ships email"*, and this is the same trap one product later, with two extra
+costs:
+
+- **Search is 100% of acquisition** — 20,884 impressions, every install, all
+  from search. Someone who searches "second number", installs, and finds no
+  second number is a wasted install and a 1-star review, and it risks
+  Guideline 2.3.1 (accurate metadata).
+- **It spends the name field on a product that earns nothing yet.** The name
+  currently carries `Temp Number`, which targets the OTP product — 100% of
+  revenue. Swapping it for `Second Number` before the line sells trades a
+  working keyword for an aspirational one.
+
+Change it in the SAME submission that ships the line, not before.
 
 ⚠️ **This file had drifted from the live listing.** It previously documented a
 name and keyword set that were never live. Always read ASC before trusting it:

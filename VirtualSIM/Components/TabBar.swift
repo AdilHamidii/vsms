@@ -4,12 +4,21 @@ struct TabBar: View {
     @Environment(\.theme) private var theme
     @Binding var tab: AppTab
 
+    /// Unread messages on the rented line. Shown as a dot on the inactive tab —
+    /// the only cross-app signal this product needs. It deliberately gets no
+    /// `ResumeBar`: that exists for orders on a clock, and a text has no
+    /// deadline to miss.
+    var lineUnread: Int = 0
+
     private struct Item: Identifiable {
         let id: AppTab
         let label: String
         let icon: String
     }
+    /// Order encodes the business: rented numbers first, then temp SMS, then
+    /// eSIM (paused, ranked last), then the utility tabs. See `AppTab`.
     private let items: [Item] = [
+        .init(id: .line,    label: "Number",  icon: RIcon.phone),
         .init(id: .home,    label: "Home",    icon: RIcon.home),
         .init(id: .esim,    label: "eSIM",    icon: "simcard"),
         .init(id: .orders,  label: "Orders",  icon: RIcon.inbox),
@@ -28,6 +37,14 @@ struct TabBar: View {
                     HStack(spacing: 6) {
                         Image(systemName: item.icon)
                             .font(.system(size: 18, weight: .semibold))
+                            .overlay(alignment: .topTrailing) {
+                                if item.id == .line, lineUnread > 0, !active {
+                                    Circle()
+                                        .fill(theme.ink)
+                                        .frame(width: 7, height: 7)
+                                        .offset(x: 4, y: -2)
+                                }
+                            }
                         if active {
                             Text(item.label)
                                 .font(RFont.display(14, weight: .semibold))
@@ -36,7 +53,12 @@ struct TabBar: View {
                     }
                     .foregroundStyle(active ? theme.onInk : theme.text2)
                     .padding(.vertical, 10)
-                    .padding(.horizontal, active ? 16 : 14)
+                    // 12 rather than 14 on the inactive items. Five tabs need
+                    // ~312pt of the 323pt available on the narrowest supported
+                    // device (iPhone SE 2nd gen, 375pt) with "Account" active;
+                    // this buys 16pt of headroom before a longer localized
+                    // label runs it out.
+                    .padding(.horizontal, active ? 16 : 12)
                     .background(active ? theme.ink : Color.clear, in: .capsule)
                 }
                 .buttonStyle(.plain)

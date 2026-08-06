@@ -128,6 +128,41 @@ enum APIError: Error, LocalizedError {
                     return "We couldn't verify that purchase. Please try again."
                 case "unknown_product":
                     return "That credit pack isn't available right now."
+                // Rented second numbers. Mapped in the same commit as the edge
+                // functions that emit them — an unmapped code falls through to
+                // the HTTP-class fallback and blames our infrastructure for a
+                // stockout, a pause, or the user's own existing line.
+                case "lines_paused":
+                    return "Second numbers aren't available right now. Please check back soon."
+                case "line_exists":
+                    return "You already have a second number. You can only have one at a time."
+                case "number_taken":
+                    // Someone took it between the picker and the tap. Ordinary,
+                    // and recoverable by just picking again — so the copy must
+                    // not sound like a fault.
+                    return "That number was just taken. Pick another one — there are plenty."
+                case "line_unavailable":
+                    // The Telnyx float guard. Deliberately does NOT say "we're
+                    // out of money": it is our problem, not something the user
+                    // can act on, and no charge was made.
+                    return "We can't set up new numbers right now. Please try again later — you haven't been charged."
+                case "subscription_bound":
+                    return "That subscription is already linked to another account."
+                case "sandbox_not_provisioned":
+                    return "Test purchases don't create a real number."
+                case "provision_failed", "subscription_record_failed":
+                    // The one path where Apple holds the money and we cannot
+                    // refund it ourselves. "Don't buy again" is the important
+                    // half — a second subscription makes it worse.
+                    return "Your subscription went through but we couldn't set the number up. We've been alerted — please don't subscribe again."
+                case "allowance_exhausted":
+                    return "You've used this month's allowance. It resets when your subscription renews."
+                case "line_suspended":
+                    return "Your number is on hold. Resubscribe to start using it again."
+                case "emergency_blocked":
+                    return "This number can't call emergency services. Use your phone's own number."
+                case "recipient_blocked":
+                    return "You've blocked this number. Unblock it to send a message."
                 case "unauthorized":
                     return "Please sign in again."
                 default:

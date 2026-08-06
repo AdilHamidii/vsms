@@ -60,20 +60,19 @@ struct RecoveryScreen: View {
                     .frame(width: 36, height: 36)
                     .background(theme.chipBg, in: .circle)
             }
-            .buttonStyle(.plain)
+            .pressable()
         }
         .padding(.horizontal, 16)
         .padding(.bottom, 8)
     }
 
     private var card: some View {
-        Card {
+        HeroCard {
             VStack(spacing: 0) {
                 ServiceLogo(service: context.service, size: 52)
                     .padding(.top, 28)
                 Text(headline)
-                    .font(RFont.display(21, weight: .semibold))
-                    .tracking(-0.4)
+                    .displayType(22, weight: .semibold)
                     .foregroundStyle(theme.text)
                     .padding(.top, 14)
                 Text("You weren't charged — your credits are back in your balance.")
@@ -100,6 +99,37 @@ struct RecoveryScreen: View {
                     .padding(.top, 12)
                 }
 
+                // When we can point at a better country the card says so. When
+                // we cannot — which is the common case, since route-level
+                // evidence covers a handful of routes — the CTA used to read
+                // "Try again / Fresh number" over nothing at all, so the offer
+                // was "do the thing that just failed, again". It is not: the
+                // backend's retry steering excludes every number this user has
+                // already burned on this service and rotates off the carrier
+                // that just failed.
+                //
+                // Deliberately NOT a rate, a percentage, or any claim about
+                // odds. It states a MECHANISM, which is a thing we know to be
+                // true, rather than an outcome, which we do not.
+                if suggestion == nil, rankedSuggestion == nil {
+                    HStack(alignment: .top, spacing: 8) {
+                        Image(systemName: RIcon.refresh)
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(theme.text2)
+                            .padding(.top, 1)
+                        Text("Trying again isn't the same attempt: you'll get a different number, on a different carrier from the one that just failed.")
+                            .font(RFont.text(13, weight: .medium))
+                            .foregroundStyle(theme.text)
+                            .multilineTextAlignment(.leading)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 12)
+                    .background(theme.chipBg, in: .rect(cornerRadius: RRadius.sm))
+                    .padding(.top, 18)
+                    .padding(.horizontal, 20)
+                }
+
                 if let suggestion {
                     HStack(spacing: 8) {
                         FlagCircle(country: suggestion.country, size: 24)
@@ -110,7 +140,7 @@ struct RecoveryScreen: View {
                     }
                     .padding(.horizontal, 14)
                     .padding(.vertical, 12)
-                    .background(theme.chipBg, in: .rect(cornerRadius: 14))
+                    .background(theme.chipBg, in: .rect(cornerRadius: RRadius.sm))
                     .padding(.top, 18)
                     .padding(.horizontal, 20)
                 }
@@ -136,7 +166,7 @@ struct RecoveryScreen: View {
                     }
                     .padding(.horizontal, 14)
                     .padding(.vertical, 12)
-                    .background(theme.chipBg, in: .rect(cornerRadius: 14))
+                    .background(theme.chipBg, in: .rect(cornerRadius: RRadius.sm))
                     .padding(.top, 18)
                     .padding(.horizontal, 20)
                 }
@@ -151,6 +181,7 @@ struct RecoveryScreen: View {
                         ?? String(localized: "Fresh number"),
                     icon: RIcon.refresh
                 ) {
+                    RHaptic.select()
                     // Move the selection to the ranked country before retrying;
                     // otherwise the button would name one country and reorder
                     // the one that just failed. `retryFromRecovery` already
@@ -169,8 +200,9 @@ struct RecoveryScreen: View {
                     Text("Not now")
                         .font(RFont.text(14, weight: .medium))
                         .foregroundStyle(theme.text2)
+                        .padding(.vertical, 6)
                 }
-                .buttonStyle(.plain)
+                .pressable()
                 .padding(.top, 14)
                 .padding(.bottom, 24)
             }

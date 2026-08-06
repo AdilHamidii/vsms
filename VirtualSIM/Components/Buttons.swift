@@ -59,9 +59,24 @@ struct PrimaryButton: View {
             .foregroundStyle(disabled ? theme.text3 : theme.onInk)
             .frame(maxWidth: .infinity)
             .frame(height: 56)
-            .background(disabled ? theme.chipBg : theme.ink, in: .rect(cornerRadius: 18))
+            .background {
+                if disabled {
+                    Capsule().fill(theme.chipBg)
+                } else {
+                    // A shallow vertical gradient plus the accent's own glow.
+                    // A flat fill is the single most "system default" thing a
+                    // primary button can do; the app owned a `glow` token and
+                    // used it in exactly one file.
+                    Capsule()
+                        .fill(LinearGradient(
+                            colors: [theme.ink.mixed(with: .white, amount: 0.10), theme.ink],
+                            startPoint: .top, endPoint: .bottom))
+                        .shadow(color: theme.glow, radius: 18, x: 0, y: 8)
+                }
+            }
+            .contentShape(Capsule())
         }
-        .buttonStyle(PressScaleStyle())
+        .buttonStyle(PressScaleStyle(scale: 0.97))
         .disabled(disabled)
     }
 }
@@ -88,8 +103,13 @@ struct GhostButton: View {
             .frame(maxWidth: fillsWidth ? .infinity : nil)
             .frame(height: 48)
             .padding(.horizontal, 16)
-            .background(theme.chipBg, in: .rect(cornerRadius: 14))
+            .background(theme.chipBg, in: .capsule)
+            .contentShape(.capsule)
         }
-        .buttonStyle(.plain)
+        // Was `.plain`, i.e. no response to touch at all — while PrimaryButton
+        // right above it scaled. Half the tappable surfaces in the app
+        // acknowledging a tap and half not reads as parts of the interface
+        // being broken, rather than as a deliberate style.
+        .pressable(0.96)
     }
 }
