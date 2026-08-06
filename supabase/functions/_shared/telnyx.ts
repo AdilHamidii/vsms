@@ -644,6 +644,58 @@ export function normaliseCallRecord(
   };
 }
 
+/** The time-window filter shapes, most-likely first.
+ *
+ *  🔴 MEASURED, NOT ASSUMED — and the docs-written one is WRONG. The first
+ *  production run of `sync-telnyx-cdr` returned
+ *  **400 `No FilterType with name end_time was found.`** against
+ *  `filter[date_range][start_time]/[end_time]`, which is exactly the shape the
+ *  documentation implies. That error is also the clue to the right answer: it
+ *  names `end_time` as the unknown filter and NOT `start_time`, so `start_time`
+ *  parses as a real FilterType and the `[gte]`/`[lte]` form is the candidate.
+ *
+ *  Rather than guess again, the caller walks this ladder until one shape
+ *  returns 200 and records the winning index. One production run answers what
+ *  a second reading of the documentation cannot — the same discipline as
+ *  5sim's `fetch_faults` histogram, which settled the 403-vs-429 question on
+ *  its first run after weeks of speculation.
+ *
+ *  The last entry is deliberately EMPTY: no window at all, bounded by page
+ *  size. The caller matches records against its own pending set anyway, so an
+ *  unfiltered page is degraded but correct — far better than settling nothing
+ *  because we cannot name a date field. */
+const CDR_WINDOW_SHAPES: Array<(s: string, u: string) => Record<string, string>> = [
+  (s, u) => ({ "filter[start_time][gte]": s, "filter[start_time][lte]": u }),
+  (s, u) => ({ "filter[created_at][gte]": s, "filter[created_at][lte]": u }),
+  (s, u) => ({ "filter[date_range][start_time]": s, "filter[date_range][end_time]": u }),
+  () => ({}),
+];
+
+export const CDR_SHAPE_COUNT = CDR_WINDOW_SHAPES.length;
+
+/** 🔴 `record_type: "call"` IS NOT A THING — measured, not assumed. The second
+ *  probe run returned **400 `No matching record type was found matching given
+ *  record type call`**, so the documentation-shaped value was wrong twice over
+ *  in the same endpoint.
+ *
+ *  ⚠️ EVERY VALID TYPE IS QUERIED AND MERGED rather than picking one. The
+ *  reason is specific and would otherwise have produced a silent, permanent
+ *  bug: no call has ever been placed on this account, so the FIRST valid type
+ *  returns `[]` — a perfectly good 200 — and caching it would lock the poller
+ *  onto a record type our calls may never appear in. It would then settle
+ *  nothing, forever, while reporting success every ten minutes.
+ *
+ *  Reads are free and there are only a handful of types, so merging removes
+ *  the guess entirely. Which types actually carry our legs becomes an
+ *  observation once a real call happens — `telnyx_cdr_probe` records the raw
+ *  shape of the first record seen. */
+const CDR_RECORD_TYPES = [
+  "webrtc",        // a credential connection is a WebRTC endpoint
+  "sip-trunking",  // the PSTN leg of an outbound call
+  "call-control",
+  "conference",
+] as const;
+
 /** Call detail records since `sinceISO`.
  *
  *  ⚠️ PAGINATED. The first version fetched page one and stopped, which reads as
@@ -661,38 +713,97 @@ export async function fetchCallDetailRecords(opts: {
   untilISO: string;
   pageSize?: number;
   maxPages?: number;
-}): Promise<{ records: TelnyxCallRecord[]; pages: number; truncated: boolean } | TelnyxFault> {
+  /** Last known-good index from `app_config.telnyx_cdr_shape`. Tried first, so
+   *  the steady state is one request rather than a ladder walk. */
+  preferShape?: number;
+}): Promise<
+  | {
+      records: TelnyxCallRecord[]; pages: number; truncated: boolean;
+      shape: number; types: string[];
+    }
+  | TelnyxFault
+> {
   const size = Math.min(opts.pageSize ?? 250, 250);
   const maxPages = Math.max(opts.maxPages ?? 8, 1);
-  const out: TelnyxCallRecord[] = [];
-  let page = 1;
 
-  for (; page <= maxPages; page++) {
-    const params = new URLSearchParams({
-      "filter[record_type]": "call",
-      "filter[date_range][start_time]": opts.sinceISO,
-      "filter[date_range][end_time]": opts.untilISO,
-      "page[size]": String(size),
-      "page[number]": String(page),
-    });
-    const r = await call<Record<string, unknown>[]>("GET", `/detail_records?${params}`);
-    if (faultOf(r)) {
-      // A fault on page 2+ is NOT total failure: what we already read is
-      // genuine and settling it is strictly better than settling none. Only an
-      // empty haul is propagated as a fault.
-      if (out.length === 0) return r;
-      return { records: out, pages: page - 1, truncated: true };
-    }
-    const rows = Array.isArray(r) ? r : [];
-    for (const x of rows) {
-      const rec = normaliseCallRecord(x as Record<string, unknown>);
-      if (rec) out.push(rec);
-    }
-    // A short page is the last page. Telnyx's meta block is not relied on:
-    // this file's standing rule is that an undocumented field is a guess.
-    if (rows.length < size) return { records: out, pages: page, truncated: false };
+  const order = [...CDR_WINDOW_SHAPES.keys()];
+  const preferred = opts.preferShape;
+  if (preferred != null && preferred >= 0 && preferred < order.length) {
+    order.splice(order.indexOf(preferred), 1);
+    order.unshift(preferred);
   }
-  return { records: out, pages: maxPages, truncated: true };
+
+  let lastFault: TelnyxFault | null = null;
+  const seen = new Set<string>();
+  const merged: TelnyxCallRecord[] = [];
+  const workingTypes: string[] = [];
+  let usedShape = -1;
+  let pagesRead = 0;
+  let truncated = false;
+
+  for (const shape of order) {
+    const windowParams = CDR_WINDOW_SHAPES[shape](opts.sinceISO, opts.untilISO);
+    let shapeWorked = false;
+
+    for (const recordType of CDR_RECORD_TYPES) {
+      for (let page = 1; page <= maxPages; page++) {
+        const params = new URLSearchParams({
+          "filter[record_type]": recordType,
+          ...windowParams,
+          "page[size]": String(size),
+          "page[number]": String(page),
+        });
+        const r = await call<Record<string, unknown>[]>("GET", `/detail_records?${params}`);
+        if (faultOf(r)) {
+          lastFault = r;
+          // A 400 means these PARAMETERS are wrong — either the window shape or
+          // this record type. Move on. Anything else (auth, rate limit,
+          // transport) will fail identically for every combination and would
+          // just burn the request budget.
+          if (r.status !== 400) {
+            return merged.length > 0
+              ? { records: merged, pages: pagesRead, truncated: true,
+                  shape: usedShape, types: workingTypes }
+              : r;
+          }
+          break;
+        }
+        // A 200 proves the window shape parses, whatever this record type
+        // returned. That is the fact worth caching.
+        shapeWorked = true;
+        usedShape = shape;
+        if (!workingTypes.includes(recordType)) workingTypes.push(recordType);
+        pagesRead++;
+
+        const rows = Array.isArray(r) ? r : [];
+        for (const x of rows) {
+          const rec = normaliseCallRecord(x as Record<string, unknown>);
+          // De-duplicated across record types: one call can legitimately
+          // appear in more than one, and settling the same session twice would
+          // be double-counting against the allowance.
+          if (!rec) continue;
+          const key = rec.sessionId ?? rec.legId ?? "";
+          if (key && seen.has(key)) continue;
+          if (key) seen.add(key);
+          merged.push(rec);
+        }
+        // A short page is the last page. Telnyx's meta block is not relied on:
+        // this file's standing rule is that an undocumented field is a guess.
+        if (rows.length < size) break;
+        if (page === maxPages) truncated = true;
+      }
+    }
+
+    if (shapeWorked) {
+      return { records: merged, pages: pagesRead, truncated, shape: usedShape,
+               types: workingTypes };
+    }
+  }
+
+  return lastFault ?? {
+    telnyxFault: true, type: "TRANSPORT_ERROR", status: 400,
+    detail: "no working detail_records filter shape",
+  };
 }
 
 // ── Balance ────────────────────────────────────────────────────────────────

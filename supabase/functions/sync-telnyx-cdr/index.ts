@@ -44,9 +44,34 @@ Deno.serve(async (req) => {
   const until = new Date();
   const since = new Date(until.getTime() - LOOKBACK_MINUTES * 60_000);
 
+  // How many calls are actually waiting on a CDR. Read FIRST, because it
+  // decides whether a fetch failure is an incident or a non-event: with
+  // nothing to settle, an unreachable CDR endpoint costs exactly nothing, and
+  // paging about it every ten minutes is how the one alert channel we have
+  // gets ignored.
+  const { data: pending, error: pendErr } = await sb.from("line_calls")
+    .select("id, provider_call_session_id, provider_call_leg_id, peer_e164")
+    .eq("allowance_settled", false)
+    .gte("created_at", new Date(until.getTime() - 24 * 60 * 60_000).toISOString())
+    .limit(MAX_SETTLE);
+  if (pendErr) {
+    console.error(JSON.stringify({ alert: "telnyx_cdr_pending_failed", detail: pendErr.message }));
+    return json({ ok: false, error: "lookup_failed" }, { status: 500 });
+  }
+  const waiting = (pending ?? []).length;
+
+  // The last shape that worked. Without it every run re-walks the ladder from
+  // the top and pays for the wrong guesses again.
+  const { data: shapeRow } = await sb.from("app_config")
+    .select("value").eq("key", "telnyx_cdr_shape").maybeSingle();
+  const preferShape = typeof (shapeRow?.value as { index?: number } | null)?.index === "number"
+    ? (shapeRow!.value as { index: number }).index
+    : undefined;
+
   const fetched = await fetchCallDetailRecords({
     sinceISO: since.toISOString(),
     untilISO: until.toISOString(),
+    preferShape,
   });
 
   if (faultOf(fetched)) {
@@ -59,13 +84,45 @@ Deno.serve(async (req) => {
       value: {
         type: fetched.type, status: fetched.status,
         detail: fetched.detail ?? null, at: until.toISOString(),
+        waiting,
       },
     }, { onConflict: "key" });
-    console.error(JSON.stringify({ alert: "telnyx_cdr_fetch_failed", ...fetched }));
-    return json({ ok: false, error: "cdr_unreachable" }, { status: 502 });
+    console.error(JSON.stringify({ alert: "telnyx_cdr_fetch_failed", waiting, ...fetched }));
+
+    // Also write the heartbeat, so a persistent fetch fault does not ALSO look
+    // like the job having stopped. Two different problems deserve two
+    // different alarms.
+    await sb.from("app_config").upsert({
+      key: "telnyx_cdr_heartbeat",
+      value: { at: until.toISOString(), fault: fetched.type, waiting, settled: 0 },
+    }, { onConflict: "key" });
+
+    // ⚠️ 200 WHEN NOTHING IS WAITING. `run_watchdog` pages on ANY non-2xx cron
+    // relay inside 25 minutes, so returning 502 on an idle account would fire
+    // the pager every ten minutes about a job with no work — and alert fatigue
+    // on the only monitoring channel is how a real outage later gets missed.
+    // The fault is still recorded, and still reported in the body.
+    return json(
+      { ok: false, error: "cdr_unreachable", waiting },
+      { status: waiting > 0 ? 502 : 200 },
+    );
   }
 
-  const { records, pages, truncated } = fetched;
+  const { records, pages, truncated, shape, types } = fetched;
+
+  // Remember the window shape that parsed, so the steady state does not re-walk
+  // the ladder and pay for the wrong guesses again. The record TYPES are
+  // recorded but never cached as a filter: every valid one is queried on every
+  // run, because no call has ever been placed here and locking onto whichever
+  // type happened to answer first would settle nothing forever while reporting
+  // success. See CDR_RECORD_TYPES.
+  if (preferShape !== shape) {
+    await sb.from("app_config").upsert({
+      key: "telnyx_cdr_shape",
+      value: { index: shape, types, at: until.toISOString() },
+    }, { onConflict: "key" });
+    console.log(JSON.stringify({ telnyx_cdr_shape_found: shape, types }));
+  }
 
   // ⚠️ NEVER SILENT. A truncated page walk looks exactly like "there were only
   // this many records", and the calls it drops are the OLDEST ones — the ones
@@ -98,20 +155,12 @@ Deno.serve(async (req) => {
     }, { onConflict: "key" });
   }
 
-  // Only unsettled calls. `allowance_settled` is the claim flag, so a record
-  // arriving twice — which it will, since the lookback overlaps every run —
-  // settles once. `settle_call_claim` also re-checks it under a row lock, so
-  // this filter is an optimisation rather than the correctness boundary.
-  const { data: pending, error: pendErr } = await sb.from("line_calls")
-    .select("id, provider_call_session_id, provider_call_leg_id, peer_e164")
-    .eq("allowance_settled", false)
-    .gte("created_at", new Date(until.getTime() - 24 * 60 * 60_000).toISOString())
-    .limit(MAX_SETTLE);
-  if (pendErr) {
-    console.error(JSON.stringify({ alert: "telnyx_cdr_pending_failed", detail: pendErr.message }));
-    return json({ ok: false, error: "lookup_failed" }, { status: 500 });
-  }
-
+  // `pending` was read at the top of the request — before the fetch, because
+  // whether there is anything waiting decides whether a fetch failure is an
+  // incident. `allowance_settled` is the claim flag, so a record arriving
+  // twice — which it will, since the lookback overlaps every run — settles
+  // once. `settle_call_claim` also re-checks it under a row lock, so this
+  // filter is an optimisation rather than the correctness boundary.
   const bySession = new Map<string, typeof records[number]>();
   const byLeg = new Map<string, typeof records[number]>();
   for (const r of records) {
