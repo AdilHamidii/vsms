@@ -17,6 +17,7 @@
 
 import { handleCors, json } from "../_shared/cors.ts";
 import { admin, callerUserId } from "../_shared/supabaseAdmin.ts";
+import { resolveCallerLine } from "../_shared/lines.ts";
 
 /// Emergency numbers are refused HERE as well as on the client.
 ///
@@ -76,12 +77,10 @@ Deno.serve(async (req) => {
   // The caller's own line, read server-side. A line id is a resource selector
   // and is never accepted from the request — the same rule as
   // `mint-line-token`.
-  const { data: line, error: lineErr } = await sb.from("phone_lines")
-    .select("id, e164, status")
-    .eq("user_id", userId)
-    .in("status", ["active", "grace", "past_due", "suspended"])
-    .maybeSingle();
-  if (lineErr) return json({ error: "lookup_failed" }, { status: 500 });
+  // ⚠️ `.maybeSingle()` here ERRORED once a user held two numbers, so every
+  // call attempt returned `lookup_failed`. The client names the line it is
+  // calling FROM; the id is re-scoped to this user inside the helper.
+  const line = await resolveCallerLine(sb, userId, body.line_id);
   if (!line) return json({ error: "line_unavailable" }, { status: 409 });
 
   // Calling is gated harder than inbound SMS, and identically to

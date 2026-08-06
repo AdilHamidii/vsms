@@ -25,21 +25,23 @@ struct LineAPI {
         "created_at", "activated_at", "released_at",
     ].joined(separator: ",")
 
-    /// The caller's line, or nil.
+    /// EVERY line the caller holds, newest first.
     ///
-    /// A user can hold at most one live line — `phone_lines_one_live_per_user`
-    /// is a partial unique index, so that is enforced rather than assumed — but
-    /// `my_line` also returns RELEASED rows, whose history the app still shows.
-    /// Ordering puts the newest first so a resubscribe after a release resolves
-    /// to the new line, not the dead one.
-    func fetch() async throws -> Line? {
-        let rows: [Line] = try await client.request(
+    /// ⚠️ This used to fetch `limit=1`, on the stated grounds that
+    /// `phone_lines_one_live_per_user` made more than one impossible. That
+    /// index was DROPPED so credits can rent several numbers, so the limit
+    /// stopped being a description of reality and became a filter: a user with
+    /// three numbers saw one, and the other two — with their conversations and
+    /// call history — were simply invisible, with nothing on screen saying so.
+    ///
+    /// `my_line` also returns RELEASED rows, whose history the app still shows;
+    /// callers decide what counts as live.
+    func fetchAll() async throws -> [Line] {
+        try await client.request(
             .get, path: "rest/v1/my_line",
             query: [URLQueryItem(name: "select", value: Self.lineColumns),
-                    URLQueryItem(name: "order", value: "created_at.desc"),
-                    URLQueryItem(name: "limit", value: "1")]
+                    URLQueryItem(name: "order", value: "created_at.desc")]
         )
-        return rows.first
     }
 
     // MARK: - Buying one
@@ -140,10 +142,16 @@ struct LineAPI {
     /// called, and handed back if the send fails terminally — this line has no
     /// money to refund, so the allowance is the only thing that can be made
     /// whole.
-    func send(to: String, text: String) async throws -> LineSendResult {
-        struct Body: Encodable { let to: String; let text: String }
+    /// `lineId` names WHICH number to send from. A user may hold several, and
+    /// the server falls back to a deterministic oldest-first pick when it is
+    /// omitted — so leaving it nil does not fail, it sends from the wrong
+    /// number, which is worse. The id is re-scoped to the caller server-side,
+    /// so it cannot be used to send from someone else's line.
+    func send(to: String, text: String, lineId: String?) async throws -> LineSendResult {
+        struct Body: Encodable { let to: String; let text: String; let line_id: String? }
         return try await client.request(
-            .post, path: "functions/v1/send-line-message", body: Body(to: to, text: text)
+            .post, path: "functions/v1/send-line-message",
+            body: Body(to: to, text: text, line_id: lineId)
         )
     }
 
@@ -174,8 +182,13 @@ struct LineAPI {
     /// The token is deliberately not cached across launches. It expires on its
     /// own and the failure mode of a stale one is a call that cannot connect,
     /// which is worse than one extra round trip before dialing.
-    func mintVoiceToken() async throws -> LineVoiceToken {
-        try await client.request(.post, path: "functions/v1/mint-line-token")
+    /// `lineId` names which number the credential is FOR — a voice token is
+    /// scoped to one line's connection, so the wrong one rings the wrong number.
+    func mintVoiceToken(lineId: String?) async throws -> LineVoiceToken {
+        struct Body: Encodable { let line_id: String? }
+        return try await client.request(
+            .post, path: "functions/v1/mint-line-token", body: Body(line_id: lineId)
+        )
     }
 
     /// The pre-flight gate for an outbound call: it checks the line's status
@@ -192,11 +205,14 @@ struct LineAPI {
     /// real per-minute cost is never attributed to anyone. Inbound reserves
     /// nothing server-side, so registering it never bills the user.
     /// For inbound, `to` is the PEER that rang us.
-    func beginCall(to: String, direction: String = "outbound") async throws -> LineCallGrant {
-        struct Body: Encodable { let to: String; let direction: String }
+    func beginCall(to: String, direction: String = "outbound",
+                   lineId: String?) async throws -> LineCallGrant {
+        struct Body: Encodable {
+            let to: String; let direction: String; let line_id: String?
+        }
         return try await client.request(
             .post, path: "functions/v1/begin-line-call",
-            body: Body(to: to, direction: direction)
+            body: Body(to: to, direction: direction, line_id: lineId)
         )
     }
 

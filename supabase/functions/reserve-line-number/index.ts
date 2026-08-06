@@ -25,6 +25,7 @@
 
 import { handleCors, json } from "../_shared/cors.ts";
 import { admin, callerUserId } from "../_shared/supabaseAdmin.ts";
+import { countOccupiedLines } from "../_shared/lines.ts";
 import {
   searchNumbers, reserveNumber, getBalance, faultOf,
 } from "../_shared/telnyx.ts";
@@ -73,14 +74,23 @@ Deno.serve(async (req) => {
     return json({ error: "lines_paused" }, { status: 409 });
   }
 
-  // One live line per user. The partial unique index enforces this anyway, but
-  // finding out at INSERT time would mean finding out after Apple charged.
-  const { data: live, error: liveErr } = await sb.from("phone_lines")
-    .select("id").eq("user_id", userId)
-    .in("status", ["provisioning", "active", "grace", "past_due", "suspended", "releasing"])
-    .maybeSingle();
-  if (liveErr) return json({ error: "lookup_failed" }, { status: 500 });
-  if (live) return json({ error: "line_exists" }, { status: 409 });
+  // The rental cap, checked BEFORE Apple charges — finding out at INSERT time
+  // would mean finding out after the money moved.
+  //
+  // ⚠️ This was a one-line-per-user check on `.maybeSingle()`, which was right
+  // while `phone_lines_one_live_per_user` guaranteed at most one and is now
+  // wrong twice over: it ERRORS on a second row rather than refusing, and
+  // refusing is no longer correct anyway — credits may rent several. Apple is
+  // still capped at one, but that is enforced by
+  // `phone_lines_one_apple_line_per_user`, which is Apple's own constraint
+  // (one active subscription per group) rather than ours.
+  const occupied = await countOccupiedLines(sb, userId);
+  const { data: capRow } = await sb.from("app_config")
+    .select("value").eq("key", "line_max_per_user").maybeSingle();
+  const cap = Number(capRow?.value ?? 5) || 5;
+  if (occupied >= cap) {
+    return json({ error: "line_limit_reached", limit: cap }, { status: 409 });
+  }
 
   // Re-quote server-side. Walk the same codes in the same order and take the
   // first page that has stock, then require the requested number to be in it.

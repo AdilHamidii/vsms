@@ -21,6 +21,7 @@ import {
   createCredentialConnection, createTelephonyCredential, mintCredentialToken,
   attachVoiceConnection, faultOf,
 } from "../_shared/telnyx.ts";
+import { resolveCallerLine } from "../_shared/lines.ts";
 
 Deno.serve(async (req) => {
   const pre = handleCors(req);
@@ -32,15 +33,20 @@ Deno.serve(async (req) => {
 
   const sb = admin();
 
-  // The caller's own line, read server-side. A line id is a client-supplied
-  // resource selector and is never accepted from the request.
-  const { data: line, error } = await sb.from("phone_lines")
-    .select("id, e164, status, provider_number_id, provider_connection_id, " +
-            "provider_credential_id, provider_voice_attached")
-    .eq("user_id", userId)
-    .in("status", ["active", "grace", "past_due", "suspended"])
-    .maybeSingle();
-  if (error) return json({ error: "lookup_failed" }, { status: 500 });
+  // Optional `line_id`. An older client sends nothing and gets its single line,
+  // which is why the helper falls back to a deterministic oldest-first pick
+  // rather than requiring the field.
+  const body = await req.json().catch(() => ({} as Record<string, unknown>));
+
+  // ⚠️ `.maybeSingle()` here ERRORED once a user held two numbers, so minting a
+  // voice credential — and therefore calling at all — returned `lookup_failed`.
+  // The client names which line it wants a token for; the id is re-scoped to
+  // this user inside the helper, so someone else's id resolves to nothing.
+  const line = await resolveCallerLine(
+    sb, userId, body.line_id as string | undefined, undefined,
+    "id, e164, status, provider_number_id, provider_connection_id, " +
+    "provider_credential_id, provider_voice_attached",
+  ) as (Record<string, unknown> & { id: string; e164: string | null }) | null;
   if (!line) return json({ error: "line_unavailable" }, { status: 409 });
 
   // ⚠️ Calling is gated harder than messaging. `past_due` keeps INBOUND SMS

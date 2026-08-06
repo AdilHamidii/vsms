@@ -88,10 +88,15 @@ private struct LiveLineView: View {
             async let c: () = state.loadLineCalls(using: LineAPI(client: api))
             _ = await (t, c)
         }
+        // Tell the call controller which number it is acting as. Without this
+        // the dialer mints a credential for, and calls out from, whichever line
+        // the server picks rather than the one on screen.
+        .onAppear { calling.activeLineId = line.id }
+        .onChange(of: line.id) { _, id in calling.activeLineId = id }
     }
 
     private var unreadCount: Int {
-        state.lineThreads.reduce(0) { $0 + $1.unreadCount }
+        state.threadsForSelectedLine.reduce(0) { $0 + $1.unreadCount }
     }
 
     // MARK: - Header
@@ -99,8 +104,16 @@ private struct LiveLineView: View {
     private var header: some View {
         HStack(alignment: .top) {
             VStack(alignment: .leading, spacing: 2) {
-                Text("Your number")
-                    .font(RFont.text(13)).foregroundStyle(theme.text2)
+                // The switcher REPLACES the static label when there is more
+                // than one number, rather than sitting beside it. With a single
+                // line this is byte-identical to what shipped — multi-number
+                // must not make the common case busier.
+                if state.hasMultipleLines {
+                    lineSwitcher
+                } else {
+                    Text("Your number")
+                        .font(RFont.text(13)).foregroundStyle(theme.text2)
+                }
                 Button {
                     UIPasteboard.general.string = line.e164
                     withAnimation(RMotion.select) { copied = true }
@@ -128,6 +141,55 @@ private struct LiveLineView: View {
         .padding(.horizontal, 20)
         .padding(.top, 6)
         .padding(.bottom, 4)
+    }
+
+    /// Pick which of your numbers the tab is showing.
+    ///
+    /// A Menu rather than a segmented control: the cap is 5 and the labels are
+    /// full phone numbers, which will not fit across the width of an iPhone SE.
+    /// Each row carries its own unread count, because the whole point of the
+    /// switcher is noticing that the OTHER number has a message waiting.
+    private var lineSwitcher: some View {
+        Menu {
+            ForEach(state.lines.filter { $0.status.isLive }) { l in
+                Button {
+                    RHaptic.select()
+                    withAnimation(RMotion.select) { state.selectedLineId = l.id }
+                } label: {
+                    let unread = state.lineThreads
+                        .filter { $0.lineId == l.id }
+                        .reduce(0) { $0 + $1.unreadCount }
+                    Label(
+                        unread > 0
+                            ? "\(PhoneFormat.national(l.e164))  (\(unread))"
+                            : PhoneFormat.national(l.e164),
+                        systemImage: l.id == line.id ? RIcon.check : "")
+                }
+            }
+        } label: {
+            HStack(spacing: 4) {
+                Text("Your number")
+                    .font(RFont.text(13)).foregroundStyle(theme.text2)
+                Image(systemName: "chevron.up.chevron.down")
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundStyle(theme.text3)
+                // Unread on the numbers you are NOT looking at. Without this the
+                // switcher is invisible when it matters most — a message
+                // arriving on the other number looks like nothing happened.
+                let elsewhere = state.lineThreads
+                    .filter { $0.lineId != line.id }
+                    .reduce(0) { $0 + $1.unreadCount }
+                if elsewhere > 0 {
+                    Text(verbatim: "\(elsewhere)")
+                        .font(RFont.text(10, weight: .heavy))
+                        .foregroundStyle(theme.onInk)
+                        .padding(.horizontal, 5).padding(.vertical, 1)
+                        .background(theme.ink, in: .capsule)
+                }
+            }
+            .frame(minHeight: 44, alignment: .leading)
+        }
+        .buttonStyle(.plain)
     }
 
     // MARK: - Provisioning
@@ -161,7 +223,7 @@ private struct LiveLineView: View {
     /// state offers it rather than describing it.
     @ViewBuilder
     private var messages: some View {
-        if state.lineThreads.isEmpty {
+        if state.threadsForSelectedLine.isEmpty {
             VStack(spacing: 14) {
                 EmptyState(
                     icon: RIcon.message,
@@ -182,7 +244,7 @@ private struct LiveLineView: View {
         } else {
             ScrollView {
                 LazyVStack(spacing: 8) {
-                    ForEach(state.lineThreads) { thread in
+                    ForEach(state.threadsForSelectedLine) { thread in
                         ThreadRow(thread: thread) {
                             state.openThreadId = thread.id
                             state.flow = .thread
@@ -204,7 +266,7 @@ private struct LiveLineView: View {
     /// because the SDK is now linked and `isVoiceAvailable` gates the flow.
     @ViewBuilder
     private var calls: some View {
-        if state.lineCalls.isEmpty {
+        if state.callsForSelectedLine.isEmpty {
             VStack(spacing: 14) {
                 EmptyState(
                     icon: RIcon.phone,
@@ -218,7 +280,7 @@ private struct LiveLineView: View {
             ScrollView {
                 LazyVStack(spacing: 8) {
                     dialButton.padding(.bottom, 6)
-                    ForEach(state.lineCalls) { call in
+                    ForEach(state.callsForSelectedLine) { call in
                         CallRow(call: call)
                     }
                 }

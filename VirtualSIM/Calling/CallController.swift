@@ -56,6 +56,15 @@ final class CallController: NSObject {
     private var apiClient: APIClient?
     private var lineE164: String?
 
+    /// WHICH number this controller is acting as.
+    ///
+    /// A user may hold several, so "the user's line" is no longer a unique
+    /// thing the server can infer. Set it from the screen the user is actually
+    /// looking at; when nil the server falls back to a deterministic
+    /// oldest-first pick, which never errors but will happily call out from a
+    /// different number than the one on screen.
+    var activeLineId: String?
+
     override init() {
         let config = CXProviderConfiguration()
         config.supportsVideo = false
@@ -94,7 +103,7 @@ final class CallController: NSObject {
     func prepareVoice() async -> Bool {
         guard isVoiceAvailable, let api = apiClient else { return false }
         do {
-            let grant = try await LineAPI(client: api).mintVoiceToken()
+            let grant = try await LineAPI(client: api).mintVoiceToken(lineId: activeLineId)
             lineE164 = grant.e164
             try await voice.connect(token: grant.token)
             inboundReady = grant.inboundReady
@@ -154,7 +163,8 @@ final class CallController: NSObject {
         phase = .dialing
 
         do {
-            let begun = try await LineAPI(client: api).beginCall(to: number)
+            let begun = try await LineAPI(client: api)
+                .beginCall(to: number, lineId: activeLineId)
             currentCallId = begun.callId
             remainingSeconds = begun.remainingSeconds
         } catch let err as APIError {
@@ -496,7 +506,15 @@ extension CallController: PKPushRegistryDelegate {
     private func registerInboundCall(peer: String) async {
         guard let api = apiClient, currentCallId == nil, !peer.isEmpty else { return }
         do {
-            let grant = try await LineAPI(client: api).beginCall(to: peer, direction: "inbound")
+            // `activeLineId` is the line the app was last showing. For an
+            // inbound call that is a guess: the push names the CALLER, not
+            // which of our numbers was dialled. It is right for the common case
+            // (one number, or the one you are looking at) and the server's
+            // fallback is deterministic either way — but attributing an inbound
+            // call to the wrong number of your own is a real defect, and fixing
+            // it properly needs the callee in the push payload.
+            let grant = try await LineAPI(client: api)
+                .beginCall(to: peer, direction: "inbound", lineId: activeLineId)
             // The call can end while this round trip is in flight; adopting the
             // id then would attach it to whatever comes next.
             guard phase != .idle, currentUUID != nil else { return }

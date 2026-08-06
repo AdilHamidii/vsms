@@ -534,7 +534,7 @@ extension ContentView {
 
         case .lineStore, .linePaywall:
             state.tab = .line
-            state.line = nil                   // not yet a subscriber
+            state.lines = []                   // not yet a subscriber
             if shot == .linePaywall {
                 state.lineCity = "toronto"
                 state.lineOffer = LineNumberOffer(phoneNumber: "+14375550128",
@@ -546,7 +546,7 @@ extension ContentView {
 
         case .lineInbox:
             state.tab = .line
-            state.line = ScreenshotMode.sampleLine
+            state.lines = [ScreenshotMode.sampleLine]
             state.lineThreads = ScreenshotMode.sampleThreads
 
         case .home:

@@ -13,6 +13,7 @@
 import { handleCors, json } from "../_shared/cors.ts";
 import { admin, callerUserId } from "../_shared/supabaseAdmin.ts";
 import { sendMessage, faultOf } from "../_shared/telnyx.ts";
+import { resolveCallerLine } from "../_shared/lines.ts";
 
 /** GSM-7 fits 160 chars in one segment, 153 when concatenated; any non-GSM
  *  character forces UCS-2 at 70/67. Estimated locally ONLY to charge the
@@ -57,14 +58,15 @@ Deno.serve(async (req) => {
 
   const sb = admin();
 
-  // The caller's live line. Not passed in from the client: a line id is a
-  // client-supplied resource selector, and the only one this user may send from
-  // is their own.
-  const { data: line, error: lineErr } = await sb.from("phone_lines")
-    .select("id, e164, status").eq("user_id", userId)
-    .in("status", ["active", "grace", "past_due", "suspended"])
-    .maybeSingle();
-  if (lineErr) return json({ error: "lookup_failed" }, { status: 500 });
+  // WHICH line to send from. A user may now hold several, so the client names
+  // one — but the id is a resource selector and is re-scoped to this user
+  // inside `resolveCallerLine`, so naming someone else's number resolves to
+  // nothing rather than sending from it.
+  //
+  // ⚠️ This was `.maybeSingle()` on the user's lines, which ERRORS on more than
+  // one row: the moment a second number existed, sending a text returned
+  // `lookup_failed` for every message.
+  const line = await resolveCallerLine(sb, userId, body.line_id);
   if (!line) return json({ error: "line_unavailable" }, { status: 409 });
 
   const segments = estimateSegments(text);

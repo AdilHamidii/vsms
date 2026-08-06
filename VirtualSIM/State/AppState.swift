@@ -291,7 +291,29 @@ final class AppState {
     // ── Rented second number (the fourth product line) ───────────────────
     /// The caller's line, from the `my_line` VIEW. nil = they have never had
     /// one; a `.released` line is still returned so its history survives.
-    var line: Line?
+    /// EVERY line the user holds, newest first. Credits can rent several.
+    var lines: [Line] = []
+    /// Which one the Number tab is showing. nil = the first live one.
+    var selectedLineId: String?
+
+    /// The line currently on screen.
+    ///
+    /// Kept as `line` so the dozens of existing call sites keep their meaning,
+    /// but it now RESOLVES against `lines` instead of being the only line there
+    /// is. Falls back to the first live line, then to the newest of any status —
+    /// a user whose only line is released still gets its history rather than an
+    /// empty tab.
+    var line: Line? {
+        if let id = selectedLineId, let match = lines.first(where: { $0.id == id }) {
+            return match
+        }
+        return lines.first(where: { $0.status.isLive }) ?? lines.first
+    }
+
+    /// True once a switcher is worth showing. One line should look exactly as
+    /// it did before multi-number existed.
+    var hasMultipleLines: Bool { lines.filter { $0.status.isLive }.count > 1 }
+
     var lineThreads: [LineThread] = []
     /// Messages keyed by thread id, so opening a thread the user has already
     /// read does not blank the screen while the fetch runs.
@@ -1462,7 +1484,32 @@ final class AppState {
     /// number. Keeping the previous value is strictly better.
     @MainActor
     func loadLine(using api: LineAPI) async {
-        if let fresh = try? await api.fetch() { line = fresh }
+        guard let fresh = try? await api.fetchAll() else { return }
+        lines = fresh
+        // Drop a selection whose line is gone — released, or refunded away —
+        // rather than leaving the tab pointed at a number that no longer
+        // exists, which resolves to nil and renders the store over the top of
+        // the user's other, perfectly live numbers.
+        if let id = selectedLineId, !fresh.contains(where: { $0.id == id }) {
+            selectedLineId = nil
+        }
+    }
+
+    /// Threads belonging to the line on screen.
+    ///
+    /// 🔴 Filtered CLIENT-side because `line_threads` is fetched for the whole
+    /// user: with two numbers the list silently mixed both, so a conversation
+    /// gave no clue which of your numbers it was on — and replying sends from
+    /// whichever line the server resolves, which is not necessarily this one.
+    var threadsForSelectedLine: [LineThread] {
+        guard let id = line?.id else { return [] }
+        return lineThreads.filter { $0.lineId == id }
+    }
+
+    /// Calls belonging to the line on screen. Same reasoning as above.
+    var callsForSelectedLine: [LineCall] {
+        guard let id = line?.id else { return [] }
+        return lineCalls.filter { $0.lineId == id }
     }
 
     /// Quote live availability for a city.
@@ -1541,7 +1588,10 @@ final class AppState {
     @MainActor
     func sendLineMessage(using api: LineAPI, to: String, text: String) async -> Bool {
         do {
-            let res = try await api.send(to: to, text: text)
+            // The line ON SCREEN. Omitting it sends from whichever line the
+            // server picks, which for a user with two numbers means replying to
+            // a conversation from the wrong one.
+            let res = try await api.send(to: to, text: text, lineId: line?.id)
             guard res.ok else { return false }
             if let tid = res.threadId {
                 openThreadId = tid
