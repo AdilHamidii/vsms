@@ -60,7 +60,7 @@ struct CreditsSheet: View {
     @State private var restoreNote: Note?
     @State private var restoreTask: Task<Void, Never>?
 
-    /// Credits one number costs, and where that figure came from. Computed
+    /// Credits one VERIFICATION costs, and where that figure came from. Computed
     /// ONCE in `.task` rather than as a computed property: `AppState` is
     /// `@Observable`, so a property that walks ~9,000 routes would be
     /// re-evaluated on every body evaluation of every view that reads it —
@@ -72,11 +72,12 @@ struct CreditsSheet: View {
         let ok: Bool
     }
 
-    /// Where the "one number costs N credits" figure came from. The basis is
-    /// stated to the user, because a bare "≈ 3 numbers" with no stated basis is
-    /// the same unearned confidence as a seeded success rate.
+    /// Where the "one verification costs N credits" figure came from. The basis
+    /// is stated to the user, because a bare "≈ 3 verifications" with no stated
+    /// basis is the same unearned confidence as a seeded success rate.
     private enum UnitPrice: Equatable {
-        /// No catalog, or a product whose price is not per-number (eSIM, e-mail).
+        /// No catalog, or a product credits do not price per-verification —
+        /// eSIM, e-mail, and the rented line, which credits cannot buy at all.
         case unknown
         /// The exact route the user is short for.
         case route(credits: Int, service: String, country: String)
@@ -389,7 +390,7 @@ struct CreditsSheet: View {
                 .foregroundStyle(theme.text2)
                 .fixedSize(horizontal: false, vertical: true)
         case .median(let credits):
-            Text("A typical number costs \(credits) credits. Prices vary by service and country.")
+            Text("A typical verification costs \(credits) credits. Prices vary by service and country.")
                 .font(RFont.text(12))
                 .foregroundStyle(theme.text2)
                 .lineSpacing(2)
@@ -402,7 +403,7 @@ struct CreditsSheet: View {
             ForEach(CreditPack.all) { p in
                 PackRow(pack: p,
                         active: selected == p.id,
-                        numbers: numbers(from: p),
+                        verifications: verifications(from: p),
                         recommended: recommendedId == p.id,
                         unavailable: isMissing(p),
                         displayPrice: iap.displayPrice(p),
@@ -421,8 +422,13 @@ struct CreditsSheet: View {
         .animation(RMotion.content, value: purchasing)
     }
 
-    /// How many numbers THIS PACK buys on its own. nil when there is no honest
-    /// figure to give.
+    /// How many VERIFICATIONS this pack buys on its own. nil when there is no
+    /// honest figure to give.
+    ///
+    /// ⚠️ Not "numbers". Since the rented line shipped, a "number" is a
+    /// different product that credits cannot buy at all — it is subscription
+    /// only — so counting credits in numbers advertises the one thing they do
+    /// not get you.
     ///
     /// ⚠️ It used to be `(balance + p.credits) / u` — the total after buying —
     /// and that made the row unreadable for anyone holding a real balance. At
@@ -433,7 +439,7 @@ struct CreditsSheet: View {
     ///
     /// It degraded gracefully at a zero balance, which is why it shipped — the
     /// figure only collapses once the balance dwarfs the pack.
-    private func numbers(from p: CreditPack) -> Int? {
+    private func verifications(from p: CreditPack) -> Int? {
         guard let u = unit.credits, u > 0 else { return nil }
         return p.credits / u
     }
@@ -573,15 +579,20 @@ struct CreditsSheet: View {
         selected = recommendedId ?? selected
     }
 
-    /// Resolve what one number costs.
+    /// Resolve what one VERIFICATION costs.
     ///
     /// Prefers the exact route the user is short for; falls back to the median
     /// of every active priced route. Both are our own live retail prices, not
     /// seed data — and when neither exists (an offline launch keeps
     /// `routes == []`) the answer is nil and the sheet says nothing rather than
-    /// guessing. Non-SMS purchases get no figure at all: "numbers" is the wrong
+    /// guessing. Non-SMS purchases get no figure at all: the unit is the wrong
     /// noun for an eSIM plan or a mailbox, and inventing a per-unit price for
     /// them would be the same overclaim one product line over.
+    ///
+    /// ⚠️ The `intent == .sms` guard also keeps credits away from the RENTED
+    /// LINE, which is subscription-only and never touches the credit wallet.
+    /// Quoting any credit figure against it would advertise a way to buy it
+    /// that does not exist.
     private func deriveUnit() {
         guard state.intent == .sms else { unit = .unknown; return }
 
@@ -657,7 +668,7 @@ private struct PackRow: View {
     let pack: CreditPack
     let active: Bool
     /// Numbers obtainable in total after this pack. nil = no honest figure.
-    let numbers: Int?
+    let verifications: Int?
     /// This is the smallest pack that clears the current shortfall.
     let recommended: Bool
     /// StoreKit returned every other product but not this one.
@@ -758,8 +769,15 @@ private struct PackRow: View {
             // not nil, when a pack cannot fund a single number, and `.some(0)`
             // satisfies a nil-check. At the live median of 6 credits that is the
             // $2.99 entry pack, which gets the explicit line below instead.
-            if let n = numbers, n >= 1 {
-                Text(n == 1 ? "≈ 1 number" : "≈ \(n) numbers")
+            if let n = verifications, n >= 1 {
+                // ⚠️ "verifications", NEVER "numbers". Since the rented line
+                // shipped, "number" is the name of a DIFFERENT product — one
+                // that credits cannot buy at all, because it is subscription
+                // only. Saying "≈ 25 numbers" on the credit paywall promises
+                // exactly the thing credits do not get you. Credits buy
+                // temporary numbers that receive verification codes, which is
+                // the language the rest of the app already uses.
+                Text(n == 1 ? "≈ 1 verification" : "≈ \(n) verifications")
                     .font(RFont.text(12))
                     .foregroundStyle(theme.text2)
                 Text(verbatim: "·")
@@ -773,8 +791,8 @@ private struct PackRow: View {
         // A pack that cannot buy a single number at typical prices says so.
         // It is the honest answer to "how many verifications is that?", and it
         // is what stops someone buying the entry pack twice.
-        if numbers == 0 {
-            Text("Not quite enough for one number on its own")
+        if verifications == 0 {
+            Text("Not quite enough for one verification on its own")
                 .font(RFont.text(11))
                 .foregroundStyle(theme.text3)
                 .fixedSize(horizontal: false, vertical: true)
