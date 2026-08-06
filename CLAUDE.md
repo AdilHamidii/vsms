@@ -3768,12 +3768,20 @@ are as load-bearing as the findings:
   states whether the credits came back and clears `flow`. *This entry claimed it
   was still open for three days after it shipped — verify against
   `AppState.refreshEmailOrder` before re-opening it.*
-- ⚠️ **`intent` leaks out of e-mail mode — the THIRD instance of the
-  `PurchaseIntent` bug class.** Turning e-mail mode OFF is a no-op
-  (`ContentView.swift:145-148` guards `else { return }`), clearing neither
-  `emailDomain` nor `intent`. Home → E-mails → pick a domain → back to Numbers →
-  tap the credit pill, and the sheet sizes for a 1-credit e-mail instead of the
-  SMS route: on a 100+ credit route the user buys a pack and is still short.
+- ✅ **RESOLVED — `intent` no longer leaks out of e-mail mode.** The THIRD
+  instance of the `PurchaseIntent` bug class: turning e-mail mode off was a
+  no-op, so Home → E-mails → pick a domain → back to Numbers → tap the credit
+  pill sized the pack for a 1-credit address instead of the SMS route, and on a
+  100+ credit route the user bought a pack and was still short.
+  `ContentView`'s `.onChange(of: state.emailMode)` now clears `emailDomain` and
+  resets `intent` in its `guard on else` branch. **Verify against that closure,
+  not this list** — the entry survived here after the fix landed.
+
+  The `.line` intent is cleared the same way, in `.onChange(of: state.tab)`,
+  and for the same structural reason both need their own clear: these
+  transitions happen at `flow == nil`, so `flow`'s `didSet` — the only other
+  place that touches `intent` — never fires. **Any future product line whose
+  mode is switched outside a flow needs its own clear in the same commit.**
 - ⚠️ **Two ways the catalog can go dark returning HTTP 200.** `sync-esim-plans`
   has no fail-loud path (its `catch` is dead code — `esimPlans()` cannot throw,
   it returns a fault object that is silently dropped) and its hide-sweep floor is
