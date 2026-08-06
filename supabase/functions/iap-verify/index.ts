@@ -1,6 +1,9 @@
 import { handleCors, json } from "../_shared/cors.ts";
 import { admin, callerUserId } from "../_shared/supabaseAdmin.ts";
-import { verifyTransactionJWS, creditsForProduct, IapVerificationError } from "../_shared/iap.ts";
+import {
+  verifyTransactionJWS, creditsForProduct, isSubscriptionProduct,
+  IapVerificationError,
+} from "../_shared/iap.ts";
 import { notifySafe, sendMessage, esc } from "../_shared/telegram.ts";
 
 interface Body { jws: string; }
@@ -96,6 +99,22 @@ Deno.serve(async (req) => {
 
   const sb = admin();
 
+  // 🔴 SUBSCRIPTIONS NEVER REACH THE CREDITS PATH. This guard is what
+  // `_shared/iap.ts` says must run BEFORE creditsForProduct, and it was never
+  // wired up. Today the client dispatches subscription transactions to
+  // SubscriptionStore before they get here, so nothing is broken — but that is
+  // one client regression away from being the only thing standing between a
+  // renewal and the unknown_product branch below, whose alert used to tell the
+  // owner to fix it by adding the product to PRODUCT_TO_CREDITS. Doing that
+  // would pay wallet credits on every renewal of every subscriber, forever.
+  //
+  // 200 rather than 4xx: the transaction is genuine and correctly handled
+  // elsewhere, so the client should finish() it. Making this an error would
+  // leave StoreKit retrying a payment that was never ours to credit.
+  if (isSubscriptionProduct(tx.productId)) {
+    return json({ ok: true, handled_as: "subscription", product_id: tx.productId });
+  }
+
   const credits = creditsForProduct(tx.productId);
   if (!credits) {
     // A real, Apple-verified payment for a product this backend doesn't know —
@@ -110,9 +129,18 @@ Deno.serve(async (req) => {
         .insert({ kind: "iap_unknown", ref: String(tx.transactionId) })
         .select("ref").maybeSingle();
       if (claimed) {
+        // ⚠️ THE WORDING IS LOAD-BEARING. This used to read "Add it to
+        // PRODUCT_TO_CREDITS" with no qualification. That instruction is
+        // correct for a credit pack and CATASTROPHIC for the subscription:
+        // one entry there pays wallet credits on every renewal, forever, and
+        // the owner acting on an alert at 3am has no reason to doubt it.
+        // Remediation copy is not documentation — it gets followed.
         await notifySafe(
           `🚨 <b>IAP unknown product</b>\n${esc(tx.productId)} (env ${esc(tx.environment)})\n` +
-          `Add it to PRODUCT_TO_CREDITS — StoreKit keeps retrying, the buyer sees no credits.`,
+          `StoreKit keeps retrying, the buyer sees no credits.\n` +
+          `If this is a CREDIT PACK, add it to PRODUCT_TO_CREDITS. ` +
+          `If it is a SUBSCRIPTION, do NOT — that would grant credits on every ` +
+          `renewal forever; add it to isSubscriptionProduct instead.`,
         );
       }
     } catch (e) {

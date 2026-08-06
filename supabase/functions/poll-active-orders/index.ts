@@ -252,11 +252,28 @@ Deno.serve(async (req) => {
   const readFivesimExtra = async () =>
     fiveProfile?.rating != null ? { rating: fiveProfile.rating } : null;
 
+  // ⚠️ EVERY provider that owns active routes needs a reading here, not just
+  // the primary. create-order's pre-charge guard reads
+  // `app_config.${route.provider}_health` and requires it to be under 5 minutes
+  // old before it will refuse an order — so a provider with no writer here has
+  // a guard that is not merely stale but PERMANENTLY DISARMED, failing open on
+  // every order forever. SMSPVA was in exactly that state from the 2026-08-03
+  // cutover until 08-06: its key sat frozen at $5.26 for three days, below the
+  // single-order ceiling, while it still owned 1,035 active routes. The comment
+  // that used to sit here said "5sim serves ALL SMS", which was the false
+  // premise the omission rested on.
+  const readSmspvaBalance = async () => {
+    // `.catch(() => null)` then `r && isOk(r)`: isOk dereferences `r.statusCode`,
+    // so handing it the null from a thrown call is a TypeError, not a false.
+    const r = await getSmspvaBalance().catch(() => null);
+    return r && isOk(r) ? Number(r.data.balance) : null;
+  };
+
   await Promise.all([
-    // 5sim serves ALL SMS. This key is also what create-order's pre-charge
-    // balance guard reads (`${providers[0]}_health`) — without it that guard
-    // fails OPEN, so a dry balance charges the user and refunds instead of
-    // refusing. It was missing from the cutover.
+    // 5sim is the PRIMARY SMS provider. This key is also what create-order's
+    // pre-charge balance guard reads (`${providers[0]}_health`) — without it
+    // that guard fails OPEN, so a dry balance charges the user and refunds
+    // instead of refusing. It was missing from the cutover.
     //
     // `rating` rides along because it is a SECOND way to lose the ability to
     // buy that the balance cannot show: 0 means no purchases at all, and our
@@ -264,7 +281,12 @@ Deno.serve(async (req) => {
     recordBalance("5sim_health", "5sim (SMS)", readFivesimBalance, readFivesimExtra),
     // HeroSMS is NOT retired: it serves the temp-EMAIL line on the same
     // account and balance, so this reading still matters.
-    recordBalance("herosms_health", "HeroSMS (e-mail)", getHeroBalanceUsd),
+    recordBalance("herosms_health", "HeroSMS (SMS + e-mail)", getHeroBalanceUsd),
+    // SMSPVA is NOT retired either — it is the documented rollback target and
+    // still owns over a thousand active routes. Without this, both its
+    // pre-charge guard and `alertLowBalanceBlock` (which only ever fires from
+    // inside that guard) are dead code.
+    recordBalance("smspva_health", "SMSPVA (SMS)", readSmspvaBalance),
   ]);
 
   // ── Auto-expire overdue orders. Each expiry is an atomic claim (flip

@@ -679,41 +679,29 @@ Deno.serve(async (req) => {
     // something else already flipped the row, and every such path refunds.
     // Every other terminal writer (cancel-order, poll-active-orders,
     // check-order) already gates on the row count; this was the only hole.
-    const { data: claimed, error: cErr } = await sb
-      .from("orders")
-      .update({ status: "canceled", closed_at: new Date().toISOString() })
-      .eq("id", orderId)
-      .eq("status", "waiting")
-      .select("id");
+    // ONE TRANSACTION — the claim and the refund together. This was two
+    // round-trips with a TypeScript rollback between them, and this is the
+    // BUSIEST failure path in the order flow (margin_too_low, stockout,
+    // provider faults and order_persist_failed all land here). A worker killed
+    // in the gap left a terminal row with the charge never returned, which no
+    // sweep revisits because they all select status='waiting' — and a TS
+    // rollback cannot help, because the process that would run it is gone.
+    //
+    // `false` still means "someone else already closed and refunded this":
+    // begin_order commits the waiting row and charges BEFORE the provider loop,
+    // and that row is readable over PostgREST immediately, so a user can
+    // cancel-order it mid-loop. Refunding again on top of that mints credits.
+    // No late_watch_until: nothing reached here ever held a number worth
+    // watching.
+    const { data: didClaim, error: cErr } = await sb.rpc("cancel_order_claim", {
+      p_order: orderId, p_late_watch_until: null,
+    });
     if (cErr) {
       console.error("failOrder: could not close order", orderId, cErr);
       return;
     }
-    if (!claimed || claimed.length === 0) {
-      // Someone else already closed and refunded this order. Refunding here
-      // would be a second credit for one charge.
+    if (didClaim !== true) {
       console.warn(`failOrder: lost the claim for ${orderId} (reason=${reason}) — refund already issued elsewhere, skipping`);
-      return;
-    }
-    // supabase-js RETURNS errors, it does not throw, and wallet_credit RAISES
-    // on a missing wallet row or non-positive amount. This is the busiest
-    // failure path in the order flow (margin_too_low, stockout and provider
-    // faults all land here) — discarding the error left the order terminal,
-    // the user charged, and the console.warn below looking identical to a
-    // clean refund. Mirrors the guard cancel-order already had.
-    const { error: refundErr } = await sb.rpc("wallet_credit", {
-      p_user: userId, p_amount: cost, p_reason: "refund", p_order: orderId,
-    });
-    if (refundErr) {
-      // Roll back to 'waiting' so the expiry sweep closes and refunds it a
-      // minute later — every recovery path requires status='waiting', so
-      // leaving it terminal makes the charge PERMANENTLY unrefundable.
-      // `wallet_transactions_refund_once_idx` makes the retry safe.
-      console.error(`create-order: REFUND FAILED order=${orderId} user=${userId} ` +
-                    `credits=${cost}: ${refundErr.message} — reverting to waiting`);
-      await sb.from("orders")
-        .update({ status: "waiting", closed_at: null })
-        .eq("id", orderId).eq("status", "canceled");
       return;
     }
     console.warn(`create-order failed svc=${service.id} cty=${country.id} reason=${reason} order=${orderId}`);

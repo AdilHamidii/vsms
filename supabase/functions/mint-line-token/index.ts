@@ -59,10 +59,22 @@ Deno.serve(async (req) => {
   // keeps the purchase path shorter — Apple has already taken the money by
   // then, so every extra provider call in it is another way to fail after
   // being paid.
+  // Read once, and report it: this single env var decides whether inbound
+  // calling can work AT ALL, and its absence is otherwise completely silent.
+  const pushCredentialId = Deno.env.get("TELNYX_IOS_PUSH_CREDENTIAL_ID") || undefined;
+  const hasPushCredential = !!pushCredentialId;
+  if (!hasPushCredential) {
+    // NEVER silent. Without this the only symptom is a phone that never rings.
+    console.error(JSON.stringify({
+      alert: "telnyx_push_credential_missing",
+      detail: "TELNYX_IOS_PUSH_CREDENTIAL_ID is not set — inbound calls cannot ring",
+    }));
+  }
+
   if (!connectionId) {
     const conn = await createCredentialConnection({
       name: `vsms-${line.id}`,
-      pushCredentialId: Deno.env.get("TELNYX_IOS_PUSH_CREDENTIAL_ID") || undefined,
+      pushCredentialId,
     });
     if (faultOf(conn)) return voiceFault(sb, conn, "create_connection");
     connectionId = conn.id;
@@ -118,7 +130,18 @@ Deno.serve(async (req) => {
     // Honest rather than hidden: outbound works either way, inbound does not
     // ring until this is true. The client can say so instead of the user
     // discovering it when someone tries to call them.
-    inbound_ready: attachedOk,
+    //
+    // 🔴 THE ATTACH IS NOT SUFFICIENT, and reporting it alone was a lie.
+    // Pointing the number's voice at our connection is only half of inbound —
+    // Telnyx also needs an iOS VoIP push credential on that connection to wake
+    // the device, and `createCredentialConnection` OMITS the field entirely
+    // when the env var is unset rather than failing. So with no
+    // TELNYX_IOS_PUSH_CREDENTIAL_ID configured (which was the live state until
+    // this was found) every connection was created push-less, no inbound call
+    // could ever produce a PushKit notification, and this endpoint cheerfully
+    // reported inbound_ready: true. The client then advertises a capability
+    // that cannot work, and nothing anywhere logs a reason.
+    inbound_ready: attachedOk && hasPushCredential,
   });
 });
 

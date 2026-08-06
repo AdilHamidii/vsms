@@ -33,11 +33,29 @@ Deno.serve(async (req) => {
   catch { return json({ order }); }
   if (!profile.ok) return json({ order });
 
+  // 🔴 A TERMINAL STATUS IS FINAL — never recompute one from `activated`.
+  //
+  // `profile.activated` is a permanent historical fact: SMSPool keeps reporting
+  // it forever, and this same function relies on that to stamp `activated_at`.
+  // Recomputing status from it flipped an ALREADY-EXPIRED eSIM back to `active`
+  // on every view — and since `.active` is a polling state on the client, the
+  // detail screen's 8-second loop then held it there against the */15 expiry
+  // sweep. 8 rows were sitting in exactly that state when this was found.
+  //
+  // `depleted` is terminal here too, and that is the variant that could NOT
+  // self-heal: the depleted test needs both usage figures, so once the provider
+  // stops reporting them `activated` becomes the only signal left and "you have
+  // used all your data" silently became "active" with no way back. Only
+  // `expire_esim_orders()` moves a row out of these states.
+  const TERMINAL = new Set(["expired", "refunded", "failed", "depleted"]);
+
   let status = order.status as string;
-  if (profile.activated) status = "active";
-  else if (status === "provisioning") status = "installed";
-  if (profile.dataTotalMb != null && profile.dataUsedMb != null && profile.dataUsedMb >= profile.dataTotalMb) {
-    status = "depleted";
+  if (!TERMINAL.has(status)) {
+    const depleted = profile.dataTotalMb != null && profile.dataUsedMb != null &&
+      profile.dataUsedMb >= profile.dataTotalMb;
+    if (depleted) status = "depleted";
+    else if (profile.activated) status = "active";
+    else if (status === "provisioning") status = "installed";
   }
 
   const patch: Record<string, unknown> = {
@@ -73,8 +91,15 @@ Deno.serve(async (req) => {
   if (!order.sim_pin && profile.pin) patch.sim_pin = profile.pin;
   if (!order.sim_puk && profile.puk) patch.sim_puk = profile.puk;
 
+  // Atomic claim, the same rule every other status writer in this repo follows.
+  // Without `.eq("status", …)` this UPDATE can overwrite a terminal state the
+  // */15 expiry sweep wrote between our read above and this write. Losing the
+  // race is not an error — the sweep's verdict is newer than ours — so hand
+  // back what we read rather than erroring, and let the next poll refresh it.
   const { data: updated } = await sb
-    .from("esim_orders").update(patch).eq("id", order.id).select("*").single();
+    .from("esim_orders").update(patch)
+    .eq("id", order.id).eq("status", order.status)
+    .select("*").maybeSingle();
 
   return json({ order: updated ?? order });
 });

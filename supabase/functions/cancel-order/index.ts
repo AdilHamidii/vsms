@@ -195,18 +195,21 @@ Deno.serve(async (req) => {
   // 0 rows and we must NOT refund — otherwise a well-timed cancel could pocket
   // the delivered code AND get the credits back.
   // late_watch_until keeps the number alive after the cancel — see below.
-  const { data: claimed, error: uErr } = await sb
-    .from("orders")
-    .update({
-      status: "canceled",
-      closed_at: new Date().toISOString(),
-      late_watch_until: order.smspva_id ? order.expires_at : null,
-    })
-    .eq("id", order.id)
-    .eq("status", "waiting")
-    .select("*");
+  // ONE TRANSACTION. The claim and the refund used to be two round-trips with a
+  // TypeScript rollback between them, which is exactly the shape this repo's
+  // money rule forbids: a worker killed in the gap leaves a TERMINAL row with
+  // the charge never returned, and every recovery path selects status='waiting'
+  // so nothing revisits it. A TS rollback cannot cover that — the process is
+  // gone. Seven other close paths were migrated to claim functions; this was
+  // the eighth and was missed. Inside cancel_order_claim a failing wallet_credit
+  // RAISES and takes the status flip down with it, so the order stays
+  // cancellable instead of stranding the money.
+  const { data: didClaim, error: uErr } = await sb.rpc("cancel_order_claim", {
+    p_order: order.id,
+    p_late_watch_until: order.smspva_id ? order.expires_at : null,
+  });
   if (uErr) return json({ error: "update_failed", detail: uErr.message }, { status: 500 });
-  if (!claimed || claimed.length === 0) {
+  if (didClaim !== true) {
     const { data: current } = await sb.from("orders").select("*").eq("id", order.id).single();
     // Lost the flip because the code landed between our poll above and here
     // (the minutely cron can claim it too). Hand the code over rather than
@@ -218,27 +221,10 @@ Deno.serve(async (req) => {
     return json({ error: "not_cancelable", current_status: current?.status }, { status: 409 });
   }
 
-  // We won the flip — refund immediately. Check the result: supabase-js returns
-  // errors rather than throwing, and wallet_credit RAISES on a non-positive
-  // amount or a missing wallet row. Discarding it meant the claim committed,
-  // the money never moved, and the user was told they'd been refunded.
-  const { error: refundErr } = await sb.rpc("wallet_credit", {
-    p_user: userId, p_amount: order.cost_credits, p_reason: "refund", p_order: order.id,
-  });
-  if (refundErr) {
-    // Roll the claim BACK to waiting. The flip to 'canceled' has already
-    // committed, and every recovery path (the expiry sweep, this function)
-    // requires status='waiting' — so returning here left the order terminal and
-    // PERMANENTLY unrefundable, with the loss visible only in this log line.
-    // Restoring it lets the expiry sweep close and refund it a minute later.
-    console.error(`cancel-order: REFUND FAILED for ${order.id} user=${userId} ` +
-                  `credits=${order.cost_credits}: ${refundErr.message} — reverting to waiting`);
-    await sb.from("orders")
-      .update({ status: "waiting", closed_at: null, late_watch_until: null })
-      .eq("id", order.id)
-      .eq("status", "canceled");
-    return json({ error: "refund_failed" }, { status: 500 });
-  }
+  // The refund already happened, in the same transaction as the flip above.
+  // Re-read the row so the client gets the post-cancel state it renders.
+  const { data: claimedRow } = await sb
+    .from("orders").select("*").eq("id", order.id).maybeSingle();
 
   // Deliberately NOT releasing the number.
   //
@@ -249,5 +235,5 @@ Deno.serve(async (req) => {
   // and releases the number once the window closes. Owner decision 2026-07-27:
   // the giveaway is worth it, because 92% of users who ever receive a code go
   // on to purchase, against at most $3.50 of forfeited wholesale.
-  return json({ order: claimed[0] });
+  return json({ order: claimedRow ?? order });
 });

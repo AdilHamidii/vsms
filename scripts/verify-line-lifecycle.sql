@@ -19,6 +19,25 @@ declare
   v_cents integer; v_usd numeric;
   v_tomb integer;
 begin
+  -- ── 0. Provision the test users. ──────────────────────────────────────────
+  --
+  -- These four uuids used to be assumed to already exist, and the script
+  -- therefore died on its FIRST insert with a bare 23503 against
+  -- phone_lines_user_id_fkey — so the "12 behavioural checks" this file is
+  -- cited for could not run at all. Creating them here makes the script
+  -- self-contained; the enclosing transaction rolls back, so these rows are as
+  -- temporary as everything else below.
+  --
+  -- Only the columns auth.users actually requires are set. `on conflict do
+  -- nothing` keeps the script rerunnable if one of these ids ever does exist.
+  insert into auth.users (id, instance_id, aud, role, email,
+                          encrypted_password, created_at, updated_at)
+  select x.id, '00000000-0000-0000-0000-000000000000', 'authenticated',
+         'authenticated', 'lifecycle-check-' || x.id || '@example.invalid',
+         '', now(), now()
+    from (values (u1), (u2), (u3), (u4)) as x(id)
+  on conflict (id) do nothing;
+
   -- ── 1. apply_line_renewal must NOT claim the tombstone while provisioning ──
   insert into public.phone_lines (user_id, e164, country_code, number_type,
                                   status, original_transaction_id)
