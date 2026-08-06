@@ -51,9 +51,12 @@ struct LineStoreScreen: View {
         // up" was. Nothing on the city step needs the network at all.
         .task {
             withAnimation(RMotion.content) { appeared = true }
-            // Fetched here rather than at the paywall so step one can state the
-            // price. Idempotent, and the store screen is the first thing the
-            // app shows, so the product is warm by the time checkout opens.
+            // Prefetch ONLY — this screen no longer shows a price (see the
+            // note above `cityList`). Kept because the store is the app's
+            // first screen, so the product is warm by the time the paywall
+            // opens; `LineCheckoutScreen` renders a redacted placeholder while
+            // StoreKit is still answering, and this usually removes it.
+            // Idempotent, so calling it in both places is free.
             await subs.loadProduct()
         }
     }
@@ -73,21 +76,16 @@ struct LineStoreScreen: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
                 header(kicker: "Second number", title: "Your own number")
-                priceAnchor.padding(.top, 10).riseIn(appeared, index: 0)
                 pitch.padding(.top, 16).riseIn(appeared, index: 0)
 
                 SectionHeader(label: String(localized: "Where should it be?"))
-                    .padding(.top, 26)
+                    .padding(.top, 24)
                     .riseIn(appeared, index: 1)
 
-                VStack(spacing: 8) {
-                    ForEach(Array(state.lineCities.enumerated()), id: \.element.id) { i, city in
-                        cityCard(city).riseIn(appeared, index: 2 + i)
-                    }
-                }
+                cityList.riseIn(appeared, index: 2)
 
-                usSoon.padding(.top, 18).riseIn(appeared, index: 9)
-                smsEscape.padding(.top, 22).riseIn(appeared, index: 10)
+                usSoon.padding(.top, 16).riseIn(appeared, index: 3)
+                smsEscape.padding(.top, 24).riseIn(appeared, index: 4)
             }
             .padding(.horizontal, 20)
             // Clears the floating tab bar + resume bar.
@@ -101,67 +99,72 @@ struct LineStoreScreen: View {
     /// which is a capability the buyer cannot use after paying.
     private var pitch: some View {
         Card(elevation: .raised) {
-            VStack(alignment: .leading, spacing: 12) {
-                HStack(spacing: 22) {
-                    capability(icon: RIcon.message, title: "Send texts")
-                    capability(icon: "tray.and.arrow.down", title: "Receive texts")
-                }
-                Text("A real Canadian phone number that stays yours. Text from it right here, and keep your own number private.")
-                    .font(RFont.text(14))
-                    .foregroundStyle(theme.text2)
-                    .lineSpacing(3)
+            VStack(alignment: .leading, spacing: 0) {
+                Text("A real Canadian phone number that stays yours.")
+                    .font(RFont.display(17, weight: .semibold))
+                    .tracking(-0.3)
+                    .foregroundStyle(theme.text)
                     .fixedSize(horizontal: false, vertical: true)
+                    .padding(.horizontal, 16)
+                    .padding(.top, 18)
+                    .padding(.bottom, 14)
+
+                RowRule()
+                BenefitRow(icon: RIcon.message,
+                           label: "Send and receive texts in the app")
+                RowRule()
+                // The actual reason to buy, and it used to be the last clause
+                // of a paragraph. It is the only line here that names a
+                // problem rather than a feature.
+                BenefitRow(icon: RIcon.shield,
+                           label: "Keep your own number private",
+                           tint: theme.live)
             }
-            .padding(18)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 
-    /// The price, stated on step ONE.
+    /// The cities, as ONE grouped object.
     ///
-    /// Nothing before the paywall used to contain the word "monthly" or a
-    /// figure, so a user picked a city, waited on a live search, picked their
-    /// digits, and only then met a recurring charge. That shape makes a paywall
-    /// feel like a trap however well it is designed — the user feels walked
-    /// into it. This is not "leading with the price", it is qualifying: people
-    /// who will not pay leave at step one instead of after two investments, and
-    /// everyone who continues arrives having already accepted the number.
+    /// They were seven separate `theme.elev` cards with 8pt gaps — the pattern
+    /// every other list in this app avoids. `CountrySheet` and `ServiceSheet`
+    /// both put their rows inside a single `Card` divided by `RowRule`, which
+    /// is what makes a stack read as one list to choose from rather than seven
+    /// unrelated objects competing for the same tap. Seven detached cards also
+    /// cost ~8pt of dead space each and made a trivial choice fill the screen.
     ///
-    /// Read from StoreKit, never a literal — the credit ladder drifted to
-    /// $4.99-vs-€5.99 on its top product precisely because a price was assumed.
-    /// ⚠️ Renders in BOTH states, and that is the point. It used to be wrapped
-    /// in `if let price`, so whenever StoreKit had not answered — a slow
-    /// network, or the product sitting in `MISSING_METADATA`, which returns no
-    /// product at all even in Sandbox — the anchor simply vanished and the user
-    /// went city → number → paywall with the word "monthly" appearing nowhere.
-    /// That is precisely the shape this view exists to prevent, reintroduced by
-    /// an empty branch.
-    ///
-    /// The fallback states the RECURRENCE, which is true whatever the figure
-    /// turns out to be, and never guesses the figure — a literal price is what
-    /// let the credit ladder drift to $4.99-vs-€5.99 on its top product.
-    private var priceAnchor: some View {
-        Text(subs.displayPrice.map { "\($0) a month · cancel any time" }
-             ?? String(localized: "Monthly subscription · cancel any time"))
-            .font(RFont.text(13, weight: .medium))
-            .foregroundStyle(theme.text2)
-            .padding(.horizontal, 12)
-            .padding(.vertical, 6)
-            .background(theme.chipBg, in: Capsule())
-            .redacted(reason: subs.isLoadingProduct ? .placeholder : [])
-    }
-
-    private func capability(icon: String, title: LocalizedStringKey) -> some View {
-        HStack(spacing: 7) {
-            Image(systemName: icon)
-                .font(.system(size: 15, weight: .semibold))
-                .foregroundStyle(theme.ink)
-            Text(title)
-                .font(RFont.display(15, weight: .semibold))
-                .tracking(-0.2)
-                .foregroundStyle(theme.text)
+    /// The rows stay deliberately plain. There is nothing honest to put on
+    /// them: `search-line-numbers` walks a city's area codes until one has
+    /// stock (416, 647, 514, 613 and 403 are all exhausted), so printing "437"
+    /// beside Toronto would promise digits the reservation may not deliver.
+    private var cityList: some View {
+        Card(elevation: .flat) {
+            VStack(spacing: 0) {
+                ForEach(Array(state.lineCities.enumerated()), id: \.element.id) { i, city in
+                    cityRow(city)
+                    if i < state.lineCities.count - 1 { RowRule(inset: 16) }
+                }
+            }
         }
     }
+
+    // ⚠️ **THERE IS DELIBERATELY NO PRICE ON THIS SCREEN** (owner decision,
+    // 2026-08-06). Read, pick a city, get a number, and meet the paywall once
+    // — in that order. A `priceAnchor` capsule lived here and contradicted
+    // this file's own header, which has always described the flow as "choose
+    // twice before it ever mentions money".
+    //
+    // The counter-argument is on the record and was overruled: a user who has
+    // invested two choices before meeting a recurring charge can feel walked
+    // into it, where a price on step one lets people who will not pay leave
+    // early. If refunds or 1-star reviews cite a surprise subscription, this
+    // is the first thing to re-examine.
+    //
+    // What makes the removal SAFE is that App Store 3.1.2(a) asks for the
+    // disclosure on the screen immediately before the purchase, not on every
+    // screen — and `LineCheckoutScreen` carries all of it: price, billing
+    // period, renewal terms, and the Terms and Privacy links. Do not add a
+    // price back here without moving that reasoning with it.
 
     /// Cities, never area codes.
     ///
@@ -170,7 +173,7 @@ struct LineStoreScreen: View {
     /// their overlays are full. A raw area-code picker would offer "416 —
     /// Toronto" and then fail, so the server takes a CITY and walks its codes
     /// in order until one has stock.
-    private func cityCard(_ city: LineCity) -> some View {
+    private func cityRow(_ city: LineCity) -> some View {
         Button {
             Task {
                 // Move first, load second. The tap is the commitment, so the
@@ -181,23 +184,26 @@ struct LineStoreScreen: View {
             }
         } label: {
             HStack(spacing: 12) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(city.label)
-                        .font(RFont.display(16, weight: .semibold))
-                        .tracking(-0.3)
-                        .foregroundStyle(theme.text)
-                    Text(city.region)
-                        .font(RFont.text(12))
-                        .foregroundStyle(theme.text2)
-                }
-                Spacer(minLength: 0)
+                Text(city.label)
+                    .font(RFont.display(16, weight: .semibold))
+                    .tracking(-0.3)
+                    .foregroundStyle(theme.text)
+                Spacer(minLength: 8)
+                // The province is a disambiguator, not a second title — two
+                // Ontario rows (Toronto, Ottawa) are the only reason it is on
+                // screen at all. Trailing and secondary, so the column of city
+                // names stays the thing the eye scans.
+                Text(city.region)
+                    .font(RFont.text(13))
+                    .foregroundStyle(theme.text2)
+                    .lineLimit(1)
                 Image(systemName: RIcon.chev)
                     .font(.system(size: 12, weight: .semibold))
                     .foregroundStyle(theme.text3)
             }
             .padding(.horizontal, 16)
-            .padding(.vertical, 14)
-            .background(theme.elev, in: .rect(cornerRadius: 16))
+            // 15 + 15 around a 20pt line clears the 44pt minimum target.
+            .padding(.vertical, 15)
             .contentShape(.rect)
         }
         .buttonStyle(PressScaleStyle())

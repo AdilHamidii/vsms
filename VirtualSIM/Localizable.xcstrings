@@ -2276,6 +2276,46 @@
         }
       }
     },
+    "A real Canadian phone number that stays yours.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Eine echte kanadische Telefonnummer, die Ihnen bleibt."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Un número canadiense real que es tuyo."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Un vrai numéro canadien qui reste le vôtre."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Un vero numero canadese che resta tuo."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ずっとあなたのものになる、実在のカナダの電話番号。"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Um número canadense de verdade que fica seu."
+          }
+        }
+      }
+    },
     "A real Canadian phone number that stays yours. Text from it right here, and keep your own number private.": {
       "localizations": {
         "de": {
@@ -11058,6 +11098,46 @@
         }
       }
     },
+    "Keep your own number private": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Halten Sie Ihre eigene Nummer privat"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mantén tu propio número en privado"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gardez votre propre numéro privé"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tieni privato il tuo numero"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ご自身の番号は非公開のまま"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mantenha seu número privado"
+          }
+        }
+      }
+    },
     "Keypad": {
       "localizations": {
         "de": {
@@ -18345,6 +18425,46 @@
           "stringUnit": {
             "state": "translated",
             "value": "Ver pedidos anteriores"
+          }
+        }
+      }
+    },
+    "Send and receive texts in the app": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "SMS in der App senden und empfangen"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Envía y recibe mensajes en la app"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Envoyez et recevez des SMS dans l'app"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Invia e ricevi SMS nell'app"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "アプリ内でSMSを送受信"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Envie e receba mensagens no app"
           }
         }
       }
