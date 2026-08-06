@@ -230,6 +230,7 @@ private struct LiveLineView: View {
                     title: "Your number is ready",
                     message: "Texts sent to it land here. Share it with someone to get started."
                 )
+                composeButton
                 ShareLink(item: PhoneFormat.national(line.e164)) {
                     Text("Share my number")
                         .font(RFont.text(15, weight: .medium))
@@ -244,6 +245,7 @@ private struct LiveLineView: View {
         } else {
             ScrollView {
                 LazyVStack(spacing: 8) {
+                    composeButton.padding(.bottom, 6)
                     ForEach(state.threadsForSelectedLine) { thread in
                         ThreadRow(thread: thread) {
                             state.openThreadId = thread.id
@@ -255,6 +257,34 @@ private struct LiveLineView: View {
                 .padding(.bottom, 120)
             }
         }
+    }
+
+    /// The one entry point to a NEW conversation, in both states — mirroring
+    /// `dialButton`.
+    ///
+    /// Present in the empty state too, because that is where it is needed
+    /// most: "Share my number" was the only affordance there, so a user whose
+    /// number had never been texted could do nothing with it but wait. Unlike
+    /// the dialer this has no capability gate — outbound SMS needs no client
+    /// SDK, only the allowance, which the compose screen states rather than
+    /// hiding behind a disabled button.
+    private var composeButton: some View {
+        Button {
+            RHaptic.select()
+            state.flow = .compose
+        } label: {
+            HStack(spacing: 8) {
+                Image(systemName: "square.and.pencil")
+                    .font(.system(size: 14, weight: .semibold))
+                Text("New message")
+                    .font(RFont.text(15, weight: .medium))
+            }
+            .foregroundStyle(theme.text)
+            .frame(maxWidth: .infinity)
+            .frame(height: 48)
+            .background(theme.chipBg, in: Capsule())
+        }
+        .buttonStyle(PressScaleStyle())
     }
 
     // MARK: - Calls

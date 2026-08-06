@@ -21,7 +21,6 @@ struct TabBar: View {
         .init(id: .line,    label: "Number",  icon: RIcon.phone),
         .init(id: .home,    label: "Home",    icon: RIcon.home),
         .init(id: .esim,    label: "eSIM",    icon: "simcard"),
-        .init(id: .orders,  label: "Orders",  icon: RIcon.inbox),
         .init(id: .account, label: "Account", icon: RIcon.user),
     ]
 

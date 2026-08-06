@@ -366,8 +366,7 @@ struct WaitingScreen: View {
                     GhostButton(label: String(localized: "See it in Orders"),
                                 icon: RIcon.inbox,
                                 fillsWidth: false) {
-                        state.flow = nil
-                        state.tab = .orders
+                        state.flow = .orders
                     }
                 }
             }

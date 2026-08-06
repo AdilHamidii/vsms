@@ -25,11 +25,29 @@ enum FlowStage: String, Hashable, Identifiable {
     /// a NavigationStack push would leave the floating tab bar sitting on top
     /// of the message composer.
     case lineCheckout, lineProvisioning, thread, dialer
+    /// Start a conversation with someone who has never texted us.
+    ///
+    /// Without this the Messages segment could only ever REPLY: threads are
+    /// created by an inbound message or by an outbound send, and every path to
+    /// `.thread` went through a row that already existed. Calls have had an
+    /// initiating affordance since the dialer landed; messages had none.
+    case compose
     /// The number store, opened OVER a live line to rent an additional one.
     /// The tab itself only shows the store when there is no line at all, so
     /// without this a second number is unreachable — which made the whole
     /// multi-number feature impossible to exercise.
     case lineStoreMore
+    /// Order history.
+    ///
+    /// It was a TAB until 2026-08-06. Home already carries a `Recent` section
+    /// with a "See all", so a whole tab for the same data was the fifth item
+    /// in a bar competing for the thumb — and the least-used one, since the
+    /// three rows on Home answer the question most of the time. It is a cover
+    /// now, reached from that link and from the three places that say "check
+    /// your orders". Removing it from the bar had to keep every one of those
+    /// routes working, which is why this exists rather than the tab simply
+    /// disappearing.
+    case orders
     var id: String { rawValue }
 }
 
@@ -1478,6 +1496,10 @@ final class AppState {
 
     @MainActor
     func loadEmailOrders(using api: EmailAPI) async {
+        // Screenshot frames seed this collection directly. The read below is
+        // RLS-filtered and would succeed with an EMPTY list, silently wiping
+        // the sample — which is how the thread frame came back black.
+        if ScreenshotMode.isActive { return }
         do { emailOrders = try await api.list() } catch { /* keep what we have */ }
     }
 
@@ -1489,6 +1511,10 @@ final class AppState {
     /// number. Keeping the previous value is strictly better.
     @MainActor
     func loadLine(using api: LineAPI) async {
+        // Screenshot frames seed this collection directly. The read below is
+        // RLS-filtered and would succeed with an EMPTY list, silently wiping
+        // the sample — which is how the thread frame came back black.
+        if ScreenshotMode.isActive { return }
         guard let fresh = try? await api.fetchAll() else { return }
         lines = fresh
         // Drop a selection whose line is gone — released, or refunded away —
@@ -1559,11 +1585,19 @@ final class AppState {
     /// user was reading is the worse of the two.
     @MainActor
     func loadLineThreads(using api: LineAPI) async {
+        // Screenshot frames seed this collection directly. The read below is
+        // RLS-filtered and would succeed with an EMPTY list, silently wiping
+        // the sample — which is how the thread frame came back black.
+        if ScreenshotMode.isActive { return }
         if let fresh = try? await api.threads() { lineThreads = fresh }
     }
 
     @MainActor
     func loadLineCalls(using api: LineAPI) async {
+        // Screenshot frames seed this collection directly. The read below is
+        // RLS-filtered and would succeed with an EMPTY list, silently wiping
+        // the sample — which is how the thread frame came back black.
+        if ScreenshotMode.isActive { return }
         if let fresh = try? await api.calls() { lineCalls = fresh }
     }
 
@@ -1579,6 +1613,10 @@ final class AppState {
     /// thread that looks empty.
     @MainActor
     func loadLineMessages(using api: LineAPI, threadId: String) async {
+        // Screenshot frames seed this collection directly. The read below is
+        // RLS-filtered and would succeed with an EMPTY list, silently wiping
+        // the sample — which is how the thread frame came back black.
+        if ScreenshotMode.isActive { return }
         guard let fresh = try? await api.messages(threadId: threadId) else { return }
         lineMessages[threadId] = fresh.reversed()
     }
@@ -1780,6 +1818,10 @@ final class AppState {
     }
 
     func loadOrders(using api: OrdersAPI) async {
+        // Screenshot frames seed this collection directly. The read below is
+        // RLS-filtered and would succeed with an EMPTY list, silently wiping
+        // the sample — which is how the thread frame came back black.
+        if ScreenshotMode.isActive { return }
         do {
             let rows = try await api.list()
             orders = rows.compactMap { resolve($0) }
@@ -2211,9 +2253,10 @@ final class AppState {
     }
 
     func finishOtp() {
-        flow = nil
         activeOrder = nil
-        tab = .orders
+        // Orders is a cover now, not a tab — assigning `flow` last so the
+        // OTP cover is replaced rather than dismissed to nothing.
+        flow = .orders
     }
 
     /// Best country for `service` by MEASURED evidence only — the sole basis
