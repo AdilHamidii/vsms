@@ -86,7 +86,9 @@ Deno.serve(async (req) => {
       // OUT_OF_STOCK on one code is ordinary; keep walking. Anything else is a
       // real fault worth surfacing if no code works.
       lastFault = r.type;
-      if (r.type === "AUTH_ERROR" || r.type === "RATE_LIMITED") break;
+      // Walking the remaining codes cannot help when the ACCOUNT is the
+      // problem. It just multiplies the same failure by seven.
+      if (r.type !== "OUT_OF_STOCK") break;
       continue;
     }
     if (r.length > 0) {
@@ -97,12 +99,26 @@ Deno.serve(async (req) => {
   }
 
   if (numbers.length === 0) {
-    const status = lastFault === "AUTH_ERROR" || lastFault === "RATE_LIMITED" ? 502 : 409;
+    // 🔴 ONLY a genuine stockout may read as "no numbers available".
+    //
+    // `classifyTelnyxFault` returns BALANCE_ERROR for a 402 and TRANSPORT_ERROR
+    // for anything it does not recognise, and both used to fall through to
+    // `no_numbers_available` — so a dead API key, an empty Telnyx account or a
+    // network outage told the user every Canadian city was sold out. There is
+    // no other country to shop to on this line, so that reads as the product
+    // simply not working, and it is the exact failure `classifyTelnyxFault`'s
+    // own comment warns about one layer down.
+    const outage = lastFault != null && lastFault !== "OUT_OF_STOCK";
+    if (outage) {
+      console.error(JSON.stringify({
+        alert: "line_search_provider_fault", city: key, fault: lastFault,
+      }));
+    }
     return json({
-      error: status === 502 ? "provider_unreachable" : "no_numbers_available",
+      error: outage ? "provider_unreachable" : "no_numbers_available",
       city: key,
       cities: Object.entries(CITIES).map(([k, c]) => ({ id: k, label: c.label })),
-    }, { status });
+    }, { status: outage ? 502 : 409 });
   }
 
   return json({

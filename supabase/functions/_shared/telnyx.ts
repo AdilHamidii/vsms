@@ -242,11 +242,32 @@ export interface AvailableNumber {
    *  again, so this quote is the only chance to capture it. */
   monthlyCents: number;
   upfrontCents: number;
+  /** False when Telnyx omitted `cost_information` entirely and the figures
+   *  above are the measured US/CA fallback rather than a quote. The float
+   *  guard must not treat a guess as a quote. */
+  costKnown: boolean;
   reservable: boolean;
   region: string | null;
 }
 
 const cents = (v: unknown) => Math.round(parseFloat(String(v ?? "0")) * 100);
+
+/** 🔴 `cost_information` MISSING IS NOT `cost_information` ZERO.
+ *
+ *  `cents(undefined)` is 0, and the float guard in `reserve-line-number` adds
+ *  its numbers up before comparing them against the Telnyx balance — so a
+ *  response that simply omitted the costs degraded a real check into
+ *  "do we have 50 cents?" and would have waved through a purchase we could not
+ *  afford. Apple has already charged $9.99 by the time we find out.
+ *
+ *  Measured 2026-08-05: US and CA local are both a flat $1.00 upfront +
+ *  $1.00/month, every type probed. So an absent figure falls back to that
+ *  measured rate rather than to zero, and `costKnown` says which it was. This
+ *  is the same distinction as HeroSMS's `herosms_real_count`: null means "not
+ *  probed", 0 means "probed, nothing there", and collapsing them is how a
+ *  guard stops guarding. */
+const FALLBACK_UPFRONT_CENTS = 100;
+const FALLBACK_MONTHLY_CENTS = 100;
 
 /** Live availability. NEVER cache this — stock is per (country, area code) and
  *  genuinely runs out, the same rule `email-domains` follows for HeroSMS. */
@@ -267,11 +288,15 @@ export async function searchNumbers(opts: {
   return r.map((n) => {
     const ci = (n.cost_information ?? {}) as Record<string, unknown>;
     const regions = (n.region_information ?? []) as Array<Record<string, string>>;
+    const costKnown = ci.monthly_cost != null || ci.upfront_cost != null;
     return {
       phoneNumber: String(n.phone_number),
       type: String(n.phone_number_type),
-      monthlyCents: cents(ci.monthly_cost),
-      upfrontCents: cents(ci.upfront_cost),
+      monthlyCents: ci.monthly_cost != null
+        ? cents(ci.monthly_cost) : FALLBACK_MONTHLY_CENTS,
+      upfrontCents: ci.upfront_cost != null
+        ? cents(ci.upfront_cost) : FALLBACK_UPFRONT_CENTS,
+      costKnown,
       reservable: n.reservable === true,
       // Prefer the human-meaningful label; the raw first entry is often an
       // obscure rate centre nobody recognises.
@@ -553,6 +578,10 @@ export interface TelnyxCallRecord {
   legId: string | null;
   billedSeconds: number | null;
   costCents: number | null;
+  /** The EXACT amount. `costCents` rounds a $0.004 leg to 0, which is what
+   *  made per-message cost recording useless — see line_messages.
+   *  provider_cost_usd. Arithmetic reads this; display reads the cents. */
+  costUsd: number | null;
   hangupCause: string | null;
   direction: string | null;
   raw: Record<string, unknown>;
@@ -589,11 +618,18 @@ export function normaliseCallRecord(
 
   const costRaw = r.cost ?? r.total_cost ?? null;
   let costCents: number | null = null;
+  let costUsd: number | null = null;
   if (costRaw != null) {
     const amount = typeof costRaw === "object"
       ? firstNumber(costRaw as Record<string, unknown>, ["amount", "value"])
       : firstNumber({ v: costRaw }, ["v"]);
-    if (amount != null) costCents = Math.round(amount * 100);
+    if (amount != null) {
+      costUsd = amount;
+      // Kept for display and for every existing consumer. It is LOSSY by
+      // construction — Telnyx bills fractions of a cent — so anything doing
+      // arithmetic must read `costUsd`.
+      costCents = Math.round(amount * 100);
+    }
   }
 
   return {
@@ -601,32 +637,62 @@ export function normaliseCallRecord(
     legId,
     billedSeconds: billed,
     costCents,
+    costUsd,
     hangupCause: (r.hangup_cause ?? r.cause ?? null) as string | null,
     direction: (r.direction ?? null) as string | null,
     raw: r,
   };
 }
 
-/** Call detail records since `sinceISO`. Page size is bounded because the edge
- *  runtime dies at ~150s and a wide date range on a busy account is unbounded
- *  work. */
+/** Call detail records since `sinceISO`.
+ *
+ *  ⚠️ PAGINATED. The first version fetched page one and stopped, which reads as
+ *  "there were only 100 records" — so on any busy window the oldest calls
+ *  would silently never settle and would keep their full reservation until the
+ *  six-hour stale sweep wrote them off at the client's word. A truncated list
+ *  that looks complete is the same failure as PostgREST's silent `max_rows`
+ *  truncation, and it is invisible for the same reason.
+ *
+ *  Bounded at `maxPages` because the edge runtime dies at ~150s. Hitting the
+ *  cap is reported through `truncated` rather than swallowed, so the caller can
+ *  say so instead of quietly under-settling. */
 export async function fetchCallDetailRecords(opts: {
   sinceISO: string;
   untilISO: string;
   pageSize?: number;
-}): Promise<TelnyxCallRecord[] | TelnyxFault> {
-  const params = new URLSearchParams({
-    "filter[record_type]": "call",
-    "filter[date_range][start_time]": opts.sinceISO,
-    "filter[date_range][end_time]": opts.untilISO,
-    "page[size]": String(Math.min(opts.pageSize ?? 100, 250)),
-  });
-  const r = await call<Record<string, unknown>[]>("GET", `/detail_records?${params}`);
-  if (faultOf(r)) return r;
-  const rows = Array.isArray(r) ? r : [];
-  return rows
-    .map((x) => normaliseCallRecord(x as Record<string, unknown>))
-    .filter((x): x is TelnyxCallRecord => x !== null);
+  maxPages?: number;
+}): Promise<{ records: TelnyxCallRecord[]; pages: number; truncated: boolean } | TelnyxFault> {
+  const size = Math.min(opts.pageSize ?? 250, 250);
+  const maxPages = Math.max(opts.maxPages ?? 8, 1);
+  const out: TelnyxCallRecord[] = [];
+  let page = 1;
+
+  for (; page <= maxPages; page++) {
+    const params = new URLSearchParams({
+      "filter[record_type]": "call",
+      "filter[date_range][start_time]": opts.sinceISO,
+      "filter[date_range][end_time]": opts.untilISO,
+      "page[size]": String(size),
+      "page[number]": String(page),
+    });
+    const r = await call<Record<string, unknown>[]>("GET", `/detail_records?${params}`);
+    if (faultOf(r)) {
+      // A fault on page 2+ is NOT total failure: what we already read is
+      // genuine and settling it is strictly better than settling none. Only an
+      // empty haul is propagated as a fault.
+      if (out.length === 0) return r;
+      return { records: out, pages: page - 1, truncated: true };
+    }
+    const rows = Array.isArray(r) ? r : [];
+    for (const x of rows) {
+      const rec = normaliseCallRecord(x as Record<string, unknown>);
+      if (rec) out.push(rec);
+    }
+    // A short page is the last page. Telnyx's meta block is not relied on:
+    // this file's standing rule is that an undocumented field is a guess.
+    if (rows.length < size) return { records: out, pages: page, truncated: false };
+  }
+  return { records: out, pages: maxPages, truncated: true };
 }
 
 // ── Balance ────────────────────────────────────────────────────────────────

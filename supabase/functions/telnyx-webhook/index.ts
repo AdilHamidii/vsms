@@ -191,26 +191,51 @@ async function handleReceipt(
   // claim at all. A receipt only carries Telnyx's id, so resolve it here.
   // `send-line-message` writes that id back onto the row immediately after the
   // send, which is what makes this lookup possible.
-  const { data: row } = await sb.from("line_messages")
-    .select("id").eq("provider_message_id", providerId).maybeSingle();
+  // ⚠️ RETRIED ONCE. `send-line-message` writes the provider id back onto the
+  // row immediately after the send returns, but Telnyx can deliver
+  // `message.sent` before that write lands — and we ALWAYS return 200, so
+  // Telnyx never retries a receipt we dropped. A single miss used to leave the
+  // message `queued` forever with its segments spent. The 15-minute stale
+  // sweep is the floor; this is what stops it being reached in the ordinary
+  // race.
+  let row = await findMessage(sb, providerId);
   if (!row) {
-    // A receipt for a message we have no row for. Ordinary during the window
-    // between Telnyx accepting the send and us recording its id.
+    await new Promise((r) => setTimeout(r, 1500));
+    row = await findMessage(sb, providerId);
+  }
+  if (!row) {
+    // Genuinely ours to drop: a receipt for a message we never recorded. The
+    // stale sweep hands the allowance back on the row's own timer.
     console.log("telnyx-webhook: receipt for unknown message", providerId);
     return;
   }
 
+  // Telnyx bills fractions of a cent per segment, so `Math.round(0.004 * 100)`
+  // is 0 — which is why the exact figure goes into its own numeric column and
+  // the rounded one is kept only for display.
   const cost = payload.cost as { amount?: string } | undefined;
+  const costUsd = cost?.amount != null ? parseFloat(String(cost.amount)) : null;
+
   const { error } = await sb.rpc("settle_outbound_message_claim", {
     p_message: row.id,
     p_provider_id: providerId,
     p_status: status,
-    p_cost_cents: cost?.amount
-      ? Math.round(parseFloat(cost.amount) * 100)
-      : null,
+    p_cost_cents: costUsd != null ? Math.round(costUsd * 100) : null,
     p_error: status === "failed" ? raw : null,
+    // Telnyx's own segment count is authoritative; ours is a local estimate
+    // that errs low on purpose.
+    p_segments: payload.parts != null ? Number(payload.parts) : null,
+    p_cost_usd: Number.isFinite(costUsd as number) ? costUsd : null,
   });
   if (error) throw new Error(`settle_outbound_message_claim: ${error.message}`);
+}
+
+async function findMessage(
+  sb: ReturnType<typeof admin>, providerId: string,
+): Promise<{ id: string } | null> {
+  const { data } = await sb.from("line_messages")
+    .select("id").eq("provider_message_id", providerId).maybeSingle();
+  return data ? { id: String(data.id) } : null;
 }
 
 /** Alert push for an inbound text.

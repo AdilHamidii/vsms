@@ -88,7 +88,14 @@ Deno.serve(async (req) => {
   for (const code of city.codes) {
     const r = await searchNumbers({ country: city.country, areaCode: code, limit: 8 });
     if (faultOf(r)) {
-      if (r.type === "AUTH_ERROR" || r.type === "RATE_LIMITED") {
+      // Only a real stockout justifies trying the next code. A dead key, an
+      // empty account or an outage is not a stock problem, and walking on
+      // would end in `number_taken` — which tells the user to pick again,
+      // into the same wall, right before we would have charged them.
+      if (r.type !== "OUT_OF_STOCK") {
+        console.error(JSON.stringify({
+          alert: "line_reserve_provider_fault", city: cityKey, fault: r.type,
+        }));
         return json({ error: "provider_unreachable" }, { status: 502 });
       }
       continue;
@@ -108,7 +115,20 @@ Deno.serve(async (req) => {
   // stale reading. The asymmetry is deliberate: there, a wrong refusal costs a
   // credit sale we can retry; here, a wrong ALLOW means Apple charges $9.99 for
   // a number we cannot buy.
-  const needCents = offer.upfrontCents + offer.monthlyCents + BALANCE_BUFFER_CENTS;
+  // ⚠️ `costKnown` is what stops this guard silently stopping. When Telnyx
+  // omits `cost_information`, both figures used to parse to ZERO — so the whole
+  // check degraded to "do we have 50 cents?" and would have waved through a
+  // purchase we could not afford, with Apple's $9.99 already taken. The adapter
+  // now substitutes the measured US/CA rate and says it did; a substituted
+  // quote gets a full month of extra headroom rather than being trusted.
+  const unknownCostPad = offer.costKnown ? 0 : offer.monthlyCents;
+  const needCents = offer.upfrontCents + offer.monthlyCents +
+                    BALANCE_BUFFER_CENTS + unknownCostPad;
+  if (!offer.costKnown) {
+    console.error(JSON.stringify({
+      alert: "line_cost_unquoted", number: wanted, assumed_cents: offer.monthlyCents,
+    }));
+  }
   const bal = await getBalance();
   if (faultOf(bal)) return json({ error: "provider_unreachable" }, { status: 502 });
   if (Math.round(bal.usd * 100) < needCents) {

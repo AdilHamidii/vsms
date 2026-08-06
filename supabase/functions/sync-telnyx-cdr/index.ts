@@ -44,12 +44,12 @@ Deno.serve(async (req) => {
   const until = new Date();
   const since = new Date(until.getTime() - LOOKBACK_MINUTES * 60_000);
 
-  const records = await fetchCallDetailRecords({
+  const fetched = await fetchCallDetailRecords({
     sinceISO: since.toISOString(),
     untilISO: until.toISOString(),
   });
 
-  if (faultOf(records)) {
+  if (faultOf(fetched)) {
     // Fails LOUD but not fatally: an unsettled call keeps its reservation,
     // which over-counts the user's allowance rather than under-counting it.
     // That is the safe direction — we would rather give someone their minutes
@@ -57,12 +57,25 @@ Deno.serve(async (req) => {
     await sb.from("app_config").upsert({
       key: "telnyx_cdr_faults",
       value: {
-        type: records.type, status: records.status,
-        detail: records.detail ?? null, at: until.toISOString(),
+        type: fetched.type, status: fetched.status,
+        detail: fetched.detail ?? null, at: until.toISOString(),
       },
     }, { onConflict: "key" });
-    console.error(JSON.stringify({ alert: "telnyx_cdr_fetch_failed", ...records }));
+    console.error(JSON.stringify({ alert: "telnyx_cdr_fetch_failed", ...fetched }));
     return json({ ok: false, error: "cdr_unreachable" }, { status: 502 });
+  }
+
+  const { records, pages, truncated } = fetched;
+
+  // ⚠️ NEVER SILENT. A truncated page walk looks exactly like "there were only
+  // this many records", and the calls it drops are the OLDEST ones — the ones
+  // closest to being written off by the six-hour stale sweep at the client's
+  // word instead of Telnyx's. Reported here and in the heartbeat so a busy
+  // hour is visible rather than inferred.
+  if (truncated) {
+    console.error(JSON.stringify({
+      alert: "telnyx_cdr_truncated", pages, records: records.length,
+    }));
   }
 
   // The probe. Written on the FIRST run that sees any record, and never
@@ -124,6 +137,9 @@ Deno.serve(async (req) => {
       p_cost_cents: rec.costCents,
       p_status: rec.billedSeconds > 0 ? "completed" : "missed",
       p_hangup_cause: rec.hangupCause,
+      // The EXACT figure. `costCents` rounds a fraction-of-a-cent leg to zero,
+      // which would make every margin reading over this table circular.
+      p_cost_usd: rec.costUsd,
     });
     if (error) {
       failed++;
@@ -144,7 +160,7 @@ Deno.serve(async (req) => {
       at: until.toISOString(),
       records: records.length,
       pending: (pending ?? []).length,
-      settled, unmatched, failed,
+      settled, unmatched, failed, pages, truncated,
     },
   }, { onConflict: "key" });
 
@@ -152,6 +168,6 @@ Deno.serve(async (req) => {
     ok: true,
     records: records.length,
     pending: (pending ?? []).length,
-    settled, unmatched, failed,
+    settled, unmatched, failed, pages, truncated,
   });
 });

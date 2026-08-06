@@ -108,14 +108,23 @@ supabase db push
 # Deploy edge functions (each runs independently)
 supabase functions deploy create-order check-order cancel-order register-push iap-verify delete-account \
   create-esim-order check-esim-usage redeem-referral \
-  create-email-order check-email-order email-domains support-send
+  create-email-order check-email-order email-domains support-send \
+  search-line-numbers reserve-line-number verify-line-subscription \
+  send-line-message line-thread-action mint-line-token begin-line-call report-line-call
 # Cron-gated functions MUST ship --no-verify-jwt: their pg_cron relays send
 # only x-cron-secret, no Authorization header. winback lived in the JWT group
 # until 2026-07-21 and silently 401'd on every daily run — zero nudges ever
 # sent, invisible because pg_net purges response history within hours.
 supabase functions deploy poll-active-orders sync-prices sync-5sim sync-herosms \
   sync-esim-plans sync-smspva-operators sync-smspva-conversions winback \
-  telegram-notify telegram-webhook daily-credit --no-verify-jwt
+  telegram-notify telegram-webhook daily-credit telegram-setup goodwill-credit \
+  broadcast-push telnyx-webhook apple-notifications release-lines sync-telnyx-cdr \
+  --no-verify-jwt
+# ✅ The two lists above are now EXHAUSTIVE, and `supabase/config.toml` carries
+# a `[functions.<name>] verify_jwt = false` entry for every member of the second
+# group — the flag used to live only in shell history, and a redeploy that
+# forgets it 401s every caller silently. Assert with `ls supabase/functions |
+# grep -v _shared | wc -l` against the two lists; they must sum to it.
 # daily-credit: the cron relay-daily-credit is UNSCHEDULED as of 2026-08-02 and
 # the grant itself is disabled behind app_config.daily_credit_enabled. The
 # function is still deployed (harmless, returns 0 candidates); keep it in this

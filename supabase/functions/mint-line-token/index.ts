@@ -35,7 +35,8 @@ Deno.serve(async (req) => {
   // The caller's own line, read server-side. A line id is a client-supplied
   // resource selector and is never accepted from the request.
   const { data: line, error } = await sb.from("phone_lines")
-    .select("id, e164, status, provider_number_id, provider_connection_id, provider_credential_id")
+    .select("id, e164, status, provider_number_id, provider_connection_id, " +
+            "provider_credential_id, provider_voice_attached")
     .eq("user_id", userId)
     .in("status", ["active", "grace", "past_due", "suspended"])
     .maybeSingle();
@@ -52,6 +53,7 @@ Deno.serve(async (req) => {
 
   let connectionId = line.provider_connection_id as string | null;
   let credentialId = line.provider_credential_id as string | null;
+  let attachedOk = line.provider_voice_attached === true;
 
   // Lazily create the connection. Doing it here rather than at provisioning
   // keeps the purchase path shorter — Apple has already taken the money by
@@ -64,23 +66,34 @@ Deno.serve(async (req) => {
     });
     if (faultOf(conn)) return voiceFault(sb, conn, "create_connection");
     connectionId = conn.id;
+    // Persisted IMMEDIATELY, before the attach. If the write is skipped or
+    // fails we create a brand-new connection on every mint and leak one at
+    // Telnyx each time.
+    await persist(sb, String(line.id), { connection: connectionId });
+  }
 
-    // Point the number's VOICE at it. Not settable on the main number resource
-    // (10027) — it lives on the /voice sub-resource.
-    if (line.provider_number_id) {
-      const attached = await attachVoiceConnection(
-        String(line.provider_number_id), connectionId);
-      if (faultOf(attached)) {
-        // Outbound will still work; inbound will not ring. Pages rather than
-        // failing, because a half-working line is worth more than none.
-        console.error(JSON.stringify({
-          alert: "line_voice_attach_failed", line: line.id, detail: attached.detail,
-        }));
-      }
+  // 🔴 THE ATTACH IS RETRIED UNTIL IT SUCCEEDS, and that is the fix.
+  //
+  // Pointing the number's VOICE at its connection is what makes INBOUND ring —
+  // it is not settable on the main number resource (10027), it lives on the
+  // /voice sub-resource. It used to run only inside the `if (!connectionId)`
+  // branch, and the connection id was stored whether or not it worked. So one
+  // transient failure meant inbound calls never rang for that line, forever,
+  // while outbound worked perfectly and nothing ever looked wrong.
+  if (!attachedOk && line.provider_number_id) {
+    const attached = await attachVoiceConnection(
+      String(line.provider_number_id), connectionId);
+    if (faultOf(attached)) {
+      // Not fatal: outbound still works, and a half-working line beats none.
+      // Recorded as `false` so the NEXT mint tries again.
+      console.error(JSON.stringify({
+        alert: "line_voice_attach_failed", line: line.id, detail: attached.detail,
+      }));
+      await persist(sb, String(line.id), { attached: false });
+    } else {
+      attachedOk = true;
+      await persist(sb, String(line.id), { attached: true });
     }
-    await sb.from("phone_lines")
-      .update({ provider_connection_id: connectionId })
-      .eq("id", line.id);
   }
 
   if (!credentialId) {
@@ -89,9 +102,7 @@ Deno.serve(async (req) => {
     });
     if (faultOf(cred)) return voiceFault(sb, cred, "create_credential");
     credentialId = cred.id;
-    await sb.from("phone_lines")
-      .update({ provider_credential_id: credentialId })
-      .eq("id", line.id);
+    await persist(sb, String(line.id), { credential: credentialId });
   }
 
   const token = await mintCredentialToken(credentialId);
@@ -104,8 +115,35 @@ Deno.serve(async (req) => {
     // is the authority — `begin-line-call` reserves the allowance before the
     // call connects.
     line_id: line.id,
+    // Honest rather than hidden: outbound works either way, inbound does not
+    // ring until this is true. The client can say so instead of the user
+    // discovering it when someone tries to call them.
+    inbound_ready: attachedOk,
   });
 });
+
+/** Persist a voice binding. Errors were DISCARDED here, and each one is a real
+ *  leak: a lost connection id means a brand-new connection at Telnyx on every
+ *  single mint, and a lost credential id means a new credential each time —
+ *  both accumulate forever with nothing pointing at them. */
+async function persist(
+  sb: ReturnType<typeof admin>,
+  lineId: string,
+  what: { connection?: string; credential?: string; attached?: boolean },
+) {
+  const { error } = await sb.rpc("record_line_voice_binding", {
+    p_line: lineId,
+    p_connection: what.connection ?? null,
+    p_credential: what.credential ?? null,
+    p_attached: what.attached ?? null,
+  });
+  if (error) {
+    console.error(JSON.stringify({
+      alert: "line_voice_binding_unrecorded", line: lineId,
+      fields: Object.keys(what), detail: error.message,
+    }));
+  }
+}
 
 /** Records the fault shape so the FIRST real call doubles as the probe these
  *  adapters never got. */

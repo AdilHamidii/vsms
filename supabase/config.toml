@@ -69,3 +69,55 @@ inspector_port = 8083
 
 [analytics]
 enabled = false
+
+# ── Functions that must NOT require a Supabase JWT ─────────────────────────
+#
+# ⚠️ These entries are the ONLY durable record of the flag. `--no-verify-jwt` on
+# the deploy command lives in someone's shell history; this file lives in the
+# repo, and a redeploy that forgets the flag 401s every caller SILENTLY — the
+# failure telegram-webhook documents, where the bot simply goes deaf.
+#
+# Three categories, all of which send no Authorization header:
+#   • cron relays — pg_net sends only x-cron-secret
+#   • provider webhooks — Telnyx signs with Ed25519, Apple with a JWS chain
+#   • telegram-webhook — gated by its own secret token plus the owner chat id
+#
+# Every one of them has its own gate. "No JWT" never means "no auth" here.
+[functions.poll-active-orders]
+verify_jwt = false
+[functions.sync-prices]
+verify_jwt = false
+[functions.sync-5sim]
+verify_jwt = false
+[functions.sync-herosms]
+verify_jwt = false
+[functions.sync-esim-plans]
+verify_jwt = false
+[functions.sync-smspva-operators]
+verify_jwt = false
+[functions.sync-smspva-conversions]
+verify_jwt = false
+[functions.winback]
+verify_jwt = false
+[functions.daily-credit]
+verify_jwt = false
+[functions.telegram-notify]
+verify_jwt = false
+[functions.telegram-webhook]
+verify_jwt = false
+[functions.telegram-setup]
+verify_jwt = false
+[functions.goodwill-credit]
+verify_jwt = false
+[functions.broadcast-push]
+verify_jwt = false
+
+# Rented second numbers.
+[functions.telnyx-webhook]
+verify_jwt = false
+[functions.apple-notifications]
+verify_jwt = false
+[functions.release-lines]
+verify_jwt = false
+[functions.sync-telnyx-cdr]
+verify_jwt = false

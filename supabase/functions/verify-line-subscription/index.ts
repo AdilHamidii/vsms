@@ -28,7 +28,7 @@ import {
 } from "../_shared/iap.ts";
 import {
   orderNumber, getOrder, findNumberId, attachMessagingProfile,
-  releaseNumber, faultOf,
+  releaseNumber, searchNumbers, faultOf,
 } from "../_shared/telnyx.ts";
 import { sendMessage, esc } from "../_shared/telegram.ts";
 
@@ -68,6 +68,10 @@ Deno.serve(async (req) => {
     signed_transaction?: string;
     phone_number?: string;
     city?: string;
+    /** @deprecated Accepted and IGNORED. This is a COST, and a client-supplied
+     *  cost is the same category of mistake as a client-supplied price — it is
+     *  re-quoted by `quoteMonthlyCents`. Kept in the shape so shipped builds
+     *  that still send it are not rejected. */
     monthly_cents?: number;
   } = {};
   try { body = await req.json(); } catch { /* guarded below */ }
@@ -171,6 +175,21 @@ Deno.serve(async (req) => {
     return json({ error: "provision_failed" }, { status: 502 });
   }
 
+  // Stamp the order id NOW, not on success. A purchase that fails after the
+  // buy is precisely when this handle matters — the order is ASYNCHRONOUS, the
+  // number may still arrive after we stop polling, and `activate_line_claim`
+  // never runs on that path. Without it an orphan is invisible until the
+  // invoice. Errors are logged, never fatal: the number is already bought.
+  const { error: orderIdErr } = await sb.rpc("record_line_order", {
+    p_line: lineId, p_order_id: order.orderId,
+  });
+  if (orderIdErr) {
+    console.error(JSON.stringify({
+      alert: "line_order_id_unrecorded", line: lineId, order: order.orderId,
+      detail: orderIdErr.message,
+    }));
+  }
+
   let e164: string | null = null;
   for (let i = 0; i < ORDER_POLL_ATTEMPTS; i++) {
     const st = await getOrder(order.orderId);
@@ -224,15 +243,29 @@ Deno.serve(async (req) => {
     p_voice_profile: null,
     p_credential: null,
     p_period_end: periodEnd,
-    // The price from the SEARCH quote. Nothing reports it again — the order
-    // response returns `cost_information: null` and the number resource has no
-    // price field at all — so this is the only chance to record it.
-    p_monthly_cost_cents: body.monthly_cents ?? null,
+    // ⚠️ RE-QUOTED SERVER-SIDE, never taken from the request. Nothing reports
+    // this again — the order response returns `cost_information: null` and the
+    // number resource has no price field at all — so this is the only chance
+    // to record it, and it is what we PAY. It used to be `body.monthly_cents`,
+    // handed back by the client from the reserve step: a client-supplied COST,
+    // the same category of mistake as a client-supplied price, and one that
+    // makes the whole line look more profitable than it is.
+    p_monthly_cost_cents: await quoteMonthlyCents(e164),
+    p_order_id: order.orderId,
   });
   if (actErr || activated !== true) {
+    // 🔴 THE PROVISIONING LOCKOUT. This branch used to return 500 and stop,
+    // leaving the row `provisioning` forever — and because
+    // phone_lines_one_live_per_user counts that status, the user was BARRED
+    // from renting again while still paying Apple, with no path back except an
+    // Apple refund. The number kept billing us too. Fail the line so they are
+    // free, and give the number back so we stop paying for it; the 15-minute
+    // reclaim sweep is the backstop if even this write is lost.
     console.error(JSON.stringify({
       alert: "line_activate_failed", line: lineId, detail: actErr?.message,
     }));
+    await releaseIfPossible(e164);
+    await failLine(sb, lineId, "activate_failed", userId, tx.originalTransactionId);
     return json({ error: "provision_failed" }, { status: 500 });
   }
 
@@ -256,7 +289,43 @@ async function failLine(
 
 async function releaseIfPossible(e164: string) {
   const id = await findNumberId(e164);
-  if (typeof id === "string") await releaseNumber(id);
+  if (typeof id !== "string") return;
+  const r = await releaseNumber(id);
+  // A release we could not make must not vanish. The line still gets failed,
+  // and `release-lines`' orphan sweep is what finds a number whose
+  // customer_reference points at a dead row — but only if we say so here.
+  if (faultOf(r)) {
+    console.error(JSON.stringify({
+      alert: "line_orphan_number", e164, detail: r.detail,
+    }));
+  }
+}
+
+/** What Telnyx charges US for this number, per month, in cents.
+ *
+ *  ⚠️ Never the client's figure. The number is ours by the time this runs, so
+ *  it is no longer in availability — we re-quote the same market instead,
+ *  which is exactly what the reserve step priced against. Prices are per
+ *  (country, area code) and measured flat at $1.00 for every US/CA local
+ *  number probed, so a sibling number's quote IS this number's cost.
+ *
+ *  Falls back to that measured rate rather than to null: an unknown cost
+ *  recorded as nothing reads as a free number and would flatter every margin
+ *  reading over this table. */
+async function quoteMonthlyCents(e164: string): Promise<number> {
+  const FALLBACK = 100;
+  try {
+    const digits = e164.replace(/\D/g, "");
+    // NANP: +1 then a 3-digit area code. Anything else is not a market we
+    // sell, so do not pretend to price it.
+    if (!digits.startsWith("1") || digits.length < 11) return FALLBACK;
+    const areaCode = digits.slice(1, 4);
+    const r = await searchNumbers({ country: "CA", areaCode, limit: 1 });
+    if (faultOf(r) || r.length === 0 || !r[0].costKnown) return FALLBACK;
+    return r[0].monthlyCents;
+  } catch {
+    return FALLBACK;
+  }
 }
 
 /** Exactly-once ops ping, following `iap-verify.alertPurchase` precisely.

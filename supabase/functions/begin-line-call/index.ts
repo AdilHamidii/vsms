@@ -25,7 +25,7 @@ import { admin, callerUserId } from "../_shared/supabaseAdmin.ts";
 /// explicit message that names the user's own phone is the only safe
 /// behaviour, and it cannot live only in the client: a stale build would
 /// bypass it. Same set as `send-line-message`.
-const EMERGENCY = new Set(["911", "112", "999", "000", "110", "119", "911", "988"]);
+const EMERGENCY = new Set(["911", "112", "999", "000", "110", "119", "988"]);
 
 /// Reserved per call. Deliberately well under the 100-minute monthly allowance
 /// so a single call cannot consume it, and well over a typical verification
@@ -109,9 +109,20 @@ Deno.serve(async (req) => {
     // Hand the reservation back. Without this a failed record leaves the user
     // two minutes poorer with nothing to show for it, and nothing later
     // reconciles it because there is no row for the CDR to settle.
-    await sb.rpc("settle_line_allowance", {
+    //
+    // ⚠️ The error was DISCARDED here. supabase-js RETURNS errors rather than
+    // throwing, so a failed compensation looked exactly like a successful one —
+    // and this is the ONLY thing that returns those two minutes. It is the same
+    // class of silent money bug as the four discarded `wallet_credit` sites.
+    const { error: refundErr } = await sb.rpc("settle_line_allowance", {
       p_line: line.id, p_kind: "voice", p_actual: 0, p_reserved: RESERVE_SECONDS,
     });
+    if (refundErr) {
+      console.error(JSON.stringify({
+        alert: "line_allowance_stuck", line: line.id, seconds: RESERVE_SECONDS,
+        detail: refundErr.message,
+      }));
+    }
     console.error(JSON.stringify({
       alert: "line_call_record_failed",
       detail: recErr?.message ?? rec?.reason ?? "unknown",

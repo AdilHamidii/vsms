@@ -70,6 +70,13 @@ Deno.serve(async (req) => {
   const sb = admin();
 
   // ── Persist first ────────────────────────────────────────────────────────
+  // `original_transaction_id` is filled in by `process` once the INNER JWS is
+  // verified — the column had no writer at all, which left the forensic trail
+  // unjoinable to the line it describes, exactly the thing you need when our
+  // state machine and Apple's disagree. It is deliberately not read off the
+  // envelope here: ASSN V2 carries it inside the signed transaction, and
+  // taking a join key from unverified bytes is the same mistake the chain
+  // check exists to prevent.
   const { data: claimed, error: claimErr } = await sb
     .from("line_notifications")
     .insert({
@@ -88,14 +95,26 @@ Deno.serve(async (req) => {
       console.error(JSON.stringify({ alert: "assn_persist_failed", detail: claimErr.message }));
       return json({ error: "persist_failed" }, { status: 500 });
     }
-    return json({ ok: true, duplicate: true });
+
+    // 🔴 A DUPLICATE IS NOT NECESSARILY DONE.
+    //
+    // The row is claimed BEFORE processing, so a failed process left a claimed,
+    // UNPROCESSED row — and every one of Apple's retries then short-circuited
+    // here as "duplicate" and did nothing. The retry ladder existed and was
+    // being swallowed: a renewal that failed once could never be applied, and
+    // the only trace was a `process_error` nobody reads.
+    const { data: prior } = await sb.from("line_notifications")
+      .select("processed_at").eq("notification_uuid", n.notificationUUID).maybeSingle();
+    if (prior?.processed_at) return json({ ok: true, duplicate: true });
+    // Fall through and reprocess. `process` is idempotent by construction —
+    // renewals are tombstoned in `line_renewals`, every claim function is
+    // status-gated, and the release path re-checks at the provider.
   }
-  if (!claimed) return json({ ok: true, duplicate: true });
 
   try {
     await process(sb, n);
     await sb.from("line_notifications")
-      .update({ processed_at: new Date().toISOString() })
+      .update({ processed_at: new Date().toISOString(), process_error: null })
       .eq("notification_uuid", n.notificationUUID);
   } catch (e) {
     // The row survives with the error recorded, so a failure is inspectable
@@ -106,6 +125,13 @@ Deno.serve(async (req) => {
     console.error(JSON.stringify({
       alert: "assn_process_failed", type: n.notificationType, detail: String(e),
     }));
+
+    // ⚠️ NON-2XX ON PURPOSE, and it is the whole point of the reprocess branch
+    // above. Apple retries at 1h/12h/24h/48h/72h; returning 200 here would
+    // spend our only free retry ladder on a failure we have not fixed. The
+    // header's "return 200 fast" rule is about not making Apple retry JUNK — a
+    // transient failure on OUR side is exactly what retries are for.
+    return json({ error: "process_failed" }, { status: 500 });
   }
 
   return json({ ok: true });
@@ -125,8 +151,32 @@ async function process(sb: ReturnType<typeof admin>, n: Awaited<ReturnType<typeo
   const originalTx = tx.originalTransactionId;
   const periodEnd = tx.expiresDate ? new Date(tx.expiresDate).toISOString() : null;
 
+  // Now that the inner JWS is verified, join the forensic row to the
+  // subscription it describes. Not fatal — the notification still processes if
+  // this write fails — but it is the only thing that makes the trail useful.
+  const { error: stampErr } = await sb.from("line_notifications")
+    .update({ original_transaction_id: originalTx })
+    .eq("notification_uuid", n.notificationUUID);
+  if (stampErr) {
+    console.error(JSON.stringify({
+      alert: "assn_stamp_failed", uuid: n.notificationUUID, detail: stampErr.message,
+    }));
+  }
+
   const type = n.notificationType;
   const sub = n.subtype ?? "";
+
+  // ⚠️ EVERY BRANCH BELOW IS AN *UPDATE* ON `line_subscriptions`, and an UPDATE
+  // matching nothing is not an error. `record_line_subscription` is called from
+  // exactly one place — `verify-line-subscription` — so a notification for a
+  // subscription we have no row for (the purchase call never landed, the row
+  // was lost, or Apple got here first) silently did nothing at all, forever.
+  //
+  // The row is only ever created here for a subscription we can ATTRIBUTE to a
+  // user. Without a user id there is no line to act on and inventing one would
+  // bind an entitlement to the wrong account — the precise failure
+  // `subscription_bound` exists to prevent.
+  await ensureSubscriptionRow(sb, originalTx, tx, periodEnd);
 
   switch (type) {
     // ── Live again ─────────────────────────────────────────────────────────
@@ -136,7 +186,7 @@ async function process(sb: ReturnType<typeof admin>, n: Awaited<ReturnType<typeo
       // reconcile-subscriptions replays the same renewal from the other side.
       // Without that tombstone one renewal resets the allowance several times
       // and hands out free capacity.
-      const { error } = await sb.rpc("apply_line_renewal", {
+      const { data, error } = await sb.rpc("apply_line_renewal", {
         p_original_tx: originalTx,
         p_transaction_id: tx.transactionId,
         p_period_end: periodEnd,
@@ -146,6 +196,23 @@ async function process(sb: ReturnType<typeof admin>, n: Awaited<ReturnType<typeo
         p_signed_transaction: txJws,
       });
       if (error) throw new Error(`apply_line_renewal: ${error.message}`);
+
+      // `line_provisioning` means verify-line-subscription is mid-flight and
+      // will set the period itself in seconds. The RPC claims NO tombstone in
+      // that case precisely so a retry can still apply the renewal — so throw,
+      // which now returns 500 and puts Apple's ladder to work. Swallowing it
+      // would drop a renewal that is merely early.
+      if (data?.ok !== true && data?.retryable === true) {
+        throw new Error(`apply_line_renewal deferred: ${data?.reason}`);
+      }
+      // `allowance_reset: false` is legitimate — a subscription can outlive its
+      // number — but it means the customer's month did NOT reset, so it is
+      // recorded rather than assumed away.
+      if (data?.ok === true && data?.allowance_reset === false) {
+        console.log(JSON.stringify({
+          assn_renewal_no_live_line: originalTx, reason: data?.reason ?? null,
+        }));
+      }
       return;
     }
 
@@ -231,10 +298,77 @@ async function process(sb: ReturnType<typeof admin>, n: Awaited<ReturnType<typeo
   }
 }
 
+/** Create the subscription row when only a notification knows about it.
+ *
+ *  Attribution comes from the LINE, which is keyed on the same original
+ *  transaction id — never invented. If there is no line either, there is
+ *  nothing this notification could act on and nothing is written: a row with a
+ *  guessed user_id would bind an Apple entitlement to the wrong account, which
+ *  is the exact replay `subscription_bound` exists to refuse. */
+async function ensureSubscriptionRow(
+  sb: ReturnType<typeof admin>,
+  originalTx: string,
+  tx: Awaited<ReturnType<typeof verifyTransactionJWS>>,
+  periodEnd: string | null,
+) {
+  const { data: existing, error: readErr } = await sb.from("line_subscriptions")
+    .select("original_transaction_id")
+    .eq("original_transaction_id", originalTx).maybeSingle();
+  if (readErr) {
+    console.error(JSON.stringify({
+      alert: "assn_sub_lookup_failed", detail: readErr.message,
+    }));
+    return;
+  }
+  if (existing) return;
+
+  const { data: line, error: lineErr } = await sb.from("phone_lines")
+    .select("user_id").eq("original_transaction_id", originalTx)
+    .order("created_at", { ascending: false }).limit(1).maybeSingle();
+  if (lineErr || !line?.user_id) {
+    console.error(JSON.stringify({
+      alert: "assn_sub_unattributable", tx: originalTx,
+      detail: lineErr?.message ?? "no line for this transaction",
+    }));
+    return;
+  }
+
+  const { data, error } = await sb.rpc("record_line_subscription", {
+    p_original_tx: originalTx,
+    p_user: line.user_id,
+    p_product: tx.productId,
+    p_state: "active",
+    p_auto_renew: true,
+    p_environment: tx.environment,
+    p_expires_at: periodEnd,
+    p_last_tx: tx.transactionId,
+    p_signed_tx: null,
+    p_storefront: tx.storefront ?? null,
+    p_price_milli: tx.price ?? null,
+    p_currency: tx.currency ?? null,
+  });
+  if (error || data?.ok !== true) {
+    console.error(JSON.stringify({
+      alert: "assn_sub_backfill_failed", tx: originalTx,
+      detail: error?.message ?? data?.reason,
+    }));
+  }
+}
+
 /** Give the number back so we stop paying for it. */
 async function releaseLine(sb: ReturnType<typeof admin>, lineId: string) {
   try {
-    const { data: begun } = await sb.rpc("begin_release_line_claim", { p_line: lineId });
+    const { data: begun, error: beginErr } = await sb
+      .rpc("begin_release_line_claim", { p_line: lineId });
+    if (beginErr) {
+      // Discarded before. A failed claim means the line is NOT in `releasing`,
+      // so neither this function nor the reclaim sweep will ever come back for
+      // it — the number keeps billing with nothing pointing at it.
+      console.error(JSON.stringify({
+        alert: "line_release_claim_failed", lineId, detail: beginErr.message,
+      }));
+      return;
+    }
     if (begun?.ok !== true) return;
 
     const numberId = begun.provider_number_id
@@ -254,14 +388,22 @@ async function releaseLine(sb: ReturnType<typeof admin>, lineId: string) {
     if (id) {
       const r = await releaseNumber(id);
       if (faultOf(r)) {
-        // Left in `releasing` deliberately: the reclaim sweep and the orphan
-        // reconciler both pick it up again. Marking it released here would
-        // hide a number we are still being billed for.
+        // Left in `releasing` deliberately: `release-lines` sweeps that status
+        // every 15 minutes and retries. Marking it released here would hide a
+        // number we are still being billed for.
         console.error(JSON.stringify({ alert: "line_release_failed", lineId }));
         return;
       }
     }
-    await sb.rpc("confirm_line_released", { p_line: lineId });
+    const { error: confirmErr } = await sb.rpc("confirm_line_released", { p_line: lineId });
+    if (confirmErr) {
+      // Discarded before. The number IS gone at the provider, so the money has
+      // stopped — but the row still claims it, and the release sweep will keep
+      // retrying a DELETE on a number that no longer exists. Loud, not fatal.
+      console.error(JSON.stringify({
+        alert: "line_release_confirm_failed", lineId, detail: confirmErr.message,
+      }));
+    }
   } catch (e) {
     console.error(JSON.stringify({ alert: "line_release_threw", lineId, detail: String(e) }));
   }

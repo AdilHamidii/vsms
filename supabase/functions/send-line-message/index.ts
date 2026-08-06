@@ -104,6 +104,8 @@ Deno.serve(async (req) => {
       p_status: "failed",
       p_cost_cents: null,
       p_error: sent.type,
+      p_segments: null,
+      p_cost_usd: null,
     });
     if (error) {
       // The allowance is now stuck spent on a message that never sent. Pages,
@@ -118,19 +120,37 @@ Deno.serve(async (req) => {
   // Record Telnyx's id and its AUTHORITATIVE segment count. Two reasons this
   // matters: the delivery receipt can only be matched back to this row by that
   // id, and `parts` is the real segment count our local estimate approximated.
-  const { error: settleErr } = await sb.rpc("settle_outbound_message_claim", {
+  //
+  // ⚠️ `sent.parts` used to be FETCHED AND THROWN AWAY. `estimateSegments` errs
+  // LOW by design — it has to, because over-estimating silently overcharges an
+  // allowance with no money behind it — so discarding the real count meant a
+  // three-segment message permanently cost one segment. The claim function now
+  // adjusts by the difference.
+  const settle = async () => sb.rpc("settle_outbound_message_claim", {
     p_message: messageId,
     p_provider_id: sent.id,
     p_status: "sent",
     p_cost_cents: null,
     p_error: null,
+    p_segments: sent.parts,
+    p_cost_usd: null,
   });
+
+  let { error: settleErr } = await settle();
   if (settleErr) {
-    // The message IS sent. Losing the id only costs us the receipt matching,
-    // so this must not fail the request — telling the user it failed after it
-    // went out would be the worse lie.
+    // ONE retry, because this write is what makes the delivery receipt
+    // matchable at all. Without the provider id on the row, the DLR arrives,
+    // matches nothing, and the message sits `queued` until the 15-minute stale
+    // sweep marks it failed — for a text that was actually delivered.
+    ({ error: settleErr } = await settle());
+  }
+  if (settleErr) {
+    // The message IS sent. Telling the user it failed after it went out would
+    // be the worse lie, so this never fails the request — but it pages,
+    // because the row now cannot be settled by any receipt.
     console.error(JSON.stringify({
-      alert: "line_settle_failed", message: messageId, detail: settleErr.message,
+      alert: "line_settle_failed", message: messageId, provider_id: sent.id,
+      detail: settleErr.message,
     }));
   }
 

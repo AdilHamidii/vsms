@@ -46,6 +46,7 @@ const HELP = [
   "     <code>/announce warn …</code> amber · <code>/announce off</code> clears",
   "     <code>/announce</code> alone shows what is live",
   "/esim <i>on|off</i> — put eSIMs on or off sale",
+  "/lines <i>on|off</i> — put second numbers on or off sale",
 ].join("\n");
 
 /** Announcement ceiling. The banner is two or three lines on a phone; anything
@@ -318,6 +319,35 @@ Deno.serve(async (req) => {
           (!pausing && (d.plans_active ?? 0) === 0
             ? `\n\n⚠️ Nothing came back — the catalog has not been synced recently, ` +
               `so there is nothing to put on sale. Wire the new provider's sync first.`
+            : "");
+    }
+  } else if (cmd === "/lines") {
+    // 🔴 `set_lines_paused` shipped with NO CALLER ANYWHERE. The kill switch
+    // for a product that costs $1/month per subscriber existed only as a
+    // function you had to open a SQL console to reach — which is exactly the
+    // moment you cannot. Mirrors /esim precisely, including reporting the live
+    // count so "pausing did nothing" is visible rather than looking like
+    // success.
+    if (arg !== "on" && arg !== "off") {
+      const { data: p } = await sb
+        .from("app_config").select("value").eq("key", "lines_paused").maybeSingle();
+      const { count } = await sb.from("phone_lines")
+        .select("id", { count: "exact", head: true })
+        .in("status", ["active", "grace", "past_due"]);
+      reply = `📞 Second numbers are <b>${p?.value === true ? "OFF sale" : "on sale"}</b>.\n` +
+              `${count ?? 0} live line(s).\n\n` +
+              `<code>/lines off</code> · <code>/lines on</code>`;
+    } else {
+      const pausing = arg === "off";
+      const { data, error } = await sb.rpc("set_lines_paused", { p_paused: pausing });
+      const d = (data ?? {}) as { active_lines?: number };
+      reply = error
+        ? `⚠️ Couldn't change it: ${esc(error.message)}`
+        : `📞 Second numbers ${pausing ? "are now OFF sale" : "are back on sale"}.\n` +
+          `${d.active_lines ?? 0} existing line(s) keep working` +
+          (pausing
+            ? `\n\n<i>Pausing stops NEW rentals only. Live lines keep sending, ` +
+              `receiving and calling — and keep costing us rent until they lapse.</i>`
             : "");
     }
   }
