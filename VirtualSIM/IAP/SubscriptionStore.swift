@@ -30,6 +30,30 @@ import StoreKit
 @Observable
 @MainActor
 final class SubscriptionStore {
+    /// Which plan the paywall is offering. Monthly by default: it is the lower
+    /// commitment, and defaulting to the expensive option is a dark pattern.
+    var selectedPlan: LinePlan = .monthly
+
+    /// The product the CTA will actually buy. Everything user-facing — price,
+    /// renewal sentence, trial claim — reads from THIS, so the button can never
+    /// charge for a plan other than the one on screen.
+    var selectedProduct: Product? {
+        selectedPlan == .yearly ? yearlyProduct : product
+    }
+
+    /// Yearly saving against twelve monthly payments, computed from the LIVE
+    /// StoreKit prices in the user's own currency. Never hardcoded: the two
+    /// prices are set independently in App Store Connect and in different
+    /// territories, so "save 17%" written into the app is a claim that goes
+    /// wrong silently the first time either price moves.
+    var yearlySavingsPercent: Int? {
+        guard let m = product?.price, let y = yearlyProduct?.price, m > 0 else { return nil }
+        let twelve = m * 12
+        guard twelve > y else { return nil }
+        let pct = ((twelve - y) / twelve) * 100
+        return max(1, Int((pct as NSDecimalNumber).doubleValue.rounded()))
+    }
+
     /// The MONTHLY plan. Every existing call site means this one.
     private(set) var product: Product?
     /// The YEARLY plan — $99.99 with a 3-day free trial, same subscription
@@ -45,6 +69,26 @@ final class SubscriptionStore {
     /// to someone who will be charged immediately.
     var yearlyIntroOffer: Product.SubscriptionOffer? {
         yearlyProduct?.subscription?.introductoryOffer
+    }
+
+    /// "3 days" — or nil when there is no trial to promise.
+    ///
+    /// 🔴 nil is the important case and it is NOT an error. Apple grants one
+    /// introductory offer per subscription GROUP per Apple ID, so someone who
+    /// already trialled the monthly gets nothing here and StoreKit reports no
+    /// offer. Every trial claim in the UI hangs off this, so an ineligible user
+    /// is never shown "3 days free" and then charged $99.99 immediately —
+    /// which is a refund, a one-star review, and an App Store 3.1.2 problem.
+    var trialLabel: String? {
+        guard let offer = yearlyIntroOffer, offer.paymentMode == .freeTrial else { return nil }
+        let n = offer.period.value
+        switch offer.period.unit {
+        case .day:   return n == 1 ? String(localized: "1 day")   : String(localized: "\(n) days")
+        case .week:  return n == 1 ? String(localized: "1 week")  : String(localized: "\(n) weeks")
+        case .month: return n == 1 ? String(localized: "1 month") : String(localized: "\(n) months")
+        case .year:  return n == 1 ? String(localized: "1 year")  : String(localized: "\(n) years")
+        @unknown default: return nil
+        }
     }
     private(set) var isLoadingProduct = false
     private(set) var isPurchasing = false
@@ -95,7 +139,7 @@ final class SubscriptionStore {
     /// storefront. NEVER a hardcoded "$9.99": the credit-pack ladder drifted to
     /// $4.99-vs-€5.99 on its top revenue product precisely because prices were
     /// assumed rather than read.
-    var displayPrice: String? { product?.displayPrice }
+    var displayPrice: String? { selectedProduct?.displayPrice }
 
     // MARK: - Purchase
 
@@ -107,7 +151,9 @@ final class SubscriptionStore {
     /// money path we cannot drive.
     func purchase(phoneNumber: String, city: String, monthlyCents: Int?) async -> Bool {
         guard !isPurchasing else { return false }
-        guard let product else {
+        // The SELECTED product, not the monthly. Buying anything other than the
+        // plan shown next to the button is the worst bug this screen could have.
+        guard let product = selectedProduct else {
             lastError = String(localized: "Second numbers are temporarily unavailable. Please try again in a moment.")
             return false
         }
@@ -217,7 +263,22 @@ enum LineProduct {
     /// The server's `LINE_SUBSCRIPTION_PRODUCT_IDS` is the mirror of this list;
     /// they must move together.
     static let allIds = [monthlyId, yearlyId]
+}
 
+/// Which plan the paywall is offering.
+///
+/// Both are in the SAME App Store subscription group, so Apple treats a switch
+/// between them as an upgrade/downgrade and prorates it — a user can never end
+/// up holding both, which matters because `phone_lines_one_apple_line_per_user`
+/// would refuse the second line and they would be paying for nothing.
+enum LinePlan: String, CaseIterable, Identifiable {
+    case monthly
+    case yearly
+
+    var id: String { rawValue }
+}
+
+extension LineProduct {
     /// The advertised monthly allowance, for the PRE-purchase paywall only.
     ///
     /// ⚠️ These mirror the `phone_lines` schema defaults (`sms_allowance 200`,

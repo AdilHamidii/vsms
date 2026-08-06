@@ -1,3 +1,4 @@
+import StoreKit
 import SwiftUI
 
 /// The last screen before paying, and the FIRST one that mentions money.
@@ -43,7 +44,13 @@ struct LineCheckoutScreen: View {
                         intro.riseIn(appeared, index: 0)
                         numberCard.padding(.top, 20).riseIn(appeared, index: 1)
                         included.padding(.top, 26).riseIn(appeared, index: 2)
-                        priceBlock.padding(.top, 22).riseIn(appeared, index: 3)
+                        // Choice first, then the price block — which restates
+                        // the selection in full with its renewal terms. Putting
+                        // the picker after the price would mean the 3.1.2(a)
+                        // disclosure is read before the thing it describes has
+                        // been chosen.
+                        planPicker.padding(.top, 20).riseIn(appeared, index: 3)
+                        priceBlock.padding(.top, 12).riseIn(appeared, index: 3)
                         // The safety disclosure sits ABOVE the action, not
                         // between the price and the button. Price -> CTA has to
                         // be adjacent: the last thing read before a purchase
@@ -287,6 +294,80 @@ struct LineCheckoutScreen: View {
     /// row collapsed and the renewal sentence slid up under the bullets and
     /// then jumped back down. A visible layout jump on the paywall's first
     /// paint. The height is now reserved, so nothing reflows.
+    /// Monthly vs yearly.
+    ///
+    /// Rendered ONLY when StoreKit actually returned both products. If the
+    /// yearly is missing — still `MISSING_METADATA` in App Store Connect, not
+    /// yet available in this storefront, or simply not loaded — the screen
+    /// falls back to exactly what it was before, a single monthly plan, rather
+    /// than offering a choice one side of which cannot be bought.
+    @ViewBuilder
+    private var planPicker: some View {
+        if subs.product != nil, subs.yearlyProduct != nil {
+            VStack(spacing: 8) {
+                planRow(.monthly,
+                        title: String(localized: "Monthly"),
+                        price: subs.product?.displayPrice,
+                        note: nil)
+                planRow(.yearly,
+                        title: String(localized: "Yearly"),
+                        price: subs.yearlyProduct?.displayPrice,
+                        // Both derived from live StoreKit values, so neither can
+                        // promise something the store will not honour: the trial
+                        // vanishes for an Apple ID that has already used one, and
+                        // the saving is computed from the two real prices.
+                        note: subs.trialLabel.map { String(localized: "\($0) free") }
+                            ?? subs.yearlySavingsPercent.map { String(localized: "Save \($0)%") })
+            }
+        }
+    }
+
+    private func planRow(_ plan: LinePlan, title: String,
+                         price: String?, note: String?) -> some View {
+        let active = subs.selectedPlan == plan
+        return Button {
+            RHaptic.select()
+            withAnimation(RMotion.select) { subs.selectedPlan = plan }
+        } label: {
+            HStack(spacing: 12) {
+                Image(systemName: active ? "largecircle.fill.circle" : "circle")
+                    .font(.system(size: 20))
+                    .foregroundStyle(active ? theme.ink : theme.text3)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(verbatim: title)
+                        .font(RFont.text(15, weight: .semibold))
+                        .foregroundStyle(theme.text)
+                    if let note {
+                        Text(verbatim: note)
+                            .font(RFont.text(12))
+                            .foregroundStyle(theme.ink)
+                    }
+                }
+                Spacer(minLength: 0)
+                Text(verbatim: price ?? "—")
+                    .font(RFont.text(15, weight: .semibold))
+                    .foregroundStyle(theme.text)
+                    .monospacedDigit()
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 14)
+            .background(
+                RoundedRectangle(cornerRadius: RRadius.md, style: .continuous)
+                    .fill(active ? theme.inkSoft.opacity(0.5) : theme.elev)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: RRadius.md, style: .continuous)
+                    .stroke(active ? theme.ink.opacity(0.5) : theme.sep,
+                            lineWidth: active ? 1.5 : 1)
+            )
+        }
+        .buttonStyle(.plain)
+        // 44pt minimum, and the whole row is the target rather than the radio.
+        .frame(minHeight: 44)
+        .accessibilityElement(children: .combine)
+        .accessibilityAddTraits(active ? [.isButton, .isSelected] : .isButton)
+    }
+
     private var priceBlock: some View {
         Card(radius: RRadius.md, elevation: .flat,
              fill: theme.inkSoft.opacity(0.5), border: theme.ink.opacity(0.28)) {
@@ -296,7 +377,10 @@ struct LineCheckoutScreen: View {
                         Text(price)
                             .displayType(30)
                             .foregroundStyle(theme.text)
-                        Text("per month")
+                        // Follows the SELECTED plan. A price that says "per
+                        // month" beside a yearly charge is both a lie and an
+                        // App Store 3.1.2(a) violation.
+                        Text(subs.selectedPlan == .yearly ? "per year" : "per month")
                             .font(RFont.text(15))
                             .foregroundStyle(theme.text2)
                     } else {
@@ -309,11 +393,25 @@ struct LineCheckoutScreen: View {
                 }
                 .frame(height: 36)
 
-                Text("Renews every month until you cancel. Cancel any time in your Apple ID settings.")
-                    .font(RFont.text(12))
-                    .foregroundStyle(theme.text2)
-                    .lineSpacing(2)
-                    .fixedSize(horizontal: false, vertical: true)
+                // 3.1.2(a) requires the ACTUAL billing period and renewal
+                // terms. When a free trial applies, it also requires saying
+                // what happens when it ends — the most common reason a
+                // subscription paywall is rejected.
+                Group {
+                    if subs.selectedPlan == .yearly {
+                        if let trial = subs.trialLabel {
+                            Text("\(trial) free, then \(subs.displayPrice ?? "").  Renews every year until you cancel. Cancel any time in your Apple ID settings.")
+                        } else {
+                            Text("Renews every year until you cancel. Cancel any time in your Apple ID settings.")
+                        }
+                    } else {
+                        Text("Renews every month until you cancel. Cancel any time in your Apple ID settings.")
+                    }
+                }
+                .font(RFont.text(12))
+                .foregroundStyle(theme.text2)
+                .lineSpacing(2)
+                .fixedSize(horizontal: false, vertical: true)
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 14)
