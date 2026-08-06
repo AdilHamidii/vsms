@@ -93,15 +93,15 @@ struct DeliveryNotice: View {
     /// the contradiction.
     private var detail: String {
         guard let service else {
-            return String(localized: "Some services block temporary numbers, so a code may never come through. If that happens your credits come straight back — and trying another number is free, as many times as you like.")
+            return String(localized: "Some services block temporary numbers, so a code may never come through. If that happens your credits come straight back, and trying another number is free, as many times as you like.")
         }
         switch odds {
         case .poor:
-            return String(localized: "\(service.name) blocks most temporary numbers, so a code often never arrives. Your credits come back every time one doesn't, and trying again is free — but it may not work at all.")
+            return String(localized: "\(service.name) blocks most temporary numbers, so a code often never arrives. Your credits come back every time one doesn't, and trying again is free. But it may not work at all.")
         case .mixed:
             return String(localized: "\(service.name) accepts temporary numbers some of the time. Your credits come back if no code arrives, and trying another number is free.")
         case .good, .unknown:
-            return String(localized: "Some services block temporary numbers, so a code may never come through. If that happens your credits come straight back — and trying another number is free, as many times as you like.")
+            return String(localized: "Some services block temporary numbers, so a code may never come through. If that happens your credits come straight back, and trying another number is free, as many times as you like.")
         }
     }
 

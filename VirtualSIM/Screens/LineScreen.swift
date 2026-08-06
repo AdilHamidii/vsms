@@ -140,7 +140,7 @@ private struct LiveLineView: View {
             Text("Setting up your number")
                 .font(RFont.display(16, weight: .semibold))
                 .foregroundStyle(theme.text)
-            Text("This usually takes a few seconds. You can leave this screen — we'll let you know when it's ready.")
+            Text("This usually takes a few seconds. You can leave this screen, and we'll let you know when it's ready.")
                 .font(RFont.text(13))
                 .foregroundStyle(theme.text2)
                 .multilineTextAlignment(.center)
@@ -400,7 +400,7 @@ struct LineStatusBanner: View {
             // That is the whole reason grace is enabled, and cutting the user
             // off would defeat it.
             Copy(icon: "creditcard", tint: theme.warn,
-                 text: "There's a problem with your payment. Update it to keep your number — everything still works for now.")
+                 text: "There's a problem with your payment. Update it to keep your number. Everything still works for now.")
         case .pastDue:
             Copy(icon: "exclamationmark.circle", tint: theme.fail,
                  // "and calls" removed — there is no dialer, so this told a

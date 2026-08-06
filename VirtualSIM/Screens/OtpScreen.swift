@@ -212,7 +212,7 @@ struct OtpScreen: View {
                     HStack(spacing: 6) {
                         Image(systemName: "square.and.arrow.up")
                             .font(.system(size: 12, weight: .semibold))
-                        Text("Invite a friend — they start with \(AppState.inviteJoinerCredits) credits")
+                        Text("Invite a friend and they start with \(AppState.inviteJoinerCredits) credits")
                             .font(RFont.text(13, weight: .medium))
                     }
                     .foregroundStyle(theme.text3)

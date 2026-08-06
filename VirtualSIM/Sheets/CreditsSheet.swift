@@ -394,13 +394,13 @@ struct CreditsSheet: View {
             }
         case .median(let credits):
             if balance > 0 {
-                Text("Totals include the \(balance) credits you already have. A typical number costs \(credits) credits — prices vary by service and country.")
+                Text("Totals include the \(balance) credits you already have. A typical number costs \(credits) credits. Prices vary by service and country.")
                     .font(RFont.text(12))
                     .foregroundStyle(theme.text2)
                     .lineSpacing(2)
                     .fixedSize(horizontal: false, vertical: true)
             } else {
-                Text("A typical number costs \(credits) credits — prices vary by service and country.")
+                Text("A typical number costs \(credits) credits. Prices vary by service and country.")
                     .font(RFont.text(12))
                     .foregroundStyle(theme.text2)
                     .lineSpacing(2)
@@ -638,9 +638,9 @@ struct CreditsSheet: View {
             if n == 0 {
                 text = String(localized: "Nothing left to restore.")
             } else if n == 1 {
-                text = String(localized: "1 purchase restored — your credits are back.")
+                text = String(localized: "1 purchase restored. Your credits are back.")
             } else {
-                text = String(localized: "\(n) purchases restored — your credits are back.")
+                text = String(localized: "\(n) purchases restored. Your credits are back.")
             }
             withAnimation(RMotion.content) {
                 restoreNote = Note(text: text, ok: n > 0)

@@ -75,7 +75,7 @@ struct RecoveryScreen: View {
                     .displayType(22, weight: .semibold)
                     .foregroundStyle(theme.text)
                     .padding(.top, 14)
-                Text("You weren't charged — your credits are back in your balance.")
+                Text("You weren't charged. Your credits are back in your balance.")
                     .font(RFont.text(14))
                     .foregroundStyle(theme.text2)
                     .multilineTextAlignment(.center)
@@ -133,7 +133,7 @@ struct RecoveryScreen: View {
                 if let suggestion {
                     HStack(spacing: 8) {
                         FlagCircle(country: suggestion.country, size: 24)
-                        Text("\(context.service.name) delivers best in \(suggestion.country.name) right now — \(suggestion.rate)% measured.")
+                        Text("\(context.service.name) delivers best in \(suggestion.country.name) right now: \(suggestion.rate)% measured.")
                             .font(RFont.text(13, weight: .medium))
                             .foregroundStyle(theme.text)
                             .multilineTextAlignment(.leading)
@@ -159,7 +159,7 @@ struct RecoveryScreen: View {
                 if let ranked = rankedSuggestion {
                     HStack(spacing: 8) {
                         FlagCircle(country: ranked.country, size: 24)
-                        Text("\(ranked.country.name) ranks highest for \(context.service.name) network-wide — \(Int(ranked.rank.vendorPercent.rounded()))% in the last 24h. We haven't tested it ourselves yet.")
+                        Text("\(ranked.country.name) ranks highest for \(context.service.name) network-wide: \(Int(ranked.rank.vendorPercent.rounded()))% in the last 24h. We haven't tested it ourselves yet.")
                             .font(RFont.text(13, weight: .medium))
                             .foregroundStyle(theme.text)
                             .multilineTextAlignment(.leading)

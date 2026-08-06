@@ -49,7 +49,7 @@ struct WaitingScreen: View {
     /// Reconcile has not resolved in a minute and a half.
     ///
     /// `isFinalizing` had NO timeout: if the order row never came back the
-    /// user sat on "Time's up — confirming with the network…" forever, with no
+    /// user sat on "Time's up. Confirming with the network…" forever, with no
     /// statement about their credits and nowhere to go. The server has already
     /// refunded by this point — both terminal paths refund unconditionally —
     /// so the honest thing is to say so and offer history, not to keep
@@ -243,7 +243,7 @@ struct WaitingScreen: View {
             // fresh one was installed, rendering an empty screen over a live
             // paid order.
             .disabled(state.isPlacingOrder)
-            .accessibilityLabel(Text("Close — your number keeps running"))
+            .accessibilityLabel(Text("Close. Your number keeps running"))
         }
         .padding(.horizontal, 16)
     }
@@ -294,7 +294,7 @@ struct WaitingScreen: View {
                 )
                 .padding(.top, 18)
 
-                Text("Paste it into \(order.service.name), then come back — the code lands here.")
+                Text("Paste it into \(order.service.name), then come back. The code lands here.")
                     .font(RFont.text(12))
                     .foregroundStyle(theme.text2)
                     .fixedSize(horizontal: false, vertical: true)
@@ -383,7 +383,7 @@ struct WaitingScreen: View {
             return String(localized: "Still confirming")
         }
         if isFinalizing {
-            return String(localized: "Time's up — confirming with the network…")
+            return String(localized: "Time's up. Confirming with the network…")
         }
         return String(localized: "Waiting for \(order.service.name) code…")
     }
@@ -392,7 +392,7 @@ struct WaitingScreen: View {
         if isStalled {
             // The server refunds unconditionally on both terminal paths, so
             // this is a statement of what has ALREADY happened, not a promise.
-            return String(localized: "Your \(order.costCredits) credits are safe — every order that ends without a code is refunded in full. The outcome will show in Orders.")
+            return String(localized: "Your \(order.costCredits) credits are safe. Every order that ends without a code is refunded in full. The outcome will show in Orders.")
         }
         if isFinalizing {
             return String(localized: "If no code arrived, your \(order.costCredits) credits are refunded automatically.")

@@ -106,7 +106,7 @@ struct LineStoreScreen: View {
                     capability(icon: RIcon.message, title: "Send texts")
                     capability(icon: "tray.and.arrow.down", title: "Receive texts")
                 }
-                Text("A real Canadian phone number that stays yours — text from it right here, and keep your own number private.")
+                Text("A real Canadian phone number that stays yours. Text from it right here, and keep your own number private.")
                     .font(RFont.text(14))
                     .foregroundStyle(theme.text2)
                     .lineSpacing(3)
@@ -360,7 +360,7 @@ struct LineStoreScreen: View {
     private var unavailableBody: LocalizedStringKey {
         switch state.lineUnavailableReason {
         case .paused:  "We've paused new numbers while we make some improvements. Check back soon."
-        case .noStock: "Stock moves through the day — another city will have some."
+        case .noStock: "Stock moves through the day. Another city will have some."
         default:       "Check your connection and try again."
         }
     }

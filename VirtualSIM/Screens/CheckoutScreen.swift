@@ -285,7 +285,7 @@ struct CheckoutScreen: View {
                 OptionCard(
                     title: "Standard",
                     price: standardCost.map { "\($0) cr" },
-                    detail: "Any number in stock for this route — usually an internet number.",
+                    detail: "Any number in stock for this route, usually an internet number.",
                     selected: !state.checkoutPremium,
                     action: { state.checkoutPremium = false })
             }

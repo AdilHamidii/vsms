@@ -96,7 +96,7 @@ struct ThreadScreen: View {
                         .font(RFont.text(11, weight: .medium))
                         .foregroundStyle(theme.fail)
                 } else if reported {
-                    Text("Reported — thanks, we'll take a look")
+                    Text("Reported. Thanks, we'll take a look")
                         .font(RFont.text(11))
                         .foregroundStyle(theme.text3)
                 }

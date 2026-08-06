@@ -469,7 +469,7 @@ private struct ServiceRow: View {
         HStack(alignment: .top, spacing: 8) {
             Text(verbatim: country.flag)
                 .font(.system(size: 13))
-            Text("Not available here — tapping switches your country to \(country.name).")
+            Text("Not available here. Tapping switches your country to \(country.name).")
                 .font(RFont.text(12, weight: .medium))
                 .foregroundStyle(theme.text)
                 .lineSpacing(1)

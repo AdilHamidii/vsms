@@ -70,7 +70,7 @@ struct EsimDetailScreen: View {
             }
             Button("Cancel", role: .cancel) { pendingLpa = nil }
         } message: {
-            Text("This eSIM can only be installed once. If it's already on your device, check Settings → Cellular instead — installing again will fail.")
+            Text("This eSIM can only be installed once. If it's already on your device, check Settings → Cellular instead. Installing again will fail.")
         }
     }
 

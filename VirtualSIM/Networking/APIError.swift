@@ -38,7 +38,7 @@ enum APIError: Error, LocalizedError {
             // an action the server already performed. That is exactly what
             // happened with support messages: sent, relayed, and reported as a
             // network failure.
-            return "Something went wrong on our side. Your last action may have gone through — check before retrying."
+            return "Something went wrong on our side. Your last action may have gone through, so check before retrying."
         case .http(let status, let body):
             // Surface a known business-logic error from our own backend.
             if let kind = parseErrorType(body) {
@@ -80,7 +80,7 @@ enum APIError: Error, LocalizedError {
                 // than a dead number — and it destroys a code that is often
                 // already on its way.
                 case "cancel_too_early":
-                    return "Hang on — most codes arrive within three minutes. You can cancel shortly."
+                    return "Hang on. Most codes arrive within three minutes. You can cancel shortly."
                 // eSIM codes. Unmapped, every one of these fell through to the
                 // 5xx fallback and blamed our infrastructure for SMSPool being
                 // out of stock or out of balance.
@@ -91,7 +91,7 @@ enum APIError: Error, LocalizedError {
                 case "plan_unavailable":
                     return "That eSIM plan isn't available anymore."
                 case "duplicate_request":
-                    return "That purchase is already going through — give it a moment."
+                    return "That purchase is already going through. Give it a moment."
                 // Temporary email. Mapped in the same commit as the edge
                 // functions that emit them: an unmapped code falls through to
                 // the 5xx fallback and blames our infrastructure for a stockout.
@@ -119,11 +119,11 @@ enum APIError: Error, LocalizedError {
                 // option." — which on a paid purchase reads as "pick another
                 // pack", the one thing that would charge them twice.
                 case "credit_pending":
-                    return "Your purchase went through and your credits are on their way. They'll appear shortly — no need to buy again."
+                    return "Your purchase went through and your credits are on their way. They'll appear shortly, so there's no need to buy again."
                 case "credit_failed":
-                    return "Your purchase went through but we couldn't add the credits. Contact support and we'll sort it — don't buy again."
+                    return "Your purchase went through but we couldn't add the credits. Contact support and we'll sort it. Don't buy again."
                 case "spend_failed", "refund_failed":
-                    return "We couldn't complete that. Your credits are unchanged — please try again."
+                    return "We couldn't complete that. Your credits are unchanged. Please try again."
                 case "verification_failed":
                     return "We couldn't verify that purchase. Please try again."
                 case "unknown_product":
@@ -140,12 +140,12 @@ enum APIError: Error, LocalizedError {
                     // Someone took it between the picker and the tap. Ordinary,
                     // and recoverable by just picking again — so the copy must
                     // not sound like a fault.
-                    return "That number was just taken. Pick another one — there are plenty."
+                    return "That number was just taken. Pick another one. There are plenty."
                 case "line_unavailable":
                     // The Telnyx float guard. Deliberately does NOT say "we're
                     // out of money": it is our problem, not something the user
                     // can act on, and no charge was made.
-                    return "We can't set up new numbers right now. Please try again later — you haven't been charged."
+                    return "We can't set up new numbers right now. Please try again later. You haven't been charged."
                 case "subscription_bound":
                     return "That subscription is already linked to another account."
                 case "sandbox_not_provisioned":
@@ -154,7 +154,7 @@ enum APIError: Error, LocalizedError {
                     // The one path where Apple holds the money and we cannot
                     // refund it ourselves. "Don't buy again" is the important
                     // half — a second subscription makes it worse.
-                    return "Your subscription went through but we couldn't set the number up. We've been alerted — please don't subscribe again."
+                    return "Your subscription went through but we couldn't set the number up. We've been alerted. Please don't subscribe again."
                 case "allowance_exhausted":
                     return "You've used this month's allowance. It resets when your subscription renews."
                 case "line_suspended":
@@ -175,7 +175,7 @@ enum APIError: Error, LocalizedError {
             case 402:      return "Not enough credits. Tap Top up to buy more."
             case 404:      return "That isn't available right now."
             case 409:      return "Not available right now. Try a different option."
-            case 429:      return "You're going a bit fast — please wait a moment and try again."
+            case 429:      return "You're going a bit fast. Please wait a moment and try again."
             case 500...599:return "Something went wrong on our side. Please try again."
             default:       return "Something went wrong. Please try again."
             }

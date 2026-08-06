@@ -238,7 +238,7 @@ struct EmailWaitingScreen: View {
                 // No promised arrival time. We have measured nothing for email,
                 // and quoting a number we have not measured is the
                 // seed-etaSeconds mistake the SMS side already paid for.
-                Text("Enter the address on the site, then come back — the code appears here.")
+                Text("Enter the address on the site, then come back. The code appears here.")
                     .font(RFont.text(12))
                     .multilineTextAlignment(.center)
                     .foregroundStyle(theme.text2)

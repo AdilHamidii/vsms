@@ -219,7 +219,7 @@ struct OrdersScreen: View {
             EmptyState(
                 icon: RIcon.inbox,
                 title: "No orders yet",
-                message: "Numbers and email addresses you buy show up here — with the code, and the refund if one never arrived.",
+                message: "Numbers and email addresses you buy show up here, with the code and with the refund if one never arrived.",
                 primary: (label: String(localized: "Get a number"),
                           action: { state.tab = .home })
             )
@@ -238,7 +238,7 @@ struct OrdersScreen: View {
                 icon: RIcon.check,
                 title: "No finished orders",
                 message: active.isEmpty
-                    ? "Once an order ends — with a code or with a refund — it lands here."
+                    ? "Once an order ends, with a code or with a refund, it lands here."
                     : "Your orders are all still running. They move here as soon as they finish.",
                 secondary: active.isEmpty ? nil
                     : jump(to: .active, String(localized: "See active orders"))

@@ -158,7 +158,7 @@ struct EmailCodeScreen: View {
 
     private var explanation: String {
         guard isSettled else {
-            return String(localized: "One moment — pulling it from the mailbox.")
+            return String(localized: "One moment. Pulling it from the mailbox.")
         }
         return order?.wasRefunded == true
             ? String(localized: "The window closed before anything arrived, so your \(order?.costCredits ?? 0) credits went back to your balance.")

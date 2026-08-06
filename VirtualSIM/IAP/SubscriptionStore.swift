@@ -154,7 +154,7 @@ final class SubscriptionStore {
                 city: want.city,
                 monthlyCents: want.monthlyCents)
             guard res.ok else {
-                lastError = String(localized: "Your subscription went through but we couldn't set the number up. Contact support — don't buy again.")
+                lastError = String(localized: "Your subscription went through but we couldn't set the number up. Contact support, and don't buy again.")
                 return false
             }
             await tx.finish()

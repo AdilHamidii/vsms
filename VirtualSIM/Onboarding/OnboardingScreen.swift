@@ -136,7 +136,7 @@ struct OnboardingScreen: View {
                 // carrying the entire promise of what happens on the next
                 // screen. It is the reason someone taps, so it is legible now,
                 // and it states the trade rather than just naming Apple.
-                Text("One tap with Apple next — no password to make, no email list, and your real number never comes into it.")
+                Text("One tap with Apple next. No password to make, no email list, and your real number never comes into it.")
                     .font(RFont.text(13))
                     .lineSpacing(2)
                     .foregroundStyle(theme.text2)
@@ -258,7 +258,7 @@ private struct OwnershipPage: View {
                 // the write to change it returns 200 and does nothing), so a
                 // European user cannot text it from their own phone. Better
                 // said here than discovered after paying.
-                BenefitRow(icon: "flag", label: "Canadian numbers — they exchange texts with US and Canadian phones")
+                BenefitRow(icon: "flag", label: "Canadian numbers that exchange texts with US and Canadian phones")
                 RowRule()
                 BenefitRow(icon: RIcon.shield,
                            label: "No ads, no tracking, no email list",
@@ -286,7 +286,7 @@ private struct OwnershipPage: View {
                     Text("Already have a number?")
                         .font(RFont.text(14, weight: .medium))
                         .foregroundStyle(theme.text)
-                    Text("Sign in with the same Apple ID — nothing lives on this phone.")
+                    Text("Sign in with the same Apple ID. Nothing lives on this phone.")
                         .font(RFont.text(12))
                         .foregroundStyle(theme.text2)
                         .fixedSize(horizontal: false, vertical: true)
@@ -362,7 +362,7 @@ private struct DisposableCodePage: View {
         Card(elevation: .flat, fill: theme.chipBg) {
             VStack(spacing: 0) {
                 BenefitRow(icon: "arrow.uturn.left",
-                           label: "No code, no charge — your credits come straight back",
+                           label: "No code, no charge. Your credits come straight back",
                            tint: theme.live)
                 RowRule()
                 BenefitRow(icon: RIcon.bolt, label: "Pay per number, no subscription")
@@ -653,7 +653,7 @@ private struct CodeDemo: View {
             // translator could not reorder — and word order around the code
             // genuinely differs by language. (`+` on `Text` is also deprecated
             // in iOS 26.)
-            Text("Your code is \(codeGlyph) — don't share it.")
+            Text("Your code is \(codeGlyph). Don't share it.")
                 .font(RFont.text(15))
                 .foregroundStyle(theme.text)
                 .fixedSize(horizontal: false, vertical: true)

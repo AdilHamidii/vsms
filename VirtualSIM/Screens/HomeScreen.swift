@@ -426,7 +426,7 @@ struct HomeScreen: View {
                 Rectangle()
                     .fill(theme.sep)
                     .frame(height: 0.5)
-                Text("No delivery record yet — e-mail is new and we only show what we've measured.")
+                Text("No delivery record yet. E-mail is new and we only show what we've measured.")
                     .font(RFont.text(12))
                     .foregroundStyle(theme.text3)
                     .lineSpacing(2)
@@ -514,7 +514,7 @@ struct HomeScreen: View {
         VStack(alignment: .leading, spacing: 10) {
             explainerStep(1, "Pick the service you're verifying")
             explainerStep(2, "We hand you a real, working number")
-            explainerStep(3, "The code lands here — paste it back")
+            explainerStep(3, "The code lands here. Paste it back")
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 14)
@@ -711,7 +711,7 @@ struct HomeScreen: View {
                         .font(RFont.display(15, weight: .semibold))
                         .tracking(-0.2)
                         .foregroundStyle(theme.text)
-                    Text("eSIM plans in \(countries) countries — from \(cheapest) cr")
+                    Text("eSIM plans in \(countries) countries, from \(cheapest) cr")
                         .font(RFont.text(12))
                         .foregroundStyle(theme.text2)
                 }

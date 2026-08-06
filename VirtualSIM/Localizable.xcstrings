@@ -16,31 +16,31 @@
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : " — no lo compartas."
+            "value" : ". No lo compartas."
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : " — ne le partagez pas."
+            "value" : ". Ne le partagez pas."
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : " — non condividerlo."
+            "value" : ". Non condividerlo."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : " — 他人に教えないでください。"
+            "value" : "。他人に教えないでください。"
           }
         },
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : " — não compartilhe."
+            "value" : ". Não compartilhe."
           }
         }
       }
@@ -184,7 +184,7 @@
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "%@ bloque la plupart des numéros temporaires : souvent, aucun code n'arrive. Vous n'êtes débité que si un code arrive, et réessayer est gratuit — mais cela peut ne jamais marcher."
+            "value" : "%@ bloque la plupart des numéros temporaires : souvent, aucun code n'arrive. Vous n'êtes débité que si un code arrive, et réessayer est gratuit. Mais cela peut ne jamais marcher."
           }
         },
         "it" : {
@@ -202,12 +202,12 @@
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "A %@ bloqueia a maioria dos números temporários, então muitas vezes nenhum código chega. Você só é cobrado se chegar, e tentar de novo é grátis — mas pode não funcionar."
+            "value" : "A %@ bloqueia a maioria dos números temporários, então muitas vezes nenhum código chega. Você só é cobrado se chegar, e tentar de novo é grátis. Mas pode não funcionar."
           }
         }
       }
     },
-    "%@ blocks most temporary numbers, so a code often never arrives. Your credits come back every time one doesn't, and trying again is free — but it may not work at all." : {
+    "%@ blocks most temporary numbers, so a code often never arrives. Your credits come back every time one doesn't, and trying again is free. But it may not work at all." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -224,7 +224,7 @@
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "%@ bloque la plupart des numéros temporaires : souvent, aucun code n'arrive. Vos crédits reviennent à chaque fois que c'est le cas, et réessayer est gratuit — mais cela peut ne jamais marcher."
+            "value" : "%@ bloque la plupart des numéros temporaires : souvent, aucun code n'arrive. Vos crédits reviennent à chaque fois que c'est le cas, et réessayer est gratuit. Mais cela peut ne jamais marcher."
           }
         },
         "it" : {
@@ -242,12 +242,12 @@
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "A %@ bloqueia a maioria dos números temporários, então muitas vezes nenhum código chega. Seus créditos voltam sempre que isso acontece, e tentar de novo é grátis — mas pode não funcionar."
+            "value" : "A %@ bloqueia a maioria dos números temporários, então muitas vezes nenhum código chega. Seus créditos voltam sempre que isso acontece, e tentar de novo é grátis. Mas pode não funcionar."
           }
         }
       }
     },
-    "%@ delivers best in %@ right now — %lld%% measured." : {
+    "%@ delivers best in %@ right now: %lld%% measured." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -258,7 +258,7 @@
         "en" : {
           "stringUnit" : {
             "state" : "new",
-            "value" : "%1$@ delivers best in %2$@ right now — %3$lld%% measured."
+            "value" : "%1$@ delivers best in %2$@ right now: %3$lld%% measured."
           }
         },
         "es" : {
@@ -270,25 +270,25 @@
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "%@ fonctionne actuellement le mieux en %@ — %lld%% mesuré."
+            "value" : "%@ fonctionne actuellement le mieux en %@ : %lld%% mesuré."
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "%@ funziona meglio ora in %@ — %lld%% misurato."
+            "value" : "%@ funziona meglio ora in %@: %lld%% misurato."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "現在%@は%@で最も届いています — 実測%lld%%。"
+            "value" : "現在%@は%@で最も届いています。実測%lld%%。"
           }
         },
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "%@ funciona melhor agora em %@ — %lld%% medido."
+            "value" : "%@ funciona melhor agora em %@: %lld%% medido."
           }
         }
       }
@@ -512,7 +512,7 @@
         }
       }
     },
-    "%@ ranks highest for %@ network-wide — %lld%% in the last 24h. We haven't tested it ourselves yet." : {
+    "%@ ranks highest for %@ network-wide: %lld%% in the last 24h. We haven't tested it ourselves yet." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -523,7 +523,7 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "%1$@ ranks highest for %2$@ network-wide — %3$lld%% in the last 24h. We haven't tested it ourselves yet."
+            "value" : "%1$@ ranks highest for %2$@ network-wide: %3$lld%% in the last 24h. We haven't tested it ourselves yet."
           }
         },
         "es" : {
@@ -535,7 +535,7 @@
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "%1$@ arrive en tête pour %2$@ à l’échelle du réseau — %3$lld %% sur les dernières 24 h. Nous ne l’avons pas encore testé nous-mêmes."
+            "value" : "%1$@ arrive en tête pour %2$@ à l’échelle du réseau : %3$lld %% sur les dernières 24 h. Nous ne l’avons pas encore testé nous-mêmes."
           }
         },
         "it" : {
@@ -553,7 +553,7 @@
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "%1$@ lidera para %2$@ em toda a rede — %3$lld%% nas últimas 24 h. Ainda não testamos por conta própria."
+            "value" : "%1$@ lidera para %2$@ em toda a rede: %3$lld%% nas últimas 24 h. Ainda não testamos por conta própria."
           }
         }
       }
@@ -617,7 +617,7 @@
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "%@ l’a refusé — en obtenir un autre"
+            "value" : "%@ l’a refusé. En obtenir un autre"
           }
         },
         "it" : {
@@ -629,7 +629,7 @@
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "%@ に拒否されました — 別の番号を取得"
+            "value" : "%@ に拒否されました。別の番号を取得"
           }
         },
         "pt-BR" : {
@@ -924,7 +924,7 @@
         "en" : {
           "stringUnit" : {
             "state" : "new",
-            "value" : "%1$lld days in a row — come back tomorrow for +%2$lld."
+            "value" : "%1$lld days in a row. Come back tomorrow for +%2$lld."
           }
         },
         "es" : {
@@ -936,25 +936,25 @@
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "%lld jours d'affilée — revenez demain pour +%lld."
+            "value" : "%lld jours d'affilée. Revenez demain pour +%lld."
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "%lld giorni di fila — torna domani per +%lld."
+            "value" : "%lld giorni di fila. Torna domani per +%lld."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "%lld日連続 — 明日戻ると+%lld。"
+            "value" : "%lld日連続。明日戻ると+%lld。"
           }
         },
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "%lld dias seguidos — volte amanhã para +%lld."
+            "value" : "%lld dias seguidos. Volte amanhã para +%lld."
           }
         }
       }
@@ -1122,7 +1122,7 @@
         }
       }
     },
-    "%lld not on map — use the list" : {
+    "%lld not on map. Use the list" : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -1139,25 +1139,25 @@
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "%lld absents de la carte — utilisez la liste"
+            "value" : "%lld absents de la carte. Utilisez la liste"
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "%lld non sulla mappa — usa l'elenco"
+            "value" : "%lld non sulla mappa. Usa l'elenco"
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "%lld件は地図にありません — リストをご利用ください"
+            "value" : "%lld件は地図にありません。リストをご利用ください"
           }
         },
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "%lld fora do mapa — use a lista"
+            "value" : "%lld fora do mapa. Use a lista"
           }
         }
       }
@@ -1374,7 +1374,7 @@
         }
       }
     },
-    "%lld purchases restored — your credits are back." : {
+    "%lld purchases restored. Your credits are back." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -1391,25 +1391,25 @@
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "%lld achats restaurés — vos crédits sont de retour."
+            "value" : "%lld achats restaurés. Vos crédits sont de retour."
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "%lld acquisti ripristinati — i tuoi crediti sono tornati."
+            "value" : "%lld acquisti ripristinati. I tuoi crediti sono tornati."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "%lld件の購入を復元しました — クレジットが戻りました。"
+            "value" : "%lld件の購入を復元しました。クレジットが戻りました。"
           }
         },
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "%lld compras restauradas — seus créditos voltaram."
+            "value" : "%lld compras restauradas. Seus créditos voltaram."
           }
         }
       }
@@ -1995,7 +1995,7 @@
         }
       }
     },
-    "1 purchase restored — your credits are back." : {
+    "1 purchase restored. Your credits are back." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -2012,25 +2012,25 @@
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "1 achat restauré — vos crédits sont de retour."
+            "value" : "1 achat restauré. Vos crédits sont de retour."
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "1 acquisto ripristinato — i tuoi crediti sono tornati."
+            "value" : "1 acquisto ripristinato. I tuoi crediti sono tornati."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "1件の購入を復元しました — クレジットが戻りました。"
+            "value" : "1件の購入を復元しました。クレジットが戻りました。"
           }
         },
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "1 compra restaurada — seus créditos voltaram."
+            "value" : "1 compra restaurada. Seus créditos voltaram."
           }
         }
       }
@@ -2276,7 +2276,7 @@
         }
       }
     },
-    "A real Canadian phone number that stays yours — text from it right here, and keep your own number private." : {
+    "A real Canadian phone number that stays yours. Text from it right here, and keep your own number private." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -2293,7 +2293,7 @@
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Un vrai numéro canadien qui reste le vôtre — envoyez vos SMS ici même et gardez votre propre numéro privé."
+            "value" : "Un vrai numéro canadien qui reste le vôtre. Envoyez vos SMS ici même et gardez votre propre numéro privé."
           }
         },
         "it" : {
@@ -2305,18 +2305,18 @@
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "ずっとあなたのものになる、実在のカナダの電話番号 — このアプリからそのままSMSを送信でき、ご自身の番号は非公開のままです。"
+            "value" : "ずっとあなたのものになる、実在のカナダの電話番号。このアプリからそのままSMSを送信でき、ご自身の番号は非公開のままです。"
           }
         },
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Um número canadense de verdade que fica seu — mande mensagens por ele aqui mesmo e mantenha seu número privado."
+            "value" : "Um número canadense de verdade que fica seu. Mande mensagens por ele aqui mesmo e mantenha seu número privado."
           }
         }
       }
     },
-    "A real person reads these. If we're asleep you'll get a reply as soon as we're up — you'll be notified." : {
+    "A real person reads these. If we're asleep you'll get a reply as soon as we're up, and you'll be notified." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -2333,7 +2333,7 @@
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Une vraie personne vous lit. Si nous dormons, vous aurez une réponse dès notre réveil — vous serez notifié."
+            "value" : "Une vraie personne vous lit. Si nous dormons, vous aurez une réponse dès notre réveil, et vous serez notifié."
           }
         },
         "it" : {
@@ -2351,12 +2351,12 @@
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Uma pessoa real lê isto. Se estivermos dormindo, responderemos assim que acordarmos — você será notificado."
+            "value" : "Uma pessoa real lê isto. Se estivermos dormindo, responderemos assim que acordarmos, e você será notificado."
           }
         }
       }
     },
-    "A typical number costs %lld credits — prices vary by service and country." : {
+    "A typical number costs %lld credits. Prices vary by service and country." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -2373,25 +2373,25 @@
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Un numéro coûte en général %lld crédits — les prix varient selon le service et le pays."
+            "value" : "Un numéro coûte en général %lld crédits. Les prix varient selon le service et le pays."
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Un numero tipico costa %lld crediti — i prezzi variano per servizio e paese."
+            "value" : "Un numero tipico costa %lld crediti. I prezzi variano per servizio e paese."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "一般的な番号は%lldクレジットです — 価格はサービスと国によって異なります。"
+            "value" : "一般的な番号は%lldクレジットです。価格はサービスと国によって異なります。"
           }
         },
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Um número comum custa %lld créditos — os preços variam por serviço e país."
+            "value" : "Um número comum custa %lld créditos. Os preços variam por serviço e país."
           }
         }
       }
@@ -3079,7 +3079,7 @@
         }
       }
     },
-    "Any number in stock for this route — usually an internet number." : {
+    "Any number in stock for this route, usually an internet number." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -3096,25 +3096,25 @@
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "N'importe quel numéro en stock sur cette route — en général un numéro Internet."
+            "value" : "N'importe quel numéro en stock sur cette route, en général un numéro Internet."
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Qualsiasi numero disponibile qui — di solito un numero Internet."
+            "value" : "Qualsiasi numero disponibile qui, di solito un numero Internet."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "この経路で在庫のある任意の番号 — 多くはインターネット番号です。"
+            "value" : "この経路で在庫のある任意の番号、多くはインターネット番号です。"
           }
         },
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Qualquer número disponível nesta rota — geralmente um número de internet."
+            "value" : "Qualquer número disponível nesta rota, geralmente um número de internet."
           }
         }
       }
@@ -3569,37 +3569,37 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Beste Zustellung — Erstattung bei Fehlschlag"
+            "value" : "Beste Zustellung, Erstattung bei Fehlschlag"
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Mejor entrega — reembolso si falla"
+            "value" : "Mejor entrega, reembolso si falla"
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Meilleure réception — remboursé en cas d'échec"
+            "value" : "Meilleure réception, remboursé en cas d'échec"
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Migliore consegna — rimborso in caso di errore"
+            "value" : "Migliore consegna, rimborso in caso di errore"
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "最高の受信率 — 届かなければ返金"
+            "value" : "最高の受信率、届かなければ返金"
           }
         },
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Melhor entrega — reembolso se falhar"
+            "value" : "Melhor entrega, reembolso se falhar"
           }
         }
       }
@@ -4249,7 +4249,7 @@
         }
       }
     },
-    "Canadian numbers — they exchange texts with US and Canadian phones" : {
+    "Canadian numbers that exchange texts with US and Canadian phones" : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -4266,25 +4266,25 @@
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Numéros canadiens — ils échangent des SMS avec les téléphones américains et canadiens"
+            "value" : "Numéros canadiens qui échangent des SMS avec les téléphones américains et canadiens"
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Numeri canadesi — scambiano SMS con telefoni statunitensi e canadesi"
+            "value" : "Numeri canadesi che scambiano SMS con telefoni statunitensi e canadesi"
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "カナダの番号 — 米国とカナダの電話とSMSをやり取りできます"
+            "value" : "米国とカナダの電話とSMSをやり取りできるカナダの番号"
           }
         },
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Números canadenses — trocam SMS com telefones dos EUA e do Canadá"
+            "value" : "Números canadenses que trocam SMS com telefones dos EUA e do Canadá"
           }
         }
       }
@@ -4307,25 +4307,25 @@
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Numéros canadiens — ils appellent et envoient des SMS aux téléphones américains et canadiens"
+            "value" : "Numéros canadiens qui appellent et envoient des SMS aux téléphones américains et canadiens"
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Numeri canadesi — scrivono e chiamano telefoni USA e canadesi"
+            "value" : "Numeri canadesi che scrivono e chiamano telefoni USA e canadesi"
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "カナダの番号 — 米国とカナダの電話にSMS送信と通話ができます"
+            "value" : "米国とカナダの電話にSMS送信と通話ができるカナダの番号"
           }
         },
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Números canadenses — mandam mensagens e ligam para telefones dos EUA e do Canadá"
+            "value" : "Números canadenses que mandam mensagens e ligam para telefones dos EUA e do Canadá"
           }
         }
       }
@@ -5543,7 +5543,7 @@
         }
       }
     },
-    "Close — your number keeps running" : {
+    "Close. Your number keeps running" : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -5560,7 +5560,7 @@
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Fermer — votre numéro reste actif"
+            "value" : "Fermer. Votre numéro reste actif"
           }
         },
         "it" : {
@@ -5572,7 +5572,7 @@
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "閉じる — 番号は有効なままです"
+            "value" : "閉じる。番号は有効なままです"
           }
         },
         "pt-BR" : {
@@ -5764,13 +5764,13 @@
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Revenez chaque jour — cela rapporte plus chaque jour"
+            "value" : "Revenez chaque jour. Cela rapporte plus chaque jour"
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Torna ogni giorno — rende di più ogni giorno"
+            "value" : "Torna ogni giorno. Rende di più ogni giorno"
           }
         },
         "ja" : {
@@ -5782,7 +5782,7 @@
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Volte todo dia — rende mais a cada dia"
+            "value" : "Volte todo dia. Rende mais a cada dia"
           }
         }
       }
@@ -5805,13 +5805,13 @@
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Revenez chaque jour — la série rapporte plus chaque jour."
+            "value" : "Revenez chaque jour. La série rapporte plus chaque jour."
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Torna ogni giorno — la serie rende di più ogni giorno."
+            "value" : "Torna ogni giorno. La serie rende di più ogni giorno."
           }
         },
         "ja" : {
@@ -5823,7 +5823,7 @@
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Volte todo dia — a sequência rende mais a cada dia."
+            "value" : "Volte todo dia. A sequência rende mais a cada dia."
           }
         }
       }
@@ -7617,7 +7617,7 @@
         "en" : {
           "stringUnit" : {
             "state" : "new",
-            "value" : "Day %1$lld — come back tomorrow for +%2$lld."
+            "value" : "Day %1$lld. Come back tomorrow for +%2$lld."
           }
         },
         "es" : {
@@ -7629,25 +7629,25 @@
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Jour %lld — revenez demain pour +%lld."
+            "value" : "Jour %lld. Revenez demain pour +%lld."
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Giorno %lld — torna domani per +%lld."
+            "value" : "Giorno %lld. Torna domani per +%lld."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "%lld日目 — 明日戻ると+%lld。"
+            "value" : "%lld日目。明日戻ると+%lld。"
           }
         },
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Dia %lld — volte amanhã para +%lld."
+            "value" : "Dia %lld. Volte amanhã para +%lld."
           }
         }
       }
@@ -8511,7 +8511,7 @@
         }
       }
     },
-    "Enter the address on the site, then come back — the code appears here." : {
+    "Enter the address on the site, then come back. The code appears here." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -8528,7 +8528,7 @@
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Saisissez l'adresse sur le site puis revenez — le code s'affichera ici."
+            "value" : "Saisissez l'adresse sur le site puis revenez. Le code s'affichera ici."
           }
         },
         "it" : {
@@ -8546,7 +8546,7 @@
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Digite o endereço no site e volte — o código aparece aqui."
+            "value" : "Digite o endereço no site e volte. O código aparece aqui."
           }
         }
       }
@@ -9077,77 +9077,31 @@
         }
       }
     },
-    "Get a private temporary number for verification codes on vSMS — join with my code %@ and start with %lld free credits: https://apps.apple.com/app/id6774768570" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Hol dir eine private temporäre Nummer für Bestätigungscodes bei vSMS – tritt mit meinem Code %@ bei und starte mit %lld Gratis-Credits: https://apps.apple.com/app/id6774768570"
-          }
-        },
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Get a private temporary number for verification codes on vSMS — join with my code %1$@ and start with %2$lld free credits: https://apps.apple.com/app/id6774768570"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Consigue un número temporal privado para códigos de verificación en vSMS: únete con mi código %@ y empieza con %lld créditos gratis: https://apps.apple.com/app/id6774768570"
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Obtenez un numéro temporaire privé pour vos codes de vérification sur vSMS — inscrivez-vous avec mon code %@ et démarrez avec %lld crédits offerts : https://apps.apple.com/app/id6774768570"
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Ottieni un numero temporaneo privato per i codici di verifica su vSMS — iscriviti con il mio codice %@ e inizia con %lld crediti gratis: https://apps.apple.com/app/id6774768570"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "vSMSで認証コード用のプライベートな一時番号を取得しましょう。私のコード%@で参加すると%lldクレジット無料で始められます: https://apps.apple.com/app/id6774768570"
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Tenha um número temporário privado para códigos de verificação no vSMS — entre com meu código %@ e comece com %lld créditos grátis: https://apps.apple.com/app/id6774768570"
-          }
-        }
-      }
-    },
     "Get a private temporary number for verification codes on vSMS — my invite code %@ gives you 2 free credits: https://apps.apple.com/app/id6774768570" : {
       "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Hol dir eine private temporäre Nummer für Bestätigungscodes mit vSMS — mein Einladungscode %@ bringt dir 2 Gratis-Credits: https://apps.apple.com/app/id6774768570"
+            "value" : "Hol dir eine private temporäre Nummer für Bestätigungscodes mit vSMS. Mein Einladungscode %@ bringt dir 2 Gratis-Credits: https://apps.apple.com/app/id6774768570"
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Consigue un número temporal privado para códigos de verificación en vSMS — mi código de invitación %@ te da 2 créditos gratis: https://apps.apple.com/app/id6774768570"
+            "value" : "Consigue un número temporal privado para códigos de verificación en vSMS. Mi código de invitación %@ te da 2 créditos gratis: https://apps.apple.com/app/id6774768570"
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Obtiens un numéro temporaire privé pour tes codes de vérification avec vSMS — mon code d'invitation %@ t'offre 2 crédits gratuits : https://apps.apple.com/app/id6774768570"
+            "value" : "Obtiens un numéro temporaire privé pour tes codes de vérification avec vSMS. Mon code d'invitation %@ t'offre 2 crédits gratuits : https://apps.apple.com/app/id6774768570"
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Ottieni un numero temporaneo privato per i codici di verifica su vSMS — il mio codice invito %@ ti dà 2 crediti gratis: https://apps.apple.com/app/id6774768570"
+            "value" : "Ottieni un numero temporaneo privato per i codici di verifica su vSMS. Il mio codice invito %@ ti dà 2 crediti gratis: https://apps.apple.com/app/id6774768570"
           }
         },
         "ja" : {
@@ -9159,7 +9113,53 @@
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Consiga um número temporário privado para códigos de verificação no vSMS — meu código de convite %@ dá 2 créditos grátis: https://apps.apple.com/app/id6774768570"
+            "value" : "Consiga um número temporário privado para códigos de verificação no vSMS. Meu código de convite %@ dá 2 créditos grátis: https://apps.apple.com/app/id6774768570"
+          }
+        }
+      }
+    },
+    "Get a private temporary number for verification codes on vSMS. Join with my code %@ and start with %lld free credits: https://apps.apple.com/app/id6774768570" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hol dir eine private temporäre Nummer für Bestätigungscodes bei vSMS – tritt mit meinem Code %@ bei und starte mit %lld Gratis-Credits: https://apps.apple.com/app/id6774768570"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Get a private temporary number for verification codes on vSMS. Join with my code %1$@ and start with %2$lld free credits: https://apps.apple.com/app/id6774768570"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Consigue un número temporal privado para códigos de verificación en vSMS: únete con mi código %@ y empieza con %lld créditos gratis: https://apps.apple.com/app/id6774768570"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Obtenez un numéro temporaire privé pour vos codes de vérification sur vSMS. Inscrivez-vous avec mon code %@ et démarrez avec %lld crédits offerts : https://apps.apple.com/app/id6774768570"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ottieni un numero temporaneo privato per i codici di verifica su vSMS. Iscriviti con il mio codice %@ e inizia con %lld crediti gratis: https://apps.apple.com/app/id6774768570"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "vSMSで認証コード用のプライベートな一時番号を取得しましょう。私のコード%@で参加すると%lldクレジット無料で始められます: https://apps.apple.com/app/id6774768570"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tenha um número temporário privado para códigos de verificação no vSMS. Entre com meu código %@ e comece com %lld créditos grátis: https://apps.apple.com/app/id6774768570"
           }
         }
       }
@@ -10176,7 +10176,7 @@
         }
       }
     },
-    "How often codes have been arriving on this route network-wide — across everyone's orders, not just ours." : {
+    "How often codes have been arriving on this route network-wide, across everyone's orders and not just ours." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -10193,25 +10193,25 @@
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "La fréquence d'arrivée des codes sur cette route à l'échelle du réseau — sur les commandes de tous, pas seulement les nôtres."
+            "value" : "La fréquence d'arrivée des codes sur cette route à l'échelle du réseau, sur les commandes de tous et pas seulement les nôtres."
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Con quale frequenza arrivano i codici qui sull'intera rete — su tutti gli ordini, non solo i nostri."
+            "value" : "Con quale frequenza arrivano i codici qui sull'intera rete, su tutti gli ordini e non solo i nostri."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "この経路でネットワーク全体でコードが届いている頻度です — 当社の注文だけでなく、すべての利用者の注文が対象です。"
+            "value" : "この経路でネットワーク全体でコードが届いている頻度です。当社の注文だけでなく、すべての利用者の注文が対象です。"
           }
         },
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Com que frequência os códigos chegam nesta rota em toda a rede — nos pedidos de todo mundo, não só nos nossos."
+            "value" : "Com que frequência os códigos chegam nesta rota em toda a rede, nos pedidos de todo mundo e não só nos nossos."
           }
         }
       }
@@ -10697,7 +10697,7 @@
         }
       }
     },
-    "Invite a friend — they start with %lld credits" : {
+    "Invite a friend and they start with %lld credits" : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -10714,25 +10714,25 @@
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Invitez un ami — il démarre avec %lld crédits"
+            "value" : "Invitez un ami et il démarre avec %lld crédits"
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Invita un amico — inizia con %lld crediti"
+            "value" : "Invita un amico e inizia con %lld crediti"
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "友だちを招待 — %lldクレジットで始められます"
+            "value" : "友だちを招待すると%lldクレジットで始められます"
           }
         },
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Convide um amigo — ele começa com %lld créditos"
+            "value" : "Convide um amigo e ele começa com %lld créditos"
           }
         }
       }
@@ -10755,13 +10755,13 @@
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Code d'invitation appliqué 🎉 Vous avez reçu 2 crédits gratuits — votre ami en gagne 5 de plus quand vous achetez votre premier pack."
+            "value" : "Code d'invitation appliqué 🎉 Vous avez reçu 2 crédits gratuits. Votre ami en gagne 5 de plus quand vous achetez votre premier pack."
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Codice invito applicato 🎉 Hai ricevuto 2 crediti gratis — il tuo amico ne guadagna altri 5 quando acquisti il tuo primo pacchetto."
+            "value" : "Codice invito applicato 🎉 Hai ricevuto 2 crediti gratis. Il tuo amico ne guadagna altri 5 quando acquisti il tuo primo pacchetto."
           }
         },
         "ja" : {
@@ -10773,12 +10773,12 @@
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Código de convite aplicado 🎉 Você ganhou 2 créditos grátis — seu amigo ganha mais 5 quando você comprar seu primeiro pacote."
+            "value" : "Código de convite aplicado 🎉 Você ganhou 2 créditos grátis. Seu amigo ganha mais 5 quando você comprar seu primeiro pacote."
           }
         }
       }
     },
-    "Invite code applied. You got 2 free credits — your friend earns 5 more when you buy your first pack." : {
+    "Invite code applied. You got 2 free credits. Your friend earns 5 more when you buy your first pack." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -10795,25 +10795,25 @@
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Code d'invitation appliqué. Vous avez reçu 2 crédits gratuits — votre ami en gagne 5 de plus quand vous achetez votre premier pack."
+            "value" : "Code d'invitation appliqué. Vous avez reçu 2 crédits gratuits. Votre ami en gagne 5 de plus quand vous achetez votre premier pack."
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Codice invito applicato. Hai ricevuto 2 crediti gratis — il tuo amico ne guadagna altri 5 quando acquisti il tuo primo pacchetto."
+            "value" : "Codice invito applicato. Hai ricevuto 2 crediti gratis. Il tuo amico ne guadagna altri 5 quando acquisti il tuo primo pacchetto."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "招待コードを適用しました。無料クレジット2を獲得 — 最初のパックを購入すると、友達にさらにクレジット5が入ります。"
+            "value" : "招待コードを適用しました。無料クレジット2を獲得。最初のパックを購入すると、友達にさらにクレジット5が入ります。"
           }
         },
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Código de convite aplicado. Você ganhou 2 créditos grátis — seu amigo ganha mais 5 quando você comprar seu primeiro pacote."
+            "value" : "Código de convite aplicado. Você ganhou 2 créditos grátis. Seu amigo ganha mais 5 quando você comprar seu primeiro pacote."
           }
         }
       }
@@ -12407,13 +12407,13 @@
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Taux à l’échelle du réseau sur les dernières 24 h — ce n’est pas notre propre taux de livraison. Les pays non listés n’ont pas été classés, ce qui n’est pas un mauvais signe."
+            "value" : "Taux à l’échelle du réseau sur les dernières 24 h. Ce n’est pas notre propre taux de livraison. Les pays non listés n’ont pas été classés, ce qui n’est pas un mauvais signe."
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Tassi sull’intera rete nelle ultime 24 h — non è il nostro dato di consegna. I paesi non elencati non sono stati classificati, il che non è un giudizio negativo."
+            "value" : "Tassi sull’intera rete nelle ultime 24 h. Non è il nostro dato di consegna. I paesi non elencati non sono stati classificati, il che non è un giudizio negativo."
           }
         },
         "ja" : {
@@ -12425,7 +12425,7 @@
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Taxas de toda a rede nas últimas 24 h — não é o nosso próprio histórico de entrega. Países não listados não foram classificados, o que não é um ponto negativo."
+            "value" : "Taxas de toda a rede nas últimas 24 h. Não é o nosso próprio histórico de entrega. Países não listados não foram classificados, o que não é um ponto negativo."
           }
         }
       }
@@ -12608,7 +12608,7 @@
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Pas de pub ni de suivi. Pas de code, pas de frais — remboursement instantané."
+            "value" : "Pas de pub ni de suivi. Pas de code, pas de frais. Remboursement instantané."
           }
         },
         "it" : {
@@ -12620,13 +12620,13 @@
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "広告もトラッキングもなし。コードが届かなければ課金なし — 即時返金。"
+            "value" : "広告もトラッキングもなし。コードが届かなければ課金なし。即時返金。"
           }
         },
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Sem anúncios nem rastreamento. Sem código, sem cobrança — reembolso na hora."
+            "value" : "Sem anúncios nem rastreamento. Sem código, sem cobrança. Reembolso na hora."
           }
         }
       }
@@ -12752,13 +12752,13 @@
         }
       }
     },
-    "No code arrived — your %lld credits are back in your balance." : {
+    "No code arrived. Your %lld credits are back in your balance." : {
       "extractionState" : "manual",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Kein Code angekommen — deine %lld Credits sind zurück auf deinem Guthaben."
+            "value" : "Kein Code angekommen. Deine %lld Credits sind zurück auf deinem Guthaben."
           }
         },
         "es" : {
@@ -12770,7 +12770,7 @@
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Aucun code reçu — vos %lld crédits ont été recrédités."
+            "value" : "Aucun code reçu. Vos %lld crédits ont été recrédités."
           }
         },
         "it" : {
@@ -12788,7 +12788,7 @@
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Nenhum código chegou — seus %lld créditos voltaram para o saldo."
+            "value" : "Nenhum código chegou. Seus %lld créditos voltaram para o saldo."
           }
         }
       }
@@ -12994,7 +12994,7 @@
         }
       }
     },
-    "No code, no charge — your credits come straight back" : {
+    "No code, no charge. Your credits come straight back" : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -13011,25 +13011,25 @@
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Pas de code, pas de frais — vos crédits reviennent aussitôt"
+            "value" : "Pas de code, pas de frais. Vos crédits reviennent aussitôt"
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Nessun codice, nessun addebito — i tuoi crediti tornano subito"
+            "value" : "Nessun codice, nessun addebito. I tuoi crediti tornano subito"
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "コードが届かなければ料金なし — クレジットはすぐに戻ります"
+            "value" : "コードが届かなければ料金なし。クレジットはすぐに戻ります"
           }
         },
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Sem código, sem cobrança — seus créditos voltam na hora"
+            "value" : "Sem código, sem cobrança. Seus créditos voltam na hora"
           }
         }
       }
@@ -13052,7 +13052,7 @@
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Pas de code ? Annulez à tout moment — vos crédits sont intégralement remboursés, instantanément."
+            "value" : "Pas de code ? Annulez à tout moment. Vos crédits sont intégralement remboursés, instantanément."
           }
         },
         "it" : {
@@ -13070,7 +13070,7 @@
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Sem código? Cancele quando quiser — seus créditos são reembolsados na hora, integralmente."
+            "value" : "Sem código? Cancele quando quiser. Seus créditos são reembolsados na hora, integralmente."
           }
         }
       }
@@ -13196,7 +13196,7 @@
         }
       }
     },
-    "No delivery record yet — e-mail is new and we only show what we've measured." : {
+    "No delivery record yet. E-mail is new and we only show what we've measured." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -13213,25 +13213,25 @@
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Pas encore de taux de livraison — l'e-mail est récent et nous n'affichons que ce que nous avons mesuré."
+            "value" : "Pas encore de taux de livraison. L'e-mail est récent et nous n'affichons que ce que nous avons mesuré."
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Ancora nessun dato di consegna — l'email è nuova e mostriamo solo ciò che abbiamo misurato."
+            "value" : "Ancora nessun dato di consegna. L'email è nuova e mostriamo solo ciò che abbiamo misurato."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "まだ配信実績はありません — メールは新しい機能で、実測した内容のみを表示しています。"
+            "value" : "まだ配信実績はありません。メールは新しい機能で、実測した内容のみを表示しています。"
           }
         },
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Ainda sem histórico de entrega — o e-mail é novo e só mostramos o que medimos."
+            "value" : "Ainda sem histórico de entrega. O e-mail é novo e só mostramos o que medimos."
           }
         }
       }
@@ -13890,7 +13890,7 @@
         }
       }
     },
-    "Not available here — tapping switches your country to %@." : {
+    "Not available here. Tapping switches your country to %@." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -13907,25 +13907,25 @@
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Indisponible ici — toucher change votre pays pour %@."
+            "value" : "Indisponible ici. Toucher change votre pays pour %@."
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Non disponibile qui — toccando passi al paese %@."
+            "value" : "Non disponibile qui. Toccando passi al paese %@."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "ここでは利用できません — タップすると国が%@に切り替わります。"
+            "value" : "ここでは利用できません。タップすると国が%@に切り替わります。"
           }
         },
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Indisponível aqui — tocar muda seu país para %@."
+            "value" : "Indisponível aqui. Tocar muda seu país para %@."
           }
         }
       }
@@ -14699,7 +14699,7 @@
         }
       }
     },
-    "Numbers and email addresses you buy show up here — with the code, and the refund if one never arrived." : {
+    "Numbers and email addresses you buy show up here, with the code and with the refund if one never arrived." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -14716,25 +14716,25 @@
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Les numéros et adresses e-mail que vous achetez s'affichent ici — avec le code, et le remboursement si aucun n'est arrivé."
+            "value" : "Les numéros et adresses e-mail que vous achetez s'affichent ici, avec le code et avec le remboursement si aucun n'est arrivé."
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "I numeri e gli indirizzi email che acquisti compaiono qui — con il codice e il rimborso se non è mai arrivato."
+            "value" : "I numeri e gli indirizzi email che acquisti compaiono qui, con il codice e con il rimborso se non è mai arrivato."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "購入した番号やメールアドレスはここに表示されます — 受信したコードや、届かなかった場合の返金も確認できます。"
+            "value" : "購入した番号やメールアドレスはここに表示されます。受信したコードや、届かなかった場合の返金も確認できます。"
           }
         },
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Os números e endereços de e-mail que você compra aparecem aqui — com o código e com o reembolso, se nenhum chegou."
+            "value" : "Os números e endereços de e-mail que você compra aparecem aqui, com o código e com o reembolso, se nenhum chegou."
           }
         }
       }
@@ -14751,7 +14751,7 @@
         "en" : {
           "stringUnit" : {
             "state" : "new",
-            "value" : "Numbers are bought with credits. If no code turns up, your credits go straight back to your balance — every time."
+            "value" : "Numbers are bought with credits. If no code turns up, your credits go straight back to your balance, every time."
           }
         },
         "es" : {
@@ -14827,7 +14827,7 @@
         }
       }
     },
-    "Once an order ends — with a code or with a refund — it lands here." : {
+    "Once an order ends, with a code or with a refund, it lands here." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -14844,25 +14844,25 @@
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Dès qu'une commande se termine — avec un code ou un remboursement — elle arrive ici."
+            "value" : "Dès qu'une commande se termine, avec un code ou un remboursement, elle arrive ici."
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Quando un ordine si conclude — con un codice o con un rimborso — finisce qui."
+            "value" : "Quando un ordine si conclude, con un codice o con un rimborso, finisce qui."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "注文が終了すると — コードの受信でも返金でも — ここに表示されます。"
+            "value" : "注文が終了すると、コードの受信でも返金でも、ここに表示されます。"
           }
         },
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Quando um pedido termina — com código ou com reembolso — ele aparece aqui."
+            "value" : "Quando um pedido termina, com código ou com reembolso, ele aparece aqui."
           }
         }
       }
@@ -14907,7 +14907,7 @@
         }
       }
     },
-    "One moment — pulling it from the mailbox." : {
+    "One moment. Pulling it from the mailbox." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -14924,30 +14924,30 @@
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Un instant — nous le récupérons dans la boîte mail."
+            "value" : "Un instant. Nous le récupérons dans la boîte mail."
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Un momento — lo stiamo prendendo dalla casella."
+            "value" : "Un momento. Lo stiamo prendendo dalla casella."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "少々お待ちください — メールボックスから取得しています。"
+            "value" : "少々お待ちください。メールボックスから取得しています。"
           }
         },
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Um momento — buscando na caixa de entrada."
+            "value" : "Um momento. Buscando na caixa de entrada."
           }
         }
       }
     },
-    "One tap with Apple next — no password to make, no email list, and your real number never comes into it." : {
+    "One tap with Apple next. No password to make, no email list, and your real number never comes into it." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -14964,30 +14964,30 @@
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Ensuite, une touche avec Apple — aucun mot de passe à créer, aucune liste d'e-mails, et votre vrai numéro n'entre jamais en jeu."
+            "value" : "Ensuite, une touche avec Apple. Aucun mot de passe à créer, aucune liste d'e-mails, et votre vrai numéro n'entre jamais en jeu."
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Poi un tocco con Apple — nessuna password da creare, nessuna mailing list e il tuo numero vero non entra mai in gioco."
+            "value" : "Poi un tocco con Apple. Nessuna password da creare, nessuna mailing list e il tuo numero vero non entra mai in gioco."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "次は「Appleでサインイン」をタップするだけ — パスワードの作成もメール配信もなく、本当の電話番号を使うこともありません。"
+            "value" : "次は「Appleでサインイン」をタップするだけ。パスワードの作成もメール配信もなく、本当の電話番号を使うこともありません。"
           }
         },
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Um toque com a Apple a seguir — sem criar senha, sem lista de e-mails, e seu número real nunca entra nisso."
+            "value" : "Um toque com a Apple a seguir. Sem criar senha, sem lista de e-mails, e seu número real nunca entra nisso."
           }
         }
       }
     },
-    "One tap with Apple — no password to make" : {
+    "One tap with Apple, no password to make" : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -15004,25 +15004,25 @@
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Une touche avec Apple — aucun mot de passe à créer"
+            "value" : "Une touche avec Apple, aucun mot de passe à créer"
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Un tocco con Apple — nessuna password da creare"
+            "value" : "Un tocco con Apple, nessuna password da creare"
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "「Appleでサインイン」をタップするだけ — パスワードの作成は不要"
+            "value" : "「Appleでサインイン」をタップするだけ、パスワードの作成は不要"
           }
         },
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Um toque com a Apple — sem criar senha"
+            "value" : "Um toque com a Apple, sem criar senha"
           }
         }
       }
@@ -15555,7 +15555,7 @@
         }
       }
     },
-    "Paste it into %@, then come back — the code lands here." : {
+    "Paste it into %@, then come back. The code lands here." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -15572,25 +15572,25 @@
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Collez-le dans %@, puis revenez — le code arrive ici."
+            "value" : "Collez-le dans %@, puis revenez. Le code arrive ici."
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Incollalo in %@, poi torna indietro — il codice arriva qui."
+            "value" : "Incollalo in %@, poi torna indietro. Il codice arriva qui."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "%@に貼り付けてから戻ってください — コードはここに表示されます。"
+            "value" : "%@に貼り付けてから戻ってください。コードはここに表示されます。"
           }
         },
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Cole em %@ e volte — o código aparece aqui."
+            "value" : "Cole em %@ e volte. O código aparece aqui."
           }
         }
       }
@@ -15847,7 +15847,7 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Wähle ein Land mit hohem Prozentsatz — so oft sind Codes dort netzwerkweit in den letzten 30 Tagen angekommen. Das ist nicht unsere eigene Zustellrate."
+            "value" : "Wähle ein Land mit hohem Prozentsatz. So oft sind Codes dort netzwerkweit in den letzten 30 Tagen angekommen. Das ist nicht unsere eigene Zustellrate."
           }
         },
         "es" : {
@@ -15859,7 +15859,7 @@
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Choisissez un pays avec un pourcentage élevé — c'est la fréquence d'arrivée des codes sur l'ensemble du réseau ces 30 derniers jours. Ce n'est pas notre propre taux de livraison."
+            "value" : "Choisissez un pays avec un pourcentage élevé. C'est la fréquence d'arrivée des codes sur l'ensemble du réseau ces 30 derniers jours. Ce n'est pas notre propre taux de livraison."
           }
         },
         "it" : {
@@ -15877,7 +15877,7 @@
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Escolha um país com porcentagem alta — é com que frequência os códigos chegam lá em toda a rede nos últimos 30 dias. Não é o nosso próprio registro de entrega."
+            "value" : "Escolha um país com porcentagem alta. É com que frequência os códigos chegam lá em toda a rede nos últimos 30 dias. Não é o nosso próprio registro de entrega."
           }
         }
       }
@@ -17324,7 +17324,7 @@
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Louez un numéro jetable, recevez le SMS de vérification ici même — et gardez votre vrai numéro hors de tous les formulaires d'inscription."
+            "value" : "Louez un numéro jetable, recevez le SMS de vérification ici même, et gardez votre vrai numéro hors de tous les formulaires d'inscription."
           }
         },
         "it" : {
@@ -17427,7 +17427,7 @@
         }
       }
     },
-    "Reported — thanks, we'll take a look" : {
+    "Reported. Thanks, we'll take a look" : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -17444,25 +17444,25 @@
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Signalé — merci, nous allons regarder"
+            "value" : "Signalé. Merci, nous allons regarder"
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Segnalato — grazie, daremo un'occhiata"
+            "value" : "Segnalato. Grazie, daremo un'occhiata"
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "報告しました — ありがとうございます、確認します"
+            "value" : "報告しました。ありがとうございます、確認します"
           }
         },
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Denunciado — obrigado, vamos verificar"
+            "value" : "Denunciado. Obrigado, vamos verificar"
           }
         }
       }
@@ -18486,13 +18486,13 @@
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Partagez votre code. Un ami qui s'inscrit avec reçoit **2 crédits offerts** — et vous recevez **5 crédits** à son premier achat de pack."
+            "value" : "Partagez votre code. Un ami qui s'inscrit avec reçoit **2 crédits offerts**, et vous recevez **5 crédits** à son premier achat de pack."
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Condividi il tuo codice. Chi si iscrive con esso riceve **2 crediti gratis** — e tu ricevi **5 crediti** al suo primo acquisto di un pacchetto."
+            "value" : "Condividi il tuo codice. Chi si iscrive con esso riceve **2 crediti gratis**, e tu ricevi **5 crediti** al suo primo acquisto di un pacchetto."
           }
         },
         "ja" : {
@@ -18504,12 +18504,12 @@
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Compartilhe seu código. Quem entrar com ele ganha **2 créditos grátis** — e você ganha **5 créditos** quando a pessoa comprar o primeiro pacote."
+            "value" : "Compartilhe seu código. Quem entrar com ele ganha **2 créditos grátis**, e você ganha **5 créditos** quando a pessoa comprar o primeiro pacote."
           }
         }
       }
     },
-    "Share your code. A friend who joins with it starts with **%lld free credits** — and you get **5 credits** when they buy their first pack." : {
+    "Share your code. A friend who joins with it starts with **%lld free credits**, and you get **5 credits** when they buy their first pack." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -18526,13 +18526,13 @@
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Partagez votre code. Celui qui s'inscrit avec démarre avec **%lld crédits offerts** — et vous recevez **5 crédits** dès son premier achat."
+            "value" : "Partagez votre code. Celui qui s'inscrit avec démarre avec **%lld crédits offerts**, et vous recevez **5 crédits** dès son premier achat."
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Condividi il tuo codice. Chi si iscrive con quel codice inizia con **%lld crediti gratis** — e tu ricevi **5 crediti** al suo primo acquisto."
+            "value" : "Condividi il tuo codice. Chi si iscrive con quel codice inizia con **%lld crediti gratis**, e tu ricevi **5 crediti** al suo primo acquisto."
           }
         },
         "ja" : {
@@ -18544,7 +18544,7 @@
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Compartilhe seu código. Quem entrar com ele começa com **%lld créditos grátis** — e você ganha **5 créditos** na primeira compra dessa pessoa."
+            "value" : "Compartilhe seu código. Quem entrar com ele começa com **%lld créditos grátis**, e você ganha **5 créditos** na primeira compra dessa pessoa."
           }
         }
       }
@@ -18768,7 +18768,7 @@
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Connectez-vous ensuite avec Apple — c'est la seule information que nous demandons."
+            "value" : "Connectez-vous ensuite avec Apple : c'est la seule information que nous demandons."
           }
         },
         "it" : {
@@ -18780,18 +18780,18 @@
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "次は「Appleでサインイン」— 必要な情報はそれだけです。"
+            "value" : "次は「Appleでサインイン」。必要な情報はそれだけです。"
           }
         },
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Entre com a Apple — é o único dado que pedimos."
+            "value" : "Entre com a Apple: é o único dado que pedimos."
           }
         }
       }
     },
-    "Sign in with the same Apple ID — nothing lives on this phone." : {
+    "Sign in with the same Apple ID. Nothing lives on this phone." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -18808,25 +18808,25 @@
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Connectez-vous avec le même identifiant Apple — rien n'est stocké sur ce téléphone."
+            "value" : "Connectez-vous avec le même identifiant Apple. Rien n'est stocké sur ce téléphone."
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Accedi con lo stesso ID Apple — niente resta su questo telefono."
+            "value" : "Accedi con lo stesso ID Apple. Niente resta su questo telefono."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "同じApple IDでサインインしてください — この端末には何も保存されていません。"
+            "value" : "同じApple IDでサインインしてください。この端末には何も保存されていません。"
           }
         },
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Entre com o mesmo ID Apple — nada fica salvo neste telefone."
+            "value" : "Entre com o mesmo ID Apple. Nada fica salvo neste telefone."
           }
         }
       }
@@ -19051,7 +19051,7 @@
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Certains services bloquent les numéros temporaires : il se peut qu'aucun code n'arrive. Dans ce cas, rien ne vous est facturé — et essayer un autre numéro est gratuit, autant de fois que vous le souhaitez."
+            "value" : "Certains services bloquent les numéros temporaires : il se peut qu'aucun code n'arrive. Dans ce cas, rien ne vous est facturé, et essayer un autre numéro est gratuit, autant de fois que vous le souhaitez."
           }
         },
         "it" : {
@@ -19069,12 +19069,12 @@
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Alguns serviços bloqueiam números temporários, então o código pode nunca chegar. Se isso acontecer, você não é cobrado — e tentar outro número é grátis, quantas vezes quiser."
+            "value" : "Alguns serviços bloqueiam números temporários, então o código pode nunca chegar. Se isso acontecer, você não é cobrado, e tentar outro número é grátis, quantas vezes quiser."
           }
         }
       }
     },
-    "Some services block temporary numbers, so a code may never come through. If that happens your credits come straight back — and trying another number is free, as many times as you like." : {
+    "Some services block temporary numbers, so a code may never come through. If that happens your credits come straight back, and trying another number is free, as many times as you like." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -19091,13 +19091,13 @@
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Certains services bloquent les numéros temporaires : il se peut qu'aucun code n'arrive. Dans ce cas, vos crédits reviennent aussitôt — et essayer un autre numéro est gratuit, autant de fois que vous le souhaitez."
+            "value" : "Certains services bloquent les numéros temporaires : il se peut qu'aucun code n'arrive. Dans ce cas, vos crédits reviennent aussitôt, et essayer un autre numéro est gratuit, autant de fois que vous le souhaitez."
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Alcuni servizi bloccano i numeri temporanei, quindi un codice potrebbe non arrivare mai. In tal caso i tuoi crediti tornano subito — e provare un altro numero è gratis, tutte le volte che vuoi."
+            "value" : "Alcuni servizi bloccano i numeri temporanei, quindi un codice potrebbe non arrivare mai. In tal caso i tuoi crediti tornano subito, e provare un altro numero è gratis, tutte le volte che vuoi."
           }
         },
         "ja" : {
@@ -19109,7 +19109,7 @@
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Alguns serviços bloqueiam números temporários, então o código pode nunca chegar. Se isso acontecer, seus créditos voltam na hora — e tentar outro número é grátis, quantas vezes quiser."
+            "value" : "Alguns serviços bloqueiam números temporários, então o código pode nunca chegar. Se isso acontecer, seus créditos voltam na hora, e tentar outro número é grátis, quantas vezes quiser."
           }
         }
       }
@@ -19132,7 +19132,7 @@
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Certains services bloquent les numéros temporaires : le code peut ne pas arriver. En essayer un autre est gratuit — vous ne payez que celui qui marche. Désolés, nous y travaillons."
+            "value" : "Certains services bloquent les numéros temporaires : le code peut ne pas arriver. En essayer un autre est gratuit. Vous ne payez que celui qui marche. Désolés, nous y travaillons."
           }
         },
         "it" : {
@@ -19150,7 +19150,7 @@
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Alguns serviços bloqueiam números temporários, então o código pode não chegar. Tentar outro é grátis — você só paga pelo que funciona. Desculpe o transtorno; estamos trabalhando nisso."
+            "value" : "Alguns serviços bloqueiam números temporários, então o código pode não chegar. Tentar outro é grátis. Você só paga pelo que funciona. Desculpe o transtorno; estamos trabalhando nisso."
           }
         }
       }
@@ -19596,7 +19596,7 @@
         }
       }
     },
-    "Still loading — a slow connection can take a moment." : {
+    "Still loading. A slow connection can take a moment." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -19613,7 +19613,7 @@
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Chargement en cours — cela peut prendre un instant avec une connexion lente."
+            "value" : "Chargement en cours. Cela peut prendre un instant avec une connexion lente."
           }
         },
         "it" : {
@@ -19631,12 +19631,12 @@
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Ainda carregando — em uma conexão lenta pode levar um momento."
+            "value" : "Ainda carregando. Em uma conexão lenta pode levar um momento."
           }
         }
       }
     },
-    "Stock moves through the day — another city will have some." : {
+    "Stock moves through the day. Another city will have some." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -19653,25 +19653,25 @@
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Le stock évolue au fil de la journée — une autre ville en aura."
+            "value" : "Le stock évolue au fil de la journée. Une autre ville en aura."
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "La disponibilità cambia nel corso della giornata — un'altra città ne avrà."
+            "value" : "La disponibilità cambia nel corso della giornata. Un'altra città ne avrà."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "在庫は一日を通して変動します — 別の都市なら残っているはずです。"
+            "value" : "在庫は一日を通して変動します。別の都市なら残っているはずです。"
           }
         },
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "O estoque muda ao longo do dia — outra cidade vai ter."
+            "value" : "O estoque muda ao longo do dia. Outra cidade vai ter."
           }
         }
       }
@@ -19837,7 +19837,7 @@
         }
       }
     },
-    "Taking a little longer than usual — this keeps working if you close the app." : {
+    "Taking a little longer than usual. This keeps working if you close the app." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -19854,25 +19854,25 @@
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Cela prend un peu plus de temps que d'habitude — tout continue même si vous fermez l'app."
+            "value" : "Cela prend un peu plus de temps que d'habitude. Tout continue même si vous fermez l'app."
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Ci vuole un po' più del solito — continua a funzionare anche se chiudi l'app."
+            "value" : "Ci vuole un po' più del solito. Continua a funzionare anche se chiudi l'app."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "いつもより少し時間がかかっています — アプリを閉じても処理は続きます。"
+            "value" : "いつもより少し時間がかかっています。アプリを閉じても処理は続きます。"
           }
         },
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Está demorando um pouco mais que o normal — isto continua funcionando se você fechar o app."
+            "value" : "Está demorando um pouco mais que o normal. Isto continua funcionando se você fechar o app."
           }
         }
       }
@@ -20483,7 +20483,7 @@
         }
       }
     },
-    "That's the whole idea — you're here to keep your real number to yourself." : {
+    "That's the whole idea. You're here to keep your real number to yourself." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -20500,7 +20500,7 @@
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "C'est tout l'intérêt — vous êtes ici pour garder votre vrai numéro pour vous."
+            "value" : "C'est tout l'intérêt. Vous êtes ici pour garder votre vrai numéro pour vous."
           }
         },
         "it" : {
@@ -20518,7 +20518,7 @@
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Essa é a ideia — você está aqui para manter seu número real só seu."
+            "value" : "Essa é a ideia. Você está aqui para manter seu número real só seu."
           }
         }
       }
@@ -20603,7 +20603,7 @@
         }
       }
     },
-    "The code lands here — paste it back" : {
+    "The code lands here. Paste it back" : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -20620,25 +20620,25 @@
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Le code arrive ici — collez-le ensuite"
+            "value" : "Le code arrive ici. Collez-le ensuite"
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Il codice arriva qui — incollalo di nuovo"
+            "value" : "Il codice arriva qui. Incollalo di nuovo"
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "コードはここに表示されます — 貼り付けて戻しましょう"
+            "value" : "コードはここに表示されます。貼り付けて戻しましょう"
           }
         },
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "O código aparece aqui — é só colar de volta"
+            "value" : "O código aparece aqui. É só colar de volta"
           }
         }
       }
@@ -20723,7 +20723,7 @@
         }
       }
     },
-    "There's a problem with your payment. Update it to keep your number — everything still works for now." : {
+    "There's a problem with your payment. Update it to keep your number. Everything still works for now." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -20740,25 +20740,25 @@
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Un problème est survenu avec votre paiement. Mettez-le à jour pour conserver votre numéro — tout fonctionne encore pour l'instant."
+            "value" : "Un problème est survenu avec votre paiement. Mettez-le à jour pour conserver votre numéro. Tout fonctionne encore pour l'instant."
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "C'è un problema con il tuo pagamento. Aggiornalo per mantenere il tuo numero — per ora funziona ancora tutto."
+            "value" : "C'è un problema con il tuo pagamento. Aggiornalo per mantenere il tuo numero. Per ora funziona ancora tutto."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "お支払いに問題があります。番号を維持するにはお支払い方法を更新してください — 今のところ機能はすべて利用できます。"
+            "value" : "お支払いに問題があります。番号を維持するにはお支払い方法を更新してください。今のところ機能はすべて利用できます。"
           }
         },
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Há um problema com seu pagamento. Atualize para manter seu número — por enquanto tudo continua funcionando."
+            "value" : "Há um problema com seu pagamento. Atualize para manter seu número. Por enquanto tudo continua funcionando."
           }
         }
       }
@@ -20803,7 +20803,7 @@
         }
       }
     },
-    "This eSIM can only be installed once. If it's already on your device, check Settings → Cellular instead — installing again will fail." : {
+    "This eSIM can only be installed once. If it's already on your device, check Settings → Cellular instead. Installing again will fail." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -20820,7 +20820,7 @@
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Cette eSIM ne peut être installée qu'une seule fois. Si elle est déjà sur votre appareil, allez dans Réglages → Données cellulaires — une nouvelle installation échouera."
+            "value" : "Cette eSIM ne peut être installée qu'une seule fois. Si elle est déjà sur votre appareil, allez dans Réglages → Données cellulaires. Une nouvelle installation échouera."
           }
         },
         "it" : {
@@ -20838,7 +20838,7 @@
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Este eSIM só pode ser instalado uma vez. Se já estiver no seu aparelho, veja em Ajustes → Celular — instalar de novo vai falhar."
+            "value" : "Este eSIM só pode ser instalado uma vez. Se já estiver no seu aparelho, veja em Ajustes → Celular. Instalar de novo vai falhar."
           }
         }
       }
@@ -21325,7 +21325,7 @@
         }
       }
     },
-    "This usually takes a few seconds. You can leave this screen — we'll let you know when it's ready." : {
+    "This usually takes a few seconds. You can leave this screen, and we'll let you know when it's ready." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -21342,30 +21342,30 @@
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Cela prend généralement quelques secondes. Vous pouvez quitter cet écran — nous vous préviendrons dès que c'est prêt."
+            "value" : "Cela prend généralement quelques secondes. Vous pouvez quitter cet écran, et nous vous préviendrons dès que c'est prêt."
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Di solito richiede pochi secondi. Puoi uscire da questa schermata — ti avviseremo quando è pronto."
+            "value" : "Di solito richiede pochi secondi. Puoi uscire da questa schermata, e ti avviseremo quando è pronto."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "通常は数秒で完了します。この画面を離れても大丈夫です — 準備ができたらお知らせします。"
+            "value" : "通常は数秒で完了します。この画面を離れても大丈夫です。準備ができたらお知らせします。"
           }
         },
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Isso costuma levar alguns segundos. Você pode sair desta tela — avisaremos quando estiver pronto."
+            "value" : "Isso costuma levar alguns segundos. Você pode sair desta tela, e avisaremos quando estiver pronto."
           }
         }
       }
     },
-    "Time's up — confirming with the network…" : {
+    "Time's up. Confirming with the network…" : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -21382,25 +21382,25 @@
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Temps écoulé — confirmation auprès du réseau…"
+            "value" : "Temps écoulé. Confirmation auprès du réseau…"
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Tempo scaduto — conferma con la rete…"
+            "value" : "Tempo scaduto. Conferma con la rete…"
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "時間切れ — ネットワークに確認中…"
+            "value" : "時間切れ。ネットワークに確認中…"
           }
         },
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Tempo esgotado — confirmando com a rede…"
+            "value" : "Tempo esgotado. Confirmando com a rede…"
           }
         }
       }
@@ -21573,7 +21573,7 @@
         }
       }
     },
-    "Totals include the %lld credits you already have. A typical number costs %lld credits — prices vary by service and country." : {
+    "Totals include the %lld credits you already have. A typical number costs %lld credits. Prices vary by service and country." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -21584,7 +21584,7 @@
         "en" : {
           "stringUnit" : {
             "state" : "new",
-            "value" : "Totals include the %1$lld credits you already have. A typical number costs %2$lld credits — prices vary by service and country."
+            "value" : "Totals include the %1$lld credits you already have. A typical number costs %2$lld credits. Prices vary by service and country."
           }
         },
         "es" : {
@@ -21596,13 +21596,13 @@
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Les totaux incluent les %lld crédits que vous avez déjà. Un numéro coûte en général %lld crédits — les prix varient selon le service et le pays."
+            "value" : "Les totaux incluent les %lld crédits que vous avez déjà. Un numéro coûte en général %lld crédits. Les prix varient selon le service et le pays."
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "I totali includono i %lld crediti che hai già. Un numero tipico costa %lld crediti — i prezzi variano per servizio e paese."
+            "value" : "I totali includono i %lld crediti che hai già. Un numero tipico costa %lld crediti. I prezzi variano per servizio e paese."
           }
         },
         "ja" : {
@@ -21614,7 +21614,7 @@
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Os totais incluem os %lld créditos que você já tem. Um número comum custa %lld créditos — os preços variam por serviço e país."
+            "value" : "Os totais incluem os %lld créditos que você já tem. Um número comum custa %lld créditos. Os preços variam por serviço e país."
           }
         }
       }
@@ -21659,7 +21659,7 @@
         }
       }
     },
-    "Travel eSIMs are temporarily off sale. Any eSIM you already bought keeps working — find it under My eSIMs." : {
+    "Travel eSIMs are temporarily off sale. Any eSIM you already bought keeps working. Find it under My eSIMs." : {
       "extractionState" : "manual",
       "localizations" : {
         "de" : {
@@ -21677,7 +21677,7 @@
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Les eSIM de voyage sont temporairement retirées de la vente. Toute eSIM déjà achetée continue de fonctionner — retrouvez-la dans « Mes eSIM »."
+            "value" : "Les eSIM de voyage sont temporairement retirées de la vente. Toute eSIM déjà achetée continue de fonctionner. Retrouvez-la dans « Mes eSIM »."
           }
         },
         "it" : {
@@ -21695,7 +21695,7 @@
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "As eSIMs de viagem estão temporariamente fora de venda. Qualquer eSIM que você já comprou continua funcionando — encontre-a em «Meus eSIMs»."
+            "value" : "As eSIMs de viagem estão temporariamente fora de venda. Qualquer eSIM que você já comprou continua funcionando. Encontre-a em «Meus eSIMs»."
           }
         }
       }
@@ -22143,7 +22143,7 @@
         }
       }
     },
-    "Used vSMS before? Sign in with the same Apple ID and your number, credits and history come back — none of it is stored on this phone." : {
+    "Used vSMS before? Sign in with the same Apple ID and your number, credits and history come back. None of it is stored on this phone." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -22160,25 +22160,25 @@
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Vous avez déjà utilisé vSMS ? Connectez-vous avec le même identifiant Apple et votre numéro, vos crédits et votre historique reviennent — rien n'est stocké sur ce téléphone."
+            "value" : "Vous avez déjà utilisé vSMS ? Connectez-vous avec le même identifiant Apple et votre numéro, vos crédits et votre historique reviennent. Rien n'est stocké sur ce téléphone."
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Hai già usato vSMS? Accedi con lo stesso ID Apple e il tuo numero, i crediti e la cronologia tornano — niente di tutto ciò è salvato su questo telefono."
+            "value" : "Hai già usato vSMS? Accedi con lo stesso ID Apple e il tuo numero, i crediti e la cronologia tornano. Niente di tutto ciò è salvato su questo telefono."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "vSMSをご利用になったことがありますか？同じApple IDでサインインすると、番号・クレジット・履歴が戻ります — いずれもこの端末には保存されていません。"
+            "value" : "vSMSをご利用になったことがありますか？同じApple IDでサインインすると、番号・クレジット・履歴が戻ります。いずれもこの端末には保存されていません。"
           }
         },
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Já usou o vSMS? Entre com o mesmo ID Apple e seu número, créditos e histórico voltam — nada disso fica salvo neste telefone."
+            "value" : "Já usou o vSMS? Entre com o mesmo ID Apple e seu número, créditos e histórico voltam. Nada disso fica salvo neste telefone."
           }
         }
       }
@@ -23355,7 +23355,7 @@
         }
       }
     },
-    "We've paused data plans while we make some improvements. Any eSIM you already bought keeps working — find it under My eSIMs." : {
+    "We've paused data plans while we make some improvements. Any eSIM you already bought keeps working. Find it under My eSIMs." : {
       "extractionState" : "manual",
       "localizations" : {
         "de" : {
@@ -23373,7 +23373,7 @@
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Nous avons suspendu les forfaits data le temps d’apporter quelques améliorations. Toute eSIM déjà achetée continue de fonctionner — retrouvez-la dans « Mes eSIM »."
+            "value" : "Nous avons suspendu les forfaits data le temps d’apporter quelques améliorations. Toute eSIM déjà achetée continue de fonctionner. Retrouvez-la dans « Mes eSIM »."
           }
         },
         "it" : {
@@ -23391,7 +23391,7 @@
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Pausamos os planos de dados enquanto fazemos algumas melhorias. Qualquer eSIM que você já comprou continua funcionando — encontre em Meus eSIMs."
+            "value" : "Pausamos os planos de dados enquanto fazemos algumas melhorias. Qualquer eSIM que você já comprou continua funcionando. Encontre em Meus eSIMs."
           }
         }
       }
@@ -23853,7 +23853,7 @@
         }
       }
     },
-    "You can close this — we'll have it ready when you come back." : {
+    "You can close this. We'll have it ready when you come back." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -23870,25 +23870,25 @@
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Vous pouvez fermer — ce sera prêt à votre retour."
+            "value" : "Vous pouvez fermer. Ce sera prêt à votre retour."
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Puoi chiudere — sarà pronto quando torni."
+            "value" : "Puoi chiudere. Sarà pronto quando torni."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "この画面は閉じても大丈夫です — 戻ってきたときには準備が整っています。"
+            "value" : "この画面は閉じても大丈夫です。戻ってきたときには準備が整っています。"
           }
         },
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Você pode fechar — vai estar pronto quando você voltar."
+            "value" : "Você pode fechar. Vai estar pronto quando você voltar."
           }
         }
       }
@@ -24020,7 +24020,7 @@
         }
       }
     },
-    "You weren't charged — your credits are back in your balance." : {
+    "You weren't charged. Your credits are back in your balance." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -24037,25 +24037,25 @@
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Vous n'avez pas été débité — vos crédits sont de retour sur votre solde."
+            "value" : "Vous n'avez pas été débité. Vos crédits sont de retour sur votre solde."
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Non ti è stato addebitato nulla — i crediti sono tornati sul saldo."
+            "value" : "Non ti è stato addebitato nulla. I crediti sono tornati sul saldo."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "請求は発生していません — クレジットは残高に戻っています。"
+            "value" : "請求は発生していません。クレジットは残高に戻っています。"
           }
         },
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Você não foi cobrado — seus créditos voltaram para o saldo."
+            "value" : "Você não foi cobrado. Seus créditos voltaram para o saldo."
           }
         }
       }
@@ -24072,37 +24072,37 @@
         "en" : {
           "stringUnit" : {
             "state" : "new",
-            "value" : "You're %1$lld credit%2$@ short for this number — the selected pack covers it."
+            "value" : "You're %1$lld credit%2$@ short for this number: the selected pack covers it."
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Necesitas %1$lld crédito%2$@ más para este número — el pack seleccionado lo cubre."
+            "value" : "Necesitas %1$lld crédito%2$@ más para este número: el pack seleccionado lo cubre."
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Il vous manque %1$lld crédit%2$@ pour ce numéro — le pack sélectionné suffit."
+            "value" : "Il vous manque %1$lld crédit%2$@ pour ce numéro : le pack sélectionné suffit."
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Ti servono ancora %1$lld crediti per questo numero — il pacchetto selezionato li copre."
+            "value" : "Ti servono ancora %1$lld crediti per questo numero: il pacchetto selezionato li copre."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "この番号にはあと%1$lldクレジット必要です — 選択中のパックでまかなえます。"
+            "value" : "この番号にはあと%1$lldクレジット必要です。選択中のパックでまかなえます。"
           }
         },
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Você precisa de mais %1$lld crédito%2$@ para este número — o pacote selecionado cobre."
+            "value" : "Você precisa de mais %1$lld crédito%2$@ para este número: o pacote selecionado cobre."
           }
         }
       }
@@ -24388,7 +24388,7 @@
         }
       }
     },
-    "Your %lld credits are safe — every order that ends without a code is refunded in full. The outcome will show in Orders." : {
+    "Your %lld credits are safe. Every order that ends without a code is refunded in full. The outcome will show in Orders." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -24405,25 +24405,25 @@
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Vos %lld crédits sont en sécurité — toute commande qui se termine sans code est intégralement remboursée. Le résultat s'affichera dans Commandes."
+            "value" : "Vos %lld crédits sont en sécurité. Toute commande qui se termine sans code est intégralement remboursée. Le résultat s'affichera dans Commandes."
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "I tuoi %lld crediti sono al sicuro — ogni ordine che finisce senza codice viene rimborsato per intero. L'esito comparirà in Ordini."
+            "value" : "I tuoi %lld crediti sono al sicuro. Ogni ordine che finisce senza codice viene rimborsato per intero. L'esito comparirà in Ordini."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "%lldクレジットは安全です — コードが届かずに終了した注文はすべて全額返金されます。結果は「注文」に表示されます。"
+            "value" : "%lldクレジットは安全です。コードが届かずに終了した注文はすべて全額返金されます。結果は「注文」に表示されます。"
           }
         },
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Seus %lld créditos estão seguros — todo pedido que termina sem código é reembolsado integralmente. O resultado vai aparecer em Pedidos."
+            "value" : "Seus %lld créditos estão seguros. Todo pedido que termina sem código é reembolsado integralmente. O resultado vai aparecer em Pedidos."
           }
         }
       }
@@ -24480,7 +24480,7 @@
         "en" : {
           "stringUnit" : {
             "state" : "new",
-            "value" : "Your balance covers this — nothing more to pay."
+            "value" : "Your balance covers this. Nothing more to pay."
           }
         },
         "es" : {
@@ -24492,7 +24492,7 @@
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Votre solde couvre cela — rien de plus à payer."
+            "value" : "Votre solde couvre cela. Rien de plus à payer."
           }
         },
         "it" : {
@@ -24510,7 +24510,7 @@
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Seu saldo cobre isso — não há mais nada a pagar."
+            "value" : "Seu saldo cobre isso. Não há mais nada a pagar."
           }
         }
       }
@@ -24596,7 +24596,7 @@
         }
       }
     },
-    "Your code is %@ — don't share it." : {
+    "Your code is %@. Don't share it." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -24613,25 +24613,25 @@
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Votre code est %@ — ne le partagez pas."
+            "value" : "Votre code est %@. Ne le partagez pas."
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Il tuo codice è %@ — non condividerlo."
+            "value" : "Il tuo codice è %@. Non condividerlo."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "コードは%@です — 他人に教えないでください。"
+            "value" : "コードは%@です。他人に教えないでください。"
           }
         },
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Seu código é %@ — não compartilhe."
+            "value" : "Seu código é %@. Não compartilhe."
           }
         }
       }
@@ -25356,7 +25356,7 @@
         }
       }
     },
-    "Your subscription is active but no number was assigned. We've been alerted and will sort this out — please don't subscribe again." : {
+    "Your subscription is active but no number was assigned. We've been alerted and will sort this out. Please don't subscribe again." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -25373,25 +25373,25 @@
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Votre abonnement est actif mais aucun numéro n'a été attribué. Nous avons été alertés et allons régler cela — ne vous réabonnez pas."
+            "value" : "Votre abonnement est actif mais aucun numéro n'a été attribué. Nous avons été alertés et allons régler cela. Ne vous réabonnez pas."
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Il tuo abbonamento è attivo ma non è stato assegnato alcun numero. Siamo stati avvisati e risolveremo — per favore non abbonarti di nuovo."
+            "value" : "Il tuo abbonamento è attivo ma non è stato assegnato alcun numero. Siamo stati avvisati e risolveremo. Per favore non abbonarti di nuovo."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "サブスクリプションは有効ですが、番号が割り当てられていません。こちらで検知しており対応します — 再度登録しないでください。"
+            "value" : "サブスクリプションは有効ですが、番号が割り当てられていません。こちらで検知しており対応します。再度登録しないでください。"
           }
         },
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Sua assinatura está ativa, mas nenhum número foi atribuído. Já fomos avisados e vamos resolver — por favor, não assine de novo."
+            "value" : "Sua assinatura está ativa, mas nenhum número foi atribuído. Já fomos avisados e vamos resolver. Por favor, não assine de novo."
           }
         }
       }
@@ -25477,7 +25477,7 @@
         }
       }
     },
-    "Your subscription went through but we couldn't set the number up. Contact support — don't buy again." : {
+    "Your subscription went through but we couldn't set the number up. Contact support, and don't buy again." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -25494,25 +25494,25 @@
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Votre abonnement a été validé mais nous n'avons pas pu configurer le numéro. Contactez l'assistance — n'achetez pas à nouveau."
+            "value" : "Votre abonnement a été validé mais nous n'avons pas pu configurer le numéro. Contactez l'assistance, et n'achetez pas à nouveau."
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Il tuo abbonamento è andato a buon fine ma non siamo riusciti a configurare il numero. Contatta l'assistenza — non acquistare di nuovo."
+            "value" : "Il tuo abbonamento è andato a buon fine ma non siamo riusciti a configurare il numero. Contatta l'assistenza, e non acquistare di nuovo."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "サブスクリプションは完了しましたが、番号を設定できませんでした。サポートにご連絡ください — 再度購入しないでください。"
+            "value" : "サブスクリプションは完了しましたが、番号を設定できませんでした。サポートにご連絡ください。再度購入しないでください。"
           }
         },
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Sua assinatura foi concluída, mas não conseguimos configurar o número. Fale com o suporte — não compre de novo."
+            "value" : "Sua assinatura foi concluída, mas não conseguimos configurar o número. Fale com o suporte, e não compre de novo."
           }
         }
       }
@@ -25928,7 +25928,7 @@
         }
       }
     },
-    "eSIM plans in %lld countries — from %lld cr" : {
+    "eSIM plans in %lld countries, from %lld cr" : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -25939,7 +25939,7 @@
         "en" : {
           "stringUnit" : {
             "state" : "new",
-            "value" : "eSIM plans in %1$lld countries — from %2$lld cr"
+            "value" : "eSIM plans in %1$lld countries, from %2$lld cr"
           }
         },
         "es" : {
@@ -25951,25 +25951,25 @@
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Forfaits eSIM dans %lld pays — à partir de %lld cr"
+            "value" : "Forfaits eSIM dans %lld pays, à partir de %lld cr"
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Piani eSIM in %lld paesi — da %lld cr"
+            "value" : "Piani eSIM in %lld paesi, da %lld cr"
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "%lldか国のeSIMプラン — %lld crから"
+            "value" : "%lldか国のeSIMプラン、%lld crから"
           }
         },
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Planos eSIM em %lld países — a partir de %lld cr"
+            "value" : "Planos eSIM em %lld países, a partir de %lld cr"
           }
         }
       }

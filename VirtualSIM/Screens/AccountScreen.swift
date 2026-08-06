@@ -245,7 +245,7 @@ struct AccountScreen: View {
             SectionHeader(label: String(localized: "Invite friends"))
             Card {
                 VStack(alignment: .leading, spacing: 14) {
-                    Text("Share your code. A friend who joins with it starts with **\(AppState.inviteJoinerCredits) free credits** — and you get **5 credits** when they buy their first pack.")
+                    Text("Share your code. A friend who joins with it starts with **\(AppState.inviteJoinerCredits) free credits**, and you get **5 credits** when they buy their first pack.")
                         .font(RFont.text(14))
                         .lineSpacing(2)
                         .foregroundStyle(theme.text2)
@@ -694,9 +694,9 @@ struct AccountScreen: View {
             if n == 0 {
                 text = String(localized: "Nothing left to restore.")
             } else if n == 1 {
-                text = String(localized: "1 purchase restored — your credits are back.")
+                text = String(localized: "1 purchase restored. Your credits are back.")
             } else {
-                text = String(localized: "\(n) purchases restored — your credits are back.")
+                text = String(localized: "\(n) purchases restored. Your credits are back.")
             }
             withAnimation(RMotion.content) {
                 restoreNote = Note(text: text, ok: n > 0)
@@ -719,7 +719,7 @@ struct AccountScreen: View {
             case "ok":
                 RHaptic.success()
                 redeemNote = Note(
-                    text: String(localized: "Invite code applied. You got 2 free credits — your friend earns 5 more when you buy your first pack."),
+                    text: String(localized: "Invite code applied. You got 2 free credits. Your friend earns 5 more when you buy your first pack."),
                     ok: true)
                 inviteCode = ""
                 await state.refreshProfile(using: ProfileAPI(client: api))

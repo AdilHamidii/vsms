@@ -75,7 +75,7 @@ struct SignInScreen: View {
                 .lineSpacing(1)
                 .foregroundStyle(theme.text)
                 .fixedSize(horizontal: false, vertical: true)
-            Text("That's the whole idea — you're here to keep your real number to yourself.")
+            Text("That's the whole idea. You're here to keep your real number to yourself.")
                 .font(RFont.text(15))
                 .lineSpacing(3)
                 .foregroundStyle(theme.text2)
@@ -93,7 +93,7 @@ struct SignInScreen: View {
                     .padding(.top, 18)
                     .padding(.bottom, 8)
                 BenefitRow(icon: RIcon.check,
-                           label: "One tap with Apple — no password to make",
+                           label: "One tap with Apple, no password to make",
                            tint: theme.live)
                 RowRule()
                 BenefitRow(icon: RIcon.check,
@@ -125,7 +125,7 @@ struct SignInScreen: View {
                 .font(.system(size: 12, weight: .semibold))
                 .foregroundStyle(theme.accent2)
                 .padding(.top, 1)
-            Text("Used vSMS before? Sign in with the same Apple ID and your number, credits and history come back — none of it is stored on this phone.")
+            Text("Used vSMS before? Sign in with the same Apple ID and your number, credits and history come back. None of it is stored on this phone.")
                 .font(RFont.text(13))
                 .lineSpacing(2)
                 .foregroundStyle(theme.text2)

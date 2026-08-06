@@ -246,7 +246,7 @@ struct EsimMapView: View {
         HStack(spacing: 8) {
             if !unplaced.isEmpty {
                 // Honest about its own gaps rather than looking complete.
-                Label("\(unplaced.count) not on map — use the list",
+                Label("\(unplaced.count) not on map. Use the list",
                       systemImage: "exclamationmark.circle")
                     .font(RFont.text(11)).foregroundStyle(theme.text2)
                     .padding(.horizontal, 10).padding(.vertical, 6)

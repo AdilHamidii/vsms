@@ -257,7 +257,7 @@ struct CountrySheet: View {
                 .font(RFont.display(15, weight: .semibold))
                 .foregroundStyle(theme.text)
 
-            Text("How often codes have been arriving on this route network-wide — across everyone's orders, not just ours.")
+            Text("How often codes have been arriving on this route network-wide, across everyone's orders and not just ours.")
                 .font(RFont.text(13))
                 .foregroundStyle(theme.text2)
                 .fixedSize(horizontal: false, vertical: true)

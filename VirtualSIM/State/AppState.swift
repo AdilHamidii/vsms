@@ -174,7 +174,7 @@ final class AppState {
     /// other — which is precisely how two copies drift apart.
     var inviteMessage: String? {
         guard let code = profile?.referralCode else { return nil }
-        return String(localized: "Get a private temporary number for verification codes on vSMS — join with my code \(code) and start with \(Self.inviteJoinerCredits) free credits: https://apps.apple.com/app/id6774768570")
+        return String(localized: "Get a private temporary number for verification codes on vSMS. Join with my code \(code) and start with \(Self.inviteJoinerCredits) free credits: https://apps.apple.com/app/id6774768570")
     }
     var maintenance: MaintenanceStatus = .off
 
@@ -1657,7 +1657,7 @@ final class AppState {
         // the SMS apply() rule ("cover every terminal status") not applied here.
         if fresh.status.isTerminal, !fresh.hasCode, flow == .emailWaiting {
             lastError = fresh.wasRefunded
-                ? String(localized: "No code arrived — your \(fresh.costCredits) credits are back in your balance.")
+                ? String(localized: "No code arrived. Your \(fresh.costCredits) credits are back in your balance.")
                 : String(localized: "No code arrived for that address.")
             flow = nil
         }

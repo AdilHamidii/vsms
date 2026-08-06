@@ -95,7 +95,7 @@ struct LineProvisioningScreen: View {
             // Only after the wait stops feeling instant. A healthy provision
             // finishes in a few seconds and should show nothing extra.
             if elapsed >= 8 {
-                Text("Taking a little longer than usual — this keeps working if you close the app.")
+                Text("Taking a little longer than usual. This keeps working if you close the app.")
                     .font(RFont.text(13))
                     .foregroundStyle(theme.text3)
                     .multilineTextAlignment(.center)
@@ -122,7 +122,7 @@ struct LineProvisioningScreen: View {
                 .tracking(-0.4)
                 .foregroundStyle(theme.text)
                 .multilineTextAlignment(.center)
-            Text("Your subscription is active but no number was assigned. We've been alerted and will sort this out — please don't subscribe again.")
+            Text("Your subscription is active but no number was assigned. We've been alerted and will sort this out. Please don't subscribe again.")
                 .font(RFont.text(14))
                 .foregroundStyle(theme.text2)
                 .multilineTextAlignment(.center)
@@ -140,7 +140,7 @@ struct LineProvisioningScreen: View {
         if state.line?.status == .failed {
             PrimaryButton(label: "Close") { state.flow = nil }
         } else {
-            Text("You can close this — we'll have it ready when you come back.")
+            Text("You can close this. We'll have it ready when you come back.")
                 .font(RFont.text(12))
                 .foregroundStyle(theme.text3)
                 .multilineTextAlignment(.center)

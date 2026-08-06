@@ -67,7 +67,7 @@ struct SupportChatScreen: View {
             Text("Ask us anything")
                 .font(RFont.display(17, weight: .semibold))
                 .foregroundStyle(theme.text)
-            Text("A real person reads these. If we're asleep you'll get a reply as soon as we're up — you'll be notified.")
+            Text("A real person reads these. If we're asleep you'll get a reply as soon as we're up, and you'll be notified.")
                 .font(RFont.text(13))
                 .multilineTextAlignment(.center)
                 .foregroundStyle(theme.text2)

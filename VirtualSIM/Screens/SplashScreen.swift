@@ -144,7 +144,7 @@ struct SplashScreen: View {
     }
 
     private var caption: some View {
-        Text("Still loading — a slow connection can take a moment.")
+        Text("Still loading. A slow connection can take a moment.")
             .font(RFont.text(12))
             .multilineTextAlignment(.center)
             .foregroundStyle(theme.text3)
