@@ -755,7 +755,15 @@ private struct PackRow: View {
     @ViewBuilder
     private var secondary: some View {
         HStack(spacing: 6) {
-            if numbers != nil {
+            // ⚠️ `n >= 1`, matching `headline` exactly — NOT `numbers != nil`.
+            //
+            // `numbers(after:)` returns 0, not nil, when a pack cannot fund a
+            // single number, and `.some(0)` satisfies a nil-check. So `headline`
+            // fell through to "5 credits" and this line printed "5 credits"
+            // again directly under it, on the app's only revenue screen. With
+            // the live median route at 6 credits, that is the $2.99 entry pack
+            // for every user at a zero balance.
+            if let n = numbers, n >= 1 {
                 Text("\(pack.credits) credits")
                     .font(RFont.text(12))
                     .foregroundStyle(theme.text2)

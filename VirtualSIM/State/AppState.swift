@@ -167,6 +167,15 @@ final class AppState {
     /// `redeem_referral`'s `wallet_credit(p_referee, 2, 'referral_invitee', …)`.
     static let inviteJoinerCredits = 2
 
+    /// What the REFERRER earns when their invitee buys a first pack.
+    ///
+    /// Added for the same reason as the joiner figure: it was written as a bare
+    /// "5" in the two surfaces that mention it, so a change to `redeem_referral`
+    /// would have left the app quoting the old number with nothing to catch it.
+    /// Keep in lockstep with `redeem_referral`'s
+    /// `wallet_credit(p_referrer, 5, 'referral_reward', …)`.
+    static let inviteReferrerCredits = 5
+
     /// Share text for the invite, in ONE place.
     ///
     /// It previously lived duplicated in `OtpScreen` and `AccountScreen`, each

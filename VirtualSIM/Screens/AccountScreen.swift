@@ -718,8 +718,13 @@ struct AccountScreen: View {
             switch status {
             case "ok":
                 RHaptic.success()
+                // Interpolated, not literal. `inviteJoinerCredits` exists
+                // precisely so this figure lives in one place — it was already
+                // a 150% overstatement once, when it was summed with a signup
+                // grant that later went to zero. This was the last surface
+                // still hardcoding it.
                 redeemNote = Note(
-                    text: String(localized: "Invite code applied. You got 2 free credits. Your friend earns 5 more when you buy your first pack."),
+                    text: String(localized: "Invite code applied. You got \(AppState.inviteJoinerCredits) free credits. Your friend earns \(AppState.inviteReferrerCredits) more when you buy your first pack."),
                     ok: true)
                 inviteCode = ""
                 await state.refreshProfile(using: ProfileAPI(client: api))

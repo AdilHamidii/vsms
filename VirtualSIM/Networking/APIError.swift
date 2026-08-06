@@ -155,6 +155,14 @@ enum APIError: Error, LocalizedError {
                     // refund it ourselves. "Don't buy again" is the important
                     // half — a second subscription makes it worse.
                     return "Your subscription went through but we couldn't set the number up. We've been alerted. Please don't subscribe again."
+                // Emitted by `send-line-message` on a provider fault. It was
+                // absent from this switch, so it fell to the generic 5xx copy —
+                // which `ErrorBanner` cannot recognise as informational, so a
+                // transient Telnyx hiccup closed the conversation and threw the
+                // draft away. The message says the text was not sent and that
+                // nothing was spent, because the allowance IS handed back.
+                case "message_send_failed":
+                    return "That message didn't send. Nothing was used from your allowance — try again."
                 case "allowance_exhausted":
                     return "You've used this month's allowance. It resets when your subscription renews."
                 case "line_suspended":

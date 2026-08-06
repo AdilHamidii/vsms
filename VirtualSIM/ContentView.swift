@@ -184,6 +184,19 @@ struct ContentView: View {
             // The whole cold-launch sequence, including which steps must finish
             // before the splash lifts. See AppState.coldStart.
             await state.coldStart(api: api)
+
+            // StoreKit prices, BEHIND the reveal — nothing on Home waits for
+            // them, but Home cannot render its money line without them.
+            //
+            // `iap.products` had exactly three writers, all inside CreditsSheet
+            // or `purchase()`, and `IAPStore.attach` only restores. So the "5 cr
+            // · about $2.50" line — which exists precisely because "cr" is
+            // otherwise undefined anywhere on that screen — rendered nothing
+            // until the user had opened the paywall at least once. `iap` is
+            // `@State` in `AuthGate`, so that was true on EVERY cold launch,
+            // not just the first: exactly the population for whom the unit is
+            // meaningless.
+            await iap.loadProducts()
         }
         // Keep polling a live email activation even when no screen shows it.
         // check-email-order is the ONLY thing that ever fetches an email code

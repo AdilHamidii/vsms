@@ -161,6 +161,18 @@ struct ErrorBanner: View {
         "domain_unavailable", "email_unsupported_service", "free_limit_reached",
         "unknown_service", "order_not_found", "unknown_order",
         "lines_paused", "line_exists", "number_taken",
+        // The line's SEND failures. Blocking treatment renders "Check your
+        // orders", whose action does `flow = nil` + `tab = .orders` — so a
+        // failed text closed the conversation, DISCARDED the composer draft,
+        // and landed the user on a tab that contains no messages at all.
+        //
+        // `message_send_failed` is the one that actually bites: the other three
+        // are pre-empted by `ThreadScreen.blockReason`, which disables the
+        // composer, so they only fire on a stale-cache race. A transient
+        // provider fault is the ordinary case, and it is the one that was
+        // throwing people out of the thread.
+        "allowance_exhausted", "line_suspended", "recipient_blocked",
+        "message_send_failed",
     ]
 
     /// Built by asking `APIError` for each code's own copy rather than by

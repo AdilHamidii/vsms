@@ -17,6 +17,17 @@ struct RecoveryScreen: View {
         state.bestMeasuredCountry(for: context.service)
     }
 
+    /// Our own record, as the raw pair — falling back to the percentage ONLY if
+    /// the route somehow has no sample, which `deliveryRecord` treats as
+    /// not-tested and we then do not claim at all.
+    private func deliveryLine(for s: (country: Country, rate: Int)) -> LocalizedStringKey {
+        if case .measured(let codes, let attempts) =
+            state.deliveryRecord(for: context.service, country: s.country) {
+            return "\(context.service.name) has worked \(codes) of the last \(attempts) times in \(s.country.name)."
+        }
+        return "\(context.service.name) has the best record we've measured in \(s.country.name)."
+    }
+
     /// Fallback when we have measured nothing for this service — which is the
     /// common case, since route-level evidence covers a handful of routes.
     /// Only consulted when `suggestion` is nil: our own delivery always wins
@@ -133,7 +144,18 @@ struct RecoveryScreen: View {
                 if let suggestion {
                     HStack(spacing: 8) {
                         FlagCircle(country: suggestion.country, size: 24)
-                        Text("\(context.service.name) delivers best in \(suggestion.country.name) right now: \(suggestion.rate)% measured.")
+                        // ⚠️ The RAW PAIR, never a percentage.
+                        //
+                        // This is OUR OWN measurement (`rate_source = 'measured'`),
+                        // not a vendor aggregate, and the promotion gate is
+                        // three conclusive attempts — so "67% measured" is
+                        // routinely 2 of 3. `SuccessBadge` states the rule:
+                        // a percentage off a 7-order sample wears the confidence
+                        // of a 700-order one. This was the last surface in the
+                        // app still breaking it, and the `>= 40` gate means the
+                        // first values to appear are small-sample highs, i.e.
+                        // exactly the case the rule exists for.
+                        Text(deliveryLine(for: suggestion))
                             .font(RFont.text(13, weight: .medium))
                             .foregroundStyle(theme.text)
                             .multilineTextAlignment(.leading)
