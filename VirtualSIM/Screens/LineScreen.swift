@@ -399,7 +399,12 @@ struct LineStatusBanner: View {
                  text: "There's a problem with your payment. Update it to keep your number — everything still works for now.")
         case .pastDue:
             Copy(icon: "exclamationmark.circle", tint: theme.fail,
-                 text: "Your subscription lapsed. You can still receive texts and calls, but you can't send until you renew.")
+                 // "and calls" removed — there is no dialer, so this told a
+                 // lapsed subscriber they still had a capability that has never
+                 // existed. The receive/send split is real and is the point of
+                 // the banner: inbound stays on because the user cannot control
+                 // who texts them.
+                 text: "Your subscription lapsed. You can still receive texts, but you can't send until you renew.")
         case .suspended:
             Copy(icon: "lock", tint: theme.fail,
                  text: "Your number is on hold. Resubscribe to get it back before it's released for good.")

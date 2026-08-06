@@ -200,7 +200,10 @@ private struct OwnershipPage: View {
                     .padding(.top, 10)
                     .riseIn(appeared, index: 1)
 
-                Text("Marketplace listings. Dating apps. A side business. The contractor who needs a number to call back on. None of them need the one your family uses.")
+                // "a number to call back on" also implied voice. The situations
+                // are the persuasive part, not the medium — every one of these
+                // works over text.
+                Text("Marketplace listings. Dating apps. A side business. The buyer who wants to message you about the sofa. None of them need the number your family uses.")
                     .font(RFont.text(15))
                     .lineSpacing(3)
                     .foregroundStyle(theme.text2)
@@ -249,7 +252,13 @@ private struct OwnershipPage: View {
                                label: "A monthly subscription, cancel anytime")
                 }
                 RowRule()
-                BenefitRow(icon: "flag", label: "Canadian numbers — they text and call US and Canadian phones")
+                // "text and call" removed — there is no dialer. And the
+                // limitation is real either way: a Canadian number is
+                // domestic-only for SMS (`international_inbound: false`, and
+                // the write to change it returns 200 and does nothing), so a
+                // European user cannot text it from their own phone. Better
+                // said here than discovered after paying.
+                BenefitRow(icon: "flag", label: "Canadian numbers — they exchange texts with US and Canadian phones")
                 RowRule()
                 BenefitRow(icon: RIcon.shield,
                            label: "No ads, no tracking, no email list",
@@ -495,29 +504,25 @@ private struct LineDemo: View {
         .padding(.vertical, 11)
     }
 
+    /// ⚠️ This was an INCOMING CALL row — "Answered right here in the app".
+    ///
+    /// There is no dialer: `flow = .dialer` is assigned nowhere and
+    /// `ContentView` answers that case with "coming very soon". Onboarding runs
+    /// before sign-in, so that was the very first thing a new user saw, and it
+    /// promised a capability they could not use after paying. Same App Review
+    /// 2.3.1 exposure the paywall copy was just fixed for.
+    ///
+    /// Replaced with a THIRD conversation rather than deleted: the point of
+    /// this card is that the number keeps a history across different people —
+    /// which is exactly what a disposable number on page 2 cannot do — and two
+    /// rows made that read as a coincidence rather than a list.
     private var callRow: some View {
-        HStack(spacing: 12) {
-            Image(systemName: "phone.arrow.down.left")
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(theme.live)
-                .frame(width: 32, height: 32)
-                .background(theme.liveSoft, in: .circle)
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Incoming call")
-                    .font(RFont.text(14, weight: .semibold))
-                    .foregroundStyle(theme.text)
-                Text("Answered right here in the app")
-                    .font(RFont.text(13))
-                    .foregroundStyle(theme.text2)
-                    .lineLimit(1)
-            }
-            Spacer(minLength: 8)
-            Text(verbatim: "2:14")
-                .font(RFont.mono(11))
-                .foregroundStyle(theme.text3)
-        }
-        .padding(.horizontal, 18)
-        .padding(.vertical, 11)
+        threadRow(initial: "R",
+                  tint: theme.text2,
+                  name: "Rental viewing",
+                  snippet: "Sorry, running 10 min late",
+                  stamp: "1h",
+                  unread: false)
     }
 
     /// Stated as what is INCLUDED, never as a meter reading. A part-filled bar
@@ -525,7 +530,10 @@ private struct LineDemo: View {
     private var allowance: some View {
         HStack(alignment: .firstTextBaseline, spacing: 18) {
             included(icon: RIcon.message, figure: "200", unit: "texts")
-            included(icon: RIcon.phone, figure: "100", unit: "minutes")
+            // The 100-minute voice allowance is REAL in the schema and is NOT
+            // shown, because the dialer does not exist yet. A figure a buyer
+            // cannot spend is a promise, not a spec sheet. It goes back the day
+            // calling ships — see the same note in `LineCheckoutScreen`.
             Spacer(minLength: 0)
             Text("every month")
                 .font(RFont.text(11))
