@@ -403,7 +403,12 @@ struct ContentView: View {
             if calls.isVoiceAvailable {
                 DialerScreen()
             } else {
-                comingSoonFlow("Calling from your number is coming very soon.")
+                // Calling SHIPPED on 2026-08-06, so "coming soon" would now be
+                // wrong. This branch is doubly unreachable — `AuthGate` always
+                // attaches a real client, and the button that sets
+                // `flow = .dialer` is hidden when it has not — but a fallback
+                // that lies is worse than no fallback.
+                comingSoonFlow("Calling isn't available in this build.")
             }
         }
     }
