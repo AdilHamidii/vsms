@@ -255,7 +255,7 @@ private struct NumberDetailView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
-                SectionHeader(label: "Your plan")
+                SectionHeader(label: String(localized: "Your plan"))
                     // An existing subscriber never passes through the store or
                     // the paywall, so nothing else would have loaded the
                     // product and the price would read as its fallback forever.
@@ -292,7 +292,7 @@ private struct NumberDetailView: View {
                 }
                 .padding(.top, 16)
 
-                SectionHeader(label: "Important").padding(.top, 24)
+                SectionHeader(label: String(localized: "Important")).padding(.top, 24)
                 Card {
                     HStack(alignment: .top, spacing: 10) {
                         Image(systemName: "exclamationmark.triangle")

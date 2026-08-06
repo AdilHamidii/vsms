@@ -87,10 +87,18 @@ struct OrdersScreen: View {
                     .padding(.horizontal, 20)
                     .padding(.top, 6)
 
+                // `String(localized:)`, not bare literals. `SegmentedTabs`
+                // takes a plain `String`, and a literal passed to a `String`
+                // parameter is invisible to the string extractor — so it never
+                // enters the catalog and cannot even be COUNTED as missing by a
+                // "0 untranslated" audit. "All" and "Past" were absent for
+                // exactly this reason while the other two call sites, which do
+                // wrap, were fine. (The component localizes too; both halves
+                // are needed.)
                 SegmentedTabs(selection: $tab, items: [
-                    (.all,    "All",    allItems.count),
-                    (.active, "Active", active.count),
-                    (.past,   "Past",   past.count),
+                    (.all,    String(localized: "All"),    allItems.count),
+                    (.active, String(localized: "Active"), active.count),
+                    (.past,   String(localized: "Past"),   past.count),
                 ])
                 .padding(.horizontal, 16)
                 .padding(.top, 14)

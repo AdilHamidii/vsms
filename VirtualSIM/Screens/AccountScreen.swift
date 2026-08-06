@@ -226,7 +226,7 @@ struct AccountScreen: View {
                 HStack {
                     Metric(label: "Orders", value: "\(state.orders.count)")
                     Spacer()
-                    Metric(label: "Delivered", value: "\(state.deliveredCount)", accent: theme.live)
+                    Metric(label: String(localized: "Delivered"), value: "\(state.deliveredCount)", accent: theme.live)
                     Spacer()
                     Color.clear
                 }
@@ -242,7 +242,7 @@ struct AccountScreen: View {
 
     private var invite: some View {
         VStack(alignment: .leading, spacing: 0) {
-            SectionHeader(label: "Invite friends")
+            SectionHeader(label: String(localized: "Invite friends"))
             Card {
                 VStack(alignment: .leading, spacing: 14) {
                     Text("Share your code. A friend who joins with it starts with **\(AppState.inviteJoinerCredits) free credits** — and you get **5 credits** when they buy their first pack.")

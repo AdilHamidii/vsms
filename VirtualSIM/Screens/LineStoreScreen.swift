@@ -76,7 +76,7 @@ struct LineStoreScreen: View {
                 priceAnchor.padding(.top, 10).riseIn(appeared, index: 0)
                 pitch.padding(.top, 16).riseIn(appeared, index: 0)
 
-                SectionHeader(label: "Where should it be?")
+                SectionHeader(label: String(localized: "Where should it be?"))
                     .padding(.top, 26)
                     .riseIn(appeared, index: 1)
 
