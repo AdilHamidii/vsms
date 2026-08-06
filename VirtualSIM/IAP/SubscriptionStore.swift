@@ -30,7 +30,22 @@ import StoreKit
 @Observable
 @MainActor
 final class SubscriptionStore {
+    /// The MONTHLY plan. Every existing call site means this one.
     private(set) var product: Product?
+    /// The YEARLY plan — $99.99 with a 3-day free trial, same subscription
+    /// group. Held separately rather than in a list so the existing monthly
+    /// call sites keep their meaning; the paywall reads both.
+    private(set) var yearlyProduct: Product?
+
+    /// The trial, straight from StoreKit rather than hardcoded. `nil` when the
+    /// product has no introductory offer, or when this Apple ID is no longer
+    /// eligible — Apple allows ONE introductory offer per subscription GROUP
+    /// per Apple ID, so a user who trialled the monthly cannot trial the
+    /// yearly. Reading it live is what stops the paywall promising a free trial
+    /// to someone who will be charged immediately.
+    var yearlyIntroOffer: Product.SubscriptionOffer? {
+        yearlyProduct?.subscription?.introductoryOffer
+    }
     private(set) var isLoadingProduct = false
     private(set) var isPurchasing = false
     var lastError: String?
@@ -62,8 +77,12 @@ final class SubscriptionStore {
         isLoadingProduct = true
         defer { isLoadingProduct = false }
         do {
-            let fetched = try await Product.products(for: [LineProduct.monthlyId])
-            product = fetched.first
+            // Both plans in one call. `product` stays the MONTHLY so every
+            // existing call site keeps its meaning; the yearly is exposed
+            // alongside it for the paywall to offer.
+            let fetched = try await Product.products(for: LineProduct.allIds)
+            product = fetched.first { $0.id == LineProduct.monthlyId }
+            yearlyProduct = fetched.first { $0.id == LineProduct.yearlyId }
             if product == nil {
                 lastError = String(localized: "Second numbers are temporarily unavailable. Please try again in a moment.")
             }
@@ -137,7 +156,10 @@ final class SubscriptionStore {
         }
         // Not ours. The shared listener forwards everything, and a credit pack
         // reaching here would be sent to a function that refuses it.
-        guard tx.productID == LineProduct.monthlyId else { return false }
+        // `allIds`, not just the monthly: a yearly purchase reaching here and
+        // being disowned would be forwarded to the credits path, which 400s it
+        // as an unknown product on a transaction Apple has already charged.
+        guard LineProduct.allIds.contains(tx.productID) else { return false }
 
         // A renewal, or a transaction replayed on a new device. There is no
         // number to provision — ASSN drives renewals server-side — so finish it
@@ -183,6 +205,18 @@ final class SubscriptionStore {
 /// there pays out credits on every renewal, forever.
 enum LineProduct {
     static let monthlyId = "com.anthersystems.VirtualSIM.line.monthly"
+    /// $99.99/year with a 3-day free trial. SAME subscription group as the
+    /// monthly (22289428), which is what makes them upgrade/downgrade siblings
+    /// Apple prorates and stops a user holding both.
+    static let yearlyId = "com.anthersystems.VirtualSIM.line.yearly"
+
+    /// 🔴 EVERY product in the group. A subscription id missing from here is
+    /// routed to the CREDITS path by `IAPStore.handle`, which sends it to
+    /// `iap-verify`, which 400s it as `unknown_product` and pages the owner —
+    /// for a purchase the user genuinely made and Apple genuinely charged.
+    /// The server's `LINE_SUBSCRIPTION_PRODUCT_IDS` is the mirror of this list;
+    /// they must move together.
+    static let allIds = [monthlyId, yearlyId]
 
     /// The advertised monthly allowance, for the PRE-purchase paywall only.
     ///

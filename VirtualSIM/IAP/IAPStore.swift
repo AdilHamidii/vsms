@@ -147,7 +147,7 @@ final class IAPStore {
         // `unknown_product` for anything not in PRODUCT_TO_CREDITS *and pages
         // the owner*, so a renewal falling through to it would page on every
         // renewal forever and 400 a legitimate transaction.
-        if case .verified(let tx) = result, tx.productID == LineProduct.monthlyId {
+        if case .verified(let tx) = result, LineProduct.allIds.contains(tx.productID) {
             return await onSubscription?(result) ?? false
         }
 

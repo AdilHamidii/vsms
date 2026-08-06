@@ -113,6 +113,31 @@
           "referenceName": "Second Number",
           "subscriptionGroupID": "22289428",
           "type": "RecurringSubscription"
+        },
+        {
+          "adHocOffers": [],
+          "codeOffers": [],
+          "displayPrice": "99.99",
+          "familyShareable": false,
+          "groupNumber": 1,
+          "internalID": "6798759539",
+          "introductoryOffer": {
+            "internalID": "trial-3d",
+            "paymentMode": "free",
+            "subscriptionPeriod": "P3D"
+          },
+          "localizations": [
+            {
+              "description": "Your own number for calls and texts. 3 days free.",
+              "displayName": "Second Number (Yearly)",
+              "locale": "en_US"
+            }
+          ],
+          "productID": "com.anthersystems.VirtualSIM.line.yearly",
+          "recurringSubscriptionPeriod": "P1Y",
+          "referenceName": "Second Number Yearly",
+          "subscriptionGroupID": "22289428",
+          "type": "RecurringSubscription"
         }
       ]
     }

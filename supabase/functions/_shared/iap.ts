@@ -138,6 +138,12 @@ export interface AppleTransactionPayload {
    *  signal, not its value. */
   revocationDate?: number;
   revocationReason?: number;
+
+  /** 1 = introductory, 2 = promotional, 3 = offer code. Apple omits it
+   *  entirely on an ordinary paid period, so ABSENCE means "paying". */
+  offerType?: number;
+  /** "FREE_TRIAL" | "PAY_AS_YOU_GO" | "PAY_UP_FRONT" on newer payloads. */
+  offerDiscountType?: string;
 }
 
 /** Thrown for anything that fails the trust checks. Carries a short stable
@@ -409,10 +415,44 @@ export function creditsForProduct(productId: string): number | null {
 export const LINE_SUBSCRIPTION_PRODUCT_ID =
   "com.anthersystems.VirtualSIM.line.monthly";
 
+/** EVERY product in the line subscription group.
+ *
+ * 🔴 A product created in App Store Connect and not added here is worse than
+ * missing: it falls through `isSubscriptionProduct` into `iap-verify`'s
+ * unknown-product branch, which 400s a legitimate purchase, pages the owner,
+ * and tells them to add it to `PRODUCT_TO_CREDITS` — which for a subscription
+ * would pay wallet credits on every renewal forever.
+ *
+ * Both live in the SAME subscription group (22289428), which is what makes
+ * them upgrade/downgrade siblings Apple prorates, and what stops a user
+ * holding both at once. `phone_lines_one_apple_line_per_user` assumes exactly
+ * that: a second concurrent Apple line would be refused, so a user in two
+ * groups would be paying for a number they can never receive.
+ */
+export const LINE_SUBSCRIPTION_PRODUCT_IDS: readonly string[] = [
+  "com.anthersystems.VirtualSIM.line.monthly",
+  "com.anthersystems.VirtualSIM.line.yearly",
+];
+
+/** True when this transaction is being served by an introductory offer — for
+ *  us, the 3-day free trial on the yearly plan.
+ *
+ * ⚠️ Nothing may GATE provisioning on this. A trial subscriber is entitled to
+ * a working number; that is the entire product they are trialling. It exists
+ * so ops can tell a trial apart from a paid period, because the two are
+ * otherwise identical in every table we keep — a trial simply carries
+ * `price: 0` and an `expiresDate` three days out, and Apple then sends
+ * DID_RENEW on conversion or EXPIRED on cancellation, both of which the
+ * existing lapse state machine already handles.
+ */
+export function isFreeTrial(tx: AppleTransactionPayload): boolean {
+  return tx.offerType === 1 || tx.offerDiscountType === "FREE_TRIAL";
+}
+
 /** `iap-verify` must call this BEFORE `creditsForProduct`. Its unmapped-product
  *  branch returns HTTP 400 `unknown_product` and fires a Telegram alert — so
  *  without this guard, every single renewal pages the owner and 400s a
  *  perfectly legitimate transaction. */
 export function isSubscriptionProduct(productId: string): boolean {
-  return productId === LINE_SUBSCRIPTION_PRODUCT_ID;
+  return LINE_SUBSCRIPTION_PRODUCT_IDS.includes(productId);
 }
