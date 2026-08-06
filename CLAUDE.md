@@ -1489,6 +1489,24 @@ the missing field in its error — but if the read is wrong and the metadata is
 in fact complete, it SUBMITS, and cancelling an IAP submission leaves the
 version `DEVELOPER_REJECTED` and needs the web UI to recover (see Release prep).
 
+**THREE HYPOTHESES TESTED AND DISPROVED (2026-08-06) — do not re-run them:**
+
+1. **Missing review screenshot.** Uploaded, attached, `assetDeliveryState: COMPLETE`
+   with no errors. State did not move in 20 minutes.
+2. **Territories priced only in the base.** Genuinely true and genuinely a gap —
+   1 of 32 priced — and fixing it (all 32 now) did not move the state in 9 minutes.
+3. **No editable app version to attach a first subscription to.** Every version
+   was `READY_FOR_SALE`; created draft **2.0** (`007bfea8-…`,
+   `PREPARE_FOR_SUBMISSION`). State did not move in 12 minutes.
+
+Keep version 2.0 — it is needed to ship anyway. Fixes 1 and 2 were real defects
+worth having regardless; neither was THE blocker.
+
+**The API does not expose a reasons array anywhere on the resource, and every
+field it does expose is present.** Stop probing: open the subscription in the
+App Store Connect **web UI**, which flags the missing item in red. That is the
+only remaining diagnosis and it takes seconds.
+
 **Verified present on `6798378879` as of 2026-08-06, so do not re-check these:**
 en-US subscription localization (name + description), subscription **group**
 localization, review notes, `subscriptionPeriod`, `familySharable`, 32-territory
