@@ -2678,20 +2678,45 @@ ads.apple.com → Settings → Billing.
 
 ### Known-open
 
-🔴 **OWNER ACTION, BLOCKS INBOUND CALLING ENTIRELY —
-`TELNYX_IOS_PUSH_CREDENTIAL_ID` DOES NOT EXIST.** `supabase secrets list`
-returns only `TELNYX_API_KEY`, `TELNYX_MESSAGING_PROFILE_ID` and
-`TELNYX_PUBLIC_KEY`. `createCredentialConnection` spreads
-`...(opts.pushCredentialId ? {…} : {})`, so with the var unset it silently
-omits the field rather than failing, and **every credential connection is built
-without VoIP-push capability — no inbound call can ever wake the device.** This
-is code-complete on our side and cannot be fixed from the repo: it needs a VoIP
-push credential created in the Telnyx dashboard (uploading the APNs key for
-`com.anthersystems.VirtualSIM.voip`) and then
-`supabase secrets set TELNYX_IOS_PUSH_CREDENTIAL_ID=<id>`. Until then
-`mint-line-token` correctly reports `inbound_ready: false` and logs
-`telnyx_push_credential_missing` — it used to report `true`, which is how this
-stayed invisible. **Outbound calling is unaffected.**
+✅ **RESOLVED 2026-08-06 — `TELNYX_IOS_PUSH_CREDENTIAL_ID` EXISTS AND POINTS AT
+OUR OWN CERTIFICATE.** Credential `65804c06-85e1-4467-b868-818e9e370ac8`, alias
+`com.anthersystems.VirtualSIM`, carrying a VoIP Services Certificate with
+`UID=com.anthersystems.VirtualSIM.voip`. Secret set and `mint-line-token`
+redeployed (v6). *Original:* the var was unset, and
+`createCredentialConnection` spreads `...(opts.pushCredentialId ? {…} : {})`,
+so it silently omitted the field rather than failing — every credential
+connection was built without VoIP-push capability and no inbound call could
+wake the device.
+
+⚠️ **IT EXPIRES 2027-09-05, AND THE FAILURE IS SILENT.** A VoIP certificate
+lasts a year; when it lapses, Telnyx keeps accepting the connection and the
+phone simply never rings. Nothing in the app or the API reports it. Renew in
+the Apple portal against the SAME private key
+(`~/Desktop/telnyx-voip/voip.key`, outside the repo — losing it means the
+certificate cannot be re-paired).
+
+🔴 **THE ACCOUNT SHIPS WITH TWO DECOY PUSH CREDENTIALS. DO NOT USE THEM.**
+`GET /v2/mobile_push_credentials` lists `ios-native-new-march-2025` and
+`android-native-new-march-2025`, both `is_public: true` — they are TELNYX'S OWN
+DEMO credentials. The iOS one is issued to `com.telnyx.webrtcapp.voip` / "Telnyx
+LLC" and **expired 2026-04-12**. Pointing the secret at that id would make
+`mint-line-token` report `inbound_ready: true` while every push went to the
+wrong topic on an expired certificate — the exact shape of failure this repo
+keeps paying for. Ours is the one whose certificate subject names OUR bundle id;
+check the subject, never the alias.
+
+⚠️ **Apple's API CANNOT create this certificate — do not go looking.** Probed
+2026-08-06: `POST /v1/certificates` with `certificateType: VOIP_SERVICES`
+returns 409 enumerating the valid values, and VoIP is not among them
+(`APPLE_PAY*`, `DEVELOPER_ID*`, `DEVELOPMENT`, `DISTRIBUTION`, `IOS_*`,
+`MAC_*`, `PASS_TYPE_ID*`). The web portal is the only route. The CSR **can** be
+generated with `openssl` though, which skips Keychain's Certificate Assistant
+and the `.p12` export Telnyx's docs describe:
+`openssl req -new -newkey rsa:2048 -nodes -keyout voip.key -out voip.csr -subj …`
+Telnyx wants the key as **PKCS#1** (`BEGIN RSA PRIVATE KEY`), so
+`openssl rsa -in voip.key -out key.pem` is mandatory — `openssl req` writes
+PKCS#8 and the upload fails on it. `scripts/finish-telnyx.py` does the whole
+chain including a modulus check that the cert and key are actually a pair.
 
 **Top of the list as of 2026-08-05:**
 
