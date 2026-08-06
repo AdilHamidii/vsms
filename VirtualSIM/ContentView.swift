@@ -3,6 +3,22 @@ import SwiftUI
 enum ActiveSheet: String, Identifiable {
     case services, country, credits, emailDomain
     var id: String { rawValue }
+
+    /// Height belongs to the SHEET, not to the presenter.
+    ///
+    /// Every sheet was presented `.large` from one place out here, which is
+    /// right for a 265-row service list and wrong for the domain picker: that
+    /// one typically renders two to four rows, so roughly 80% of a full-height
+    /// sheet was empty. The domain sheet asked for its own detents from inside
+    /// its body and it had no effect — an OUTER `.presentationDetents` wins
+    /// over one applied to the content, so the fix has to live at the
+    /// presentation site.
+    var detents: Set<PresentationDetent> {
+        switch self {
+        case .emailDomain: [.medium, .large]
+        default:           [.large]
+        }
+    }
 }
 
 struct ContentView: View {
@@ -289,7 +305,7 @@ struct ContentView: View {
         .sheet(item: $sheet) { which in
             sheetContent(which)
                 .modifier(EnvBundle(theme: theme, state: state, api: api, push: push, session: session, iap: iap, subs: subs, calls: calls))
-                .presentationDetents([.large])
+                .presentationDetents(which.detents)
                 .presentationDragIndicator(.visible)
                 .presentationBackground(theme.bg)
         }
@@ -306,7 +322,7 @@ struct ContentView: View {
                 .sheet(item: $flowSheet) { which in
                     sheetContent(which)
                         .modifier(EnvBundle(theme: theme, state: state, api: api, push: push, session: session, iap: iap, subs: subs, calls: calls))
-                        .presentationDetents([.large])
+                        .presentationDetents(which.detents)
                         .presentationDragIndicator(.visible)
                         .presentationBackground(theme.bg)
                 }

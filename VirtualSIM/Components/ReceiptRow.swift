@@ -19,10 +19,21 @@ struct ReceiptRow<Leading: View, Trailing: View>: View {
     /// conflict even without the dimming, so the fix is to not wrap at all
     /// rather than to drop the `.disabled`. Same lesson `SettingRow` already
     /// carries; don't reintroduce it here.
+    /// A tappable receipt row opens a picker, so it gets the same press
+    /// feedback and selection haptic as every other picker affordance
+    /// (`OptionCard`, `SheetHeader`'s close, `SettingRow`). `.plain` gave it
+    /// none — and a row that does not acknowledge a tap reads as a row that did
+    /// not receive one, which on Checkout is the moment the user is deciding
+    /// whether this app works.
     var body: some View {
         if let onTap {
-            Button(action: onTap) { content }
-                .buttonStyle(.plain)
+            Button {
+                RHaptic.select()
+                onTap()
+            } label: {
+                content
+            }
+            .pressable(0.985)
         } else {
             content
         }
