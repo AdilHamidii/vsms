@@ -162,6 +162,20 @@ struct LineAPI {
         )
     }
 
+    /// The pre-flight gate for an outbound call: it checks the line's status
+    /// and RESERVES voice allowance, then returns.
+    ///
+    /// It deliberately does not place the call — the client dials over WebRTC
+    /// with a credential from `mint-line-token`. Putting a server round trip on
+    /// the ring path would add its latency and its failure modes to the one
+    /// interaction where a stall is unmistakable.
+    func beginCall(to: String) async throws -> LineCallGrant {
+        struct Body: Encodable { let to: String }
+        return try await client.request(
+            .post, path: "functions/v1/begin-line-call", body: Body(to: to)
+        )
+    }
+
     func calls(limit: Int = 100) async throws -> [LineCall] {
         try await client.request(
             .get, path: "rest/v1/line_calls",

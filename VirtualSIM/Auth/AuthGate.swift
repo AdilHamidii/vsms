@@ -10,6 +10,13 @@ struct AuthGate: View {
     /// deliberately does NOT open its own `Transaction.updates` listener; see
     /// `SubscriptionStore`.
     @State private var subs = SubscriptionStore()
+    /// Owns CallKit and PushKit for the rented line.
+    ///
+    /// Constructed here rather than in `ContentView` because it registers a
+    /// `CXProvider` delegate and must outlive any view that presents a call —
+    /// and because an incoming call has to be reportable whatever screen the
+    /// app happens to be on.
+    @State private var calls = CallController()
     @AppStorage("onboardingComplete") private var onboardingComplete = false
     // Pre-sign-in screens (onboarding, sign-in, splash) run before AppState
     // exists, so they read the same UserDefaults it will. Via @AppStorage so a
@@ -73,12 +80,18 @@ struct AuthGate: View {
         .environment(push)
         .environment(iap)
         .environment(subs)
+        .environment(calls)
         .task {
             push.attach(api: api, session: session)
             iap.attach(api: api)
             // AFTER iap.attach, because this registers the subscription handler
             // on the single shared transaction listener that IAPStore owns.
             subs.attach(api: api, iap: iap)
+            // No `voice:` argument yet — the TelnyxRTC package is not added, so
+            // this leaves `NullVoiceClient` in place and `isVoiceAvailable`
+            // false, which is what keeps the dialer unreachable. Pass a real
+            // client here and the whole calling path lights up.
+            calls.attach(api: api)
             AppDelegate.push = push
             await session.bootstrap()
         }

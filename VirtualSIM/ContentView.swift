@@ -11,6 +11,7 @@ struct ContentView: View {
     @Environment(Session.self) private var session
     @Environment(IAPStore.self) private var iap
     @Environment(SubscriptionStore.self) private var subs
+    @Environment(CallController.self) private var calls
     @Environment(\.scenePhase) private var scenePhase
 
     @State private var state = AppState()
@@ -107,6 +108,23 @@ struct ContentView: View {
                 .environment(state)
                 .animation(.easeOut(duration: 0.25), value: state.lastError)
         }
+        // A live call sits ABOVE the flow cover and BELOW maintenance/splash.
+        //
+        // It cannot be a `FlowStage`: a call can arrive while a
+        // `fullScreenCover` is already open, `fullScreenCover(item:)` cannot
+        // present a second cover, and swapping `flow` would destroy whatever
+        // the user had in progress — including a half-finished checkout. The
+        // environment is re-injected because a ZStack layer at this level does
+        // not inherit reliably, the same reason `EnvBundle` exists.
+        .overlay {
+            if calls.isLive {
+                InCallOverlay()
+                    .environment(\.theme, theme)
+                    .environment(calls)
+                    .transition(.opacity)
+            }
+        }
+        .animation(.easeOut(duration: 0.22), value: calls.isLive)
         .overlay {
             if state.maintenance.isActiveNow {
                 MaintenanceView(
@@ -270,14 +288,14 @@ struct ContentView: View {
         }
         .sheet(item: $sheet) { which in
             sheetContent(which)
-                .modifier(EnvBundle(theme: theme, state: state, api: api, push: push, session: session, iap: iap, subs: subs))
+                .modifier(EnvBundle(theme: theme, state: state, api: api, push: push, session: session, iap: iap, subs: subs, calls: calls))
                 .presentationDetents([.large])
                 .presentationDragIndicator(.visible)
                 .presentationBackground(theme.bg)
         }
         .fullScreenCover(item: $state.flow) { stage in
             flowContent(stage)
-                .modifier(EnvBundle(theme: theme, state: state, api: api, push: push, session: session, iap: iap, subs: subs))
+                .modifier(EnvBundle(theme: theme, state: state, api: api, push: push, session: session, iap: iap, subs: subs, calls: calls))
                 .preferredColorScheme(state.appearance.colorScheme)
                 .overlay(alignment: .top) {
                     ErrorBanner()
@@ -287,7 +305,7 @@ struct ContentView: View {
                 }
                 .sheet(item: $flowSheet) { which in
                     sheetContent(which)
-                        .modifier(EnvBundle(theme: theme, state: state, api: api, push: push, session: session, iap: iap, subs: subs))
+                        .modifier(EnvBundle(theme: theme, state: state, api: api, push: push, session: session, iap: iap, subs: subs, calls: calls))
                         .presentationDetents([.large])
                         .presentationDragIndicator(.visible)
                         .presentationBackground(theme.bg)
@@ -338,7 +356,15 @@ struct ContentView: View {
         case .thread:
             ThreadScreen()
         case .dialer:
-            comingSoonFlow("Calling from your number is coming very soon.")
+            // Gated on a real WebRTC client being attached. The dialer, CallKit
+            // and the allowance gate are all built and wired, but the TelnyxRTC
+            // package is not added yet — so without this the keypad would place
+            // calls that always fail. Ship the plumbing, not the dead button.
+            if calls.isVoiceAvailable {
+                DialerScreen()
+            } else {
+                comingSoonFlow("Calling from your number is coming very soon.")
+            }
         }
     }
 
@@ -440,6 +466,12 @@ private struct EnvBundle: ViewModifier {
     let session: Session
     let iap: IAPStore
     let subs: SubscriptionStore
+    /// Required here specifically: the dialer is presented INSIDE the flow
+    /// cover, and a cover's content does not inherit `@Observable` environment
+    /// objects from its presenter — which is the whole reason this modifier
+    /// exists. Omitting it crashes the dialer on presentation rather than
+    /// failing gracefully.
+    let calls: CallController
 
     func body(content: Content) -> some View {
         content
@@ -450,6 +482,7 @@ private struct EnvBundle: ViewModifier {
             .environment(session)
             .environment(iap)
             .environment(subs)
+            .environment(calls)
     }
 }
 

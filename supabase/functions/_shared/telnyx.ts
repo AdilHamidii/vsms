@@ -532,6 +532,103 @@ export async function attachVoiceConnection(
   return true;
 }
 
+// ── Call detail records ────────────────────────────────────────────────────
+//
+// ⚠️ **WRITTEN FROM THE DOCS, NOT PROBED** — the same caveat as the voice block
+// above, and for the same reason: there is no line to place a call on yet. The
+// FIRST real CDR poll is the probe. `sync-telnyx-cdr` records every fault and
+// the shape of the first record it sees into `app_config.telnyx_cdr_probe`, so
+// the unknowns below become answerable from one production run rather than
+// from a second reading of the documentation.
+//
+// Three things that are genuinely uncertain and are handled defensively:
+//  - the billed-duration field name (`billed_duration_secs` is documented;
+//    `duration_millis` also appears in examples),
+//  - whether `cost` is a string, a number, or an object with a currency,
+//  - whether `call_session_id` is present on every record type or only on
+//    legs. We match on session id and fall back to leg id.
+
+export interface TelnyxCallRecord {
+  sessionId: string | null;
+  legId: string | null;
+  billedSeconds: number | null;
+  costCents: number | null;
+  hangupCause: string | null;
+  direction: string | null;
+  raw: Record<string, unknown>;
+}
+
+function firstNumber(o: Record<string, unknown>, keys: string[]): number | null {
+  for (const k of keys) {
+    const v = o[k];
+    if (v == null) continue;
+    const n = typeof v === "number" ? v : parseFloat(String(v));
+    if (Number.isFinite(n)) return n;
+  }
+  return null;
+}
+
+/** Normalises whatever shape a record arrives in. Returns `null` for a record
+ *  we cannot key on at all rather than inventing an id — settling the wrong
+ *  call is worse than settling none. */
+export function normaliseCallRecord(
+  r: Record<string, unknown>,
+): TelnyxCallRecord | null {
+  const sessionId = (r.call_session_id ?? r.session_id ?? null) as string | null;
+  const legId = (r.call_leg_id ?? r.leg_id ?? null) as string | null;
+  if (!sessionId && !legId) return null;
+
+  // Prefer an explicit billed figure; fall back to a duration, in whichever
+  // unit it arrives in. Milliseconds are rounded UP to the second so a
+  // sub-second call still costs the user something rather than nothing.
+  let billed = firstNumber(r, ["billed_duration_secs", "billed_seconds", "duration_secs"]);
+  if (billed == null) {
+    const ms = firstNumber(r, ["duration_millis", "duration_ms"]);
+    if (ms != null) billed = Math.ceil(ms / 1000);
+  }
+
+  const costRaw = r.cost ?? r.total_cost ?? null;
+  let costCents: number | null = null;
+  if (costRaw != null) {
+    const amount = typeof costRaw === "object"
+      ? firstNumber(costRaw as Record<string, unknown>, ["amount", "value"])
+      : firstNumber({ v: costRaw }, ["v"]);
+    if (amount != null) costCents = Math.round(amount * 100);
+  }
+
+  return {
+    sessionId,
+    legId,
+    billedSeconds: billed,
+    costCents,
+    hangupCause: (r.hangup_cause ?? r.cause ?? null) as string | null,
+    direction: (r.direction ?? null) as string | null,
+    raw: r,
+  };
+}
+
+/** Call detail records since `sinceISO`. Page size is bounded because the edge
+ *  runtime dies at ~150s and a wide date range on a busy account is unbounded
+ *  work. */
+export async function fetchCallDetailRecords(opts: {
+  sinceISO: string;
+  untilISO: string;
+  pageSize?: number;
+}): Promise<TelnyxCallRecord[] | TelnyxFault> {
+  const params = new URLSearchParams({
+    "filter[record_type]": "call",
+    "filter[date_range][start_time]": opts.sinceISO,
+    "filter[date_range][end_time]": opts.untilISO,
+    "page[size]": String(Math.min(opts.pageSize ?? 100, 250)),
+  });
+  const r = await call<Record<string, unknown>[]>("GET", `/detail_records?${params}`);
+  if (faultOf(r)) return r;
+  const rows = Array.isArray(r) ? r : [];
+  return rows
+    .map((x) => normaliseCallRecord(x as Record<string, unknown>))
+    .filter((x): x is TelnyxCallRecord => x !== null);
+}
+
 // ── Balance ────────────────────────────────────────────────────────────────
 
 export async function getBalance(): Promise<{ usd: number } | TelnyxFault> {

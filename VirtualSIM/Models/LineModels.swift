@@ -242,6 +242,24 @@ struct LineCall: Codable, Identifiable, Hashable {
     var displaySeconds: Int? { billedSeconds ?? durationSeconds }
 }
 
+/// Permission to place one call, plus the allowance that was reserved for it.
+///
+/// `reservedSeconds` is an ESTIMATE, not a limit: the call is not cut off when
+/// it runs past, because the CDR is the billing truth and it arrives minutes
+/// later. `sync-telnyx-cdr` settles the difference, and `settle_line_allowance`
+/// is the one path allowed to overshoot the monthly allowance for exactly this
+/// reason.
+struct LineCallGrant: Codable, Hashable {
+    let ok: Bool
+    let callId: String
+    let from: String
+    let to: String
+    let reservedSeconds: Int
+    /// Nil when the server could not compute it — rendered as nothing rather
+    /// than as zero, which would read as "you are out of minutes".
+    let remainingSeconds: Int?
+}
+
 // MARK: - Buying one
 
 /// A city we sell numbers in. The picker offers CITIES rather than area codes

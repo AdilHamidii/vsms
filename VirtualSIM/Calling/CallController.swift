@@ -1,0 +1,364 @@
+import CallKit
+import Foundation
+import Observation
+import PushKit
+import AVFoundation
+
+/// Owns everything about a live call: CallKit, PushKit, and the WebRTC client.
+///
+/// ── Why this is not a `FlowStage` ────────────────────────────────────────
+///
+/// A call can arrive while a `fullScreenCover` is already open, and
+/// `fullScreenCover(item:)` cannot present a second cover. Swapping `flow`
+/// mid-checkout would also destroy the user's draft. So the in-call UI is a
+/// `ZStack` layer in `ContentView` driven by this object, above the flow cover
+/// and below the maintenance and splash overlays — and it must be added to
+/// `EnvBundle`, or nothing presented in a cover can see it.
+@Observable
+@MainActor
+final class CallController: NSObject {
+    enum Phase: Equatable {
+        case idle
+        case dialing        // we placed it, not yet ringing at the other end
+        case ringing        // inbound, not yet answered
+        case connecting     // answered, media negotiating
+        case active
+        case ending
+    }
+
+    private(set) var phase: Phase = .idle
+    private(set) var peer: String = ""
+    private(set) var isOutbound = true
+    private(set) var startedAt: Date?
+    private(set) var isMuted = false
+    private(set) var isSpeaker = false
+    /// Surfaced rather than swallowed: a call that silently fails to start is
+    /// indistinguishable from a dead button.
+    var lastError: String?
+
+    /// Seconds left this month, mirrored from the line so the dialer can refuse
+    /// before a round trip. The SERVER is still the authority —
+    /// `begin-line-call` reserves the allowance and can refuse independently.
+    var remainingSeconds: Int?
+
+    private let provider: CXProvider
+    private let callControl = CXCallController()
+    private var voice: VoiceClient
+    private var pushRegistry: PKPushRegistry?
+
+    /// The CallKit id for the call in flight. CallKit is keyed on UUID and the
+    /// provider is keyed on ours, so they must be the same value or an end
+    /// action will not match anything.
+    private var currentUUID: UUID?
+    /// Our own `line_calls` row, from `begin-line-call`.
+    private(set) var currentCallId: String?
+
+    private var apiClient: APIClient?
+    private var lineE164: String?
+
+    override init() {
+        let config = CXProviderConfiguration()
+        config.supportsVideo = false
+        config.maximumCallGroups = 1
+        config.maximumCallsPerCallGroup = 1
+        // Generic handle: the peer is a phone number, and CallKit uses this to
+        // decide what the system call log and the lock screen show.
+        config.supportedHandleTypes = [.phoneNumber, .generic]
+        // ⚠️ Deliberately NOT enabling `includesCallsInRecents` blindly — a
+        // rented second number appearing in the system call log as if it were
+        // the user's own line is exactly the confusion this product exists to
+        // avoid. Left at the default so the entry is attributed to the app.
+        self.provider = CXProvider(configuration: config)
+        self.voice = NullVoiceClient()
+        super.init()
+        provider.setDelegate(self, queue: nil)
+    }
+
+    func attach(api: APIClient, voice: VoiceClient? = nil) {
+        self.apiClient = api
+        if let voice {
+            self.voice = voice
+            isVoiceAvailable = true
+        }
+    }
+
+    /// Whether a real WebRTC client is attached.
+    ///
+    /// ⚠️ **Every entry point to calling must gate on this.** Until the
+    /// `TelnyxRTC` package is added, `NullVoiceClient` throws on every dial —
+    /// so an ungated dialer would be a button that always fails, which is
+    /// precisely the "advertise a function the app does not perform" problem
+    /// the paywall copy was just fixed for. The plumbing ships; the entry point
+    /// appears when the SDK does.
+    private(set) var isVoiceAvailable = false
+
+    /// Registers for VoIP pushes. Safe to call repeatedly.
+    ///
+    /// Only worth doing once a line exists — a user with no number can never
+    /// receive a call, and registering earlier just asks for a token nothing
+    /// will ever send to.
+    func registerForVoIPPushes() {
+        guard pushRegistry == nil else { return }
+        let registry = PKPushRegistry(queue: .main)
+        registry.delegate = self
+        registry.desiredPushTypes = [.voIP]
+        pushRegistry = registry
+    }
+
+    var elapsed: TimeInterval {
+        guard let startedAt else { return 0 }
+        return Date().timeIntervalSince(startedAt)
+    }
+
+    var isLive: Bool { phase != .idle }
+
+    // MARK: - Outbound
+
+    /// Gate, then dial.
+    ///
+    /// The server call happens FIRST and is allowed to refuse: it checks the
+    /// line's status and reserves the voice allowance. Dialing before that
+    /// would let a suspended or exhausted line place a call we then have to pay
+    /// for and cannot bill.
+    func placeCall(to number: String, from lineNumber: String) async {
+        guard phase == .idle, let api = apiClient else { return }
+        lastError = nil
+        peer = number
+        isOutbound = true
+        phase = .dialing
+
+        do {
+            let begun = try await LineAPI(client: api).beginCall(to: number)
+            currentCallId = begun.callId
+            remainingSeconds = begun.remainingSeconds
+        } catch let err as APIError {
+            phase = .idle
+            lastError = err.userMessage
+            RHaptic.warn()
+            return
+        } catch {
+            phase = .idle
+            lastError = String(localized: "Couldn't start the call. Please try again.")
+            RHaptic.warn()
+            return
+        }
+
+        // Tell CallKit before the SDK, so the system UI is up while media
+        // negotiates. `CXStartCallAction` is what makes this a real call as far
+        // as iOS is concerned — audio routing, the green pill, interruption
+        // handling with the phone app.
+        let uuid = UUID()
+        currentUUID = uuid
+        let handle = CXHandle(type: .phoneNumber, value: number)
+        let action = CXStartCallAction(call: uuid, handle: handle)
+        do {
+            try await callControl.request(CXTransaction(action: action))
+        } catch {
+            await failCall(String(localized: "iOS wouldn't start the call."))
+            return
+        }
+
+        do {
+            _ = try await voice.dial(to: number, from: lineNumber)
+            provider.reportOutgoingCall(with: uuid, startedConnectingAt: Date())
+        } catch {
+            await failCall(error.localizedDescription)
+        }
+    }
+
+    // MARK: - Lifecycle
+
+    private func failCall(_ message: String) async {
+        lastError = message
+        RHaptic.warn()
+        await endCall()
+    }
+
+    func endCall() async {
+        guard let uuid = currentUUID else {
+            resetState()
+            return
+        }
+        phase = .ending
+        let action = CXEndCallAction(call: uuid)
+        // If CallKit refuses, still tear our own state down — otherwise the
+        // overlay is stuck over the app with no way out.
+        try? await callControl.request(CXTransaction(action: action))
+        await voice.hangup()
+        resetState()
+    }
+
+    func toggleMute() async {
+        isMuted.toggle()
+        await voice.setMuted(isMuted)
+        RHaptic.select()
+    }
+
+    func toggleSpeaker() async {
+        isSpeaker.toggle()
+        await voice.setSpeaker(isSpeaker)
+        RHaptic.select()
+    }
+
+    func sendDigit(_ d: String) async {
+        await voice.sendDTMF(d)
+        RHaptic.select()
+    }
+
+    private func resetState() {
+        phase = .idle
+        peer = ""
+        startedAt = nil
+        isMuted = false
+        isSpeaker = false
+        currentUUID = nil
+        currentCallId = nil
+    }
+
+    /// Called by the SDK once media is flowing.
+    func mediaConnected() {
+        guard phase != .active else { return }
+        phase = .active
+        startedAt = Date()
+        RHaptic.success()
+        if let uuid = currentUUID, isOutbound {
+            provider.reportOutgoingCall(with: uuid, connectedAt: Date())
+        }
+    }
+
+    func remoteEnded() {
+        Task { await endCall() }
+    }
+}
+
+// MARK: - CallKit
+
+extension CallController: CXProviderDelegate {
+    nonisolated func providerDidReset(_ provider: CXProvider) {
+        Task { @MainActor in
+            await voice.hangup()
+            resetState()
+        }
+    }
+
+    nonisolated func provider(_ provider: CXProvider, perform action: CXStartCallAction) {
+        action.fulfill()
+    }
+
+    nonisolated func provider(_ provider: CXProvider, perform action: CXAnswerCallAction) {
+        Task { @MainActor in
+            phase = .connecting
+            do {
+                try await voice.answer()
+                action.fulfill()
+            } catch {
+                lastError = error.localizedDescription
+                action.fail()
+            }
+        }
+    }
+
+    nonisolated func provider(_ provider: CXProvider, perform action: CXEndCallAction) {
+        Task { @MainActor in
+            await voice.hangup()
+            resetState()
+            action.fulfill()
+        }
+    }
+
+    nonisolated func provider(_ provider: CXProvider, perform action: CXSetMutedCallAction) {
+        Task { @MainActor in
+            isMuted = action.isMuted
+            await voice.setMuted(action.isMuted)
+            action.fulfill()
+        }
+    }
+
+    /// ⚠️ **NEVER call `AVAudioSession.setActive(true)` yourself.** CallKit
+    /// activates the session and hands it over here. Activating it manually is
+    /// the classic "no audio on the first call, fine on every call after"
+    /// bug — the session is already owned by the system by the time your code
+    /// runs, and the second activation is what breaks it.
+    nonisolated func provider(_ provider: CXProvider, didActivate audioSession: AVAudioSession) {
+        Task { @MainActor in mediaConnected() }
+    }
+
+    nonisolated func provider(_ provider: CXProvider, didDeactivate audioSession: AVAudioSession) { }
+}
+
+// MARK: - PushKit
+
+extension CallController: PKPushRegistryDelegate {
+    nonisolated func pushRegistry(_ registry: PKPushRegistry,
+                                  didUpdate credentials: PKPushCredentials,
+                                  for type: PKPushType) {
+        guard type == .voIP else { return }
+        let token = credentials.token.map { String(format: "%02x", $0) }.joined()
+        Task { @MainActor in await uploadVoIPToken(token) }
+    }
+
+    nonisolated func pushRegistry(_ registry: PKPushRegistry,
+                                  didInvalidatePushTokenFor type: PKPushType) { }
+
+    /// 🔴 **`reportNewIncomingCall` MUST be called synchronously, here, before
+    /// any `await`.**
+    ///
+    /// iOS terminates the app if a `.voIP` push does not produce an incoming
+    /// call report inside this callback — and on repeat offences it stops
+    /// delivering VoIP pushes to the app entirely, which is not recoverable by
+    /// shipping a fix. So the call is reported from the PAYLOAD alone, with no
+    /// network round trip and no SDK involvement, and the SDK is handed the
+    /// push afterwards.
+    ///
+    /// The completion handler is invoked in `reportNewIncomingCall`'s own
+    /// completion, which is what tells iOS the obligation was met.
+    nonisolated func pushRegistry(_ registry: PKPushRegistry,
+                                  didReceiveIncomingPushWith payload: PKPushPayload,
+                                  for type: PKPushType,
+                                  completion: @escaping () -> Void) {
+        guard type == .voIP else { completion(); return }
+
+        let info = payload.dictionaryPayload
+        let from = (info["from"] as? String) ?? (info["caller"] as? String) ?? ""
+        let uuid = (info["uuid"] as? String).flatMap(UUID.init(uuidString:)) ?? UUID()
+
+        let update = CXCallUpdate()
+        update.remoteHandle = CXHandle(type: .phoneNumber, value: from)
+        update.hasVideo = false
+        update.supportsGrouping = false
+        update.supportsUngrouping = false
+        update.supportsHolding = false
+
+        provider.reportNewIncomingCall(with: uuid, update: update) { [weak self] error in
+            // Only AFTER the obligation is met do we touch our own state.
+            Task { @MainActor in
+                guard let self, error == nil else { completion(); return }
+                self.currentUUID = uuid
+                self.peer = from
+                self.isOutbound = false
+                self.phase = .ringing
+                completion()
+            }
+        }
+    }
+
+    private func uploadVoIPToken(_ token: String) async {
+        guard let api = apiClient else { return }
+        // Registered under its own kind so `_shared/apns.ts` can send a VoIP
+        // push-type to the VoIP topic — an alert token and a VoIP token are
+        // different tokens and are not interchangeable.
+        try? await PushAPI(client: api).register(
+            token: token,
+            environment: pushEnvironment,
+            bundleId: (Bundle.main.bundleIdentifier ?? "com.anthersystems.VirtualSIM") + ".voip"
+        )
+    }
+
+    private var pushEnvironment: String {
+        #if DEBUG
+        "sandbox"
+        #else
+        "production"
+        #endif
+    }
+}
