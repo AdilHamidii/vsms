@@ -1588,10 +1588,21 @@ final class AppState {
     @MainActor
     func sendLineMessage(using api: LineAPI, to: String, text: String) async -> Bool {
         do {
-            // The line ON SCREEN. Omitting it sends from whichever line the
-            // server picks, which for a user with two numbers means replying to
-            // a conversation from the wrong one.
-            let res = try await api.send(to: to, text: text, lineId: line?.id)
+            // 🔴 THE THREAD'S OWN LINE, not the one the tab happens to be
+            // showing. A conversation belongs to the number it started on, and
+            // a reply has to leave from that number or the far end sees a text
+            // from a stranger — with our other number's allowance spent on it.
+            //
+            // The two differ in an ordinary flow: tapping a message push opens
+            // the thread directly (`ThreadScreen` reads the UNFILTERED thread
+            // list, deliberately, so a push always resolves), while
+            // `selectedLineId` still points wherever the user last was.
+            // Falling back to the visible line only covers a brand-new
+            // conversation, which has no thread yet.
+            let threadLineId = openThreadId
+                .flatMap { id in lineThreads.first { $0.id == id } }?.lineId
+            let res = try await api.send(to: to, text: text,
+                                         lineId: threadLineId ?? line?.id)
             guard res.ok else { return false }
             if let tid = res.threadId {
                 openThreadId = tid
