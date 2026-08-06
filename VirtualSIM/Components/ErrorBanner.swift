@@ -108,7 +108,17 @@ struct ErrorBanner: View {
     /// With no `retry` supplied, the honest generic action is not "try again"
     /// — retrying is exactly what a user must not do blind when money may have
     /// moved. It is to go and read what actually happened, which Orders shows
-    /// for all three product lines including the refund line on a failed one.
+    /// for SMS, e-mail and eSIM, including the refund line on a failed one.
+    ///
+    /// ⚠️ **The rented line is NOT in Orders** — it is the fourth product line
+    /// and this comment predates it. Sending a line failure there is a dead
+    /// end: the user taps "Check your orders", lands on a list that says
+    /// nothing about the number they just failed to rent, and is left with no
+    /// account of what happened. Seen for real on a `line_unavailable` refusal
+    /// (the Telnyx float guard) — the message was right and the button was
+    /// wrong. On the Number tab there is nowhere better to send them, so the
+    /// banner offers only its dismiss, which is the honest answer rather than
+    /// a confident wrong one.
     @ViewBuilder
     private var action: some View {
         if let retry {
@@ -116,7 +126,7 @@ struct ErrorBanner: View {
                 state.lastError = nil
                 retry.action()
             }
-        } else {
+        } else if state.tab != .line {
             actionButton(label: String(localized: "Check your orders"),
                          icon: RIcon.inbox) {
                 state.lastError = nil

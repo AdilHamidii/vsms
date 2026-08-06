@@ -379,33 +379,21 @@ struct CreditsSheet: View {
         switch unit {
         case .unknown:
             EmptyView()
+        // ⚠️ NO "totals include the N credits you already have" — the rows show
+        // what each PACK adds, not a total, so that sentence would be describing
+        // a figure that is no longer on screen. It was true of the old
+        // balance-inclusive rows and became false with them.
         case .route(let credits, let service, let country):
-            if balance > 0 {
-                Text("Totals include the \(balance) credits you already have. \(service) in \(country) costs \(credits) credits.")
-                    .font(RFont.text(12))
-                    .foregroundStyle(theme.text2)
-                    .lineSpacing(2)
-                    .fixedSize(horizontal: false, vertical: true)
-            } else {
-                Text("\(service) in \(country) costs \(credits) credits.")
-                    .font(RFont.text(12))
-                    .foregroundStyle(theme.text2)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
+            Text("\(service) in \(country) costs \(credits) credits.")
+                .font(RFont.text(12))
+                .foregroundStyle(theme.text2)
+                .fixedSize(horizontal: false, vertical: true)
         case .median(let credits):
-            if balance > 0 {
-                Text("Totals include the \(balance) credits you already have. A typical number costs \(credits) credits. Prices vary by service and country.")
-                    .font(RFont.text(12))
-                    .foregroundStyle(theme.text2)
-                    .lineSpacing(2)
-                    .fixedSize(horizontal: false, vertical: true)
-            } else {
-                Text("A typical number costs \(credits) credits. Prices vary by service and country.")
-                    .font(RFont.text(12))
-                    .foregroundStyle(theme.text2)
-                    .lineSpacing(2)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
+            Text("A typical number costs \(credits) credits. Prices vary by service and country.")
+                .font(RFont.text(12))
+                .foregroundStyle(theme.text2)
+                .lineSpacing(2)
+                .fixedSize(horizontal: false, vertical: true)
         }
     }
 
@@ -414,7 +402,7 @@ struct CreditsSheet: View {
             ForEach(CreditPack.all) { p in
                 PackRow(pack: p,
                         active: selected == p.id,
-                        numbers: numbers(after: p),
+                        numbers: numbers(from: p),
                         recommended: recommendedId == p.id,
                         unavailable: isMissing(p),
                         displayPrice: iap.displayPrice(p),
@@ -433,11 +421,21 @@ struct CreditsSheet: View {
         .animation(RMotion.content, value: purchasing)
     }
 
-    /// How many numbers the user could get in total after this pack. nil when
-    /// there is no honest figure to give.
-    private func numbers(after p: CreditPack) -> Int? {
+    /// How many numbers THIS PACK buys on its own. nil when there is no honest
+    /// figure to give.
+    ///
+    /// ⚠️ It used to be `(balance + p.credits) / u` — the total after buying —
+    /// and that made the row unreadable for anyone holding a real balance. At
+    /// 99,989 credits the five packs rendered as 16665 / 16666 / 16669 / 16674 /
+    /// 16689: the most prominent element on every row was a near-identical
+    /// five-digit number, and the difference between the $2.99 and the $5.99
+    /// pack read as ONE more number. Correct arithmetic, useless comparison.
+    ///
+    /// It degraded gracefully at a zero balance, which is why it shipped — the
+    /// figure only collapses once the balance dwarfs the pack.
+    private func numbers(from p: CreditPack) -> Int? {
         guard let u = unit.credits, u > 0 else { return nil }
-        return (balance + p.credits) / u
+        return p.credits / u
     }
 
     // MARK: - Errors
@@ -733,19 +731,15 @@ private struct PackRow: View {
 
     /// The useful quantity first. Falls back to the credit count when we have
     /// no honest per-number price — never to an estimate.
+    /// What this pack ADDS, always in credits.
+    ///
+    /// Credits are the thing being bought, they are exact, and — unlike a
+    /// derived number count — the figure cannot degrade at any balance. The
+    /// "how many verifications is that?" question is still answered, one line
+    /// down, where being approximate is honest rather than confusing.
     @ViewBuilder
     private var headline: some View {
-        Group {
-            if let n = numbers, n >= 1 {
-                if n == 1 {
-                    Text("1 number")
-                } else {
-                    Text("\(n) numbers")
-                }
-            } else {
-                Text("\(pack.credits) credits")
-            }
-        }
+        Text("+\(pack.credits) credits")
         .font(RFont.display(19, weight: .bold))
         .tracking(-0.4)
         .foregroundStyle(theme.text)
@@ -755,16 +749,17 @@ private struct PackRow: View {
     @ViewBuilder
     private var secondary: some View {
         HStack(spacing: 6) {
-            // ⚠️ `n >= 1`, matching `headline` exactly — NOT `numbers != nil`.
+            // ⚠️ NEVER print the credit count here — the headline already says
+            // it, and this line printing "5 credits" directly under "+5 credits"
+            // is the duplication this row has already shipped once, on the app's
+            // only revenue screen.
             //
-            // `numbers(after:)` returns 0, not nil, when a pack cannot fund a
-            // single number, and `.some(0)` satisfies a nil-check. So `headline`
-            // fell through to "5 credits" and this line printed "5 credits"
-            // again directly under it, on the app's only revenue screen. With
-            // the live median route at 6 credits, that is the $2.99 entry pack
-            // for every user at a zero balance.
+            // `n >= 1` rather than `numbers != nil`: `numbers(from:)` returns 0,
+            // not nil, when a pack cannot fund a single number, and `.some(0)`
+            // satisfies a nil-check. At the live median of 6 credits that is the
+            // $2.99 entry pack, which gets the explicit line below instead.
             if let n = numbers, n >= 1 {
-                Text("\(pack.credits) credits")
+                Text(n == 1 ? "≈ 1 number" : "≈ \(n) numbers")
                     .font(RFont.text(12))
                     .foregroundStyle(theme.text2)
                 Text(verbatim: "·")

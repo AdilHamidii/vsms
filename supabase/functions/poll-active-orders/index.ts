@@ -9,6 +9,7 @@ import { getBalanceUsd } from "../_shared/smspool.ts";
 import { getBalanceUsd as getHeroBalanceUsd } from "../_shared/herosms.ts";
 import { getProfile as getFivesimProfile, type FiveProfile } from "../_shared/fivesim.ts";
 import { getBalance as getSmspvaBalance, isOk } from "../_shared/smspva.ts";
+import { getBalance as getTelnyxBalance, faultOf as telnyxFaultOf } from "../_shared/telnyx.ts";
 import { sendPush } from "../_shared/apns.ts";
 import { notifySafe, esc } from "../_shared/telegram.ts";
 
@@ -262,6 +263,14 @@ Deno.serve(async (req) => {
   // single-order ceiling, while it still owned 1,035 active routes. The comment
   // that used to sit here said "5sim serves ALL SMS", which was the false
   // premise the omission rested on.
+  const readTelnyxBalance = async () => {
+    // telnyx.ts returns a fault OBJECT rather than throwing, so the fault check
+    // is what stands between a provider outage and a null reading being read as
+    // a healthy zero. `.catch` covers transport on top of that.
+    const b = await getTelnyxBalance().catch(() => null);
+    return b && !telnyxFaultOf(b) ? b.usd : null;
+  };
+
   const readSmspvaBalance = async () => {
     // `.catch(() => null)` then `r && isOk(r)`: isOk dereferences `r.statusCode`,
     // so handing it the null from a thrown call is a TypeError, not a false.
@@ -287,6 +296,19 @@ Deno.serve(async (req) => {
     // pre-charge guard and `alertLowBalanceBlock` (which only ever fires from
     // inside that guard) are dead code.
     recordBalance("smspva_health", "SMSPVA (SMS)", readSmspvaBalance),
+    // 🔴 TELNYX WAS NOT MONITORED AT ALL — there was no `telnyx_health` key in
+    // `app_config`, for the one provider that bills us MONTHLY and RECURRING.
+    // Every other provider gets a minutely reading and a low-balance page;
+    // this one was discovered empty the only way left, by a user hitting
+    // `reserve-line-number`'s float guard and seeing "We can't set up new
+    // numbers right now". The guard did its job — nobody was charged — but the
+    // owner learned about it from a screenshot instead of a page.
+    //
+    // The shared tier ladder is tuned for SMS float and is aggressive here by
+    // comparison, which is the right direction: a line costs $1 up front and
+    // $1/month FOREVER, so running dry does not merely block a sale, it means
+    // an existing subscriber's number cannot be renewed.
+    recordBalance("telnyx_health", "Telnyx (rented lines)", readTelnyxBalance),
   ]);
 
   // ── Auto-expire overdue orders. Each expiry is an atomic claim (flip
