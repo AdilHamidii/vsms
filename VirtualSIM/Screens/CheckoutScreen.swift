@@ -45,6 +45,12 @@ struct CheckoutScreen: View {
     private var record: DeliveryRecord {
         state.deliveryRecord(for: service, country: country)
     }
+    /// The vendor's published rate for this route's pool, or nil when they
+    /// publish none for it. Never 0 in the nil case — a published zero is a
+    /// measurement and is rendered as one.
+    private var poolRate: Int? {
+        state.poolRate(for: service, country: country)
+    }
 
     /// Why Real SIM is preselected here. Shown ONLY on measured evidence — the
     /// same rule the delivery badges follow. It says what was observed, not
@@ -245,22 +251,42 @@ struct CheckoutScreen: View {
                          secondaryText: String(localized: "Never substituted"))
         } else {
             VStack(alignment: .trailing, spacing: 4) {
-                SuccessBadge(record: record)
-                // Stated as two separate literals rather than one ternary so
-                // both reach the string catalog as `Text` keys.
-                if record == .notTested {
-                    Text("No orders on this route yet")
-                        .font(RFont.text(12))
-                        .foregroundStyle(theme.text3)
-                } else {
-                    // The window, exposed once per screen — a bare "3 of 7"
-                    // has no timeframe and no owner.
-                    Text("Our own orders, last 30 days")
-                        .font(RFont.text(12))
-                        .foregroundStyle(theme.text3)
-                }
+                DeliverySignal(poolRate: poolRate, record: record, alignment: .trailing)
+                deliveryCaption
             }
         }
+    }
+
+    /// The caption under the delivery figure, and it must name WHOSE figure it
+    /// is qualifying.
+    ///
+    /// Four cases rather than the two it had, because the network rate arriving
+    /// on this screen (2026-08-06) made the old wording wrong: "Our own orders,
+    /// last 30 days" sat under a bar that is a third party's aggregate across
+    /// all their customers, which is precisely the conflation that forced the
+    /// seeded vendor grade to be demoted to `.notTested` in the first place.
+    ///
+    /// Each branch is its own `Text` literal rather than one interpolated
+    /// string, so all four reach the string catalog as separate keys.
+    @ViewBuilder
+    private var deliveryCaption: some View {
+        let caption = Group {
+            if poolRate != nil, case .measured = record {
+                Text("Network-wide, and our own last 30 days")
+            } else if poolRate != nil {
+                Text("Network-wide rate, not our own record")
+            } else if record == .notTested {
+                Text("No orders on this route yet")
+            } else {
+                // The window, exposed once per screen — a bare "3 of 7"
+                // has no timeframe and no owner.
+                Text("Our own orders, last 30 days")
+            }
+        }
+        caption
+            .font(RFont.text(12))
+            .foregroundStyle(theme.text3)
+            .multilineTextAlignment(.trailing)
     }
 
     // MARK: - Number type

@@ -291,6 +291,12 @@ struct ServiceSheet: View {
                    record: state.deliveryRecord(
                        for: service,
                        country: elsewhere?.country ?? currentCountry),
+                   // Scored against the SAME destination, for the same reason.
+                   // Two figures on one row resolved from different countries
+                   // would be a row describing two routes.
+                   poolRate: state.emailMode ? nil : state.poolRate(
+                       for: service,
+                       country: elsewhere?.country ?? currentCountry),
                    balance: state.balance,
                    selected: service.id == state.configuringService.id) {
             RHaptic.select()
@@ -352,6 +358,10 @@ private struct ServiceRow: View {
     /// Only meaningful in email mode: does this service have a target site?
     var emailSupported: Bool = true
     let record: DeliveryRecord
+    /// The vendor's published rate for the DESTINATION route's pool, or nil
+    /// when they publish none — and always nil in email mode, where an SMS
+    /// route's figure is another product's evidence.
+    let poolRate: Int?
     let balance: Int
     let selected: Bool
     let onTap: () -> Void
@@ -407,7 +417,7 @@ private struct ServiceRow: View {
                 // this choice. On an e-mail pick the SMS delivery record is
                 // another product's evidence, so it is omitted entirely.
                 if !emailMode {
-                    SuccessBadge(record: record, compact: true)
+                    DeliverySignal(poolRate: poolRate, record: record, compact: true)
                 }
             }
 

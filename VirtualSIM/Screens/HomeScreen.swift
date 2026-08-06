@@ -224,6 +224,14 @@ struct HomeScreen: View {
         state.deliveryRecord(for: state.lastService, country: state.lastCountry)
     }
 
+    /// The vendor's published rate for this route's pool, or nil when they
+    /// publish none. Paired with `routeRecord` in `DeliverySignal`, which is
+    /// what stops this hero saying "Not tested" for a route the country picker
+    /// is simultaneously showing a real percentage for.
+    private var routePoolRate: Int? {
+        state.poolRate(for: state.lastService, country: state.lastCountry)
+    }
+
     /// A user who has never placed an order.
     private var isFirstRun: Bool { state.orders.isEmpty }
 
@@ -456,15 +464,30 @@ struct HomeScreen: View {
                         .frame(width: 100, alignment: .leading)
 
                         VStack(alignment: .leading, spacing: 6) {
-                            // The 30-day window, stated once on this screen.
+                            // The 30-day window, stated once on this screen —
+                            // and it qualifies OUR record only. The network
+                            // meter carries its own window in the figure it
+                            // renders, which is why it says "network" in words
+                            // rather than borrowing this label.
                             MicroLabel("Delivery · 30 days")
-                            // Colour and wording both come from SuccessBadge
-                            // now. The inline `100 * codes / attempts >= 70`
-                            // arithmetic that used to live in this view body
-                            // was the app's FOURTH definition of green.
-                            SuccessBadge(record: routeRecord, compact: true)
+                            // Colour and wording both come from the shared
+                            // delivery components. The inline
+                            // `100 * codes / attempts >= 70` arithmetic that
+                            // used to live in this view body was the app's
+                            // FOURTH definition of green.
+                            DeliverySignal(poolRate: routePoolRate,
+                                           record: routeRecord,
+                                           compact: true)
                         }
-                        .frame(width: 138, alignment: .leading)
+                        // `minWidth`, not a fixed `width`. At 138pt the network
+                        // meter fits in English (~120pt) and German, and
+                        // TRUNCATES in Japanese, where "network" is
+                        // ネットワーク — the widest label in the row is the one
+                        // that says whose number this is, so clipping it is
+                        // exactly the wrong thing to lose. There is ~123pt of
+                        // slack beside this column on a 393pt screen, so
+                        // letting it take its ideal width costs nothing.
+                        .frame(minWidth: 138, alignment: .leading)
 
                         Spacer(minLength: 0)
                     }

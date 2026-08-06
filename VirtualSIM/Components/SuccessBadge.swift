@@ -187,3 +187,165 @@ struct SuccessBadge: View {
         .background(wash, in: .capsule)
     }
 }
+
+/// The network's published rate, drawn as a **bar**.
+///
+/// The shape is the point. A bar reads as a proportion of a population —
+/// an aggregate somebody else measured — where a bare tinted percentage sitting
+/// beside our own tinted percentage read as two of the same kind of thing. The
+/// word `network` rides along with it so the row is self-describing and the
+/// screen needs no legend above the list.
+///
+/// ⚠️ **It lives here, beside `SuccessBadge`, and not in a picker.** It was
+/// `private` to `CountrySheet` while three other surfaces — Home, Checkout and
+/// `ServiceSheet` — kept rendering a bare "Not tested" for routes the country
+/// picker was already showing a real figure for. Leboncoin · Austria read
+/// **86% network** in one sheet and **Not tested** on the Home hero for the
+/// same route, in the same session. A rendering rule that exists in one file
+/// is a rule the rest of the app does not have.
+struct NetworkRateMeter: View {
+    @Environment(\.theme) private var theme
+    let pct: Int
+
+    private static let barWidth: CGFloat = 38
+
+    private var clamped: Int { min(100, max(0, pct)) }
+
+    /// 🔴 **The network figure keeps its OWN thresholds — >60 green, 30–60
+    /// amber, <30 red — and must not be folded into `DeliveryBand`.**
+    ///
+    /// Two reasons, and the second is the substantive one:
+    ///
+    /// 1. They are an explicit owner decision (2026-08-03).
+    /// 2. **The two numbers are not on the same scale.** This is a third
+    ///    party's network-wide rate across all its customers; `OurRecordChip`
+    ///    is what happened when *we* ordered. Measured over every non-cancelled
+    ///    order, a published 80+ realised ~40% and 60–79 realised ~25% — the
+    ///    published figure runs roughly double. Colouring both with one
+    ///    threshold set would call a 55% network rate "good" on the same scale
+    ///    that calls a 55% record of ours "good", when the first predicts
+    ///    something closer to 25%.
+    ///
+    /// Sharing a tint FUNCTION across two different measurements is exactly the
+    /// conflation the two shapes exist to prevent.
+    private var color: Color {
+        if clamped > 60 { return theme.live }
+        if clamped >= 30 { return theme.warn }
+        return theme.fail
+    }
+
+    var body: some View {
+        HStack(spacing: 6) {
+            ZStack(alignment: .leading) {
+                Capsule()
+                    .fill(theme.track)
+                    .frame(width: Self.barWidth, height: 4)
+                Capsule()
+                    .fill(color)
+                    // A floor of 3pt so a 1% route still draws something: a bar
+                    // of literally zero width is indistinguishable from an
+                    // unrated route, which renders no bar at all.
+                    .frame(width: max(3, Self.barWidth * CGFloat(clamped) / 100), height: 4)
+            }
+
+            Text("\(clamped)%")
+                .font(RFont.text(12, weight: .bold))
+                .foregroundStyle(color)
+                .monospacedDigit()
+
+            Text("network")
+                .font(RFont.text(11))
+                .foregroundStyle(theme.text3)
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(Text("Network-wide delivery rate \(clamped) percent"))
+    }
+}
+
+/// What happened when **we** ordered here, drawn as a bordered chip.
+///
+/// An outline rather than the filled capsule `SuccessBadge` uses, so the two
+/// numbers differ in shape before they differ in colour — and the word "Ours"
+/// so it is not merely *positionally* distinct from the network figure. The raw
+/// pair, never a percentage: "3 of 7" carries its own uncertainty where "43%"
+/// wears the confidence of a 700-order sample.
+struct OurRecordChip: View {
+    @Environment(\.theme) private var theme
+    let codes: Int
+    let attempts: Int
+
+    private var tint: Color {
+        guard let band = DeliveryBand.of(codes: codes, attempts: attempts) else {
+            return theme.text2
+        }
+        return theme.deliveryColor(band)
+    }
+
+    var body: some View {
+        Text("Ours: \(codes) of \(attempts)")
+            .font(RFont.text(11, weight: .semibold))
+            .foregroundStyle(tint)
+            .lineLimit(1)
+            .padding(.horizontal, 7)
+            .padding(.vertical, 3)
+            .overlay(Capsule().strokeBorder(tint.opacity(0.45), lineWidth: 1))
+    }
+}
+
+/// Everything we can honestly say about ONE route's delivery, in one slot.
+///
+/// For the single-route surfaces — the Home hero, Checkout, and the service
+/// picker — where there is exactly one route on screen and this is the element
+/// answering "will this actually work?". `CountrySheet` deliberately does NOT
+/// use it: that row is two-column, with the meter under the dial code and the
+/// chip in the price column, and squeezing them into one stack there would
+/// undo the separation.
+///
+/// The precedence, and why:
+///
+/// - **A network rate, when the vendor publishes one for this route's pool.**
+///   This is the change of 2026-08-06: these surfaces used to render only our
+///   own record, so 2,731 of 9,323 bookable routes said "Not tested" while the
+///   country picker showed a real figure for the very same pair.
+/// - **Our own record alongside it**, whenever we have one. It never replaces
+///   the network figure and never hides behind it — both are true, they answer
+///   different questions, and `OurRecordChip` names its owner.
+/// - **`SuccessBadge` otherwise**, which is still "Not tested" for the
+///   **6,592 of 9,323** bookable routes (70.7%) where nobody has measured
+///   anything. That fallback is not a leftover: on a one-route screen an empty
+///   slot reads as reassurance, which is the exact failure `DeliveryRecord`
+///   was written to end. Showing nothing here would re-introduce it for seven
+///   routes in ten.
+struct DeliverySignal: View {
+    /// The vendor's published rate for this route's pool. nil = they publish
+    /// none — never 0, which is a measurement and means something else.
+    let poolRate: Int?
+    /// Our own record. Never nil; `.notTested` is a real answer.
+    let record: DeliveryRecord
+    /// Narrows `SuccessBadge`'s wording on space-constrained rows.
+    var compact: Bool = false
+    /// Match the slot this sits in — Checkout's receipt column is trailing.
+    var alignment: HorizontalAlignment = .leading
+
+    /// Both figures present. Rare today (6 routes carry a record of our own)
+    /// but it must not render as one merged claim when it happens.
+    private var ourRecord: (codes: Int, attempts: Int)? {
+        guard case let .measured(codes, attempts) = record, attempts > 0 else { return nil }
+        return (codes, attempts)
+    }
+
+    var body: some View {
+        if let poolRate {
+            VStack(alignment: alignment, spacing: 4) {
+                NetworkRateMeter(pct: poolRate)
+                if let ours = ourRecord {
+                    OurRecordChip(codes: ours.codes, attempts: ours.attempts)
+                }
+            }
+        } else {
+            // Includes the measured-but-unrated case: `SuccessBadge` already
+            // renders "Delivered on N of M orders" for it.
+            SuccessBadge(record: record, compact: compact)
+        }
+    }
+}

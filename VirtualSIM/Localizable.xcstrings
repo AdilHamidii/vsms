@@ -12430,6 +12430,46 @@
         }
       }
     },
+    "Network-wide rate, not our own record": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Netzwerkweite Rate, nicht unsere eigene Bilanz"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tasa de toda la red, no nuestro propio registro"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Taux à l'échelle du réseau, pas notre propre bilan"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tasso di tutta la rete, non il nostro dato"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ネットワーク全体の率です（当社の実績ではありません）"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Taxa de toda a rede, não nosso próprio histórico"
+          }
+        }
+      }
+    },
     "Network-wide rates from the last 24h — not our own delivery record. Countries not listed haven't been ranked, which isn't a mark against them.": {
       "extractionState": "stale",
       "localizations": {
@@ -12467,6 +12507,46 @@
           "stringUnit": {
             "state": "translated",
             "value": "Taxas de toda a rede nas últimas 24 h. Não é o nosso próprio histórico de entrega. Países não listados não foram classificados, o que não é um ponto negativo."
+          }
+        }
+      }
+    },
+    "Network-wide, and our own last 30 days": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Netzwerkweit und unsere eigenen letzten 30 Tage"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "De toda la red, y lo nuestro en los últimos 30 días"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "À l'échelle du réseau, et nos 30 derniers jours"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Di tutta la rete, e i nostri ultimi 30 giorni"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ネットワーク全体と、当社の過去30日"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "De toda a rede, e nossos últimos 30 dias"
           }
         }
       }
