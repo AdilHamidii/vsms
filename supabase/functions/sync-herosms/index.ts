@@ -161,7 +161,15 @@ Deno.serve(async (req) => {
     .from("app_config").select("value").eq("key", "herosms_operator_cursor").maybeSingle();
   const cursor = Number(curRow?.value ?? 0) || 0;
 
-  const heroCountries = (countries ?? []).filter((c) => c.herosms_id != null);
+  // ⚠️ SORTED, because the cursor is POSITIONAL. The query above has no
+  // `order by`, so Postgres may return these rows in a different order on any
+  // run — and a positional cursor into a list that reorders skips some
+  // countries permanently while re-probing others, so those routes never get a
+  // `herosms_real_count` and are silently sold as VoIP-only forever.
+  // `sync-smspva-operators` gets this right by ordering on id; this did not.
+  const heroCountries = (countries ?? [])
+    .filter((c) => c.herosms_id != null)
+    .sort((a, b) => String(a.id).localeCompare(String(b.id)));
   const slice = heroCountries.slice(cursor, cursor + COUNTRIES_PER_RUN);
   const nextCursor = cursor + COUNTRIES_PER_RUN >= heroCountries.length
     ? 0 : cursor + COUNTRIES_PER_RUN;

@@ -6,7 +6,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **vSMS** (App Store display name; formerly "vSIM OTP" — the Xcode target/scheme is still `VirtualSIM`) — iOS app selling three products, all paid with in-app **credits**: (1) **temporary phone numbers** for SMS verification codes, (2) **temporary e-mail addresses**, and (3) **eSIM data plans** priced at 4× wholesale (line currently PAUSED). A
 **fourth** line — rentable second numbers with two-way SMS and voice, billed by
-StoreKit subscription rather than credits — is PARTLY BUILT and unreachable; see
+**StoreKit subscription rather than credits** — is BUILT, DEPLOYED and LIVE in
+the repo (`lines_paused = false`), and is the app's first tab. Nobody has
+bought one: the remaining blockers are **Telnyx float** (money, not code), the
+`TelnyxRTC` SwiftPM package for actual media, and 10DLC for US numbers. See
 "Rentable second numbers". iOS frontend in SwiftUI + Supabase backend (Postgres + Auth + Edge Functions + pg_cron).
 
 **Provider split as of 2026-08-03 — 5sim is the PRIMARY SMS provider; HeroSMS
@@ -136,13 +139,15 @@ supabase functions deploy poll-active-orders sync-prices sync-5sim sync-herosms 
 # owns 560 active SMS routes AND the e-mail line's balance.
 # DELETED 2026-07-30: sync-virtualsms/, sync-smspool/, smspool-catalog/ — all
 # three are gone from disk AND undeployed.
-# ⚠️ The two lists above do NOT cover everything: there are **26** function
-# directories besides _shared, and TWO appear in NEITHER list — `telegram-setup`
-# (cron-gated, fails closed; rotating TELEGRAM_WEBHOOK_SECRET requires
-# re-running it) and `goodwill-credit` (manual make-good grant + push, added
-# 2026-08-02). Both deploy --no-verify-jwt.
-# (This comment has been wrong about the count twice — 19, then 25. COUNT the
-#  directories rather than trusting this line: `ls supabase/functions | grep -v _shared | wc -l`.)
+# ✅ As of 2026-08-06 the two lists ARE exhaustive — 21 + 18 = **39**, asserted
+# against `ls supabase/functions | grep -v _shared | wc -l`. They were not
+# before: this comment claimed 19, then 25, then 26 while two functions
+# (`telegram-setup`, `goodwill-credit`) appeared in NEITHER list, and by 08-06
+# twelve did. RE-ASSERT the sum rather than trusting this line — a function in
+# no list is a function nobody redeploys after a `_shared` change, which is
+# exactly how a stale bundle survives a fix.
+# ⚠️ `telegram-setup` still fails closed, and rotating TELEGRAM_WEBHOOK_SECRET
+# requires re-running it.
 # ⚠️ `_shared/*` is bundled PER FUNCTION at deploy time. After touching
 # _shared/fivesim.ts, redeploy sync-5sim AND poll-active-orders AND every
 # consumer of providers.ts (create-order, check-order, cancel-order,
@@ -153,7 +158,7 @@ supabase db query --linked "select count(*) from public.routes;"
 
 # Trigger any cron-gated function WITHOUT handling the secret yourself. pg_net
 # calls it server-side and private_cron_secret() never leaves the database.
-# Live pg_cron schedule (16 jobs, all active — re-verified 2026-08-03):
+# Live pg_cron schedule (20 jobs, all active — re-verified 2026-08-06):
 #   relay-poll-active-orders  * * * * *     relay-telegram-notify  * * * * *
 #   watchdog                  */10 * * * *  relay-sync-prices      17 * * * *
 #   relay-sync-5sim            7 * * * *    (PRIMARY pricing sync, ~71s/run)
@@ -164,6 +169,12 @@ supabase db query --linked "select count(*) from public.routes;"
 #   expire-esim-orders        */15 * * * *  expire-email-orders    */5 * * * *
 #   relay-smspva-operators-maint-up 29 4  / -down 43 4  (maintenance screen)
 #   purge-job-run-details 7 3 * * *       telegram-events-prune 30 4 * * *
+#   ── rented lines, added 2026-08-06 (see "the cancellation leak") ──
+#   reclaim-lapsed-lines      */15 * * * *  (PURE SQL, no HTTP hop — the claim
+#                                            must survive the edge layer dying)
+#   relay-release-lines       3,18,33,48 * * * *  (the provider DELETE)
+#   relay-sync-telnyx-cdr     */10 * * * *  (settles call minutes)
+#   settle-stale-line-calls   23 * * * *    (PURE SQL; the 6h no-CDR backstop)
 supabase db query --linked "
   select net.http_post(
     url := 'https://enugzltysdmjzavisloy.supabase.co/functions/v1/sync-prices',
@@ -173,7 +184,10 @@ supabase db query --linked "
 ```
 
 There is no test suite. Verify iOS with the `swiftc -typecheck` command above
-(exit 0 = all 96 sources compile as of 2026-08-03 — re-count before trusting). It does NOT catch everything — a missing
+(exit 0 = all 115 sources compile as of 2026-08-06 — re-count before trusting;
+this said 96 for three days after the Number tab landed). It still works: the
+`TelnyxRTC` SwiftPM dependency that would retire it has NOT been added, and
+`NullVoiceClient` stands in. It does NOT catch everything — a missing
 `import StoreKit` type-checked fine and failed the real build, so prefer
 `xcodebuild` when you can afford it. Verify backend changes by re-deploying, then
 **checking the resulting DB state** — not by assuming the deploy worked. Several
@@ -293,7 +307,7 @@ VirtualSIM/
 ### Backend layout
 
 - `supabase/migrations/` — chronological SQL, each phase ships its own file
-- `supabase/functions/_shared/` — `providers.ts` (unified router; per-SERVICE ownership across 5sim/SMSPVA/HeroSMS with NO cross-provider fallback — order/poll functions call this, NOT a specific provider), `fivesim.ts` (5sim REST wrapper — the PRIMARY SMS adapter), `herosms.ts` (SMS-Activate `handler_api` wrapper), `heromail.ts` (HeroSMS `/api/v1`, the temp-EMAIL line), `emailStatus.ts`, `smspva.ts` (v2 REST wrapper), `smspool.ts` (eSIM + balance ONLY — the SMS surface was deleted 2026-07-30), `apns.ts` (HTTP/2 + JWT), `cors.ts`, `iap.ts` (Apple receipt chain verification), `telegram.ts`, `opsFormat.ts`, `supabaseAdmin.ts`. `virtualsms.ts` is **gone**. That is **13 files** — count them rather than trusting this list.
+- `supabase/functions/_shared/` — `providers.ts` (unified router; per-SERVICE ownership across 5sim/SMSPVA/HeroSMS with NO cross-provider fallback — order/poll functions call this, NOT a specific provider), `fivesim.ts` (5sim REST wrapper — the PRIMARY SMS adapter), `herosms.ts` (SMS-Activate `handler_api` wrapper), `heromail.ts` (HeroSMS `/api/v1`, the temp-EMAIL line), `emailStatus.ts`, `smspva.ts` (v2 REST wrapper), `smspool.ts` (eSIM + balance ONLY — the SMS surface was deleted 2026-07-30), `apns.ts` (HTTP/2 + JWT), `cors.ts`, `iap.ts` (Apple receipt chain verification), `telegram.ts`, `opsFormat.ts`, `supabaseAdmin.ts`, `telnyx.ts` (the rented-line adapter: Ed25519 webhook verification, numbers, messaging, voice credentials and detail records). `virtualsms.ts` is **gone**. That is **14 files** — count them rather than trusting this list.
 - `supabase/functions/<name>/index.ts` — one per endpoint, all Deno.serve
 - `supabase/README.md` — deployment + secret setup walkthrough
 
@@ -813,7 +827,20 @@ A small owner-written banner on **Home**, posted from Telegram. Ships in 1.6.
 /announce                       → shows what is currently live
 /esim on | /esim off            → set_esim_paused() from the phone
 /esim                           → reports which way it is set
+/lines on | /lines off          → set_lines_paused() from the phone
+/lines                          → reports which way it is set + live line count
 ```
+
+⚠️ **`/lines` was added 2026-08-06 because `set_lines_paused` had NO CALLER
+ANYWHERE.** The kill switch for the one product that bills monthly and costs us
+rent per subscriber existed only as a function you had to open a SQL console to
+reach — which is exactly the moment you cannot. It mirrors `/esim` including
+reporting the live count, so "pausing did nothing" is visible rather than
+looking like success.
+
+**Pausing lines stops NEW rentals only**, and the reply says so: existing lines
+keep sending, receiving and calling — and keep costing us rent until they lapse
+through the normal suspend → hold → release path.
 
 **`app_config` is RLS-restricted to an explicit key WHITELIST, and that is the
 only safe way to widen it.** The table also holds `herosms_health` /
@@ -1346,8 +1373,33 @@ the owner. Full design: `~/.claude/plans/binary-humming-moonbeam.md`.
 | `apple-notifications` (ASSN V2) | ✅ deployed, **verified end to end** |
 | messaging (webhook in, `send-line-message` out, threads, block/report) | ✅ deployed |
 | `mint-line-token` | ✅ deployed, adapters **unproven** |
-| calling client (TelnyxRTC, CallKit, PushKit, dialer) | ❌ not started |
-| `begin-line-call`, `sync-telnyx-cdr` | ❌ not started |
+| calling client (CallKit, PushKit, dialer, in-call) | ✅ built against `VoiceClient`; **`TelnyxRTC` SwiftPM not added**, so `NullVoiceClient` throws |
+| `begin-line-call`, `report-line-call`, `sync-telnyx-cdr` | ✅ deployed + on cron |
+| `release-lines` + the reclaim sweep | ✅ deployed + on cron (2026-08-06) |
+
+🔴 **THE LIFECYCLE WAS NOT SURVIVABLE UNTIL 2026-08-06, and none of it threw.**
+`reclaim_lapsed_lines()` shipped and was scheduled in **no cron job**;
+`release-lines` — named in the migration as the thing that drains `releasing`
+rows — **was never written**. An ordinary Apple cancellation went `EXPIRED` →
+`suspend_line_claim` → `suspended` → **and nothing ever ran again**: $1/month
+per cancelled subscriber, forever, discoverable only on the Telnyx invoice.
+
+Fixed in `20260806100000` + `20260806110000`. The shape is worth keeping:
+**the CLAIM is pure SQL on pg_cron and the provider DELETE is an edge function**,
+because the claim must survive the edge layer being down (the same reason
+`run_watchdog` is pure SQL) and a provider call cannot. A crash between them
+costs one more sweep, never a lost number.
+
+**The watchdog now checks BOTH a heartbeat and the state itself** —
+`releasing` rows older than six hours. That second check is the load-bearing
+one: it catches the leak even if the heartbeat is never written, which is
+exactly the case that shipped. A heartbeat-only check would have stayed silent
+for the same reason the bug did.
+
+⚠️ **`swiftc -typecheck` still works** — the SwiftPM dependency has NOT been
+added yet, so the plan's note about it retiring that command is not yet true.
+`NullVoiceClient` throws rather than faking success, so a build without the SDK
+cannot look like it is placing real calls.
 
 ✅ **ASSN IS PROVEN, not assumed.** Apple's own test-notification endpoint
 (`POST /inApps/v1/notifications/test`) returned **`sendAttemptResult:
@@ -1556,18 +1608,36 @@ hand.
   plus `verifyNotificationJWS`, `verifyRenewalInfoJWS`, and
   `isSubscriptionProduct`. ⚠️ **`PRODUCT_TO_CREDITS` must NEVER gain the
   subscription id** — one entry pays credits on every renewal forever.
-  ⚠️ **`iap-verify` is NOT redeployed**; `_shared` is bundled per function, so
-  it still runs the pre-refactor copy. Deploy it with `apple-notifications` in
-  Phase 2, where Apple's test-notification endpoint can exercise it in the real
-  runtime. `iap-verify:121` returns 400 `unknown_product` and PAGES — a
-  renewal reaching that branch pages on every renewal.
-- `_shared/telnyx.ts` — **signature verifier and fault vocabulary ONLY.** No
-  endpoint wrappers on purpose: adapters here are written AFTER probing the
-  live API. `classifyTelnyxFault` is marked PROVISIONAL.
-- `scripts/verify-telnyx-signature.ts` (21 assertions, self-contained) and
-  `scripts/verify-apple-jws.ts` (12, against REAL receipts). Run the latter
-  after ANY change to `iap.ts`; a local pass is necessary but **not
-  sufficient**, which is exactly how the P-384 outage hid for weeks.
+  ✅ **`iap-verify` WAS redeployed on 2026-08-06**, so it now runs the same
+  `_shared/iap.ts` as `apple-notifications`. (This entry said "NOT redeployed"
+  for a day after it was — check `supabase functions list` rather than this
+  line.) `iap-verify:121` still returns 400 `unknown_product` and PAGES, but a
+  renewal cannot reach it: `IAPStore.handle` dispatches subscriptions by
+  productID and returns before the credits path.
+- `_shared/telnyx.ts` — the full adapter now: Ed25519 webhook verification,
+  numbers (search/order/reserve/release), messaging, voice credentials, and
+  detail records. (This entry said "signature verifier and fault vocabulary
+  ONLY" long after the wrappers landed.)
+
+  ⚠️ **Which parts were PROBED and which were written from the docs is the
+  distinction that matters, and the file marks it.** Numbers and messaging were
+  probed against a real account; the VOICE block and `classifyTelnyxFault` were
+  not. The detail-records block was written from the docs and was **wrong
+  twice** — both `filter[date_range][start_time]` and `record_type: "call"`
+  returned 400 — which is exactly why unprobed adapters record their faults
+  instead of assuming. `mint-line-token` writes `app_config.telnyx_voice_faults`
+  and `sync-telnyx-cdr` writes `telnyx_cdr_faults` / `telnyx_cdr_probe` for the
+  same reason: **the first real use IS the probe.**
+- `scripts/verify-telnyx-signature.ts` (21 assertions, self-contained),
+  `scripts/verify-apple-jws.ts` (12, against REAL receipts), and
+  `scripts/verify-line-lifecycle.sql` (12 BEHAVIOURAL checks inside a
+  rolled-back transaction — renewal ordering, segment correction, call session
+  ownership, the reclaim sweep, the stale-call and stale-message backstops).
+  Run the JWS one after ANY change to `iap.ts`; a local pass is necessary but
+  **not sufficient**, which is exactly how the P-384 outage hid for weeks.
+  ⚠️ Run the SQL one after any change to the line RPCs — a structural check
+  proves a function exists, and only a behavioural one catches an index that is
+  present, correct and unreachable from the code that needs it.
 
 **Pricing (owner decision 2026-08-05): $9.99/month, 200 SMS + 100 minutes,
 hard stop.** Nets $8.49 after Apple's 15% against a worst case of ~$4.30, so
@@ -3113,7 +3183,7 @@ for essentially every hidden route.
   `cp /Users/adyl/Desktop/IOS_APPS/VirtualSIM/VirtualSIM/Networking/Secrets.swift
   VirtualSIM/Networking/Secrets.swift` first; it stays ignored, so it will not be
   committed. (This is also why `find VirtualSIM -name '*.swift' | wc -l` reads one fewer
-  in a bare worktree — 95 vs 96 as of 2026-08-02.)
+  in a bare worktree — 114 vs 115 as of 2026-08-06.)
 - **`isOk()` from `_shared/smspva.ts` dereferences its argument and callers pass
   it `null`.** `providers.ts` does `smsGetBalance().catch(() => null)` and then
   `isOk(before)` / `isOk(after)`; `isOk` reads `r.statusCode`, so a thrown
@@ -3175,18 +3245,25 @@ Every number below has been wrong within a day of being written at least once.
 It is a starting point for "is this roughly right", never a citation.
 
 - **iOS**: `MARKETING_VERSION 1.9`, `CURRENT_PROJECT_VERSION 31`, iOS min **18.0**,
-  **96** Swift sources, **357** strings / 0 untranslated / 0 specifier reorders.
-- **Backend**: **27** edge function dirs besides `_shared`, **14** `_shared` files,
-  **145** migration files, **16** pg_cron jobs (all active). (Counted 08-05.
-  The previous figures — 26 dirs, 13 shared, 136 migrations — were stale by 1,
-  1 and 8 respectively; `ls | wc -l` rather than trusting this line.)
-- **Catalog** (08-04 20:35, after BOTH +100 batches): **9,312** active routes,
-  5sim **7,704**. **468 services**, 454 with at least one bookable route. 69
+  **115** Swift sources, **672** strings / 0 untranslated / 0 specifier reorders.
+  (Counted 08-06. The previous figures — 96 sources, 357 strings — predated the
+  Number tab, the calling client and the design overhaul.)
+- **Backend**: **39** edge function dirs besides `_shared`, **14** `_shared` files,
+  **150** migration files, **20** pg_cron jobs (all active). (Counted 08-06.
+  The previous figures — 27 dirs, 145 migrations, 16 crons — were stale by 12,
+  5 and 4; `ls | wc -l` rather than trusting this line.)
+  ✅ **The two deploy lists at the top of this file are now EXHAUSTIVE** and are
+  asserted against that 39: every directory appears in exactly one, and
+  `config.toml` carries a `verify_jwt = false` entry for all 18 members of the
+  cron/webhook group.
+- **Catalog** (08-06): **9,358** active routes. **468 services**. 69
   countries, **60** of them mapped to 5sim. eSIM 1,081 plans, **0 active — line
   PAUSED**.
-- **Evidence**: `rate_source='measured'` = **3 routes**, rebuilding from 0 after
+- **Evidence**: `rate_source='measured'` = **6 routes**, rebuilding from 0 after
   the cutover. That reset is CORRECT — see "Evidence must describe the provider
-  that serves the NEXT order".
+  that serves the NEXT order". `rate_source='seeded'` is now **1** row (was
+  338): `20260803121000` was finally applied on 08-06 and cleared every seeded
+  grade inherited from a provider that no longer serves the route.
 - **Balances: 5sim $8.89 (rating 96/96), HeroSMS $9.41** (08-05 15:05Z). Both
   `low`, both at alert tier 3 on a `[37.50, 22.50, 11.25, 7.50]` ladder. **Both
   are near the $7.50 single-order ceiling — top up.**
@@ -3472,6 +3549,24 @@ Also this day, each verified against live DB state rather than a deploy log:
 Reasoning for each of these lives in the topic section above; this is only an
 index, so "why is it like this" has a date to search for.
 
+- **08-06** The rented-line lifecycle made survivable. **The cancellation leak**
+  (`reclaim_lapsed_lines()` scheduled nowhere, `release-lines` never written —
+  $1/month per cancelled subscriber, forever), **the provisioning lockout** (a
+  failed activation barred the user from renting again while still paying), and
+  **the unsettleable call** (nothing wrote `provider_call_session_id`, so every
+  dial cost its full 120s reservation and nothing capped a long call). Plus
+  eleven smaller silent paths — a renewal lost to tombstone ordering, Apple
+  retries swallowed as duplicates, `sent.parts` discarded, an outage rendering
+  as "no numbers available", a float guard degrading to 50 cents, sub-cent
+  costs rounding to zero, a voice attach that never retried, an unpaginated CDR
+  walk. Verified by `scripts/verify-line-lifecycle.sql` (12 behavioural checks
+  in a rolled-back transaction), not by deploy logs.
+- **08-06** The Telnyx CDR adapter was wrong TWICE — `filter[date_range]
+  [start_time]` and `record_type: "call"` both 400 — and the probe
+  instrumentation caught both on its first two real runs. Every valid record
+  type is now queried and merged rather than one being cached, because with
+  zero calls on the account the first valid type returns `[]` and locking onto
+  it would settle nothing forever while reporting success.
 - **08-05** Fourth product line STARTED — rentable second numbers with two-way
   SMS + voice (Telnyx, StoreKit subscription). Schema, the `verifyAppleJWS`
   extraction and the Telnyx signature verifier only; unreachable behind
@@ -3563,16 +3658,21 @@ ads.apple.com → Settings → Billing.
   HeroSMS funds SMS *and* the whole e-mail line, so it is the one that takes two
   products down. Re-query rather than quoting these:
   `select key, value->>'balance_usd' from app_config where key like '%_health';`
-- 🚧 **The fourth product line (rentable second numbers) is PARTLY BUILT and
-  deliberately unreachable.** Schema + two shared modules landed 2026-08-05;
-  no edge functions, no client, no Telnyx account, and `lines_paused = true`.
-  See "Rentable second numbers" above for the full state and the four
-  load-bearing properties. Two things a future session must not trip over:
-  **`iap-verify` has NOT been redeployed** since `_shared/iap.ts` changed (it
-  still runs the pre-refactor bundle — deploy with `apple-notifications` in
-  Phase 2), and everything downstream is **blocked on external approvals**
-  (Telnyx account, toll-free/10DLC, ASC subscription group) that no amount of
-  code moves.
+- 🚧 **The fourth product line (rentable second numbers) is BUILT, DEPLOYED and
+  REACHABLE (`lines_paused = false`) but has never been sold.** This entry
+  described it as "no edge functions, no client, no Telnyx account,
+  `lines_paused = true`" for a day after all four were false — read
+  "Rentable second numbers" above, not this line. As of 2026-08-06 the whole
+  lifecycle is on cron and behaviourally verified
+  (`scripts/verify-line-lifecycle.sql`, 12 checks in a rolled-back
+  transaction). What genuinely remains:
+  - **Telnyx float** — the one hard blocker, and it is money, not code.
+  - **`TelnyxRTC` is not added**, so calling is built end-to-end against
+    `VoiceClient` and `NullVoiceClient` throws. Everything either side of the
+    media session — the allowance gate, CallKit, the dialer, session
+    reporting, CDR settlement — is live and testable without it.
+  - **10DLC for US numbers.** Canada needs none, which is why the launch is
+    Canadian.
 - 🟠 **TWO fixes are worth nothing until a client release, and neither is in
   1.9.** Grouped because they share a failure mode: the server cannot reach
   either, so no amount of backend work moves them. Both are described in full
@@ -3604,14 +3704,24 @@ ads.apple.com → Settings → Billing.
   is exactly the failure mode, and it will recur wherever that column is read.
 - ⚠️ **Migration `20260803070000` hardcodes a 0 signup grant** while live config
   says 3, so a from-scratch replay silently disables the grant.
-- ⚠️ **Two migrations are written but NEVER APPLIED** (verified 2026-08-04:
-  `expire_order_early_claim` does not exist in `pg_proc` and neither version is
-  in `schema_migrations`): `20260803120000_expire_order_early_claim.sql` and
-  `20260803121000_clear_foreign_seeded_rates.sql`. The second matters more than
-  it sounds — **338 routes still carry `rate_source='seeded'`**, a vendor grade
-  inherited from a provider that no longer serves them. The client renders
-  seeded as `.notTested` so nothing is currently mis-stated to users, but it is
-  stale evidence sitting in the steering tables.
+- ✅ **RESOLVED 2026-08-06 — both stranded migrations are applied and recorded.**
+  `20260803120000_expire_order_early_claim.sql` and
+  `20260803121000_clear_foreign_seeded_rates.sql` had been written and never
+  run since 08-03.
+
+  **The first was worse than "unapplied" and that is the lesson.**
+  `poll-active-orders:401` has been CALLING `expire_order_early_claim` all
+  along, against a function that did not exist — so the HeroSMS fail-fast path
+  errored on every order that reached it, silently, for three days. A migration
+  that is merely missing is inert; a migration that is missing while something
+  calls it is a live bug wearing no symptom. **After writing a migration,
+  `select proname from pg_proc` for what it creates, not just
+  `schema_migrations`.**
+
+  The second cleared **336 routes** carrying a seeded grade from a provider
+  that no longer serves them (now 1 row, the one legitimate SMSPVA case).
+  Nothing was mis-stated to users — the client renders seeded as `.notTested` —
+  but it was a retired provider's opinion sitting in the steering tables.
 
 **Found by a 5-agent audit on 2026-08-01, still open, in priority order.**
 Several were mis-reported by the audit and re-checked by hand — the corrections
@@ -3668,25 +3778,35 @@ are as load-bearing as the findings:
   has no fail-loud path (its `catch` is dead code — `esimPlans()` cannot throw,
   it returns a fault object that is silently dropped) and its hide-sweep floor is
   50 plans against a 1,081 catalog (4.6%, vs `sync-prices`' 40%).
-- ⚠️ **`sync-herosms` advances a positional cursor over an unordered SELECT**, so
-  countries are permanently skipped and never get `herosms_real_count`.
-  `sync-smspva-operators` does it correctly (`.order("id")` + id cursor).
-- ⚠️ **No Apple refund/revocation handling anywhere** — no App Store Server
-  Notifications V2 endpoint among the 24 functions, no revocation column. A buyer
-  can refund through Apple, keep the credits and spend them.
-- ⚠️ **The alert channel fails identically to health.** `telegram-notify`
-  discards the error on its `app_config` read, so a failed read skips the entire
-  paging block and returns `200 {sent:0}` — byte-identical to a healthy quiet
-  run. Same for `ops_snapshot`, which matters because digest silence is the
-  documented human backstop for telegram-notify's own death.
+- ✅ **RESOLVED 2026-08-06 — `sync-herosms`' positional cursor now walks a
+  SORTED list.** The query has no `order by`, so Postgres could return the
+  countries in a different order on any run and the cursor skipped some
+  permanently: those routes never got a `herosms_real_count` and were sold as
+  VoIP-only forever. `sync-smspva-operators` had it right all along.
+- 🟠 **PARTLY RESOLVED — Apple refund/revocation IS handled for the LINE, and
+  still is NOT for CREDITS.** `apple-notifications` (ASSN V2, deployed and
+  verified end to end) handles `REFUND`/`REVOKE` by releasing the number and
+  paging. **`iap_receipts` still has no revocation column and nothing revokes
+  granted credits**, so a buyer can still refund a credit pack through Apple
+  and spend the credits. The endpoint now exists, so the remaining work is one
+  branch in it plus a ledger reversal — not a new function.
+- ✅ **RESOLVED 2026-08-06 — the alert channel no longer fails silently.**
+  `telegram-notify` destructures the error on its watchdog read; a failed read
+  used to skip the entire paging block and return `200 {sent:0}`, byte-identical
+  to a healthy quiet run. That is the one failure mode a monitoring transport
+  must not have. ⚠️ `ops_snapshot`'s read is still undestructured, and digest
+  silence remains the documented human backstop for telegram-notify's own death.
 - ⚠️ **`supabase_admin` default privileges still grant `anon`/`authenticated`
   `arwdDxtm` on every FUTURE table** — a dashboard-created table arrives
   world-**writable** unless RLS is explicitly enabled. Needs role membership we
   do not have. Also `claim_daily_credit()` and `daily_credit_status()` are
   `authenticated`-executable (deliberate — the shipped app calls them — and now
   harmless since both are no-ops).
-- ⚠️ **`routes.status` has no index**, and `routes` shows 111.7M sequential tuple
-  reads. A partial index `where status='active'` is the cheap win.
+- ✅ **RESOLVED 2026-08-06 — `routes` has two PARTIAL indexes on the active set**
+  (`routes_active_provider_idx`, `routes_active_priced_idx`, migration
+  `20260806120000`). It was showing ~111.7M sequential tuple reads against a
+  ~9,300-row active set. Partial rather than a plain index on `status`, because
+  'active' is the only value anything filters for.
 
 **Two audit claims that were WRONG, re-verified by hand — do not act on them:**
 - ❌ *"The evidence pipeline discards 87% of delivered codes."* The exclusion is

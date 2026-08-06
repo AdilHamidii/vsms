@@ -155,6 +155,16 @@ struct EmailWaitingScreen: View {
                 UIPasteboard.general.string = value
                 RHaptic.copied()
                 withAnimation(RMotion.content) { copied = true }
+                // ⚠️ It never reset. The button said "Copied" for the rest of
+                // the screen's life, so a user who came back to copy the
+                // address again — the ordinary thing to do after switching to
+                // another app and finding the paste did not take — met a
+                // control that already claimed to have done the job. The SMS
+                // side's copy button already resets on the same 1.6s.
+                Task {
+                    try? await Task.sleep(for: .seconds(1.6))
+                    withAnimation(RMotion.content) { copied = false }
+                }
             } label: {
                 HStack(spacing: 6) {
                     Image(systemName: copied ? RIcon.check : RIcon.copy)

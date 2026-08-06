@@ -52,8 +52,22 @@ Deno.serve(async (req) => {
   //    function is dead the page can't go out — but then the digest below
   //    also stops, which is the documented human-observable backstop.
   try {
-    const { data: wdRow } = await sb
+    // ⚠️ THE ERROR IS DESTRUCTURED, and that is not cosmetic. supabase-js
+    // RETURNS errors rather than throwing, so a failed read left `wdRow` null,
+    // skipped this entire paging block, and returned `200 {sent:0}` —
+    // byte-identical to a healthy quiet run. The alert channel would fail in
+    // exactly the same shape as "nothing is wrong", which is the one failure
+    // mode a monitoring transport must not have.
+    const { data: wdRow, error: wdErr } = await sb
       .from("app_config").select("value").eq("key", "watchdog").maybeSingle();
+    if (wdErr) {
+      // Cannot page about this through the channel that just failed, so make
+      // it loud where it CAN be seen, and let the digest's silence be the
+      // human-observable backstop the header describes.
+      console.error(JSON.stringify({
+        alert: "watchdog_read_failed", detail: wdErr.message,
+      }));
+    }
     if (wdRow?.value) {
       const w = wdRow.value as {
         failing?: { check?: string; detail?: string }[];
