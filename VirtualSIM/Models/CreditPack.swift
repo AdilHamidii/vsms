@@ -4,14 +4,34 @@ struct CreditPack: Identifiable, Hashable {
     let id: String
     let productId: String
     let credits: Int
-    /// Static fallback price, shown only until StoreKit's live localized price loads.
-    let price: String
-    /// Static fallback per-credit, shown only until the live price loads. The sheet
-    /// prefers `IAPStore.perCredit(_:)`, which derives it from the real StoreKit price
-    /// so the label can never drift out of sync with the amount actually charged.
-    let perCredit: String
+    /// Static fallback price in USD, shown only until StoreKit's live localized
+    /// price loads. **The single source for both fallback strings below.**
+    let priceUsd: Decimal
     /// Optional marketing badge, e.g. "MOST POPULAR" / "BEST VALUE". nil = no badge.
     let badge: String?
+
+    /// Static fallback price string.
+    var price: String { priceUsd.formatted(.currency(code: "USD")) }
+
+    /// Static fallback per-credit, DERIVED rather than stored.
+    ///
+    /// ⚠️ It used to be a hand-written string sitting next to the price, i.e. a
+    /// second copy of `price ÷ credits` maintained by eye — the exact shape this
+    /// codebase documents as guaranteed to drift, and which has already inverted
+    /// this very ladder once (the 30-pack beat the 60-pack in the US for weeks
+    /// because two hand-set numbers disagreed with what the store billed).
+    /// A wrong per-credit label is not cosmetic here: it is the only figure that
+    /// makes different pack sizes comparable, so it is what the buyer reasons
+    /// with. Deriving it means a stale value cannot render at all.
+    ///
+    /// USD is correct for a FALLBACK: it is shown only before StoreKit answers,
+    /// and these amounts are the US tier. Once the product loads,
+    /// `IAPStore.perCredit(_:)` recomputes from the real localized price.
+    var perCredit: String {
+        guard credits > 0 else { return "" }
+        let per = priceUsd / Decimal(credits)
+        return "\(per.formatted(.currency(code: "USD"))) / cr"
+    }
 }
 
 extension CreditPack {
@@ -31,11 +51,11 @@ extension CreditPack {
     // figures and the ladder improves monotonically again.
     static let all: [CreditPack] = [
         .init(id: "sm", productId: "com.anthersystems.VirtualSIM.credits.5",
-              credits: 5,   price: "$2.99",  perCredit: "$0.60 / cr", badge: nil),
+              credits: 5,   priceUsd: 2.99,  badge: nil),
         .init(id: "md", productId: "com.anthersystems.VirtualSIM.credits.12",
-              credits: 12,  price: "$5.99",  perCredit: "$0.50 / cr", badge: "MOST POPULAR"),
+              credits: 12,  priceUsd: 5.99,  badge: "MOST POPULAR"),
         .init(id: "lg", productId: "com.anthersystems.VirtualSIM.credits.30",
-              credits: 30,  price: "$12.99", perCredit: "$0.43 / cr", badge: nil),
+              credits: 30,  priceUsd: 12.99, badge: nil),
         // Larger packs for eSIM data plans (which run pricier than OTP numbers).
         //
         // These strings are FALLBACKS shown only until StoreKit returns the real
@@ -54,10 +74,27 @@ extension CreditPack {
         // carrying BEST VALUE. **Read ASC before acting on any claim about
         // product state.**
         .init(id: "xl", productId: "com.anthersystems.VirtualSIM.credits.60",
-              credits: 60,  price: "$24.99", perCredit: "$0.42 / cr", badge: nil),
+              credits: 60,  priceUsd: 24.99, badge: nil),
         .init(id: "xxl", productId: "com.anthersystems.VirtualSIM.credits.150",
-              credits: 150, price: "$59.99", perCredit: "$0.40 / cr", badge: "BEST VALUE"),
+              credits: 150, priceUsd: 59.99, badge: "BEST VALUE"),
     ]
+
+    /// The ladder must improve strictly: a bigger pack always beats stacking
+    /// smaller ones. This has been violated in production before — US pricing
+    /// drift made two 30-packs ($23.98) beat the 60-pack ($24.99), silently
+    /// dominating the top revenue product — so it is asserted rather than
+    /// trusted. Debug-only: it guards the fallback table, and the live prices
+    /// come from App Store Connect where the same rule has to be kept by hand.
+    static func assertLadderImproves() {
+        #if DEBUG
+        for (a, b) in zip(all, all.dropFirst()) {
+            let perA = a.priceUsd / Decimal(a.credits)
+            let perB = b.priceUsd / Decimal(b.credits)
+            assert(perB < perA,
+                   "credit ladder regression: \(b.id) at \(perB)/cr is not cheaper than \(a.id) at \(perA)/cr")
+        }
+        #endif
+    }
 
     static let allProductIds: [String] = all.map(\.productId)
 }

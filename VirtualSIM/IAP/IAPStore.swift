@@ -12,6 +12,10 @@ final class IAPStore {
     private var apiClient: APIClient?
 
     init() {
+        // A structural check with no caller is not a check. Debug-only, and it
+        // runs before the paywall can ever be shown.
+        CreditPack.assertLadderImproves()
+
         // Listen for transactions that complete outside an active purchase
         // flow (interrupted, ask-to-buy, replayed on a new device, etc.).
         Task.detached { [weak self] in
