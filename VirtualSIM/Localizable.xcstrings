@@ -373,6 +373,46 @@
         }
       }
     },
+    "%@ free, then billed yearly": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ gratis, danach jährliche Abrechnung"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ gratis y luego cobro anual"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ offerts, puis facturation annuelle"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ gratis, poi addebito annuale"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ 無料、その後は年額請求"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ grátis e depois cobrança anual"
+          }
+        }
+      }
+    },
     "%@ in %@ costs %lld credits.": {
       "localizations": {
         "de": {
@@ -18824,6 +18864,46 @@
           "stringUnit": {
             "state": "translated",
             "value": "Retomar"
+          }
+        }
+      }
+    },
+    "SAVE %lld%%": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld %% SPAREN"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "AHORRA %lld %%"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld %% DE RÉDUCTION"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "RISPARMIA %lld %%"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld%% お得"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ECONOMIZE %lld%%"
           }
         }
       }

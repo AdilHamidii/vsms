@@ -308,22 +308,29 @@ struct LineCheckoutScreen: View {
                 planRow(.monthly,
                         title: String(localized: "Monthly"),
                         price: subs.product?.displayPrice,
+                        badge: nil,
                         note: nil)
                 planRow(.yearly,
                         title: String(localized: "Yearly"),
                         price: subs.yearlyProduct?.displayPrice,
-                        // Both derived from live StoreKit values, so neither can
-                        // promise something the store will not honour: the trial
-                        // vanishes for an Apple ID that has already used one, and
-                        // the saving is computed from the two real prices.
-                        note: subs.trialLabel.map { String(localized: "\($0) free") }
-                            ?? subs.yearlySavingsPercent.map { String(localized: "Save \($0)%") })
+                        // Both derived from live StoreKit, so neither can promise
+                        // something the store will not honour: the saving is
+                        // computed from the two real prices, and the trial
+                        // vanishes for an Apple ID that has already used one —
+                        // Apple allows a single introductory offer per
+                        // subscription GROUP per Apple ID.
+                        //
+                        // They are shown TOGETHER rather than one-or-the-other,
+                        // and each disappears on its own. Either can be absent
+                        // without the row losing its meaning.
+                        badge: subs.yearlySavingsPercent.map { String(localized: "SAVE \($0)%") },
+                        note: subs.trialLabel.map { String(localized: "\($0) free, then billed yearly") })
             }
         }
     }
 
     private func planRow(_ plan: LinePlan, title: String,
-                         price: String?, note: String?) -> some View {
+                         price: String?, badge: String?, note: String?) -> some View {
         let active = subs.selectedPlan == plan
         return Button {
             RHaptic.select()
@@ -333,14 +340,33 @@ struct LineCheckoutScreen: View {
                 Image(systemName: active ? "largecircle.fill.circle" : "circle")
                     .font(.system(size: 20))
                     .foregroundStyle(active ? theme.ink : theme.text3)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(verbatim: title)
-                        .font(RFont.text(15, weight: .semibold))
-                        .foregroundStyle(theme.text)
+                VStack(alignment: .leading, spacing: 3) {
+                    HStack(spacing: 6) {
+                        Text(verbatim: title)
+                            .font(RFont.text(15, weight: .semibold))
+                            .foregroundStyle(theme.text)
+                        // Same treatment as the credit ladder's MOST POPULAR /
+                        // BEST VALUE chips, so it reads as this app's own
+                        // marketing rather than a sticker bolted on. `accent2`
+                        // deliberately, NOT `live` — green means "your code
+                        // arrived" and "your credits came back" here, and
+                        // spending a semantic colour on a sales badge is the
+                        // collision the palette rules forbid.
+                        if let badge {
+                            Text(verbatim: badge)
+                                .font(RFont.text(10, weight: .heavy))
+                                .tracking(0.3)
+                                .foregroundStyle(theme.accent2)
+                                .padding(.horizontal, 7)
+                                .padding(.vertical, 2)
+                                .background(theme.inkSoft, in: .capsule)
+                        }
+                    }
                     if let note {
                         Text(verbatim: note)
                             .font(RFont.text(12))
                             .foregroundStyle(theme.ink)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
                 }
                 Spacer(minLength: 0)
