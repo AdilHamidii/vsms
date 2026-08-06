@@ -171,6 +171,16 @@ struct ContentView: View {
         }
         .animation(.easeOut(duration: 0.35), value: state.bootPhase)
         .task {
+            #if DEBUG
+            // Screenshots run offline against seeded data, so the cold-start
+            // chain is skipped entirely — six sequential fetches would either
+            // fail without a real token or make each frame depend on whatever
+            // the catalog happens to hold today. See `ScreenshotMode`.
+            if let shot = ScreenshotMode.screen {
+                applyScreenshotState(shot)
+                return
+            }
+            #endif
             // The whole cold-launch sequence, including which steps must finish
             // before the splash lifts. See AppState.coldStart.
             await state.coldStart(api: api)
@@ -470,6 +480,53 @@ struct ContentView: View {
         }
     }
 }
+
+#if DEBUG
+extension ContentView {
+    /// Puts the app directly into the state a given screenshot needs.
+    ///
+    /// One launch per screen, no taps: simulator UI automation is not available
+    /// here, and a scripted tap sequence is the part of a screenshot pipeline
+    /// that rots first. Each frame is instead reproducible from its launch
+    /// argument alone.
+    ///
+    /// Compiled out of Release entirely — see `ScreenshotMode`.
+    func applyScreenshotState(_ shot: ScreenshotMode.Screen) {
+        // The catalog is seeded rather than fetched, so a frame does not change
+        // because a provider repriced something this morning.
+        state.continueWithoutCatalog()      // lifts the splash; bootPhase is private(set)
+        state.balance = 42
+
+        switch shot {
+        case .onboarding:
+            break                              // handled before the gate
+
+        case .lineStore, .linePaywall:
+            state.tab = .line
+            state.line = nil                   // not yet a subscriber
+            if shot == .linePaywall {
+                state.lineCity = "toronto"
+                state.lineOffer = LineNumberOffer(phoneNumber: "+14375550128",
+                                                  region: "Toronto, Ontario",
+                                                  monthlyCents: 100,
+                                                  upfrontCents: 100)
+                state.flow = .lineCheckout
+            }
+
+        case .lineInbox:
+            state.tab = .line
+            state.line = ScreenshotMode.sampleLine
+            state.lineThreads = ScreenshotMode.sampleThreads
+
+        case .home:
+            state.tab = .home
+
+        case .waiting, .code, .orders:
+            state.tab = shot == .orders ? .orders : .home
+        }
+    }
+}
+#endif
 
 /// Bundles every environment object the app's screens read.
 /// Applied to sheet + cover contents so they don't inherit-by-accident from

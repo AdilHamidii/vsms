@@ -93,6 +93,28 @@ struct AuthGate: View {
             // client here and the whole calling path lights up.
             calls.attach(api: api)
             AppDelegate.push = push
+
+            #if DEBUG
+            // App Store screenshots are produced on a SIMULATOR, because that
+            // is the only way to get Apple's exact accepted pixel sizes — and
+            // Sign in with Apple does not work there, so the whole app is
+            // unreachable behind this gate. See `ScreenshotMode`; the entire
+            // path is compiled out of Release.
+            if let shot = ScreenshotMode.screen {
+                // `onboarding` is the one screen that lives BEFORE the gate, so
+                // it wants the opposite treatment: stay signed out, and force
+                // the first-run branch regardless of what a previous launch on
+                // this simulator left in UserDefaults.
+                if shot == .onboarding {
+                    onboardingComplete = false
+                    session.status = .signedOut
+                } else {
+                    session.status = .signedIn(userId: "screenshot")
+                }
+                return
+            }
+            #endif
+
             await session.bootstrap()
         }
     }

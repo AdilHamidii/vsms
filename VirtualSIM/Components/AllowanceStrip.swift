@@ -24,12 +24,18 @@ struct AllowanceStrip: View {
                     unit: "texts left",
                     fraction: line.smsFraction
                 )
-                gauge(
-                    icon: RIcon.phone,
-                    value: "\(line.voiceMinutesRemaining)",
-                    unit: "minutes left",
-                    fraction: line.voiceFraction
-                )
+                // ⚠️ The VOICE gauge is deliberately not rendered.
+                //
+                // The allowance is real in the schema and the server tracks it,
+                // but there is no dialer — `flow = .dialer` is assigned nowhere
+                // and `ContentView` answers that case with "coming very soon".
+                // A meter reading "78 minutes left" is a promise that the user
+                // has 78 minutes to spend, on the screen they look at every
+                // day. Same rule as the paywall, the store card and onboarding,
+                // all of which had this and were corrected.
+                //
+                // Restore this gauge in the same commit that ships the dialer,
+                // not before.
             }
             if let reset = line.allowanceResetsAt {
                 // Allowances reset on RENEWAL, never on a calendar boundary —

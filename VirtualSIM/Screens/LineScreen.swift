@@ -278,9 +278,13 @@ private struct NumberDetailView: View {
                         divider
                         row(label: "Texts left",
                             value: "\(line.smsRemaining) of \(line.smsAllowance)")
-                        divider
-                        row(label: "Minutes left",
-                            value: "\(line.voiceMinutesRemaining) of \(line.voiceAllowanceSeconds / 60)")
+                        // "Minutes left · 100 of 100" removed for the same
+                        // reason as the gauge in `AllowanceStrip`: there is no
+                        // dialer, so a plan row stating an unspendable balance
+                        // is a promise. It was worse here than anywhere else —
+                        // a subscriber tapping Calls saw this row directly
+                        // above "Calling is coming — your number can't make or
+                        // take calls yet." Restore with the dialer.
                     }
                     .padding(.vertical, 4)
                 }
