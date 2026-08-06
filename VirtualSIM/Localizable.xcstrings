@@ -4169,6 +4169,46 @@
         }
       }
     },
+    "Calling isn't available in this build.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Anrufe sind in dieser Version nicht verfügbar."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Las llamadas no están disponibles en esta versión."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Les appels ne sont pas disponibles dans cette version."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Le chiamate non sono disponibili in questa versione."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "このビルドでは通話を利用できません。"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "As chamadas não estão disponíveis nesta versão."
+          }
+        }
+      }
+    },
     "Calling…": {
       "localizations": {
         "de": {
@@ -4249,6 +4289,46 @@
         }
       }
     },
+    "Calls you make and receive on this number appear here.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Anrufe, die Sie über diese Nummer führen und erhalten, erscheinen hier."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Las llamadas que hagas y recibas en este número aparecen aquí."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Les appels que vous passez et recevez sur ce numéro apparaissent ici."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Le chiamate che fai e ricevi su questo numero compaiono qui."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "この番号での発信・着信がここに表示されます。"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "As chamadas que você faz e recebe neste número aparecem aqui."
+          }
+        }
+      }
+    },
     "Canada": {
       "localizations": {
         "de": {
@@ -4285,6 +4365,46 @@
           "stringUnit": {
             "state": "translated",
             "value": "Canadá"
+          }
+        }
+      }
+    },
+    "Canadian numbers that exchange texts and calls with US and Canadian phones": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kanadische Nummern für SMS und Anrufe mit Telefonen in den USA und Kanada"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Números canadienses que intercambian mensajes y llamadas con teléfonos de EE. UU. y Canadá"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Des numéros canadiens qui échangent SMS et appels avec les téléphones américains et canadiens"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Numeri canadesi che scambiano messaggi e chiamate con telefoni di USA e Canada"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "米国・カナダの電話とSMSや通話をやり取りできるカナダの番号"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Números canadenses que trocam mensagens e chamadas com telefones dos EUA e do Canadá"
           }
         }
       }
@@ -6672,6 +6792,46 @@
           "stringUnit": {
             "state": "translated",
             "value": "Não foi possível carregar os dados da sua conta"
+          }
+        }
+      }
+    },
+    "Couldn't reach the calling network.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Das Anrufnetz war nicht erreichbar."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No se pudo conectar con la red de llamadas."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Impossible de joindre le réseau d'appel."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Non è stato possibile raggiungere la rete per le chiamate."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "通話ネットワークに接続できませんでした。"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Não foi possível conectar à rede de chamadas."
           }
         }
       }
@@ -11661,6 +11821,86 @@
         }
       }
     },
+    "Make a call": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Anruf starten"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hacer una llamada"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Passer un appel"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Fai una chiamata"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "電話をかける"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Fazer uma chamada"
+          }
+        }
+      }
+    },
+    "Make and take calls in the app": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Anrufe in der App tätigen und annehmen"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Haz y recibe llamadas en la app"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Passez et recevez des appels dans l'app"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Fai e ricevi chiamate nell'app"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "アプリ内で通話の発信と着信"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Faça e receba chamadas no app"
+          }
+        }
+      }
+    },
     "Manitoba": {
       "localizations": {
         "de": {
@@ -12058,6 +12298,46 @@
           "stringUnit": {
             "state": "translated",
             "value": "Mensagens"
+          }
+        }
+      }
+    },
+    "Minutes left": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Restliche Minuten"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Minutos restantes"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Minutes restantes"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Minuti rimasti"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "残り通話時間"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Minutos restantes"
           }
         }
       }
@@ -12868,6 +13148,46 @@
           "stringUnit": {
             "state": "translated",
             "value": "Sem anúncios, sem rastreamento, sem lista de e-mails"
+          }
+        }
+      }
+    },
+    "No calls yet": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Noch keine Anrufe"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aún no hay llamadas"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aucun appel pour l'instant"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ancora nessuna chiamata"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "通話はまだありません"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nenhuma chamada ainda"
           }
         }
       }
@@ -20562,6 +20882,46 @@
         }
       }
     },
+    "That call has already ended.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dieser Anruf ist bereits beendet."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Esa llamada ya terminó."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cet appel est déjà terminé."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Quella chiamata è già terminata."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "その通話はすでに終了しています。"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Essa chamada já terminou."
+          }
+        }
+      }
+    },
     "That code isn't valid.": {
       "localizations": {
         "de": {
@@ -20800,6 +21160,46 @@
           "stringUnit": {
             "state": "translated",
             "value": "A App Store não está oferecendo esta assinatura agora. Tente novamente em instantes."
+          }
+        }
+      }
+    },
+    "The call dropped.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Die Verbindung wurde unterbrochen."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Se cortó la llamada."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "L'appel a été interrompu."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "La chiamata è caduta."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "通話が切断されました。"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "A chamada caiu."
           }
         }
       }
@@ -25637,6 +26037,46 @@
         }
       }
     },
+    "Your subscription lapsed. You can still receive texts and calls, but you can't send or dial out until you renew.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ihr Abo ist abgelaufen. Sie können weiterhin SMS und Anrufe empfangen, aber erst nach einer Verlängerung wieder senden oder anrufen."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tu suscripción venció. Puedes seguir recibiendo mensajes y llamadas, pero no podrás enviar ni llamar hasta que la renueves."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Votre abonnement a expiré. Vous pouvez toujours recevoir des SMS et des appels, mais vous ne pouvez plus en envoyer ni en passer avant de le renouveler."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Il tuo abbonamento è scaduto. Puoi ancora ricevere messaggi e chiamate, ma non puoi inviarne né effettuarne finché non lo rinnovi."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "サブスクリプションが失効しました。SMSと着信は引き続き受け取れますが、更新するまで送信と発信はできません。"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sua assinatura expirou. Você ainda recebe mensagens e chamadas, mas não pode enviar nem ligar até renovar."
+          }
+        }
+      }
+    },
     "Your subscription lapsed. You can still receive texts and calls, but you can't send until you renew.": {
       "extractionState": "stale",
       "localizations": {
@@ -26657,6 +27097,46 @@
           "stringUnit": {
             "state": "translated",
             "value": "min restantes"
+          }
+        }
+      }
+    },
+    "minutes of calls a month, in and out": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Anrufminuten pro Monat, ein- und ausgehend"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "minutos de llamadas al mes, entrantes y salientes"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "minutes d'appels par mois, entrants et sortants"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "minuti di chiamate al mese, in entrata e in uscita"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "分の通話（毎月・発着信）"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "minutos de chamadas por mês, entrada e saída"
           }
         }
       }

@@ -78,9 +78,35 @@ final class CallController: NSObject {
         self.apiClient = api
         if let voice {
             self.voice = voice
+            voice.setDelegate(self)
             isVoiceAvailable = true
         }
     }
+
+    /// Mint a credential and open the WebRTC session.
+    ///
+    /// Idempotent — `connect` returns immediately when the client is already
+    /// registered — so the dialer can call it on appear and `placeCall` can
+    /// call it again without paying for a second handshake. Doing it on appear
+    /// means the socket is usually up before the user finishes typing, which
+    /// is the difference between a call that rings and one that pauses first.
+    @discardableResult
+    func prepareVoice() async -> Bool {
+        guard isVoiceAvailable, let api = apiClient else { return false }
+        do {
+            let grant = try await LineAPI(client: api).mintVoiceToken()
+            lineE164 = grant.e164
+            try await voice.connect(token: grant.token)
+            inboundReady = grant.inboundReady
+            return true
+        } catch {
+            return false
+        }
+    }
+
+    /// Whether the number is attached to the voice application yet. Outbound
+    /// calling works regardless; inbound does not ring until this is true.
+    private(set) var inboundReady = false
 
     /// Whether a real WebRTC client is attached.
     ///
@@ -159,12 +185,18 @@ final class CallController: NSObject {
         }
 
         do {
+            // The socket is normally already up from `prepareVoice()` on the
+            // dialer's appear; this covers the case where it timed out or
+            // dropped between screens. `connect` returns immediately when the
+            // client is registered, so the happy path pays nothing.
+            _ = await prepareVoice()
+
             // ⚠️ The SDK's session id was DISCARDED here (`_ = try await …`),
             // and it is the only key `sync-telnyx-cdr` can match a detail
             // record against. Without it the call kept its whole 120-second
             // reservation forever and the allowance meant nothing.
             let session = try await voice.dial(to: number, from: lineNumber)
-            report(sessionId: session, status: "ringing")
+            report(sessionId: session, legId: voice.providerLegId, status: "ringing")
             provider.reportOutgoingCall(with: uuid, startedConnectingAt: Date())
         } catch {
             await failCall(error.localizedDescription)
@@ -180,6 +212,7 @@ final class CallController: NSObject {
     /// this device's word instead of Telnyx's.
     private func report(
         sessionId: String? = nil,
+        legId: String? = nil,
         status: String? = nil,
         answeredAt: Date? = nil,
         durationSeconds: Int? = nil
@@ -190,7 +223,7 @@ final class CallController: NSObject {
             for attempt in 0..<2 {
                 do {
                     try await line.reportCall(
-                        callId: callId, sessionId: sessionId, status: status,
+                        callId: callId, sessionId: sessionId, legId: legId, status: status,
                         answeredAt: answeredAt, durationSeconds: durationSeconds)
                     return
                 } catch {
@@ -268,7 +301,16 @@ final class CallController: NSObject {
         // `answered_at` had no writer anywhere. It is what separates "they
         // picked up" from "it rang out" on the history row, and the CDR does
         // not carry our notion of it.
-        report(status: "answered", answeredAt: now)
+        //
+        // The provider ids are re-read rather than assumed: Telnyx can assign
+        // them after `dial`'s bounded wait gives up, and a row with no session
+        // id never matches a detail record — so the call would keep its whole
+        // 120-second reservation. Re-sending the SAME id is safe;
+        // `attach_line_call_session` is write-once and only refuses a
+        // DIFFERENT one.
+        report(
+            sessionId: voice.providerSessionId, legId: voice.providerLegId,
+            status: "answered", answeredAt: now)
         if let uuid = currentUUID, isOutbound {
             provider.reportOutgoingCall(with: uuid, connectedAt: now)
         }
@@ -327,11 +369,23 @@ extension CallController: CXProviderDelegate {
     /// the classic "no audio on the first call, fine on every call after"
     /// bug — the session is already owned by the system by the time your code
     /// runs, and the second activation is what breaks it.
+    ///
+    /// 🔴 The SDK must be handed THIS session instance or there is no audio at
+    /// all — the call connects, the timer runs, and neither side hears
+    /// anything.
+    ///
+    /// ⚠️ This deliberately no longer calls `mediaConnected()`. CallKit
+    /// activates audio moments after an OUTBOUND call starts, long before the
+    /// callee answers, so treating it as "connected" started the billing clock
+    /// and the on-screen timer on a phone that was still ringing. The SDK's own
+    /// `.ACTIVE` state is the honest signal and now drives it.
     nonisolated func provider(_ provider: CXProvider, didActivate audioSession: AVAudioSession) {
-        Task { @MainActor in mediaConnected() }
+        Task { @MainActor in voice.audioSessionActivated(audioSession) }
     }
 
-    nonisolated func provider(_ provider: CXProvider, didDeactivate audioSession: AVAudioSession) { }
+    nonisolated func provider(_ provider: CXProvider, didDeactivate audioSession: AVAudioSession) {
+        Task { @MainActor in voice.audioSessionDeactivated(audioSession) }
+    }
 }
 
 // MARK: - PushKit
@@ -342,7 +396,12 @@ extension CallController: PKPushRegistryDelegate {
                                   for type: PKPushType) {
         guard type == .voIP else { return }
         let token = credentials.token.map { String(format: "%02x", $0) }.joined()
-        Task { @MainActor in await uploadVoIPToken(token) }
+        Task { @MainActor in
+            // The SDK needs it too: Telnyx sends the VoIP push itself, and a
+            // credential registered without this token can never ring.
+            voice.registerPushToken(token)
+            await uploadVoIPToken(token)
+        }
     }
 
     nonisolated func pushRegistry(_ registry: PKPushRegistry,
@@ -377,14 +436,21 @@ extension CallController: PKPushRegistryDelegate {
         update.supportsUngrouping = false
         update.supportsHolding = false
 
+        // Telnyx nests what its SDK needs under `metadata`. Captured before the
+        // report so the closure does not reach back into the payload.
+        let metadata = info["metadata"] as? [String: Any]
+
         provider.reportNewIncomingCall(with: uuid, update: update) { [weak self] error in
-            // Only AFTER the obligation is met do we touch our own state.
+            // Only AFTER the obligation is met do we touch our own state, or
+            // hand anything to the SDK. Attaching first would put a network
+            // round trip ahead of the one call iOS is waiting for.
             Task { @MainActor in
                 guard let self, error == nil else { completion(); return }
                 self.currentUUID = uuid
                 self.peer = from
                 self.isOutbound = false
                 self.phase = .ringing
+                if let metadata { self.voice.handleVoIPPush(metadata: metadata) }
                 completion()
             }
         }
@@ -408,5 +474,23 @@ extension CallController: PKPushRegistryDelegate {
         #else
         "production"
         #endif
+    }
+}
+
+// MARK: - VoiceClient events
+
+/// The SDK delivers these on its own threads, so each one hops to the main
+/// actor — the same shape as the `CXProviderDelegate` conformance above.
+extension CallController: VoiceClientDelegate {
+    nonisolated func voiceMediaConnected() {
+        Task { @MainActor in mediaConnected() }
+    }
+
+    nonisolated func voiceRemoteEnded() {
+        Task { @MainActor in remoteEnded() }
+    }
+
+    nonisolated func voiceFailed(_ message: String) {
+        Task { @MainActor in await failCall(message) }
     }
 }

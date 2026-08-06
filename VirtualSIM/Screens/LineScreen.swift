@@ -40,6 +40,7 @@ private struct LiveLineView: View {
     @Environment(\.theme) private var theme
     @Environment(AppState.self) private var state
     @Environment(APIClient.self) private var api
+    @Environment(CallController.self) private var calling
 
     let line: Line
 
@@ -196,22 +197,27 @@ private struct LiveLineView: View {
 
     // MARK: - Calls
 
+    /// ⚠️ This segment said *"Calling is coming — your number can't make or
+    /// take calls yet"* for as long as `flow = .dialer` was assigned nowhere.
+    /// The rule that produced that copy still stands and is worth keeping in
+    /// view: **sell what ships.** It is only correct to offer the keypad here
+    /// because the SDK is now linked and `isVoiceAvailable` gates the flow.
     @ViewBuilder
     private var calls: some View {
         if state.lineCalls.isEmpty {
-            // ⚠️ Must not imply calling works. There is no dialer — `flow =
-            // .dialer` is assigned nowhere — so "calls appear here" reads as a
-            // feature that is merely unused rather than one that does not
-            // exist. Same rule as the paywall: sell what ships.
-            EmptyState(
-                icon: RIcon.phone,
-                title: "Calling is coming",
-                message: "Your number can't make or take calls yet. Texting works now, and calls arrive in a future update.",
-                tint: theme.text3
-            )
+            VStack(spacing: 14) {
+                EmptyState(
+                    icon: RIcon.phone,
+                    title: "No calls yet",
+                    message: "Calls you make and receive on this number appear here."
+                )
+                dialButton
+            }
+            .padding(.top, 20)
         } else {
             ScrollView {
                 LazyVStack(spacing: 8) {
+                    dialButton.padding(.bottom, 6)
                     ForEach(state.lineCalls) { call in
                         CallRow(call: call)
                     }
@@ -219,6 +225,33 @@ private struct LiveLineView: View {
                 .padding(.horizontal, 20)
                 .padding(.bottom, 120)
             }
+        }
+    }
+
+    /// The one entry point to the dialer.
+    ///
+    /// Hidden — not disabled — when no voice client is attached. A disabled
+    /// button still advertises the feature, and on a build without the SDK
+    /// that is a promise the app cannot keep.
+    @ViewBuilder
+    private var dialButton: some View {
+        if calling.isVoiceAvailable {
+            Button {
+                RHaptic.select()
+                state.flow = .dialer
+            } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: RIcon.phone)
+                        .font(.system(size: 14, weight: .semibold))
+                    Text("Make a call")
+                        .font(RFont.text(15, weight: .medium))
+                }
+                .foregroundStyle(theme.text)
+                .frame(height: 48)
+                .padding(.horizontal, 22)
+                .background(theme.chipBg, in: Capsule())
+            }
+            .buttonStyle(PressScaleStyle())
         }
     }
 
@@ -264,13 +297,14 @@ private struct NumberDetailView: View {
                         divider
                         row(label: "Texts left",
                             value: "\(line.smsRemaining) of \(line.smsAllowance)")
-                        // "Minutes left · 100 of 100" removed for the same
-                        // reason as the gauge in `AllowanceStrip`: there is no
-                        // dialer, so a plan row stating an unspendable balance
-                        // is a promise. It was worse here than anywhere else —
-                        // a subscriber tapping Calls saw this row directly
-                        // above "Calling is coming — your number can't make or
-                        // take calls yet." Restore with the dialer.
+                        divider
+                        // Restored with the dialer. It was removed while
+                        // calling was unreachable, because a plan row stating
+                        // an unspendable balance is a promise — a subscriber
+                        // tapping Calls saw "100 of 100 minutes" directly above
+                        // "your number can't make or take calls yet".
+                        row(label: "Minutes left",
+                            value: "\(line.voiceSecondsRemaining / 60) of \(line.voiceAllowanceSeconds / 60)")
                     }
                     .padding(.vertical, 4)
                 }
@@ -389,12 +423,10 @@ struct LineStatusBanner: View {
                  text: "There's a problem with your payment. Update it to keep your number. Everything still works for now.")
         case .pastDue:
             Copy(icon: "exclamationmark.circle", tint: theme.fail,
-                 // "and calls" removed — there is no dialer, so this told a
-                 // lapsed subscriber they still had a capability that has never
-                 // existed. The receive/send split is real and is the point of
-                 // the banner: inbound stays on because the user cannot control
-                 // who texts them.
-                 text: "Your subscription lapsed. You can still receive texts, but you can't send until you renew.")
+                 // The receive/send split is the point of this banner: inbound
+                 // stays on because the user cannot control who contacts them,
+                 // while outbound is what lapsing withdraws.
+                 text: "Your subscription lapsed. You can still receive texts and calls, but you can't send or dial out until you renew.")
         case .suspended:
             Copy(icon: "lock", tint: theme.fail,
                  text: "Your number is on hold. Resubscribe to get it back before it's released for good.")

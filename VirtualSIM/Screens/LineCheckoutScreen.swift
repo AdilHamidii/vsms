@@ -232,16 +232,18 @@ struct LineCheckoutScreen: View {
 
     // MARK: - What you get
 
-    /// ⚠️ **This must never advertise calling.**
+    /// ⚠️ **Only sell what ships.**
     ///
-    /// It previously read "100 minutes of calls every month" and the store
-    /// screen said texts and calls "happen right here". There is no dialer:
-    /// `flow = .dialer` is assigned nowhere in the app, and `ContentView`
-    /// renders "Calling from your number is coming very soon" for that case.
-    /// Selling a capability the buyer cannot use after paying is a refund
-    /// driver and an App Review 2.3.1 exposure. Calling appears here only as an
-    /// explicitly unavailable line, and moves into the paid list on the day the
-    /// dialer ships — not before.
+    /// Calling sat here as an explicitly unavailable "Coming soon" row for as
+    /// long as `flow = .dialer` was assigned nowhere, and moved into the paid
+    /// list in the same commit that linked the SDK and wired the dialer — the
+    /// ordering this comment exists to preserve. Selling a capability the
+    /// buyer cannot use after paying is a refund driver and an App Review
+    /// 2.3.1 exposure.
+    ///
+    /// ⚠️ **Emergency calling is NOT included and is disclosed separately** —
+    /// see the notice on `NumberDetailView`. Nothing in this list may imply
+    /// the number can reach 911.
     private var included: some View {
         VStack(alignment: .leading, spacing: 0) {
             MicroLabel("What you get")
@@ -252,15 +254,14 @@ struct LineCheckoutScreen: View {
                     BenefitRow(icon: RIcon.message, figure: "200",
                                label: "texts a month, in and out")
                     RowRule()
+                    BenefitRow(icon: RIcon.phone, figure: "100",
+                               label: "minutes of calls a month, in and out")
+                    RowRule()
                     BenefitRow(icon: "infinity",
                                label: "Keep this number for as long as you subscribe")
                     RowRule()
                     BenefitRow(icon: "lock.fill",
                                label: "Your own number never leaves your phone")
-                    RowRule()
-                    BenefitRow(icon: RIcon.phone,
-                               label: "Calling", hint: "Coming soon",
-                               tint: theme.text3)
                 }
                 .padding(.vertical, 4)
             }

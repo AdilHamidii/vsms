@@ -2,14 +2,37 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Where things live (split 2026-08-06)
+
+This file was **302 KB / ~75k tokens loaded into every session** — 7.6× the size
+at which Claude Code warns about a memory file. Four blocks were moved to
+surfaces that load only when they are relevant. **Nothing was summarised or
+deleted in the move**; the text is byte-identical, just relocated.
+
+| Surface | Loads when | Holds |
+|---|---|---|
+| **this file** | always | product shape, money paths, the gotchas list, open issues, provider split, commands |
+| `@.claude/rules/providers.md` | editing `supabase/functions/**` | 5sim / HeroSMS / Telnyx API behaviour, both pricing syncs, the sellable-number catalogue |
+| `@.claude/rules/ios-client.md` | editing `VirtualSIM/**` | source layout, palette + Liquid Glass, cold launch, the map's per-frame trap, localization, eSIM store ranking, order-state invariants |
+| `release-prep` skill | invoked when cutting a release | archive → patch → export → upload → ASC submission, IAP review track |
+| `aso-listing` skill | invoked when touching the listing | keywords, screenshots, storefront metrics |
+
+⚠️ **What did NOT move, deliberately.** Everything safety-critical stays here,
+because a scoped file is not in context when it is not matched: the money paths,
+`Non-obvious gotchas`, `Known-open`, the pricing model and margin gates, and the
+provider-switch checklist. **Do not move a "never do X" rule into a scoped or
+lazy surface** — it has to be loaded at the moment it matters, which is exactly
+when nobody has the relevant file open.
+
 ## What this is
 
 **vSMS** (App Store display name; formerly "vSIM OTP" — the Xcode target/scheme is still `VirtualSIM`) — iOS app selling three products, all paid with in-app **credits**: (1) **temporary phone numbers** for SMS verification codes, (2) **temporary e-mail addresses**, and (3) **eSIM data plans** priced at 4× wholesale (line currently PAUSED). A
 **fourth** line — rentable second numbers with two-way SMS and voice, billed by
 **StoreKit subscription rather than credits** — is BUILT, DEPLOYED and LIVE in
 the repo (`lines_paused = false`), and is the app's first tab. Nobody has
-bought one: the remaining blockers are **Telnyx float** (money, not code), the
-`TelnyxRTC` SwiftPM package for actual media, and 10DLC for US numbers. See
+bought one: the remaining blockers are **Telnyx float** (money, not code) and
+10DLC for US numbers. `TelnyxRTC` was added and the dialer wired on 2026-08-06,
+so calling is reachable — but **no real call has ever been placed**. See
 "Rentable second numbers". iOS frontend in SwiftUI + Supabase backend (Postgres + Auth + Edge Functions + pg_cron).
 
 **Provider split as of 2026-08-03 — 5sim is the PRIMARY SMS provider; HeroSMS
@@ -88,14 +111,14 @@ Bundle ID: `com.anthersystems.VirtualSIM` · Supabase ref: `enugzltysdmjzavisloy
 ## Common commands
 
 ```bash
-# iOS type-check (verify ALL Swift compiles; no simulator, no platform install)
-# Use this when xcodebuild refuses to build — see the destination note below.
-# The project has ZERO SwiftPM dependencies, so swiftc alone type-checks the
-# whole app against the simulator SDK. Exit 0 = everything compiles.
-xcrun swiftc -typecheck \
-  -sdk "$(xcrun --sdk iphonesimulator --show-sdk-path)" \
-  -target arm64-apple-ios26.5-simulator -swift-version 5 \
-  $(find VirtualSIM -name '*.swift')
+# ⛔ `swiftc -typecheck` IS RETIRED as of 2026-08-06 — do NOT use it, and do
+# not "fix" it. Adding the `TelnyxRTC` SwiftPM package retired it exactly as
+# planned: swiftc cannot resolve a package graph, so it now fails with
+# `no such module 'TelnyxRTC'` on TelnyxVoiceClient.swift and reports NOTHING
+# about the other 115 sources. Verified failing 2026-08-06.
+#
+# **`xcodebuild` is now the ONLY check.** It was already the better one — a
+# missing `import StoreKit` type-checked fine and failed the real build.
 
 # iOS build (verify compilation; no simulator launch)
 # NOTE: this FAILS on this machine until the iOS platform is installed —
@@ -183,13 +206,18 @@ supabase db query --linked "
     body := '{}'::jsonb, timeout_milliseconds := 180000);"
 ```
 
-There is no test suite. Verify iOS with the `swiftc -typecheck` command above
-(exit 0 = all 115 sources compile as of 2026-08-06 — re-count before trusting;
-this said 96 for three days after the Number tab landed). It still works: the
-`TelnyxRTC` SwiftPM dependency that would retire it has NOT been added, and
-`NullVoiceClient` stands in. It does NOT catch everything — a missing
-`import StoreKit` type-checked fine and failed the real build, so prefer
-`xcodebuild` when you can afford it. Verify backend changes by re-deploying, then
+There is no test suite. Verify iOS with **`xcodebuild`** — `swiftc -typecheck`
+was retired on 2026-08-06 when the `TelnyxRTC` package landed (see above). The
+project now has **three** SwiftPM dependencies (TelnyxRTC 4.1.2, WebRTC 139.0.0,
+Starscream 4.0.8) and **116** Swift sources — re-count before trusting either;
+this said 96 for three days after the Number tab landed.
+
+⚠️ **A green build does NOT cover the two things calling can get wrong.** Both
+are runtime-only and silent: the `UIBackgroundModes` Info.plist key (see the
+gotcha below) and whether a real call actually carries audio. Assert the first
+with `plutil`, and the second only on a physical device.
+
+Verify backend changes by re-deploying, then
 **checking the resulting DB state** — not by assuming the deploy worked. Several
 bugs this session looked identical to success until a row was queried: an
 SMSPVA balance read that silently wrote nothing, and maintenance jobs that ran
@@ -202,107 +230,26 @@ instead — different auth path, unaffected.
 
 ## Architecture
 
-```
-iOS (SwiftUI, iOS 18.0 min target)        Supabase
-─────────────────────────────             ──────────────────────────────────────────
-AuthGate                                  Postgres tables: profiles, wallets,
-  ↓ Sign in with Apple (native)             wallet_transactions, services, countries,
-ContentView (4 tabs: home / esim /          routes, orders, esim_plans, esim_orders,
-  orders / account + flow cover)             referrals, push_devices, iap_receipts,
-  ↓ APIClient (URLSession + apikey hdr)      telegram_events, app_config
-  REST  → /rest/v1/...  (PostgREST)
-  RPC   → /functions/v1/...               Edge Functions (Deno):
-                                            create-order/check-order/cancel-order
-Providers — _shared/providers.ts:           poll-active-orders (cron, every 1 min)
-  SMS  → 5sim (5sim.net) — PRIMARY,        create-esim-order/check-esim-usage
-         146 services / ~4,400 routes      sync-5sim (hourly :07, PRIMARY pricing)
-  SMS  → SMSPVA (api.smspva.com), 115      sync-prices (hourly :17, + catalog
-  SMS  → HeroSMS (hero-sms.com), 102         maintenance) / sync-esim-plans (daily)
-  MAIL → HeroSMS /api/v1 (same account,    sync-herosms (hourly :37)
-         same balance as its SMS side)     telegram-notify (cron 1 min) /
-  eSIM → SMSPool (api.smspool.net) PAUSED  telegram-webhook (public, 2-gate)
-  Ownership per SERVICE, no fallback       redeem-referral / winback
-  smspool-SMS + virtualsms DELETED         register-push / iap-verify / delete-account
-                                            create-email-order/check-email-order
-APNs ←── token-auth (.p8) HTTP/2            sync-smspva-operators+conversions
-Telegram ←── ops alerts + 6h digest         support-send / daily-credit (DISABLED)
-```
+The ASCII system diagram that lived here was **deleted 2026-08-06**: every part
+of it was derivable (`ls supabase/functions`, the migrations, the tab enum) and
+all of it had gone stale — it showed *four* tabs when there are five, listed
+none of the eight rented-line functions, and asserted "Ownership per SERVICE"
+which this file's own header contradicts. A diagram nobody regenerates is worse
+than no diagram, because it is read as current. Derive the shape from the code;
+what follows is the part the code cannot tell you.
 
 **iOS minimum is 18.0**, lowered from 26.2 in `a9b92c0` (shipped as 1.5 build 16)
 — the 26.2 floor excluded almost every device in the install base. Anything
 guarded by an `if #available(iOS 26, *)` must keep a working 18.0 path.
 
-### iOS source layout
+### iOS client details — moved to `.claude/rules/ios-client.md`
 
-```
-VirtualSIM/
-  VirtualSIMApp.swift            App entry; resizes URLCache (32MB mem / 64MB disk
-                                 for brand logos + flag PNGs); installs AppDelegate
-  ContentView.swift              4-tab routing (home/esim/orders/account) +
-                                 fullScreenCover for Checkout/Waiting/OTP + eSIM
-                                 flow (esimCheckout/esimDetail); EnvBundle
-                                 ViewModifier re-injects every @Observable env
-                                 object into sheet/cover content (covers don't
-                                 inherit reliably)
-  Auth/                          AuthGate (3-state: bootstrap/signedOut/signedIn),
-                                 SignInScreen, Session (@Observable, Keychain-backed)
-  Networking/                    APIClient + per-resource APIs (CatalogAPI, OrdersAPI,
-                                 WalletAPI, ProfileAPI, IAPAPI, AccountAPI, PushAPI,
-                                 AuthAPI). Secrets.swift is gitignored
-  State/AppState.swift           Single @Observable source of truth — services,
-                                 countries, routes, orders, prefs (UserDefaults-
-                                 backed via didSet), checkout/flow machine
-  Models/                        Plain Codable structs mirroring DB column names via
-                                 .convertFromSnakeCase (Service, Country, Route,
-                                 Order, EsimPlan, EsimOrder, CreditPack,
-                                 CountryRank = the PROVIDER's success rate for a
-                                 (service, country) — steering input, never a
-                                 badge; see the steering section)
-  Screens/                       Home, Checkout, Waiting (+ WaitingAnimations),
-                                 OTP (fires native review prompt on code
-                                 delivery), Orders, Account, + eSIM flow
-                                 (EsimStore = Store/My eSIMs/Activity segments,
-                                 EsimMapView = clustered MapKit country picker,
-                                 EsimCountryPlans = duration→size chooser,
-                                 EsimActivity = usage metrics + history,
-                                 EsimCheckout, EsimDetail = QR + usage),
-                                 Recovery (post-failure: retry on a fresh number /
-                                 switch country / refund explainer — see the
-                                 retry-steering note below), Maintenance (shown
-                                 during the nightly operator-sync window),
-                                 SplashScreen (cold-launch cover — see below),
-                                 EmailWaiting/EmailCode (temp email),
-                                 SupportChatScreen (live chat)
-  Sheets/                        EmailDomainSheet (4 domains, live stock,
-                                 Free/1cr), ServiceSheet (search + categories + per-route
-                                 price; a service with no route in the SELECTED
-                                 country shows where it IS bookable, never a bare
-                                 "Unavailable" — see the picker note below),
-                                 CountrySheet (sort + per-route price),
-                                 CreditsSheet (StoreKit 2)
-  Components/                    Theme primitives + ServiceLogo / FlagImage /
-                                 FlagCircle — bundle-first via BundledImageStore,
-                                 network cascade (DuckDuckGo/FaviconV2, flagcdn) as
-                                 fallback; SuccessBadge renders MEASURED delivery
-                                 odds only (grey/amber/red), never seed rates;
-                                 BrandWordmark (green `v` + SMS — the logo, and on
-                                 the splash also the loading indicator);
-                                 CodeFlag (flag from a bare ISO2 — the eSIM
-                                 catalog has no `Country`); DataRing/DataBar
-                                 (usage gauges, show REMAINING not used)
-  Push/, IAP/, Onboarding/       Self-explanatory
-  DesignSystem/                  Theme, Typography, Icons + **Motion.swift**
-                                 (`RMotion`: one animation vocabulary named by
-                                 what moves — select/panel/content/value/camera
-                                 + `stagger`. Use these, not inline curves)
-                                 + **Glass.swift** (`.glassPanel(shape:)` —
-                                 Liquid Glass on iOS 26, frosted material below.
-                                 See the note below: the availability guard
-                                 lives HERE and nowhere else)
-  Localizable.xcstrings          String Catalog: en source + de/es/fr/it/ja/pt-BR
-  Products.storekit              Local IAP test config (enable via scheme)
-  VirtualSIM.entitlements        Sign in with Apple + aps-environment
-```
+Source layout, the palette and Liquid Glass rules, cold launch, the map's
+per-frame camera trap, the localization `Text("literal")` rule, the eSIM
+store's Pareto filter, the service picker, the order-state reconcile
+invariant and the p90 quoting rule now live in
+`@.claude/rules/ios-client.md`, which loads automatically when working
+under `VirtualSIM/`. ~6.7k tokens.
 
 ### Backend layout
 
@@ -324,311 +271,12 @@ VirtualSIM/
 - `refresh_route_observed_success` / `refresh_service_delivery` / `refresh_country_delivery` / `sync_service_visibility` / `apply_measured_service_ranking` — catalog self-correction. The first three are now called **through the wrapper**, not directly.
 - `ops_snapshot(interval)` — one JSONB blob powering both the Telegram digest and `/stats`.
 
-### 5sim API — the provider that publishes delivery rates (live 2026-08-03)
+### Provider APIs — moved to `.claude/rules/providers.md`
 
-Base `https://5sim.net/v1`. Auth is `Authorization: Bearer <JWT>` on `/user/*`;
-`/guest/*` needs no key at all.
-
-```
-GET /v1/guest/prices?country=<slug>   # UNAUTHENTICATED
-→ country → product → operator → {cost, count, rate, rate1, rate3, rate24,
-                                  rate72, rate168, rate720}   # suffix = HOURS
-GET /v1/user/buy/activation/{country}/{operator}/{product}    # pins the pool
-GET /v1/user/profile                  # {balance, rating}
-```
-
-⚠️ **TWO DIFFERENT WINDOWS DO TWO DIFFERENT JOBS — do not collapse them
-(2026-08-05).** `sync-5sim` computes both on every run:
-
-| | function | window | used for |
-|---|---|---|---|
-| **selection** | `rateOf` | `rate24` → `rate168` → `rate720` | which pool `choosePool` pins. Never stored. |
-| **display** | `displayRateOf` | `rate168` → `rate720` | `routes.pool_rate_pct` — what the country row renders and what the client sorts on. |
-
-**Choose on freshness, display on stability.** Leading with `rate24` is right for
-selection (fastest way to notice a dead pool, and reacting to noise is worth it
-there) and wrong for a number a user reads as their odds. See "The pool rate is
-the tie-break" for the incident that forced the split.
-
-`routes.pool_rate_window` records which window each stored figure came from —
-`168h` or `720h`. It used to be the hardcoded literal `"720h"` on every row while
-the value was whatever the ladder landed on, so it never described the number
-beside it until 2026-08-05. **Read it before quoting a rate.**
-
-Do not read 5sim's own website as a reference: its operator list shows the **max
-across all seven windows**, and its Statistics tab shows `rate72`, so our figures
-will look lower than theirs. That is correct, not a bug.
-
-🔴 **`rate720` ALONE IS NOT SAFE — it lags a pool's death by up to three weeks,
-and that cost us a whole route (2026-08-04).** olx/us pinned `virtual63` at a
-published **49.24%** whose `rate168`, `rate72`, `rate24` and `rate` were all an
-explicit **0**: it had not delivered in at least seven days. Thirteen real
-orders across five different users, every one held to expiry, **zero codes**.
-On the same route `virtual51` published `rate720 = 0` — so we ranked it last —
-while actually running at `rate24 = 22.7%`. We pinned the corpse and skipped the
-live pool, then painted the row green at 49%.
-
-Measured over the 801 chosen pools in the 14 busiest countries: **96 (12.0%)**
-published `rate720 > 0` against an explicit `rate168 = 0`.
-
-**ABSENT IS NOT ZERO, and this distinction is the entire fix.** The windows are
-perfectly nested by length, so an absent field means *no activations* in that
-window while an explicit `0` means there *were* activations and every one
-failed. Only the explicit 0 is evidence of death. `staleDead` therefore tests
-`v.rate168 === 0` and must NEVER be written as `!v.rate168` — the sloppy form
-condemns every low-traffic pool in the catalog.
-
-**THE FIX IS A FRESHNESS LADDER, not a special case.** `rateOf(pool)` in
-`sync-5sim` returns, in order: `rate24` if positive → `rate168` if positive →
-**0** when `rate168` is an explicit 0 → `rate720` → `null` (never measured).
-One helper drives all three tiers of `choosePool`.
-
-Leading with the short windows is nearly free. Measured over 4,003 in-stock
-pools (2026-08-04):
-
-| window | published | published > 0 |
-|---|---|---|
-| `rate24` | 35.4% | 8.7% |
-| `rate168` | 37.7% | 11.8% |
-| `rate720` | 39.5% | 14.8% |
-
-**⚠️ THE ASYMMETRY IS LOAD-BEARING.** A positive short window is accepted
-immediately; a **zero is only believed when the 7-day window agrees**. A rate
-has no denominator, so a 24h zero can be 0-of-1 and must not condemn a good
-pool, whereas a full week of activations that all failed is a verdict. Guarding
-only the positive direction is the easy mistake here.
-
-Live effect: rated routes 1,906 → 1,753; simulated over 2,962 routes, 90 switch
-pool and 373 are relabelled (187 up, 224 down) for a coverage cost of −3.6%.
-olx/us went `virtual63` 49% → `virtual51` 23%.
-
-**Only the bare `rate` field is documented.** All seven windowed fields are
-undocumented, and the documented rule *"omitted below 20% or too few orders"* is
-already false live (we observe 0.0 and 4.24). Treat presence as the only signal.
-
-**There is no denominator.** Rates cluster on exact small-denominator fractions
-(4.76 = 1/21, 33.33 = 1/3), so a published "0%" is frequently 0-of-3, not a
-verdict — and **~66% of every published `rate720` in the feed is exactly 0**.
-`MIN_POOL_STOCK` guards *stock*, not sample size. Nothing currently bounds it.
-
-**Four traps, all paid for in production — see the header of `_shared/fivesim.ts`:**
-
-1. **`status: "RECEIVED"` DOES NOT mean a code arrived.** A freshly-bought order
-   returns `{"status":"RECEIVED","sms":[]}`, and the docs' own example shows the
-   SAME status *with* a code. **`sms[].code` is the only authority** — the same
-   rule as SMS `otp is not null` and e-mail `code is not null`.
-2. **A stockout and a bad country both return HTTP 200 `no free phones`.**
-3. **Errors are PLAIN TEXT, never JSON**, and the status alone is not enough.
-   `classifyFivesimFault` classifies transport FIRST and must never return
-   `undefined` for one — `reserve()` treats undefined-or-OUT_OF_STOCK as "pinned
-   pool dry, retry unpinned", which has already caused a double purchase once.
-4. **There is no `maxPrice` parameter.** The post-fill ceiling check in
-   `create-order` is therefore the ONLY price guard, so `refuseAboveUsd` uses the
-   **tight** `maxCostUsd` bound — the loose `MAX_REVENUE_FRACTION` bound is only
-   safe for a provider that enforces a cap server-side.
-
-**The rate limit is REAL and it is a 429, settled 2026-08-03.** This was an open
-question because the adapter collapsed every failure to `null`: a 429 (back off)
-and a 403 (Cloudflare's bot filter, which spacing cannot fix) were
-indistinguishable. `getPricesForCountry` now returns the status and `sync-5sim`
-histograms it into **`fetch_faults`**. First instrumented run: `{"429": 10,
-"400": 2}`, sample `"429: too many requests"`. So `CALL_SPACING_MS = 600` targets
-the right cause — **but 10 hits per run means it is not quite sufficient.** Raise
-it only on more than one sample; a run costs ~71s at 600ms × 61 countries and the
-edge kill is ~150s.
-
-**Do NOT set an explicit User-Agent.** Measured on the same URL 4s apart:
-`Python-urllib/3.11` → **403 `error code: 1010`**, while `curl/8.7.1`,
-`Deno/2.1.4` and an empty UA all → **200**. Deno's default already passes;
-pinning a value means defending it against their next rule change.
-
-**`user/profile.rating` is a SECOND way to lose the ability to buy**, invisible
-in the balance. Starts and caps at **96**; completed activation +0.5, top-up +8,
-against cancel −0.1, ban −0.1, timeout −0.15. **At zero you cannot purchase at
-all**, surfacing as `not enough rating` — which `classifyFivesimFault` maps to
-AUTH_ERROR, i.e. it pages as a dead key rather than the slow drift it is. We ban
-dead numbers deliberately and our cancel rate is high, so it only trends down
-between top-ups. Recorded into `app_config.5sim_health.rating` by
-`poll-active-orders` (currently **96**, ~140 days of headroom). Nothing gates on
-it on purpose — the ban is load-bearing for the fresh-number guarantee.
-
-### HeroSMS API — what cost us time (probed live 2026-07-30)
-
-⚠️ **HeroSMS is no longer the primary SMS provider, but it is NOT retired**: it
-still owns 560 active SMS routes and the entire temp-EMAIL line, on one shared
-account and balance. Everything below still applies to both.
-
-Runs SMS-Activate's `handler_api` protocol. Base is
-`https://hero-sms.com/stubs/handler_api.php?api_key=…&action=…` — there is **no
-`api.` subdomain**, it is NXDOMAIN. `getCountries` / `getServicesList` /
-`getOperators` need no key, so the whole mapping can be built before paying.
-
-- **Every response is served as `content-type: text/html`, including the JSON
-  ones.** Block detection keyed on content-type therefore classified every
-  *successful* response as a Cloudflare block, which broke ordering outright. Key
-  on **status 403/429 plus an HTML-looking body**, never on content-type. The
-  symptom was a missing `herosms_health` row — and `recordBalance` returns early
-  on null, so the absence looked like nothing at all.
-- **Error codes carry suffixes**: `WRONG_MAX_PRICE:0.35`, `BANNED:<date>`. Exact
-  `switch` matching silently never fires; use prefix matching for those two.
-- **`activeActivations` is an OBJECT, not an array** — the real shape is
-  `{"status":"success","data":[],"activeActivations":{…,"rows":[]}}`. So
-  `d.activeActivations ?? d.data` never falls through and always returned `[]`.
-  Read `d.data` first.
-- **There is no documented per-second rate limit.** A 403 during probing was the
-  *website's* bot challenge, not the API — 25 rapid calls all returned 200. The
-  real cap is the account's `CHANNELS_LIMIT`. Do not add throttling to work
-  around a 403 you got from a browser-shaped request.
-- **`classifyHerosmsFault` is mandatory.** Per the provider-switch checklist, an
-  adapter that does not set `errorType` collapses dead account / bad key / rate
-  limit / genuine stockout into `no_numbers_available`, so users are told to "try
-  another country" while the whole product is down and the escalation
-  `console.error` never fires.
-- `getPrices` returns `{cost, count, physicalCount}` per (service, country) —
-  `physicalCount` is the real-SIM signal and the reason we moved.
-- **`getTopCountriesByService`** works and returns 194 rows of
-  `{country, price, retail_price, count}` per service. That is stock and price,
-  **not** delivery success. It is now marked **Deprecated** in their docs, which
-  point to `GET activations/offers` instead. Its response is an ORDERED map
-  (`{"0":{…},"1":{…}}`), and that ordinal is sorted by neither price nor stock —
-  which makes it look like the dashboard's quality ranking. **It is not.**
-  Decoded for `go` (Google) it reads Indonesia → Colombia → UK → Brazil →
-  Philippines → Turkey → Chile, while the dashboard's own "by quality" sort for
-  the same service reads Finland → Portugal → Colombia → Chile → Spain. It ranks
-  **Indonesia first**, and we have measured google/id at **0 of 4**. Treat the
-  ordering as popularity/volume; using it as a quality signal would steer
-  straight into routes we know deliver nothing.
-- **`/api/v1/activations/offers` WORKS with `Authorization: ApiKey <key>`**
-  (verified 2026-07-31). This contradicts the note below, which concluded the
-  whole `/api/v1/activations` namespace is session-only — that is true of
-  `/api/v1/activations` itself but **not** of this sub-path, so a targeted retry
-  is worth it when a specific endpoint is known. It returns strictly more than
-  `getPrices`: per (service, country) `counts.{total,physical,defaultPrice}`,
-  `prices.{default,retail,min}`, and a price→stock `map`. `prices.min` plus that
-  map is a real margin lever — `sync-herosms` currently buys at the default
-  price when cheaper stock may exist. Not yet wired up.
-- **There IS a rate limit** (`{"title":"RATE_LIMIT"}`), hit after roughly a dozen
-  rapid calls on 2026-07-31. This file previously said there was no per-second
-  limit because 25 rapid calls all returned 200. Note `sync-herosms` makes ~148
-  sequential fetches at `CALL_SPACING_MS = 150` and shares the key with the
-  minutely poller — do not probe casually against the production key.
-
-**The per-(service, country) SUCCESS RATES in HeroSMS's dashboard are NOT
-available by API — do not go looking again.** Searched exhaustively 2026-07-30:
-26+ `handler_api` action names; the `/api/v1` namespaces `statistics`, `stats`,
-`analytics`, `top10`, `activations/statistics` (all `ROUTE_NOT_FOUND`); the docs
-page (a pure client-side loader with no SSR content); Nuxt `_payload.json`
-(empty); all 50 JS chunks for any spec reference; 13 conventional OpenAPI paths
-on both the site and their CDN. `/fr/*` is Cloudflare-challenged, so scraping is
-out too. The "decisive test" recorded here was that the **same key and `ApiKey`
-scheme that returns data from `/api/v1/emails` is rejected by
-`/api/v1/activations`**, concluding the whole namespace is dashboard-session.
-**That inference was too broad** — `/api/v1/activations/offers` authenticates
-fine with `ApiKey` (see above). The bare collection path is session-only; its
-sub-paths are not. So the negative result is "these ~45 specific paths do not
-exist", not "the namespace is closed".
-
-Re-probed 2026-07-31 with five more targeted paths now that `offers` was known
-to work — `activations/{statistics,top-countries,ranking}`,
-`statistics/activations`, `activations/offers/statistics` — all
-`ROUTE_NOT_FOUND`. **Stop guessing; the path is not discoverable by enumeration.**
-
-**✅ THE FULL OpenAPI SPEC EXISTS AND IS ON DISK: `~/hero-sms-research/openapi.json`**
-(219 KB, 31 paths, `"API protocol for working with HEROSMS"`, servers
-`hero-sms.com/api/v1` and `/stubs/handler_api.php`). This file previously said
-no spec exists at any conventional path — read the spec instead of probing.
-⚠️ **It is a CURATED SUBSET, not an inventory:** `getNumbersStatus` appears
-**zero** times in it yet we call it in production, `getPrices` has no documented
-`currency` param (we send it, it works), and `/api/v1/stats/deliverability` is
-absent entirely. "Absent from the spec" means **undocumented**, never
-**"does not exist"**.
-
-**Two dead leads, both settled — do not re-open:**
-- **`getTopCountriesByServiceRank` is NOT deliverability.** It and
-  `getTopCountriesByService` differ in exactly two keys (operationId, summary);
-  identical response schema, both deprecated. "Rank" is the **account's loyalty
-  discount tier**, verified against SMS-Activate's own pricing pages. Live
-  payload is `{country, price, retail_price, count}` — stock and price, no
-  outcome field. Same trap as `physic` reading like "all physical SIMs".
-- **`getListOfTopCountriesByService` does not exist on HeroSMS.** SMS-Activate's
-  archived docs document it returning `{country, share, rate}` where `rate` is
-  "% of successful activations" — exactly what we collect by hand. Probed
-  2026-08-02: **HTTP 404 `BAD_ACTION: Method Not Found`**. Controls in the same
-  minute on the same key proved it a true negative: `getBalance` →
-  `ACCESS_BALANCE:10.1551`, `getTopCountriesByService` → 200 / 13,247 bytes.
-
-**FOUND 2026-07-31, by reading the request the dashboard's own Statistics panel
-fires (DevTools → Network → XHR). Enumeration never would have reached it:**
-
-```
-GET https://hero-sms.com/api/v1/stats/deliverability
-      ?service=go            # their service code
-      &interval=12           # hours
-      &successCount=medium   # the ">50 successful" filter
-```
-
-The earlier sweep tried the `/api/v1/stats` namespace but never
-`stats/deliverability`. Response is `application/json`, 200, behind Cloudflare.
-
-**It is NOT callable with our API key.** All four schemes return **401
-`{"title":"Unauthenticated."}`** — `Authorization: ApiKey`, `Bearer`,
-`X-Api-Key`, and `?api_key=`. Note that body is *not* `ROUTE_NOT_FOUND`, so the
-route genuinely exists and is simply scoped to a logged-in dashboard session.
-**Do not re-probe it; the answer is settled.**
-
-So the vendor is now the only route — but the ask is far smaller than it was,
-and should be made in these exact terms: *"please allow
-`GET /api/v1/stats/deliverability` to authenticate with an API key."* That is a
-middleware change on one existing endpoint, not a feature request.
-
-Asked the vendor 2026-07-31 (Jivo chat, ticket `5207504-97969`) before the path
-was known. Response: *"I will forward your request"* — acknowledged, no
-commitment, no timeline. **Do not block anything on it.**
-
-**The manual loop is now the ONLY route, confirmed 2026-08-02.** Every API path
-to this data has been eliminated (see the two dead leads above plus the
-session-scoped `stats/deliverability`). Stop looking; spend the effort on the
-vendor ticket or on accumulating our own measurement.
-
-**Until they answer, the data is collected BY HAND, roughly weekly.** The loop,
-in full, because half of it is easy to forget:
-
-1. Log in to hero-sms.com, open the Statistics page, DevTools → Console, paste
-   `scripts/collect-herosms-deliverability.js`. ~74 min for 147 services at
-   30s spacing. It negotiates the loosest interval/threshold the API accepts,
-   saves after every service, and resumes if the tab closes.
-2. `copy(HERO.sql())` → run against the DB.
-
-**Step 2's SQL ends with `refresh_service_country_ranks()` and that call is
-mandatory.** `merge_vendor_deliverability` only stores the RAW payload;
-`service_country_ranks` is the projection the app actually reads and is rebuilt
-only by that function. Skip it and you load a fresh week of data, watch every
-merge return `ok`, and the app keeps serving last week's ranking — a silent
-no-op wearing a success message. `HERO.sql()` appends it for exactly that reason.
-
-Saved progress **expires after 6 days**, so a weekly re-paste starts clean.
-Without that the second run would find the previous results in localStorage,
-mark all 147 services already-collected, fetch nothing, and look like it worked.
-
-**"Top 10" is a CAP, not a quota.** Measured on the first full run
-(24h / `successCount=medium`), only **22 of 147** services returned ten
-countries; **69 returned none** and 32 returned one or two. leboncoin returned 2
-against 33 active routes — not because 31 routes are bad, but because only two
-countries saw 50+ successful leboncoin activations in a day. This is why
-absence must stay neutral everywhere it is consumed. A longer window and a lower
-threshold are what fill the thin services in, which is what the ladder probes.
-
-Replaying the dashboard's session cookie from an edge function would work
-technically and is a bad idea: it expires, it carries XSRF, it would fail
-silently, and it is the kind of thing that gets an account closed. If a manual
-pull is ever wanted, the honest shape is a hand-maintained per-service country
-allowlist in `app_config` — same category as `blocked_routes` and
-`voip_strict_services`, used as steering input for UNTESTED routes only.
-
-And if it ever IS exposed: it would be **steering input, never a badge**. It is
-their aggregate across all customers, not our delivery — the same class of number
-as SMSPVA's seeded per-country grade, which ranked as "proven", beat genuinely
-untested countries, and had to be demoted to `.notTested`.
+5sim, HeroSMS and Telnyx API behaviour, the two pricing syncs, and the
+sellable-number catalogue now live in `@.claude/rules/providers.md`, which
+loads automatically when working under `supabase/functions/`. ~10k tokens
+that only matter while editing an adapter.
 
 ### Retention — the numbers that decide what's worth building
 
@@ -1104,157 +752,6 @@ only hide drift. Its `MAX_WHOLESALE_CENTS` is **375**, not sync-prices' 750 —
 same "hide only what a user literally cannot buy" rule, recomputed for this
 divisor (150 credits × $0.025).
 
-### Why `sync-5sim` exists (hourly :07) — the PRIMARY pricing sync
-
-Fetches `guest/prices` **one country at a time** (61 countries, ~71s/run). The
-all-countries form is a single 9.1 MB response; per-country is 0.1–0.6 MB, which
-bounds peak memory inside the edge runtime and lets a partial run still write
-what it got. `CALL_SPACING_MS = 600` plus one 2.5s retry — see the 5sim section
-for why (measured 429s, not a bot filter).
-
-It prices routes (`CREDIT_DIVISOR = 0.03`), applies the **cost RATCHET**, picks
-the pool each route buys from, and writes `pool_operator` / `pool_rate_pct`.
-
-**`choosePool` has THREE tiers, and the ordering is the whole point:**
-
-1. `rate720 > 0` — best rate first.
-2. **unrated** — most-stocked, `ratePct = null`.
-3. **all pools published zero** — most-stocked, and the 0 is kept.
-
-Tier 2 must sit above tier 3. Before this was fixed (2026-08-03), **844 routes
-picked a published-0% pool over an unmeasured pool holding a median 271× the
-stock** — olx/Finland took `virtual4` at 0% over `virtual34`'s 8.6 M numbers —
-and then painted the route red in the picker with that number. Both the pick and
-the label rested on a sample that is frequently 0-of-3. Live effect: routes
-carrying a published zero went **1,184 → 359**. It is also a **repricing**,
-because cost derives from the chosen pool: 469 routes got cheaper, median −1
-credit.
-
-The chain is filtered by `affordable()` — non-head members above
-`headCost × 3 + 0.10` are dropped, so a fallback can never cost wildly more than
-the pool we advertised.
-
-**Guards, each matching a failure this codebase has already had:** it aborts
-without writing if every country fetch fails (`countries_ok === 0`); it skips
-routes whose country failed *this* run rather than reading a failed fetch as
-"not served" (`skipped_failed_country`); it enforces `blocked_routes` and
-`MAX_WHOLESALE_CENTS = 450`. Watch `fetch_faults` and `countries_failed` in the
-response — a country silently dropped for an hour reads as "5sim does not serve
-it".
-
-### Why `sync-herosms` exists (hourly :37)
-
-**⚠️ IT PRICES FROM `/api/v1/activations/offers`, NOT `getPrices` (2026-08-02).**
-`getPrices` returns a DEFAULT price and a TOTAL count, and **those two numbers
-are not about the same numbers** — on many routes nothing at all is available at
-the default price. The worked example cost a paying customer their entire
-session (8 straight failures, then they left), apple / Turkey (`wx`/62):
-
-```
-getPrices : cost 0.30, count 140211              <- what we used to store
-offers    : counts.defaultPrice = 0,
-            map = { "0.4177": 641003 }           <- the truth
-```
-
-Zero numbers at $0.30; all 641,003 cost $0.4177. Storing $0.30 priced the route
-at 12 credits, which set the order ceiling at $0.40 — **1.8 cents below the only
-stock in existence**. Every attempt returned `WRONG_MAX_PRICE` → `margin_too_low`
-→ charged and refunded, forever.
-
-Measured over 1,554 pairs: **60 (4%) had ZERO stock at the advertised price** and
-**1,107 (71%) had stock CHEAPER than it**, so `getPrices.cost` is wrong in both
-directions. We now take the cheapest key in `map` **with a non-zero count**.
-
-- **`prices.min` is NOT that number** — it reads 0.27 on wx/62 where nothing
-  exists below 0.4177. It is "the lowest price you may bid". Only the map says
-  what is buyable.
-- Falls back per service to `getPrices` when offers fails **or reports
-  `hasMore`** — the pagination params are undocumented, and a partial page must
-  never read as "not served".
-- **Also ~40× fewer calls**: 144 codes in ONE run of ~4 requests instead of ~148
-  sequential fetches at `CALL_SPACING_MS`, which was most of our rate-limit
-  exposure. Live run: **11.5s**, `via_offers 144 / via_getprices 0 / truncated 0`.
-- Watch `via_getprices` in the response. If it climbs toward `codes_ok`, offers
-  is degrading and we are silently back on the phantom default price.
-
-It records HeroSMS's real per-route wholesale into
-`routes.herosms_cost_cents` + `herosms_physical_count` / `herosms_total_count` /
-`herosms_checked_at`, and hides routes HeroSMS cannot serve. **It deliberately
-does not touch `retail_credits`** — repricing is the separate owner decision
-above; this function exists to stop us selling what we cannot deliver.
-
-The bug it fixes: after the cutover, HeroSMS rows still held SMSPVA's frozen
-`last_cost_cents`, and `create-order`'s graceful degrade did
-`liveCost ??= route.last_cost_cents/100`. For routes HeroSMS cannot serve at all
-`livePriceUsd` returns null, the **stale SMSPVA cost passed the margin gate**,
-and the reservation then failed `NO_NUMBERS` — charging and refunding the user
-and telling them to "try another country". The fallback is now provider-scoped,
-so a HeroSMS route can only fall back to a HeroSMS cost. First run hid **4,849**
-routes (active HeroSMS 10,049 → 5,198); ~3× more than estimated.
-
-Guards worth keeping, each matching a failure this codebase has already had: it
-**aborts without writing if every price fetch fails** (a dead key must not hide
-the catalog), skips routes whose service code failed *this* run rather than
-reading a failed fetch as "not served", destructures every read error, and
-enforces `blocked_routes` and `MAX_WHOLESALE_CENTS` — neither of which was
-enforceable on HeroSMS rows before it existed.
-
-`herosms_physical_count` is the **real-SIM** count (vs VoIP), confirmed against
-HeroSMS's own UI: every country it labels "Only virtual" reports 0. **4,046 of
-the 5,198 active HeroSMS routes have physical stock.** Stored and not yet used
-for steering — that is the open lever for the Meta services.
-
-**Credit packs** (`Models/CreditPack.swift` + `Products.storekit` + `_shared/iap.ts` `PRODUCT_TO_CREDITS`): 5/$2.99, 12/$5.99 (MOST POPULAR), 30/$12.99, 60/**$24.99**, 150/**$59.99** (BEST VALUE) — a strictly improving per-credit ladder (each pack beats stacking smaller ones): $0.598 → $0.499 → $0.433 → $0.417 → $0.400. The per-credit label is computed **live** from the StoreKit price in `IAPStore.perCredit`, so it never drifts; production prices must be set to match in App Store Connect.
-
-**USD and EUR were realigned on 2026-07-31 (owner decision) — the numbers above
-are now what BOTH storefronts bill.** Until then the US paid *less*: `credits.12`
-was **$4.99** against €5.99 and `credits.30` **$11.99** against €12.99.
-
-The cause was the base territory, and it is worth knowing because it will
-recur: `credits.5/12/30` were anchored to **FRA**, so their dollar price was
-*derived* from the euro one; `credits.60/150` were anchored to **USA**. Mixing
-anchors across a single ladder is what let it drift. Fixed by adding an explicit
-USA manual price to 12 and 30 while leaving FRA the base — so only USD moved and
-every other territory (DEU/ESP €5.99, GBR £4.99, CAN $6.99, AUS $7.99, JPN ¥800)
-is untouched. Verified after the write.
-
-**That drift had inverted the ladder in the US, on the top revenue product.**
-At $11.99/30 and $24.99/60 the 30-pack was **$0.3997**/credit and the 60-pack
-**$0.4165** — so two 30-packs bought 60 credits for **$23.98**, beating the
-$24.99 60-pack. The 60-pack was strictly dominated. The US ladder is now
-strictly improving again and identical to the EUR one:
-
-| pack | US price | per credit |
-|---|---|---|
-| 5 | $2.99 | $0.598 |
-| 12 | $5.99 | $0.499 |
-| 30 | $12.99 | $0.433 |
-| 60 | $24.99 | $0.417 |
-| 150 | $59.99 | $0.400 |
-
-Apple proceeds went $4.24 → **$5.09** on the 12-pack and $10.19 → **$11.04** on
-the 30-pack. A price change needs no review and takes effect immediately, but
-**`revenue_snapshot` reads the signed `price` out of each receipt**, so
-historical rows keep the old amounts and are still correct — do not "fix" them.
-Confirm against `/v1/inAppPurchasePriceSchedules/<iap-id>/{manual,automatic}Prices`
-before acting on any of these numbers; this file has been wrong about them twice.
-
-**The 60 and 150 packs are the LIVE ASC prices, read back from the API on
-2026-07-25 — this file previously claimed $22.99/$49.99, which was never what
-the store would have billed.** **`credits.60` is now `APPROVED` and SELLING** —
-verified 2026-07-30 both on `/v1/apps/6774768570/inAppPurchasesV2` and by two
-live `$24.99 USD` purchases within 20 minutes of each other. This file said it
-had "**never** been approved" and that the largest purchasable pack was 30
-credits; that is wrong, and it mattered — the 60-pack is now the **top revenue
-product**, out-earning everything else in the 24h to 2026-07-30. **All five packs now read
-`APPROVED` (verified 2026-08-02)** — `credits.150` cleared review after being
-submitted 2026-07-30 06:53Z, so the full ladder is purchasable.
-
-Check `state` on `/v1/apps/6774768570/inAppPurchasesV2` before assuming the
-ladder the code defines is the ladder a user sees — and note this file has now
-been wrong about it twice. (Product-level `state` is unreliable for
-*submittability* — see Release prep — but `APPROVED` vs not is trustworthy.)
-
 ### Temporary EMAIL addresses — the third product line (2026-07-30)
 
 Temp mailboxes on three real consumer domains, from HeroSMS. **outlook.com and
@@ -1372,8 +869,8 @@ the owner. Full design: `~/.claude/plans/binary-humming-moonbeam.md`.
 | `reserve-line-number` / `verify-line-subscription` | ✅ deployed |
 | `apple-notifications` (ASSN V2) | ✅ deployed, **verified end to end** |
 | messaging (webhook in, `send-line-message` out, threads, block/report) | ✅ deployed |
-| `mint-line-token` | ✅ deployed, adapters **unproven** |
-| calling client (CallKit, PushKit, dialer, in-call) | ✅ built against `VoiceClient`; **`TelnyxRTC` SwiftPM not added**, so `NullVoiceClient` throws |
+| `mint-line-token` | ✅ deployed; client caller added 2026-08-06 (it had none), adapters **unproven** |
+| calling client (CallKit, PushKit, dialer, in-call) | ✅ `TelnyxRTC 4.1.2` linked, `TelnyxVoiceClient` live, dialer reachable — **never placed a real call** |
 | `begin-line-call`, `report-line-call`, `sync-telnyx-cdr` | ✅ deployed + on cron |
 | `release-lines` + the reclaim sweep | ✅ deployed + on cron (2026-08-06) |
 
@@ -1396,36 +893,44 @@ one: it catches the leak even if the heartbeat is never written, which is
 exactly the case that shipped. A heartbeat-only check would have stayed silent
 for the same reason the bug did.
 
-⚠️ **`swiftc -typecheck` still works** — the SwiftPM dependency has NOT been
-added yet, so the plan's note about it retiring that command is not yet true.
-`NullVoiceClient` throws rather than faking success, so a build without the SDK
-cannot look like it is placing real calls.
+⚠️ **`swiftc -typecheck` NO LONGER WORKS** — the `TelnyxRTC` dependency landed
+on 2026-08-06 and retired it exactly as the plan predicted. Use `xcodebuild`.
+`NullVoiceClient` still exists and still throws rather than faking success, so
+any path that falls back to it cannot look like it is placing real calls.
 
-### Calling: built, and DELIBERATELY UNREACHABLE until just before release
+### Calling: WIRED AND REACHABLE as of 2026-08-06 — never placed a real call
 
-**Owner decision, 2026-08-06: add `TelnyxRTC` and wire the dialer entry point
-immediately before shipping, so the SDK is integrated and tested in one pass.**
-Do NOT wire it earlier to "finish the feature" — that is the one change this
-section exists to prevent.
+**Owner decision, 2026-08-06: add `TelnyxRTC` and wire the dialer.** Done in one
+commit, as the previous version of this section demanded: the SDK, the entry
+point, and the calling copy on five surfaces all landed together.
 
-What is built and live: **CallKit** (`CallController.swift` — `CXProvider`,
-the full `CXProviderDelegate`, `PKPushRegistry`, `InCallOverlay` as a ZStack
-layer in `ContentView` and a member of `EnvBundle`), **call history** (the
-`Calls` segment + `CallRow`, reachable today), the **allowance gate**
+**Resolved:** `TelnyxRTC 4.1.2`, and transitively **WebRTC 139.0.0** and
+**Starscream 4.0.8**. ⚠️ The SwiftPM *library product* is named
+**`telnyx-webrtc-ios`** while the *module* you import is **`TelnyxRTC`** — the
+project file needs the former, the Swift file the latter. `Package.resolved` is
+committed; keep it that way or builds stop being reproducible.
+
+What is live: **CallKit** (`CallController.swift`), **`TelnyxVoiceClient`**
+(the real adapter), **the dialer** (reached from a "Make a call" button in the
+Number tab's Calls segment), **call history**, the **allowance gate**
 (`begin-line-call`), **session reporting** (`report-line-call`) and **CDR
-settlement** (`sync-telnyx-cdr`, on cron). `DialerScreen` exists and
-`ContentView` has its `case .dialer`.
+settlement** (`sync-telnyx-cdr`, on cron).
 
-🔴 **`flow = .dialer` IS ASSIGNED NOWHERE, ON PURPOSE.** Six comments across the
-app say so. `NullVoiceClient` throws, so an entry point today is a button that
-fails — and five surfaces (paywall, store card, onboarding, `AllowanceStrip`,
-the plan row) had their calling claims REMOVED for exactly this reason.
-**Advertising calling and wiring the dialer must land in the same commit as the
-SDK, or not at all.**
+🔴 **NO REAL CALL HAS EVER BEEN PLACED.** It compiles and it is reachable;
+neither is evidence it works. The account has no float, the voice adapters in
+`_shared/telnyx.ts` were written from docs, and the whole media path is
+device-only. **The first real call IS the probe** — read
+`app_config.telnyx_voice_faults` and `telnyx_cdr_probe` immediately after it.
 
-**Three traps for whoever does it.** They are in the plan file
-(`~/.claude/plans/binary-humming-moonbeam.md`) which lives outside the repo, so
-they are duplicated here — losing them costs a device-only debugging session:
+**`isVoiceAvailable` still gates `case .dialer`**, and the "Make a call" button
+is *hidden* rather than disabled when no client is attached. Keep that: a
+disabled button still advertises the feature. The standing rule that produced
+the removed copy is unchanged — **sell what ships** — and it now cuts the other
+way, so anything added to the paywall must ship with its capability.
+
+**Four traps, three of which are already handled in code.** They were in the
+plan file (`~/.claude/plans/binary-humming-moonbeam.md`) which lives outside the
+repo, so they are kept here — losing them costs a device-only debugging session:
 
 1. 🔴 **Every `.voIP` push callback must call `CXProvider.reportNewIncomingCall`
    SYNCHRONOUSLY inside that callback** — before any `await`, any network call,
@@ -1435,17 +940,55 @@ they are duplicated here — losing them costs a device-only debugging session:
 2. 🔴 **Never call `AVAudioSession.setActive(true)` yourself.** CallKit
    activates it and hands it over in `provider(_:didActivate:)`. Doing it
    manually is the classic "no audio on the first call" bug.
-3. ⚠️ **`INFOPLIST_KEY_UIBackgroundModes = "audio voip"` and
-   `INFOPLIST_KEY_NSMicrophoneUsageDescription` must be set in BOTH Debug and
-   Release.** It is a space-separated string; get it wrong and PushKit fails
-   SILENTLY at runtime. Also needed: `InfoPlist.xcstrings` (the mic string is
-   not covered by `Localizable.xcstrings`) and `PrivacyInfo.xcprivacy` gaining
+3. 🔴 **`INFOPLIST_KEY_UIBackgroundModes = "audio voip"` DOES NOT WORK, and
+   this file told you to do it.** The setting is accepted, appears in
+   `xcodebuild -showBuildSettings`, and is then **silently dropped** — Xcode's
+   Info.plist generator honours only an allowlist of `INFOPLIST_KEY_*` names
+   and `UIBackgroundModes` is not on it. No warning anywhere. The build
+   succeeds and VoIP pushes are simply never delivered, so an incoming call
+   never rings and nothing logs a reason. Caught 2026-08-06 only by dumping the
+   built plist.
+
+   The fix is **`VirtualSIM-Info.plist` at the REPO ROOT** plus
+   `INFOPLIST_FILE`, with `GENERATE_INFOPLIST_FILE` left **YES** so Xcode
+   merges its generated keys into it (verified: `CFBundleDisplayName` and the
+   version still land). It must NOT live under `VirtualSIM/` — that folder is a
+   `PBXFileSystemSynchronizedRootGroup`, so it would also be copied as a
+   resource and fail with *"Multiple commands produce …/VirtualSIM.app/
+   Info.plist"*.
+
+   `INFOPLIST_KEY_NSMicrophoneUsageDescription` **does** work and is set in
+   both Debug and Release. Also shipped: `VirtualSIM/InfoPlist.xcstrings` (the
+   mic string is NOT covered by `Localizable.xcstrings`; verified compiling to
+   `fr.lproj/InfoPlist.strings`) and `PrivacyInfo.xcprivacy` with
    `NSPrivacyCollectedDataTypePhoneNumber` + `…OtherUserContent`.
 
-**Two costs that land the moment the package is added**, both accepted by the
-owner: `swiftc -typecheck` stops working and `xcodebuild` becomes the only
-check (update `Common commands` in the same commit), and **voice can only be
-tested on a physical device** — the simulator cannot receive a PushKit push.
+   **Assert it after ANY project-file change** — a green build proves nothing:
+   ```bash
+   plutil -p "$APP/Info.plist" | grep -A3 UIBackgroundModes   # must list audio + voip
+   ```
+4. ⚠️ **`UUID.uuidString` is UPPERCASE and Telnyx's detail records are
+   lowercase.** `sync-telnyx-cdr` matches with an exact-string lookup, so
+   `providerSessionId` lowercases both ids. Uppercase would settle nothing and
+   look exactly like a provider that never reported the call.
+
+**Two costs, both now paid and both accepted by the owner:**
+`swiftc -typecheck` no longer works and `xcodebuild` is the only check (done —
+see `Common commands`), and **voice can only be tested on a physical device**;
+the simulator cannot receive a PushKit push, so an outbound call appearing to
+work there is not evidence.
+
+**Two behaviours worth knowing before debugging a first call:**
+- **`provider(_:didActivate:)` no longer marks the call connected.** It hands
+  the session to the SDK — without which there is **no audio at all** — while
+  the SDK's own `.ACTIVE` state drives `mediaConnected()`. CallKit activates
+  audio moments after an outbound call *starts*, so the old wiring began the
+  billing clock and the on-screen timer on a phone that was still ringing.
+- **`mint-line-token` had NO Swift caller until now**, so `VoiceClient.connect`
+  was unreachable by construction — the same shape as the six
+  `line_subscriptions` updaters that shipped with no INSERT. `LineAPI
+  .mintVoiceToken()` is it. **A deployed endpoint is not a reached endpoint;
+  grep for a caller.**
 
 ⚠️ **The voice adapters in `_shared/telnyx.ts` are the one block written from
 DOCS rather than probed**, and the detail-records block beside them was wrong
@@ -1699,233 +1242,6 @@ Google Voice free). At $4.99 with the same allowance the line LOSES money on a
 heavy user, and hard-stop billing means there is no overage to recover it.
 The schema defaults already encode this (`sms_allowance 200`,
 `voice_allowance_seconds 6000`).
-
-### Telnyx API — what live probing found (2026-08-05)
-
-Probed with a real account and one purchased DID (**+1 415 329 3816**, id
-`3019915491322889224`, `customer_reference = vsms-test-line`). Balance went
-$10.00 → **$8.13**. Everything below is measured, not read off the docs.
-
-🔴 **NOTHING TELLS YOU WHAT YOU PAID.** The number-order response returns
-`cost_information: null`, and `GET /v2/phone_numbers/{id}` has no price field
-at all — 35 keys, none of them a cost. This is the SMSPool eSIM trap exactly
-(*"its response reports no cost at all"*, which made margin analysis circular).
-**Capture the price from the SEARCH quote at purchase time** into
-`phone_lines.monthly_cost_cents`; `activate_line_claim` already takes it. There
-is no way to recover it afterwards.
-
-**Two request shapes that fail if you write them from the docs:**
-- `POST /v2/messaging_profiles` **requires `whitelisted_destinations`** (e.g.
-  `["US","CA"]`) or returns **40331 `Missing whitelisted destinations`**.
-- **`messaging_profile_id` is NOT settable on `PATCH /v2/phone_numbers/{id}`** —
-  it returns **10027 "not reachable here"**. Number config is split across
-  sub-resources: `/v2/phone_numbers/{id}/messaging` and `.../voice`. The main
-  resource does take `customer_reference` and `tags`.
-
-**Prices are FLAT and half what was estimated: $1.00 upfront + $1.00/month for
-every type probed** — US local, US toll-free, CA local alike.
-
-⚠️ **"CA toll-free" IS A FICTION.** Filtering `country_code=CA` +
-`phone_number_type=toll_free` returns the **identical numbers** as the US query
-(+18779074790, +18338471334, +18556650304) — North American toll-free is one
-shared NANP pool, so 833/855/877 are not Canadian. **Canada needs LOCAL
-numbers.** Do not build a country picker that offers CA toll-free.
-
-🔴 **`regulatory_requirements` IN SEARCH RESULTS IS ALWAYS NULL AND MEANS
-NOTHING. IT COST $3.83 TO LEARN THIS.** `GET /v2/available_phone_numbers`
-returned `regulatory_requirements: null` for every country probed, which reads
-as "no paperwork needed". A GB mobile number was then bought on the strength of
-it and arrived **`status: requirement-info-pending`** with **six** outstanding
-requirements — it can never be used, and the money is spent. It was released
-immediately to stop the recurring charge.
-
-**The reliable pre-purchase source is
-`GET /v2/requirements?filter[country_code]=XX&filter[action]=ordering`**, and it
-is unambiguous:
-
-| country | ordering rules |
-|---|---|
-| **US** | **0** |
-| **CA** | **0** |
-| GB, BE, LT, NL, BR, AU, PL, SE, ZA | **3–5** |
-
-**Only the US and Canada are documentation-free. Every other country needs an
-in-country physical address**, and that is fatal rather than inconvenient — GB's
-six requirements include *"a valid, real-world physical address located in the
-same country as the phone number"*, national proof of address (utility bill),
-a government ID or company registration certificate, a company website, contact
-details, and a business use-case description with sub-allocation disclosure.
-Selling UK numbers needs a UK address; Dutch numbers a Dutch address. The only
-alternative is collecting ID documents from every individual customer, which is
-a privacy liability and a terrible checkout.
-
-**So the line is US + CA, exactly as first scoped**, and there is no clever way
-around 10DLC or toll-free verification. A multi-country catalogue was
-investigated on 2026-08-05 and is closed — do not re-open it on the strength of
-the search endpoint's null field.
-
-### The definitive sellable catalogue (exhaustive sweep, 2026-08-05)
-
-228 ISO codes → **138 carry ordering requirements** (fetched from
-`/v2/requirements?filter[action]=ordering`, 292 rows, the reliable source) →
-the remaining 92 were swept for live inventory. **Everything we can sell
-without paperwork is NANP (+1):**
-
-| country | type | $/mo | upfront | SMS |
-|---|---|---|---|---|
-| **US** | local | 1.00 | 1.00 | ✅ |
-| **CA** | local | 1.00 | 1.00 | ✅ |
-| **VI** US Virgin Is. | local | 1.00 | 3.00 | ✅ |
-| **PR** Puerto Rico | local | 3.00 | 3.00 | ✅ |
-| CD DR Congo | mobile | 27.00 | 27.00 | ❌ voice only |
-| BW Botswana | toll_free | 40.00 | 40.00 | ❌ voice only |
-
-The other **86** requirement-free codes have **no inventory at all**. CD and BW
-are voice-only and cost 3–5× the retail price, so they are unsellable.
-
-⚠️ **PR and VI are US area codes, not extra markets.** They are +1/NANP, so US
-carrier rules — including 10DLC — apply to them exactly as to any US number.
-Listing them as "4 countries" would be marketing fiction; it is one market with
-four flag icons.
-
-✅ **CANADA NEEDS NO 10DLC — MEASURED, AND IT IS THE LAUNCH PATH.** Tested
-2026-08-05 with a real purchase: `+1 343 513 1580` (Ottawa) went **`active`
-immediately** with no requirement pending, and sending from it to our US number
-with **no TCR brand and no campaign registered** was **`delivered`** at
-$0.0040. `/v2/10dlc/brand` reports `totalRecords: 0` — nothing is registered
-and it worked anyway.
-
-**So the zero-paperwork launch is: sell CANADIAN numbers.** No TCR brand, no
-campaign, no toll-free verification, no waiting on an external approval that
-can be rejected. A +1 number is equally credible to a US recipient, and CA
-costs the same $1.00/month as US.
-
-⚠️ **US numbers still need 10DLC to SEND.** The purchased US number carries
-`messaging_campaign_id: null` and is unregistered. Do not assume the Canadian
-result generalises to it — it does not, because TCR is a US carrier programme
-and the Canadian number is simply not subject to it. Offer US numbers only
-after the brand and campaign clear.
-
-⚠️ **Inbound to a Canadian number is still domestic-only** (`international_
-inbound: false`, same as US), so this fixes the *paperwork*, not the
-can-a-European-text-it problem.
-
-**The inbound path is now PROVEN END TO END.** The `message.received` webhook
-arrived, passed Ed25519 verification in production, and was captured. Replayed
-through the verifier: real bytes verify, one flipped byte fails, a re-serialized
-body fails, a replay past 300s fails, and a slid timestamp fails — 6/6.
-
-🔴 **The parse-after-verify rule is not theoretical: Telnyx sends
-PRETTY-PRINTED JSON.** The captured body is **1,703 bytes**; `JSON.parse` then
-`JSON.stringify` yields **1,203**. Parsing before verifying would silently
-discard 500 bytes of signed content and every signature would fail. Read
-`await req.text()` once, verify, *then* parse.
-
-**A corollary worth keeping:** the two-tier pricing designed for a 36-country
-catalogue is unnecessary. US and CA are both $1.00/month, so **one product at
-$9.99 covers the whole catalogue.**
-
-🔴 **US NUMBERS ARE DOMESTIC-ONLY FOR SMS, AND YOU CANNOT TURN THAT OFF.**
-Measured on the live number: `features.sms` reads
-`{domestic_two_way: true, international_inbound: false, international_outbound:
-false}`. A European phone texting the number produces **nothing at all** — not a
-failure, not a webhook, not a `detail_record`. The message leaves the sender's
-handset looking sent and simply never reaches Telnyx.
-
-⚠️ **`PATCH /v2/phone_numbers/{id}/messaging` with
-`features.sms.international_inbound = true` returns 200, no error, AND CHANGES
-NOTHING.** The write is silently ignored — the same silent-no-op class as
-`getPrices` accepting an `operator` param it discards, and as the column-revoke
-migration that edits `pg_attribute` while the table grant still wins. **Read the
-value back; do not trust the 200.** Enabling international messaging is an
-account-level capability that needs Telnyx to grant it, not an API call.
-
-**The P2P lane is a DEAD END — settled 2026-08-05, do not re-probe.** The
-number advertises `eligible_messaging_products: ["A2P", "P2P"]`, which reads
-like an unregistered person-to-person route and is exactly what a
-rent-a-number product wants. It is not available:
-`PATCH /v2/phone_numbers/{id}/messaging` with `{"messaging_product":"P2P"}`
-returns **200 with no error and changes nothing** — `messaging_product` stays
-`A2P` on read-back. Same silent-no-op as the international flag above, in the
-same session, on the same endpoint. **"Eligible" describes the number, not your
-account.** US carriers closed the unregistered P2P lane to CPaaS traffic;
-10DLC registration is genuinely unavoidable for outbound, with any provider,
-because it is a carrier rule rather than a Telnyx one.
-(`/v2/10dlc/brand` currently reports `totalRecords: 0` — nothing registered.)
-
-**What that means for who this line is for.** It is a **US product**, and that
-is fine: measured over all 39 Production purchases, **USA is 53.8% of purchases
-and 9 of 21 buyers** (FRA 23.1%, then ESP/BGR/TUR/POL/AUT/SVK/SWE at 1–2 each).
-The single largest market gets a fully working product. But a European user who
-rents a US number **cannot text their own contacts with it**, which is a
-refund-generating surprise rather than a limitation they will infer. Either gate
-the line to the US/CA storefronts or say plainly on the store screen that a US
-number exchanges messages only with US and Canadian numbers. European local
-numbers are not the escape hatch — those are exactly the ones needing
-regulatory bundles with an end-user address.
-
-Other measured facts: number orders are **asynchronous** (`pending` → `success`,
-under 5s here, but build the poller anyway — it is what survives a webhook
-outage); `reservable: true`, so the reserve-then-paywall flow is available;
-`emergency_status` is **`disabled` by default**, so our E911 stance is "never
-enable it" rather than "remember to turn it off"; US local has `hd_voice`,
-toll-free does not; and the default US local search returns obscure rate
-centers (a Texas one), so the picker must filter by `national_destination_code`
-— area code 415 correctly returned San Francisco numbers.
-
-✅ **`@noble/curves/ed25519` RUNS on the Supabase edge runtime — verified in the
-hosted runtime, not assumed.** A well-formed but wrong signature was rejected
-as `bad_signature`, which means the curve math executed. This is the check the
-P-384 incident demands: that failure passed locally and threw
-`NotSupportedError` in production, rejecting every purchase for weeks.
-
-**Blocked on external clocks, none of them code:** toll-free verification and/or
-10DLC brand+campaign (weeks, can fail outright — fanning many end users through
-one Standard 10DLC campaign is what carriers police; note the purchased local
-number has `messaging_campaign_id: null` and cannot send US A2P until
-registered). ⚠️ **US only** — Canada needs none of it, which is why the launch
-is Canadian; see "CANADA NEEDS NO 10DLC".
-
-✅ **The App Store Server API key EXISTS and is WIRED (2026-08-05).**
-`SubscriptionKey_BTPZRH3GW3.p8` (Users and Access → Integrations → **In-App
-Purchase**), stored at `~/.appstoreconnect/private_keys/` and mirrored into four
-Supabase secrets: `APPSTORE_KEY_ID` / `APPSTORE_ISSUER_ID` /
-`APPSTORE_BUNDLE_ID` / `APPSTORE_KEY_P8`.
-
-Three facts settled by probing, none of them obvious from Apple's docs:
-
-- **The issuer id is the SAME as the ASC API one** (`4644ed13-…`). The In-App
-  Purchase keys page shows an issuer id and it is easy to assume it differs; it
-  does not. Nothing extra to obtain.
-- **The JWT needs `bid` (the bundle id)**, which the App Store Connect API JWT
-  does not. Omitting it returns **401**, indistinguishable from a wrong key.
-- **`AuthKey_R5ZVLBTUR6.p8` genuinely will not work here** — it is an App Store
-  Connect key. Keep the two straight; they live in the same directory.
-
-Verified against `POST /inApps/v1/notifications/test` on **both**
-`api.storekit-sandbox.itunes.apple.com` and `api.storekit.itunes.apple.com`:
-both returned **404 `4040007` "No App Store Server Notification URL found"**,
-which is a *business* error and therefore proof the auth passed. A 401 is the
-auth failure; do not read a 404 here as a broken key.
-
-That 404 also states the remaining blocker exactly: **`subscriptionStatusUrl`
-and its sandbox twin are still `null`** and can only be set once
-`apple-notifications` is deployed, because Apple validates reachability.
-
-⚠️ **Float — this is the ONE hard blocker left, and it is money, not code**
-(owner deferred it 2026-08-05: *"ill do that when i got funds"*). Each line
-costs $1 upfront + $1/month, Apple pays ~45 days in arrears, so the float is
-carried ahead of any revenue: 50 subscribers is $50/mo out before a cent comes
-back. Last reading **$2.33** — that is a test balance, not a launch balance.
-Everything downstream of provisioning can be BUILT and tested against Sandbox
-without it; only actually buying a DID needs it.
-
-**Three traps the plan calls out that are easy to lose:** the reviewer will use
-a **Sandbox** subscription, and `iap-verify`'s `environment === "Production"`
-gate applied to provisioning means the reviewer subscribes, gets nothing, and
-rejects. **Inbound SMS/calls are the uncapped cost risk** — the user cannot
-control them, so never bill for inbound and cap it server-side. And E911 must
-be **disabled and unmissably disclosed**, not buried in a Terms link.
 
 ### Support chat — user types in-app, owner answers from Telegram (2026-07-30)
 
@@ -2211,29 +1527,6 @@ and `orders.pool_pinned` are stamped at reservation for exactly this. After ~100
 numbered orders, group by band and compare. **If the correlation is not
 positive, the number must come off the row.**
 
-### Quote p90, never p50, next to a running clock
-
-The waiting screen printed *"Codes usually arrive in about 59s"* — the **median**,
-i.e. wrong for half of all codes by definition — beside a live timer and (at the
-time) a ✕ that destroyed a paid order. Live band is p50 59s / **p90 161s**.
-The ✕ is no longer destructive — see the waiting-screen note below — but the
-quoting rule stands on its own.
-
-Measured 2026-07-28, every user's first order that got a number: **28 of 37 were
-cancelled and NOT ONE ever produced a code**; the 9 who let the window run
-delivered 33%. Median first-timer bail: **104s** — past our stated number, well
-short of the real one. `Service.typicalWaitSentence` now quotes p90 rounded
-**up** ("Most codes arrive within 3 min"). That used to coincide exactly with the
-180s minimum hold; **since the hold dropped to 90s the two no longer agree**, so
-the screen now quotes a wait roughly 2× the window in which cancelling is
-blocked. That is the honest ordering (quote the real p90, don't trap the user),
-but do not "tidy" one number into the other — they answer different questions.
-`typicalWaitShort` keeps p50 for browse/compare surfaces, where there is no
-clock and no destructive button.
-
-This is the seed-`etaSeconds` bug one layer up (28s promised against 53s actual):
-that fix corrected the data source and kept the framing.
-
 ### Measured arrival timing + evidence-gated warnings
 
 `services.eta_seconds` is seed data (22–35s, DB default 30, never recomputed) and
@@ -2277,213 +1570,6 @@ claim that the client "requires `success_sample >= 5`" was false. It now does
 carry it, and below 5 the UI states the sample instead of a bare percentage
 ("0% of 2 tries", not "0% delivered") — which matters because the asymmetric
 gate writes `measured 0%` off just two attempts.
-
-### Cold launch — the splash, and why readiness is not a timer
-
-`AppState` starts from `SeedData` with `routes = []`, so `cost(for:country:)`
-returns nil for **every** pair. Before `SplashScreen` existed the launch was:
-blank system launch screen → a bare `ProgressView` → a Home screen whose primary
-CTA read **"Unavailable · Pick another country"** for the whole fetch. The seed
-default pair is WhatsApp/United States, which is in `blocked_routes` and never
-bookable, so it stayed wrong until `applyStartupSelection()` ran at the END of
-the chain. A first-run user met a screen saying the product was unavailable —
-expensive here specifically, because activation is a single-session event
-(median signup → first order is 2 minutes).
-
-- **`AppState.coldStart(api:)`** owns the sequence and publishes `bootPhase` +
-  `bootProgress` from steps that actually completed. **Never fill that bar on a
-  timer** — a synthetic bar is the same class of claim as a seeded success rate.
-- **Readiness is NOT "the chain finished".** The two eSIM fetches are read only
-  by the eSIM tab, so they run *after* `bootPhase = .ready`, behind the revealed
-  UI, instead of holding a correct Home screen behind them.
-- **`loadCatalog` returns `Bool`.** It used to be `-> Void` with a bare
-  `catch { /* keep current state */ }`, so an offline launch silently kept the
-  30-service seed stub and rendered a full Home screen on which every service
-  read "Unavailable" — indistinguishable from "this product is broken". The
-  splash now offers **Try again** / **Continue anyway**. It still keeps existing
-  data when a *foreground* refresh fails; only the cold path treats it as failure.
-- The splash sits **above** the maintenance overlay but is suppressed once
-  maintenance is known active — that screen is the honest answer and must not
-  wait behind five more fetches.
-- Measured 2026-07-30: catalog = 18,492 routes, **3.48 MB raw / 179 KB gzipped**,
-  ~0.8–1.5s, and it is one of **six sequential round-trips** (~3s total).
-  Overlapping them would genuinely help, but `AppState` is a plain `@Observable`
-  with no actor isolation, so `async let` over methods that all mutate `self` is
-  a data race, not a speed-up. Doing it safely means making the API calls return
-  values instead of mutating — a separate change.
-
-**The logo is `BrandWordmark`: a green `v` + `SMS`.** The old lockup was a
-`bolt.fill` in a rounded-rect tile — a generic badge that said nothing about the
-product. The `v` takes `theme.ink` (the user-selectable accent) and **not**
-`theme.live`, which is the semantic success green; spending that colour on
-branding is the conflation `AccentColor` documents as forbidden. On the splash
-the letters type on and then the `v` rotates as the loading indicator, which is
-why there is no spinner. The progress bar appears only after 1.2s and the
-slow-connection line after 3.5s, so a healthy launch shows neither.
-
-**Appearance is `AppearanceMode` — System / Light / Dark, defaulting to System.**
-It replaced a `pref.isDark` Bool that defaulted to **false**, so the app and the
-splash rendered LIGHT on a dark-mode phone until the user found the toggle, and
-there was no way to say "follow my device" at all. `colorScheme` is
-`ColorScheme?` on purpose: **nil is what actually lets the device decide**, which
-a Bool cannot express. Migration keys on *explicitly set vs never touched* —
-`defaults.bool(forKey:)` returns false for both, which is exactly how "never
-chose" became "wants light" for everyone — so `object(forKey:)` decides, and the
-legacy key is deliberately not rewritten so a downgrade to 1.4/1.5 still works.
-`ContentView` reads the ambient `colorScheme` **above** its own
-`.preferredColorScheme`, because that modifier pushes a scheme *down* to children
-and `.system` must resolve against the device's.
-
-### The service picker says where a service IS bookable
-
-`ServiceSheet` fixes the COUNTRY and varies the service — the mirror of
-`CountrySheet` — so a service with no route in the selected country used to
-render a bare **"Unavailable"** with nothing on the row naming that country.
-Measured 2026-07-30: **all visible services (265 then, 254 now) are bookable in at least one
-country**, so the word was wrong every single time it appeared. It read as "not
-at all" for a median of **79 services per country** (Turkey: 165 of 265 — 62% of
-the catalog looked dead), and the services hidden on a Turkey selection are
-available in **68 of the 69 countries**.
-
-Worse, the row was dimmed to look disabled but stayed tappable and the tap
-WORKED — the handler already relocated via `bestCountry`. The label was steering
-users away from taps that would have succeeded.
-
-**`AppState.pickDestination(for:)` is the single shared definition** used by both
-the picker row and the tap handler, so the row cannot promise a country the tap
-does not deliver. A row promising Romania while the tap lands in Colombia would
-be a worse lie than the one it replaced. "Unavailable" now survives only for
-bookable-nowhere — the one case where it is true — and that case is `disabled`,
-because the tap would otherwise set the service without moving the country and
-strand the user on a Home screen whose only button is a disabled "Unavailable".
-The badge is scored against the DESTINATION route, and the Affordable filter
-judges by the price the row shows (it used to test `cost(for:country:)` alone and
-silently drop every service without a route here).
-
-### Palette + Liquid Glass (2026-07-30)
-
-**The brand accent is GREEN `#279400`** (owner decision, 2026-07-30). It was
-briefly switched to blue `#0057FF` and switched back; the blue remains available
-as the retuned `.blue` accent option.
-
-**Known and accepted: white on `#279400` measures 3.95:1**, below WCAG AA's
-4.5:1 for normal text, so primary buttons do not pass AA. On the background the
-accent measures 3.68:1. This is a deliberate brand choice, not an oversight —
-do not "fix" it by silently changing the hex. If it is ever revisited,
-`#1F7A00` is the same green a few steps darker and measures **5.47:1** against
-white while still reading as the brand.
-
-Light `bg` is warm paper **`#F8F7F4`** (was iOS's cool `#F2F2F7`) with `elev`
-left pure white, so cards read as genuinely raised. Dark mode is unchanged. The
-warm background is kept independently of the accent.
-
-Three things that must move together, each a real trap:
-- **The `AccentColor` default is declared in FOUR places** — `Theme.light(_:)`,
-  `Theme.dark(_:)`, `AuthGate`'s `@AppStorage` *and* its own
-  `?? .green` fallback, plus `AppState`'s init fallback. Missing one is not
-  hypothetical: the blue experiment changed three and left `AuthGate:28` on
-  green, so an unreadable preference would have resolved to a different colour
-  depending on which screen asked. Grep for all of them together.
-- **`Assets.xcassets/LaunchBackground.colorset` must match `theme.bg`.** It is
-  the static launch screen, so a mismatch is a visible colour flash on every
-  cold launch before SwiftUI has drawn anything.
-- **`live`/`warn`/`fail` are untouched and must stay that way.** Green still
-  means "your code arrived" / "your credits came back". Now that the accent is
-  no longer green, that separation is *stronger* than before — but it also means
-  green appearing anywhere is a semantic claim, not decoration.
-
-**Liquid Glass is `.glassPanel(_:interactive:)` in `DesignSystem/Glass.swift`,
-and the `#available(iOS 26)` guard lives there and nowhere else.** The
-deployment target is **18.0**, so the majority of devices only ever render the
-fallback (near-opaque fill over `.ultraThinMaterial` with a hairline border) —
-which is precisely why scattering the guard would let one surface drift without
-anyone noticing.
-
-Applied ONLY to chrome that floats over content: the tab bar, `ResumeBar`, and
-the eSIM map's selection card / globe button / warning pill. Not to inline
-cards — Apple's guidance is that glass belongs to the navigation layer, and on
-ordinary cards it puts text over unpredictable backgrounds while destroying the
-elevation hierarchy `theme.elev` already expresses.
-
-**`.glassEffect` RENDERS but is not HIT-TESTABLE — `GlassPanel` therefore always
-appends `.contentShape(shape)`, and that line is load-bearing.** The filled
-`.background(Capsule())` it replaced did contribute a touch surface; glass does
-not. So every gap the glass appeared to cover — the tab bar's 6pt padding, the
-4pt between its buttons — went transparent to touch and the tap fell through to
-whatever was behind. On the eSIM tab that is a full-bleed MapKit view which
-`.ignoresSafeArea(edges: .bottom)` extends *under* the tab bar, so a slightly
-misplaced tab tap silently panned the map instead. Reported as "the click
-registers behind it". Never apply `glassEffect` directly; go through
-`.glassPanel`.
-
-**`interactive` is only for glass that IS the control** (a single icon button).
-On a container that holds its own buttons — tab bar, resume bar — touch-reactive
-glass competes with the children for the gesture and reads as lag on first taps.
-
-**Glass over a saturated background is the failure case, and the eSIM tab is
-exactly that** (a full-bleed map, the default view). Inactive tab-bar icons are
-at their weakest over bright ocean. The map's cluster bubbles also need an
-**opaque** ring in `theme.elev`: the original translucent-white ring let a
-bubble blend into whatever was under it — invisible as blue-on-ocean, and
-nearly as bad as green-on-Europe, since the landmass is green too.
-
-### Localization: `Text("literal")` is localized, a `String` return is NOT
-
-`Text("Preparing")` picks up the catalog automatically because the literal
-becomes a `LocalizedStringKey`. A computed property returning a plain `String`
-does not — it never enters `Localizable.xcstrings` at all, so it cannot even be
-*seen* as missing by an audit of the file. The whole eSIM tab passed a
-file-level "0 untranslated" check while still rendering **"14 MB/day"** in
-French, and that was only caught by screenshotting a non-English locale.
-
-Anything user-facing returned as `String` needs `String(localized:)`:
-`EsimStatus.label`, `EsimPlan.validityLabel`, `perDayLabel`,
-`dataRemainingLabel`, and the expiry line in `EsimActivityScreen` all needed it.
-**`Metric(label:)` takes a plain `String`** and does `Text(label.uppercased())`,
-so every call site must pass `String(localized:)` itself.
-
-Two more rules, both learned here:
-- **Never interpolate a pluralised noun into a sentence.** `"Show %lld more %@"`
-  with `%@` = "plan"/"plans" cannot be translated — German and the Romance
-  languages inflect the adjective to agree. Ship four complete sentences instead.
-- **Verify format specifiers mechanically.** A dropped or reordered `%lld`/`%@`
-  is a runtime crash and is invisible in review. Compare the multiset of
-  specifiers in every translation against its key, and normalise positional
-  form (`%1$@`) first — it is equivalent, and a translation may legitimately
-  *omit* a later argument (Italian and Japanese do exactly that for the English
-  plural-`s` fragment in "You're %lld credit%@ short…").
-
-### The map's camera callback fires EVERY FRAME
-
-`.onMapCameraChange(frequency: .continuous)` fires per frame of a pan or pinch.
-`EsimMapView` derives `clusters` from `span`, so assigning `span` on every
-callback invalidated the computed property, re-bucketed all 66 pins, and made
-SwiftUI tear down and rebuild **every annotation — each containing a
-`CodeFlag` — at 60–120 fps**. That is a per-frame rebuild of the whole
-annotation set, and it is why the map felt slow and its taps unreliable while
-being dragged.
-
-`commit(_:)` now adopts a new span only when it differs by >15%, which is well
-below the ~1.6× step needed for the grid cell to regroup anything — so clusters
-still merge and split visibly during a pinch, while a pan (which does not change
-the span at all) rebuilds nothing. If you add anything else derived from the
-live camera, throttle it the same way.
-
-**Derived catalog data must be STORED, not computed.** `AppState` is
-`@Observable`, so a computed property is re-evaluated on every body evaluation
-of every view that reads it. `esimCountries` walked all **1,081** plans and
-rebuilt a dictionary — twice per `HomeScreen` redraw, once per `EsimStoreScreen`
-redraw, continuously while the map was being dragged — and returned a
-freshly-allocated array each time, so SwiftUI saw new `ForEach` data and rebuilt
-every annotation. Same for `esimPlans(forCountry:)`, a filter+sort over 1,081
-called ~4× per body on the plans screen. Both are now derived once inside
-`loadEsimCatalog` (`esimCountries`, `esimPlansByCountry`), and
-`EsimMapView.clusters` is `@State` refreshed on change rather than computed.
-
-**Do not put `.animation(_:value:)` on a container holding the `Map`.** It
-applies to every descendant, so an unrelated state change animates MapKit's own
-layout. `SegmentedTabs` and the browse toggle already wrap their state changes
-in `withAnimation`, which the branch `.transition`s pick up.
 
 ### Pausing the eSIM line (backend only, no build) — 2026-07-31
 
@@ -2535,124 +1621,6 @@ fix that without shipping. **1.6 adds a real empty state** (`emptyCatalog` in
 `EsimStoreScreen`) which deliberately does **not** name a cause: the catalog is
 equally empty when the line is paused and when the fetch merely failed, and
 asserting a provider switch in the second case would be a guess dressed as fact.
-
-### The eSIM store — why it shows FEWER plans than the catalog has
-
-The store used to render every active plan for a country in one price-ascending
-list. Measured against the live catalog on 2026-07-30, that list is unusable for
-two independent reasons, and neither is fixable with a nicer row design:
-
-- **382 of 1,081 active plans (35.3%) are DOMINATED** — another plan in the same
-  country gives *at least as much data, for at least as many days, at the same
-  price or less*. Japan sells 490 MB/1 day for **6** credits and 490 MB/**7
-  days** for **5** — cheaper *and* longer. Sorting by price ascending puts the
-  strictly worse plan first.
-- **187 (country, data, days) triples have more than one plan.** Japan lists
-  "1 GB · 1 day" **four** times at 9/10/11/12 credits with nothing on the row to
-  tell them apart — because there *is* nothing; the extra 3 credits buy nothing.
-
-`EsimPlanRanking.frontier()` keeps only the Pareto frontier over
-(data ↑, days ↑, price ↓), collapsing exact three-axis ties to one row. Japan's
-7-day view goes 5 rows → 3. Two rules in it are load-bearing:
-
-- **Plans missing data/validity/price are never dropped.** They cannot be
-  compared, and hiding a row because a provider column was NULL would let a
-  catalog gap decide what the user may see.
-- **The filter is never silent.** A "Show N more plans" control states exactly
-  how many rows are held back. It is a default, not a decision made for them.
-
-Duration is the FIRST axis, not a filter. It is the only one the traveller
-already knows before opening the app. The catalog is clean here — 1/7/15/30/180
-days cover 1,078 of 1,081 plans — and the chips are derived from the data, so a
-new duration appears without a code change. The default is **the duration
-closest to 7 days**: 1-day plans are 496 of 1,081 purely because the provider
-lists many, so defaulting to the modal duration would open every country on
-single-day plans.
-
-`credits/GB` is shown because it is the one number that makes different sizes
-comparable, and it is arithmetic on **our own retail price** — not a provider
-quality signal. There is deliberately no speed/coverage/reliability score on
-these screens: we do not measure any of that, and the standing rule is to show
-nothing rather than a plausible-looking guess.
-
-**The map is `EsimMapView` (MapKit) and it clusters — that is not optional.**
-35 of the 66 countries are European, so one pin per country is a solid blob over
-Europe at world zoom. Pins are grid-bucketed against the live camera span
-(`onMapCameraChange`), so bubbles become flags as you pinch. Two things learned
-the hard way:
-
-- **MapKit aspect-FILLS a requested region, it does not fit it.** On a 0.46-aspect
-  phone the whole world is simply not reachable in flat mode: `MKMapRect.world`
-  matched the view's *height* and cropped longitude to ~140°, and a 120°×150°
-  region cropped to ~60° over Africa. The opening camera therefore centres on the
-  densest part of the catalog instead of pretending to show everything.
-- **A price badge and a cluster count are the same glyph.** Cameroon's "33"
-  (credits) was indistinguishable from a green "13" (a 13-country cluster) — same
-  size, same badge. The price chip now always carries its unit ("33 cr") and a
-  distinct light treatment.
-
-`CountryGeo` is a static ISO2→centroid table, not geocoding (CLGeocoder is a
-rate-limited network round-trip per country, which would make the map's contents
-depend on connectivity). `CountryGeo.missingCodes(in:)` exists so a catalog
-country with no pin is *assertable* — the map renders a "N not on map" note
-rather than silently dropping a country it can sell. Currently 66/66 are placed.
-
-### Order-state honesty (client) — the reconcile invariant
-
-**`check-order` is NOT the authority on whether an order ended.** It polls the
-live SMS provider and returns HTTP 502 `provider_unreachable` whenever that
-throws, so the one moment you most need an answer (provider is sick) is exactly
-when it can't give one. `pollActiveOrder` used to `catch { /* transient */ }`
-and keep waiting — so with a flaky provider the 60s cron would expire AND refund
-an order while the screen sat on a frozen "Waiting / 00:00" indefinitely. The
-user has been made whole and has no idea; this is the state that generates
-refund requests and 1-star reviews.
-
-The invariant now, in `AppState` (2026-07-25):
-- **`OrdersAPI.fetch(orderId:)`** reads the order row straight from PostgREST.
-  No provider in the path — the cron has already written `expired`/`canceled`
-  plus the refund. This is the authority. Anything asking "did it end?" uses it.
-- **`pollActiveOrder`** falls back to that read after 2 consecutive check
-  failures, or immediately once past `expiresAt` + grace.
-- **`checkNow`** (the "Check now" button) ALWAYS falls back — an explicit tap
-  must never dead-end on a swallowed error.
-- **`WaitingScreen`** independently reconciles every 3s once past expiry, and
-  renders "Closing…" instead of a stopped `00:00`. Never show a dead countdown
-  as a live one.
-- **One `apply()`** handles every terminal status. `canceled` used to fall into
-  `default: break` and strand the UI even on a *successful* poll — never write a
-  status switch here without covering all cases.
-- `reconcileActiveOrder` swallows its own failure **on purpose**: if we truly
-  can't reach the DB we assert nothing, because inventing a terminal state is
-  its own lie.
-- **Reroll and cancel hold `isPlacingOrder`** while they mutate the row.
-  Without it the background reconcile reads the intermediate `canceled` and
-  bounces the user to recovery mid-reroll.
-
-Refunds must be **visible twice**: at the moment (`RecoveryContext.refundedCredits`
-→ "+N credits refunded" on the recovery card) and **durably** (`Order.isRefunded`
-→ "+N cr refunded" on the history row). "Expired" with no money line reads as
-"I paid and got nothing" even though the refund landed. Both terminal paths
-refund unconditionally server-side, so status alone is a sound signal.
-
-**The ✕ on the waiting screen LEAVES — it no longer cancels (changed
-2026-07-30).** This file previously said the opposite, and the opposite was the
-bug. The glyph reads as "back", and the user *has* to leave to paste the number
-into another app, so coming back is the NORMAL path rather than an edge case.
-Making it destructive — first instantly, later behind a confirmation dialog —
-meant the ordinary action of stepping away was the same button that threw away a
-paid, in-flight order.
-
-Now: ✕ sets `flow = nil`, the order keeps running, and **`Components/ResumeBar.swift`**
-sits above the tab bar on every tab whenever something is waiting. That bar is
-what makes non-destructive close honest: without a way back, a live order simply
-vanishes from view and the user reasonably assumes it died. It reads the waiting
-order from the LIST, not from `activeOrder` — that is cleared when the flow
-closes, which is exactly the moment the bar must appear.
-
-Cancelling is still available and still refunds, as an explicit labelled
-**"Cancel & refund N cr"** lower down the screen, still gated by the minimum hold (now 90s).
-A named destructive action does not need a confirmation dialog the way a ✕ did.
 
 ### The minimum hold (now 90s), and the late-code rescue (2026-07-27)
 
@@ -3213,8 +2181,9 @@ for essentially every hidden route.
     -destination 'platform=iOS Simulator,name=iPhone 17 Pro,OS=26.5' build
   # => ** BUILD SUCCEEDED **
   ```
-  Prefer a real build over `swiftc -typecheck` when you can afford it — it
-  catches resource/Info.plist/asset problems type-checking cannot. *Historical
+  This is now the ONLY check — `swiftc -typecheck` was retired on 2026-08-06 —
+  and it was always the better one: it catches resource/Info.plist/asset
+  problems type-checking cannot. *Historical
   cause, kept because it will recur on the next Xcode update:* Xcode will not
   offer a simulator destination whose runtime is NEWER than its SDK, so when
   only runtime 27.0 was installed against SDK 26.5 there were **no** eligible
@@ -3223,6 +2192,17 @@ for essentially every hidden route.
   SDK to an installed runtime (install the newer Xcode), not to chase the old
   runtime. **Archiving for the App Store is still gated separately** by the
   beta-macOS `BuildMachineOSBuild` patch under "Release prep".
+- **`INFOPLIST_KEY_<name>` SILENTLY DOES NOTHING for keys outside Xcode's
+  allowlist.** `INFOPLIST_KEY_UIBackgroundModes = "audio voip"` is accepted,
+  shows up in `xcodebuild -showBuildSettings`, and never reaches the generated
+  Info.plist — no warning, build succeeds, VoIP pushes are then never
+  delivered. The real keys live in **`VirtualSIM-Info.plist` at the repo root**
+  (`INFOPLIST_FILE`, with `GENERATE_INFOPLIST_FILE` still YES so Xcode merges
+  the generated ones in). It must stay OUT of `VirtualSIM/`, which is a
+  synchronized root group and would also copy it as a resource — *"Multiple
+  commands produce …/VirtualSIM.app/Info.plist"*. **Assert against the built
+  plist, never the build setting**: `plutil -p "$APP/Info.plist"`. Full account
+  in the calling section.
 - **The repo lives at `/Users/adyl/Desktop/IOS_APPS/VirtualSIM`.** It MOVED from
   `~/Desktop/VirtualSIM`, which no longer exists — so any `cp` from the old path
   fails silently-ish and the instruction below used to point at nothing. Stale
@@ -3235,7 +2215,7 @@ for essentially every hidden route.
   `cp /Users/adyl/Desktop/IOS_APPS/VirtualSIM/VirtualSIM/Networking/Secrets.swift
   VirtualSIM/Networking/Secrets.swift` first; it stays ignored, so it will not be
   committed. (This is also why `find VirtualSIM -name '*.swift' | wc -l` reads one fewer
-  in a bare worktree — 114 vs 115 as of 2026-08-06.)
+  in a bare worktree — 115 vs 116 as of 2026-08-06.)
 - **`isOk()` from `_shared/smspva.ts` dereferences its argument and callers pass
   it `null`.** `providers.ts` does `smsGetBalance().catch(() => null)` and then
   `isOk(before)` / `isOk(after)`; `isOk` reads `r.statusCode`, so a thrown
@@ -3297,9 +2277,11 @@ Every number below has been wrong within a day of being written at least once.
 It is a starting point for "is this roughly right", never a citation.
 
 - **iOS**: `MARKETING_VERSION 1.9`, `CURRENT_PROJECT_VERSION 31`, iOS min **18.0**,
-  **115** Swift sources, **672** strings / 0 untranslated / 0 specifier reorders.
-  (Counted 08-06. The previous figures — 96 sources, 357 strings — predated the
-  Number tab, the calling client and the design overhaul.)
+  **116** Swift sources, **689** strings / 0 untranslated / 0 specifier reorders,
+  and **3** SwiftPM dependencies (TelnyxRTC 4.1.2 → WebRTC 139.0.0, Starscream
+  4.0.8). (Counted 08-06 after the calling commit. The previous figures — 96
+  sources, 357 strings, ZERO dependencies — predated the Number tab, the
+  calling client and the design overhaul.)
 - **Backend**: **39** edge function dirs besides `_shared`, **14** `_shared` files,
   **150** migration files, **20** pg_cron jobs (all active). (Counted 08-06.
   The previous figures — 27 dirs, 145 migrations, 16 crons — were stale by 12,
@@ -3719,10 +2701,14 @@ ads.apple.com → Settings → Billing.
   (`scripts/verify-line-lifecycle.sql`, 12 checks in a rolled-back
   transaction). What genuinely remains:
   - **Telnyx float** — the one hard blocker, and it is money, not code.
-  - **`TelnyxRTC` is not added**, so calling is built end-to-end against
-    `VoiceClient` and `NullVoiceClient` throws. Everything either side of the
-    media session — the allowance gate, CallKit, the dialer, session
-    reporting, CDR settlement — is live and testable without it.
+  - **Calling is WIRED but UNPROVEN.** `TelnyxRTC 4.1.2` was added and the
+    dialer wired on 2026-08-06, so `NullVoiceClient` no longer stands in.
+    **No real call has ever been placed**, the voice adapters were written
+    from docs, and the media path is device-only — the simulator cannot
+    receive a PushKit push. Treat the first call as the probe and read
+    `app_config.telnyx_voice_faults` after it.
+  - **A client release.** Everything above is repo-only: the App Store has
+    **1.9**, which has no Number tab at all.
   - **10DLC for US numbers.** Canada needs none, which is why the launch is
     Canadian.
 - 🟠 **TWO fixes are worth nothing until a client release, and neither is in
@@ -4171,128 +3157,15 @@ Never display raw API errors. AppState's catch blocks call `APIError.userMessage
 3. `curl` PostgREST directly with the publishable key — if curl returns the data, iOS decoding is the issue. Check the row **count** too, not just the shape (see the `max_rows` truncation gotcha).
 4. Function logs in Supabase dashboard → Functions → pick function → Logs.
 
-## ASO — search is the ENTIRE acquisition channel (2026-07-31)
+## ASO
 
-Measured over 15 days: **20,884 impressions and all 143 downloads came from App
-Store search.** Zero browse, zero referral, zero ads. There is no other channel,
-so listing metadata is not a marketing nicety here — it is the funnel.
-
-Full study: **`docs/aso-study-2026-07-31.md`**. Exact strings to paste:
-**`docs/app-store-listing.md`** — and note that file had *drifted from the live
-listing* (it documented a name and keywords that were never live). **Read ASC
-before trusting it**: `GET /v1/appInfos/{id}/appInfoLocalizations` for
-name+subtitle, `GET /v1/appStoreVersions/{id}/appStoreVersionLocalizations` for
-keywords and description.
-
-The funnel, US, 6 matched days: 7,107 impressions → 174 taps (**2.45%**) → 119
-installs (**68.4% tap→install**). **The product page converts well; the search
-result does not.** That is icon/title/subtitle/first-screenshots — so screenshot
-work outranks description work. Non-US: **2,629 impressions → 0 taps, 0
-downloads**, with an en-US-only listing.
-
-**Strategy, from the owner: SMS is the revenue product, temp email is an
-acquisition hook that "won't generate much revenue".** So email reaches the index
-through *additive* surfaces — the keyword field and extra localizations — and
-never by displacing SMS terms from the name. Changed for 1.6:
-
-| field | from | to |
-|---|---|---|
-| name | `vSMS: Temp Number, Receive SMS` | unchanged (30/30) |
-| subtitle | `Second Phone Number & eSIM` | `Temp Mail & Phone Verification` (30/30) |
-
-`Temp Mail` is intact by owner decision — it duplicates `Temp` from the name at a
-cost of 5 characters, deliberately, because an exact phrase in a high-weight
-field beats the same words composed from atoms. The old subtitle targeted a
-cluster owned by TextNow (913k ratings) *and* advertised a paused product.
-
-**`anonymous` was removed from the keyword field and must not come back.** Sign
-in with Apple is mandatory and 203 of 204 accounts carry an email address, so it
-is an unverifiable claim under 2.3.7. Also dropped: `privacy`/`private` (owned by
-VPNs and password managers) and `data` (eSIM paused).
-
-**The biggest remaining lever is localization, and it is unused.** The listing is
-**en-US only** — one 160-character indexed surface (30 name + 30 subtitle + 100
-keywords). Apple indexes *every* localization listed for a storefront. Adding
-**Spanish (Mexico)** gives a second full keyword field **in the US storefront**;
-**English (U.K.)** is Apple's additional language for most non-English
-storefronts and the default in India. Two corrections to common ASO advice,
-checked against Apple's own table: en-GB/en-AU/en-CA do **nothing** for the US,
-and India's default is English (U.K.), not Hindi.
-
-**Apple exposes no per-query search terms** (`Source Info` is empty on all 650
-analytics rows), so keyword attribution is before/after inference only. Change
-one layer at a time and allow 7–14 days.
-
-**Ratings cap position; keywords only buy eligibility.** That is why
-`shouldRequestReview` fires on the **first** delivered code.
-
-**Live review state, read from ASC 2026-08-05 — there are FIVE, not three, and
-the US still has zero:**
-
-| date | rating | store | |
-|---|---|---|---|
-| 08-02 | 5★ | ESP | "Best app ever !!!! Really useful" |
-| 08-02 | **1★** | DEU | "Scam" — turkey number unavailable, **"after one day price increased"**, UK not working |
-| 07-10 | 5★ | FRA | |
-| 07-09 | 5★ | POL | |
-| 06-22 | 5★ | POL | |
-
-Two landed on 08-02, two days after the threshold dropped to one code (and
-after 1.6/1.7 shipped, which re-arms the per-version gate). **Apple gives no
-attribution**, so that is timing, not proof — and note one of the two was the
-1★. The DEU complaint about the price rising overnight is the **cost ratchet**
-working as designed (rises apply immediately, falls are smoothed); it is
-correct and it reads as bait-and-switch.
-
-**Why there are no US reviews: the eligible pool is ~5.** Only 26 users have
-ever received a code; by storefront (buyers only — the other 16 coded users
-never bought, so their storefront is unknowable) that is USA 5, FRA 2, ESP 2,
-SWE 1. At the ~10% prompt→review rate the rest of the data implies, five
-eligible users predicts 0.5 reviews. **The prompt is not the constraint; the
-number of people who ever receive a code is.**
-
-⚠️ **A second, unquantified leak: the review prompt lives on
-`OtpScreen.onAppear`, but the delivery push already contains the code**
-(`Your code is ${result.code}` in `poll-active-orders`). A user who reads it
-off the lock screen and types it straight into the target app never opens that
-screen and is never prompted — and that is the *designed* flow, since the ✕ was
-made non-destructive precisely because users must leave to paste the number.
-How often is **not measurable server-side**: whether `OtpScreen` appeared is
-device-side UserDefaults, and `push_devices.updated_at` cannot separate "warm
-foreground" from "never came back". The fix, if wanted, is to fire the prompt
-on app-foreground after a recent delivered code rather than tying it to one
-screen — a client release. Do **not** strip the code out of the push to force
-users in; that trades real UX for a review.
-
-⚠️ **Never let email keywords go live ahead of the build that ships email.**
+Moved to the `aso-listing` skill (`.claude/skills/aso-listing/SKILL.md`).
+Search is the app's ENTIRE acquisition channel — invoke it before touching
+the store listing, keywords or screenshots.
 
 ## Release prep
 
-**Beta-macOS build gotcha (ITMS-90111).** This Mac runs a beta macOS (observed `26A5388g` on 2026-08-03; it moves with each seed). Every `xcodebuild archive` embeds the host OS build in `BuildMachineOSBuild`, and App Store validation **rejects binaries built on beta macOS** — "Invalid Binary" / ITMS-90111 — regardless of Xcode/SDK (the installed Xcode 26.6 + iOS 26.5 SDK are fine; the `DTSDKBuild` seed suffix is NOT the cause). Established workaround: after `archive`, patch the app `Info.plist` in the `.xcarchive` to a **stable** macOS build before `-exportArchive` (export re-signs, so signatures stay valid):
-
-```bash
-/usr/libexec/PlistBuddy -c "Set :BuildMachineOSBuild 25F84" \
-  "$ARCH/Products/Applications/VirtualSIM.app/Info.plist"
-# then xcodebuild -exportArchive ...  (verify BuildMachineOSBuild in the exported IPA)
-```
-
-vSMS is a single-target app, so only one `Info.plist` needs patching. The real fixes are building on stable macOS or Xcode Cloud; patch is the interim path while on the beta.
-
-**Submitting is fully headless via the App Store Connect API** (no Xcode Organizer) — see the `app-store-submission-asc` memory for the exact working pipeline: `xcodebuild archive` with `-allowProvisioningUpdates -authenticationKeyPath/-authenticationKeyID/-authenticationKeyIssuerID` (auto-provisions the Distribution cert; the Mac only has an *Apple Development* cert locally, which is fine) → patch `BuildMachineOSBuild` (above) → `xcodebuild -exportArchive` → `xcrun altool --upload-app` → ASC REST API (`POST /v1/appStoreVersions`, attach build, set `whatsNew`, `reviewSubmissions` submit). ASC API key lives at `~/.appstoreconnect/private_keys/AuthKey_R5ZVLBTUR6.p8` (key id `R5ZVLBTUR6`); app id `6774768570`. **The issuer id IS available: `4644ed13-4d98-489e-a94b-687f63946f46`** — an earlier note here claimed the machine had no issuer id and that API checks return `NO_ISSUER_ID`. That was wrong, and it cost real time: every "verify in ASC first" instruction was being skipped as impossible when the whole REST pipeline in fact works headlessly. The repo is at **`MARKETING_VERSION 1.9` / `CURRENT_PROJECT_VERSION 31`**. **Always verify live store state via the API before submitting** — the notes here drift within hours, and did twice on 2026-07-31 alone. **Release notes (`whatsNew`) are per-locale and there are 13 of them** — PATCH every `appStoreVersionLocalizations` row, or twelve storefronts ship the previous version's notes. Historical: 1.3 (build 12) released; 1.4 (build 13) submitted 2026-07-19; build 16 shipped as 1.5 in `a9b92c0` (which lowered the iOS floor to 18.0); build 17 submitted then cancelled 2026-07-25; build 18 submitted 2026-07-25 and released as **1.5**; build 19 submitted 2026-07-31 13:56Z and released as **1.6** the same day; build 20 submitted 2026-07-31 20:05Z as **1.7**, then **cancelled and replaced by build 21** (submitted 21:26Z; build 21 released as **1.7**, `READY_FOR_SALE` verified 2026-08-02) to strip the word "supplier" from shipped copy — cancelling an app-version submission is NOT the one-way door an IAP cancellation is: the version simply goes `DEVELOPER_REJECTED`, and re-attaching a build plus a fresh `reviewSubmission` recovers it in about a minute. **1.8**: build 23 submitted 2026-08-03 then cancelled; build 28 submitted 13:18Z the same day and **released as 1.8**. **1.9**: builds 29 and 30 superseded (29 carried the "+3 credits" card; 30 predated the `inviteJoinerCredits` fix), **build 31 uploaded 2026-08-04 16:04Z and released as 1.9** — cancel-and-replace took ~90 seconds end to end, exercising the DEVELOPER_REJECTED recovery path a third time (`PATCH reviewSubmissions/<id> {"canceled": true}` → `PATCH appStoreVersions/<id>/relationships/build` → `POST /v1/reviewSubmissions` → `POST /v1/reviewSubmissionItems` → `PATCH {submitted:true}`). Export compliance is already declared in `Info.plist` (`ITSAppUsesNonExemptEncryption = false`), so nothing stalls on that question.
-
-**Use the committed `ExportOptions.plist`; do NOT hand-write one.** (It genuinely is committed as of 2026-07-31 — this line previously said so while the file existed in no commit and no checkout, so the first export after a fresh clone had to invent one.) `-exportArchive` needs `teamID = UDMK379475` and fails with the useless pair *"No Account for Team X"* + *"No profiles for 'com.anthersystems.VirtualSIM' were found"* when it is wrong — which reads like a signing/provisioning problem and is not. Read the real value from the archive if ever in doubt: `PlistBuddy -c "Print :ApplicationProperties:Team" <archive>/Info.plist`. Note the archive is signed *Apple Development* locally and re-signed for distribution on export; that is expected, not a fault.
-
-**Run `xcodebuild -exportLocalizations` before submitting anything with new UI strings.** SwiftUI compiles interpolated literals into forms you will not guess — a sentence with two `\(…)` and a percent becomes `%1$@ / %2$@ / %3$lld` positional, and `Text("reports \(n)%")` becomes `reports %lld%%`. Guessing the key silently yields an English fallback; guessing the SPECIFIERS is a runtime crash. Export, then translate against the real keys, then verify the specifier multiset per locale (normalise positional form first — a translation may legitimately reorder arguments, as the Japanese strings do).
-
-**Finding a just-uploaded build:** use `GET /v1/builds?filter[app]=<id>&filter[version]=<n>`. The version→build *relationship* endpoint reports nothing useful while the build is still processing, which reads as "stuck" and invites a pointless re-upload. Ingestion takes ~2 min before the build is even visible, then `processingState` goes `PROCESSING` → `VALID`.
-
-**In-app purchases are a separate review track from the app version, and the public API can only do half of it.** Verified 2026-07-25 by direct experiment, replacing an earlier guess in this file:
-- IAPs **cannot** ride along with the app version. `POST /v1/reviewSubmissionItems` with an `inAppPurchaseV2` relationship returns `ENTITY_ERROR.RELATIONSHIP.UNKNOWN` — *"'inAppPurchaseV2' is not a relationship on the resource 'reviewSubmissionItems'"*. Do not cancel a version submission planning to bundle them; it cannot work, and you lose your place in the queue for nothing.
-- The **product-level `state` lies about submittability.** During the 2026-07-25 diagnosis `credits.60` and `credits.150` *both* read `READY_TO_SUBMIT` while being in completely different situations — one already queued for review, the other developer-rejected and unrecoverable. The truth is on the version: `GET /v2/inAppPurchases/<id>/versions`. Always read that before acting on the product state.
-- `POST /v1/inAppPurchaseSubmissions` fails with 409 *"has no pending version for submission"* in **two opposite** cases — the version is already `READY_FOR_REVIEW`/`WAITING_FOR_REVIEW` (nothing to submit), or it is `DEVELOPER_REJECTED` (nothing submittable). Read the version state before believing the error means "incomplete metadata".
-- An ASC-UI-created review submission can sit at `state: READY_FOR_REVIEW` with **`submittedDate: null`** — staged but never actually sent, so the IAP waits forever. Fix is `PATCH /v1/reviewSubmissions/<id> {"attributes":{"submitted":true}}`; its `platform` resolves from null to IOS on submit. This is how `credits.60` finally entered review, and it did **not** disturb the in-flight version submission.
-- **The in-flight cap is exactly TWO per platform, and hitting it looks like a broken submission.** This file previously concluded "two IOS submissions coexisted fine, contradicting the one-in-flight rule" — the real rule is a limit of **2**, which is simply where we stopped. Verified 2026-07-28: `PATCH …{"submitted":true}` on `credits.150`'s staged submission failed with `STATE_ERROR.MAX_IN_REVIEW_SUBMISSIONS_PER_PLATFORM_LIMIT_REACHED` — *"maximum limit of 2 in-flight reviewSubmissions for platform=IOS"* — because both slots were held by the 1.5 app version and `credits.60`. The failed PATCH is a clean no-op; nothing changes. So a staged-unsent submission has **two** possible causes: nobody pressed submit, or the queue is full. Read the `associatedErrors` array, not just the top-level `detail`, which only says "check associated errors".
-- **`credits.150` is NOT `DEVELOPER_REJECTED` any more** (this file said it was, and that it needed the ASC web UI). As of 2026-07-28 its version `d934db03-60ec-4a8b-acaf-0bd4ad85d9a6` is `READY_FOR_REVIEW` with a staged submission `0320433d-b4ba-4bd4-83e0-24106d146129` waiting on a free slot. **Submit it the moment 1.5 or `credits.60` clears** — it is the pack that lifts both the ARPU ceiling and the eSIM ceiling (median eSIM plan 25 cr, mean 59, largest approved pack 30). **DONE 2026-07-30 06:53Z**: `credits.60` was approved, freeing a slot, and the same `PATCH …{"submitted":true}` that failed on 2026-07-28 succeeded — `WAITING_FOR_REVIEW`, `platform` resolved null→IOS. Confirms the cap reading exactly: the identical call fails or succeeds purely on slot availability, so a `MAX_IN_REVIEW_SUBMISSIONS` failure means "retry later", not "this submission is broken".
-- **Cancelling an IAP submission is close to a one-way door.** It leaves the IAP version at `DEVELOPER_REJECTED`, and nothing in the public API moves it back: editing `reviewNote` (a product-level field) does not dirty a version, and even a localization write leaves it at version 1. Recovering it requires the ASC **web UI**. Prefer leaving an IAP submission alone over cancelling it.
-
-`docs/submission-checklist.md` is the source of truth for App Store submission steps. `docs/app-store-listing.md` has all metadata copy + nutrition labels pre-filled. Legal docs (`privacy-policy.md`, `terms.md`, `refund-policy.md`, `help.md`) are written to be pasted into Notion as public pages — URLs then go into `VirtualSIM/LegalLinks.swift`.
+Moved to the `release-prep` skill (`.claude/skills/release-prep/SKILL.md`).
+Invoke it when cutting a release — it carries the headless ASC pipeline, the
+beta-macOS `BuildMachineOSBuild` patch for ITMS-90111, and the in-app-purchase
+review rules (including the one-way-door cancel).

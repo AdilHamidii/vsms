@@ -395,10 +395,11 @@ struct ContentView: View {
         case .thread:
             ThreadScreen()
         case .dialer:
-            // Gated on a real WebRTC client being attached. The dialer, CallKit
-            // and the allowance gate are all built and wired, but the TelnyxRTC
-            // package is not added yet — so without this the keypad would place
-            // calls that always fail. Ship the plumbing, not the dead button.
+            // Still gated on a real WebRTC client being attached, even though
+            // `TelnyxVoiceClient` is now wired in `AuthGate`. The guard is what
+            // keeps a build that loses the SDK — or any future path that falls
+            // back to `NullVoiceClient` — from showing a keypad whose every
+            // call fails. Ship the plumbing, never the dead button.
             if calls.isVoiceAvailable {
                 DialerScreen()
             } else {

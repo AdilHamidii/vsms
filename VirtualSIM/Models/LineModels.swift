@@ -260,6 +260,22 @@ struct LineCallGrant: Codable, Hashable {
     let remainingSeconds: Int?
 }
 
+/// A short-lived WebRTC credential for one line, from `mint-line-token`.
+///
+/// The Telnyx API key never reaches the device: this token is scoped to a
+/// single telephony credential and expires on its own.
+struct LineVoiceToken: Codable, Hashable {
+    let token: String
+    let e164: String
+    let lineId: String
+    /// Whether the number is actually attached to the voice application yet.
+    ///
+    /// Outbound works either way; INBOUND does not ring until this is true.
+    /// Surfaced rather than hidden so the app can say so, instead of the user
+    /// discovering it when someone tries to call them.
+    let inboundReady: Bool
+}
+
 // MARK: - Buying one
 
 /// A city we sell numbers in. The picker offers CITIES rather than area codes

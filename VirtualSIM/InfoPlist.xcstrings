@@ -1,0 +1,48 @@
+{
+  "sourceLanguage" : "en",
+  "strings" : {
+    "NSMicrophoneUsageDescription" : {
+      "comment" : "Shown by iOS the first time the user places or answers a call on their rented second number. Info.plist strings are NOT covered by Localizable.xcstrings — they need this separate catalog, which is why six locales read English here until it was added.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "vSMS verwendet das Mikrofon, damit Sie bei Anrufen über Ihre gemietete Nummer sprechen können."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "vSMS usa el micrófono para que puedas hablar en las llamadas desde tu número alquilado."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "vSMS utilise le microphone pour que vous puissiez parler pendant les appels passés depuis votre numéro loué."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "vSMS usa il microfono per farti parlare durante le chiamate dal tuo numero in affitto."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "レンタル番号での通話中に話せるように、vSMSはマイクを使用します。"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O vSMS usa o microfone para você falar nas chamadas feitas pelo seu número alugado."
+          }
+        }
+      }
+    }
+  },
+  "version" : "1.1"
+}

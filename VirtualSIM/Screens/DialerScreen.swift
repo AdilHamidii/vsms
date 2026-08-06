@@ -56,7 +56,15 @@ struct DialerScreen: View {
             .padding(.horizontal, 24)
             .padding(.bottom, 28)
         }
-        .task { withAnimation(RMotion.content) { appeared = true } }
+        .task {
+            withAnimation(RMotion.content) { appeared = true }
+            // Mint the credential and open the WebRTC socket while the user is
+            // still typing. `placeCall` calls this again and it returns
+            // immediately when already registered, so this is latency the call
+            // path does not have to pay — the difference between a number that
+            // rings and one that sits silent for a second first.
+            await calls.prepareVoice()
+        }
     }
 
     private var header: some View {

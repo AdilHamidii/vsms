@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!--
+	  🔴 THIS FILE EXISTS FOR ONE KEY, AND THE OBVIOUS ALTERNATIVE FAILS
+	     SILENTLY.
+
+	  `INFOPLIST_KEY_UIBackgroundModes = "audio voip"` in the build settings
+	  looks right, is accepted by xcodebuild, and shows up in
+	  `-showBuildSettings` — and then does NOT appear in the generated
+	  Info.plist at all. Xcode's generator only honours an allowlist of
+	  `INFOPLIST_KEY_*` names and `UIBackgroundModes` is not on it. There is
+	  no warning anywhere.
+
+	  The consequence is exactly the failure that is hardest to diagnose:
+	  PushKit registers, the app looks healthy, and VoIP pushes are simply
+	  never delivered — so an incoming call never rings and nothing logs a
+	  reason.
+
+	  `GENERATE_INFOPLIST_FILE` stays YES: with `INFOPLIST_FILE` also set,
+	  Xcode MERGES its generated keys into this file, so every existing
+	  `INFOPLIST_KEY_*` setting still applies and only this key lives here.
+
+	  ⚠️ It lives at the REPO ROOT, not in `VirtualSIM/`. That folder is a
+	  `PBXFileSystemSynchronizedRootGroup`, so anything inside it is also
+	  copied in as a bundle resource — which collides with its use as
+	  `INFOPLIST_FILE` and fails the build with "Multiple commands produce
+	  .../VirtualSIM.app/Info.plist". Keep it out of the synchronized folder.
+
+	  Verify after any project-file change, because this cannot be caught by
+	  a build succeeding:
+	      plutil -p "$APP/Info.plist" | grep -A3 UIBackgroundModes
+	-->
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>audio</string>
+		<string>voip</string>
+	</array>
+</dict>
+</plist>

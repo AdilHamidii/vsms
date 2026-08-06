@@ -162,6 +162,22 @@ struct LineAPI {
         )
     }
 
+    /// Mint a short-lived WebRTC credential for this user's line.
+    ///
+    /// ⚠️ **`mint-line-token` had NO caller anywhere in the app until calling
+    /// was wired up** — the endpoint was deployed, the adapters written, and
+    /// nothing could ever obtain a token, so `VoiceClient.connect` was
+    /// unreachable by construction. Same shape as the six `line_subscriptions`
+    /// updaters that shipped with no INSERT: a deployed endpoint is not a
+    /// reached endpoint.
+    ///
+    /// The token is deliberately not cached across launches. It expires on its
+    /// own and the failure mode of a stale one is a call that cannot connect,
+    /// which is worse than one extra round trip before dialing.
+    func mintVoiceToken() async throws -> LineVoiceToken {
+        try await client.request(.post, path: "functions/v1/mint-line-token")
+    }
+
     /// The pre-flight gate for an outbound call: it checks the line's status
     /// and RESERVES voice allowance, then returns.
     ///
@@ -193,6 +209,7 @@ struct LineAPI {
     func reportCall(
         callId: String,
         sessionId: String? = nil,
+        legId: String? = nil,
         status: String? = nil,
         answeredAt: Date? = nil,
         durationSeconds: Int? = nil
@@ -200,6 +217,7 @@ struct LineAPI {
         struct Body: Encodable {
             let call_id: String
             let session_id: String?
+            let leg_id: String?
             let status: String?
             let answered_at: String?
             let duration_seconds: Int?
@@ -209,6 +227,7 @@ struct LineAPI {
             body: Body(
                 call_id: callId,
                 session_id: sessionId,
+                leg_id: legId,
                 status: status,
                 answered_at: answeredAt.map { ISO8601DateFormatter().string(from: $0) },
                 duration_seconds: durationSeconds

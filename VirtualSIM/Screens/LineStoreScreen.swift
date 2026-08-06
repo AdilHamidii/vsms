@@ -93,10 +93,10 @@ struct LineStoreScreen: View {
         }
     }
 
-    /// ⚠️ **Must not advertise calling.** There is no dialer — `flow = .dialer`
-    /// is assigned nowhere and `ContentView` answers that case with "coming
-    /// very soon". This card previously promised "texts and calls right here",
-    /// which is a capability the buyer cannot use after paying.
+    /// ⚠️ **Only sell what ships.** Calling was absent from this card for as
+    /// long as `flow = .dialer` was assigned nowhere, and was restored in the
+    /// same commit that linked the SDK and wired the dialer. Keep that
+    /// ordering for anything added here.
     private var pitch: some View {
         Card(elevation: .raised) {
             VStack(alignment: .leading, spacing: 0) {
@@ -112,6 +112,9 @@ struct LineStoreScreen: View {
                 RowRule()
                 BenefitRow(icon: RIcon.message,
                            label: "Send and receive texts in the app")
+                RowRule()
+                BenefitRow(icon: RIcon.phone,
+                           label: "Make and take calls in the app")
                 RowRule()
                 // The actual reason to buy, and it used to be the last clause
                 // of a paragraph. It is the only line here that names a

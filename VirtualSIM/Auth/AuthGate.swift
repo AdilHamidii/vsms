@@ -87,11 +87,11 @@ struct AuthGate: View {
             // AFTER iap.attach, because this registers the subscription handler
             // on the single shared transaction listener that IAPStore owns.
             subs.attach(api: api, iap: iap)
-            // No `voice:` argument yet — the TelnyxRTC package is not added, so
-            // this leaves `NullVoiceClient` in place and `isVoiceAvailable`
-            // false, which is what keeps the dialer unreachable. Pass a real
-            // client here and the whole calling path lights up.
-            calls.attach(api: api)
+            // The real WebRTC client, which is what sets `isVoiceAvailable` and
+            // makes the dialer reachable. Constructing it only opens a socket
+            // when `prepareVoice()` mints a token, so a user with no line pays
+            // nothing for it.
+            calls.attach(api: api, voice: TelnyxVoiceClient())
             AppDelegate.push = push
 
             #if DEBUG

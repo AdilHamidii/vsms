@@ -252,13 +252,18 @@ private struct OwnershipPage: View {
                                label: "A monthly subscription, cancel anytime")
                 }
                 RowRule()
-                // "text and call" removed — there is no dialer. And the
-                // limitation is real either way: a Canadian number is
-                // domestic-only for SMS (`international_inbound: false`, and
-                // the write to change it returns 200 and does nothing), so a
-                // European user cannot text it from their own phone. Better
-                // said here than discovered after paying.
-                BenefitRow(icon: "flag", label: "Canadian numbers that exchange texts with US and Canadian phones")
+                // ⚠️ The North-America limit is REAL and must not be softened.
+                // A Canadian number is domestic-only for SMS
+                // (`international_inbound: false`, and the write to change it
+                // returns 200 and silently does nothing), so a European user
+                // cannot text it from their own phone. Better said here than
+                // discovered after paying.
+                //
+                // Stated for texts AND calls deliberately: we have measured the
+                // SMS restriction and have NOT probed international voice, so
+                // claiming worldwide calling would be a guess sold as a fact.
+                // Widen it only against a real outbound call.
+                BenefitRow(icon: "flag", label: "Canadian numbers that exchange texts and calls with US and Canadian phones")
                 RowRule()
                 BenefitRow(icon: RIcon.shield,
                            label: "No ads, no tracking, no email list",
@@ -504,18 +509,15 @@ private struct LineDemo: View {
         .padding(.vertical, 11)
     }
 
-    /// ⚠️ This was an INCOMING CALL row — "Answered right here in the app".
+    /// This was an INCOMING CALL row — "Answered right here in the app" — and
+    /// was replaced with a THIRD conversation when calling was unreachable.
     ///
-    /// There is no dialer: `flow = .dialer` is assigned nowhere and
-    /// `ContentView` answers that case with "coming very soon". Onboarding runs
-    /// before sign-in, so that was the very first thing a new user saw, and it
-    /// promised a capability they could not use after paying. Same App Review
-    /// 2.3.1 exposure the paywall copy was just fixed for.
-    ///
-    /// Replaced with a THIRD conversation rather than deleted: the point of
-    /// this card is that the number keeps a history across different people —
-    /// which is exactly what a disposable number on page 2 cannot do — and two
-    /// rows made that read as a coincidence rather than a list.
+    /// **Deliberately NOT reverted now that calling ships.** The constraint is
+    /// gone but the design reason stands on its own: the point of this card is
+    /// that the number keeps a history across different people, which is
+    /// exactly what a disposable number on page 2 cannot do, and two rows made
+    /// that read as a coincidence rather than a list. Calling is stated on the
+    /// benefit list instead, where it does not cost the card its argument.
     private var callRow: some View {
         threadRow(initial: "R",
                   tint: theme.text2,
