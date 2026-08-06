@@ -34,34 +34,58 @@ struct LineCheckoutScreen: View {
     @State private var isReserving = false
     @State private var isRestoring = false
 
+    /// Scroll anchor for the plan picker. Only the screenshot harness uses it,
+    /// but it is a plain view id rather than DEBUG-only state so the scroll
+    /// target cannot drift out of sync with the section it names.
+    private static let planAnchor = "plan-picker"
+
     var body: some View {
         ZStack {
             theme.bg.ignoresSafeArea()
             VStack(spacing: 0) {
                 header
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 0) {
-                        intro.riseIn(appeared, index: 0)
-                        numberCard.padding(.top, 20).riseIn(appeared, index: 1)
-                        included.padding(.top, 26).riseIn(appeared, index: 2)
-                        // Choice first, then the price block — which restates
-                        // the selection in full with its renewal terms. Putting
-                        // the picker after the price would mean the 3.1.2(a)
-                        // disclosure is read before the thing it describes has
-                        // been chosen.
-                        planPicker.padding(.top, 20).riseIn(appeared, index: 3)
-                        priceBlock.padding(.top, 12).riseIn(appeared, index: 3)
-                        // The safety disclosure sits ABOVE the action, not
-                        // between the price and the button. Price -> CTA has to
-                        // be adjacent: the last thing read before a purchase
-                        // decision should not be a liability warning.
-                        emergency.padding(.top, 18).riseIn(appeared, index: 4)
-                        legal.padding(.top, 14).riseIn(appeared, index: 5)
+                ScrollViewReader { proxy in
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: 0) {
+                            intro.riseIn(appeared, index: 0)
+                            numberCard.padding(.top, 20).riseIn(appeared, index: 1)
+                            included.padding(.top, 26).riseIn(appeared, index: 2)
+                            // Choice first, then the price block — which restates
+                            // the selection in full with its renewal terms. Putting
+                            // the picker after the price would mean the 3.1.2(a)
+                            // disclosure is read before the thing it describes has
+                            // been chosen.
+                            planPicker.padding(.top, 20).riseIn(appeared, index: 3)
+                                .id(Self.planAnchor)
+                            priceBlock.padding(.top, 12).riseIn(appeared, index: 3)
+                            // The safety disclosure sits ABOVE the action, not
+                            // between the price and the button. Price -> CTA has to
+                            // be adjacent: the last thing read before a purchase
+                            // decision should not be a liability warning.
+                            emergency.padding(.top, 18).riseIn(appeared, index: 4)
+                            legal.padding(.top, 14).riseIn(appeared, index: 5)
+                        }
+                        .padding(.horizontal, 20)
+                        .padding(.bottom, 20)
                     }
-                    .padding(.horizontal, 20)
-                    .padding(.bottom, 20)
+                    .scrollIndicators(.hidden)
+                    // A screenshot frame has to SHOW the plan choice and the
+                    // 3.1.2(a) renewal sentence, and on a fresh open both sit
+                    // below the fold — the first frame taken this way showed
+                    // only the hero and the CTA. Scrolled deterministically
+                    // rather than by a scripted swipe, which is the same reason
+                    // `ScreenshotMode` addresses screens by launch argument
+                    // instead of driving the UI: a frame has to come out
+                    // identical every run.
+                    //
+                    // `isActive` is a stored `false` in Release, so this is
+                    // folded away in a shipping build.
+                    .task {
+                        guard ScreenshotMode.isActive else { return }
+                        try? await Task.sleep(for: .milliseconds(400))
+                        proxy.scrollTo(Self.planAnchor, anchor: .top)
+                    }
                 }
-                .scrollIndicators(.hidden)
 
                 BottomBar { cta }
             }
@@ -303,16 +327,16 @@ struct LineCheckoutScreen: View {
     /// than offering a choice one side of which cannot be bought.
     @ViewBuilder
     private var planPicker: some View {
-        if subs.product != nil, subs.yearlyProduct != nil {
+        if subs.hasMonthly, subs.hasYearly {
             VStack(spacing: 8) {
                 planRow(.monthly,
                         title: String(localized: "Monthly"),
-                        price: subs.product?.displayPrice,
+                        price: subs.monthlyPriceDisplay,
                         badge: nil,
                         note: nil)
                 planRow(.yearly,
                         title: String(localized: "Yearly"),
-                        price: subs.yearlyProduct?.displayPrice,
+                        price: subs.yearlyPriceDisplay,
                         // Both derived from live StoreKit, so neither can promise
                         // something the store will not honour: the saving is
                         // computed from the two real prices, and the trial
@@ -493,10 +517,18 @@ struct LineCheckoutScreen: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
 
+            // ⚠️ The period must FOLLOW the selected plan. This read
+            // `"\($0)/mo"` unconditionally, so picking Yearly rendered
+            // "$99.99/mo" directly under the button — a 10× misstatement of
+            // the billing period, in the one place App Store 3.1.2(a) is
+            // about. `priceBlock` had it right ("per year" / "per month") and
+            // the CTA silently contradicted it 200pt below.
             PrimaryButton(
                 label: ctaLabel,
-                sub: busy ? nil : subs.displayPrice.map { "\($0)/mo" },
-                disabled: busy || state.lineOffer == nil || subs.product == nil,
+                sub: busy ? nil : subs.displayPrice.map {
+                    "\($0)\(subs.selectedPlan == .yearly ? "/yr" : "/mo")"
+                },
+                disabled: busy || state.lineOffer == nil || !subs.hasMonthly,
                 action: buy
             )
 
@@ -511,7 +543,7 @@ struct LineCheckoutScreen: View {
     /// Distinguishes "still loading" from "the store has no such product" —
     /// collapsing the two would tell a user on a slow connection that the
     /// product does not exist.
-    private var unavailable: Bool { subs.product == nil && !subs.isLoadingProduct }
+    private var unavailable: Bool { !subs.hasMonthly && !subs.isLoadingProduct }
 
     /// Names the step in progress rather than showing a spinner on a button
     /// whose label still says "Get this number". Reserving involves a live

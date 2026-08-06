@@ -34,6 +34,39 @@ final class SubscriptionStore {
     /// commitment, and defaulting to the expensive option is a dark pattern.
     var selectedPlan: LinePlan = .monthly
 
+    #if DEBUG
+    /// Stand-in pricing for `ScreenshotMode`, and ONLY for it.
+    ///
+    /// Xcode applies `Products.storekit` when Xcode itself launches the app;
+    /// `simctl` does not, so a scripted screenshot run gets no products and the
+    /// paywall renders "The App Store isn't offering this subscription right
+    /// now" over a disabled button. That exact frame was uploaded to App Store
+    /// Connect as the monthly subscription's review screenshot — a reviewer
+    /// opening it saw an error instead of a purchase screen.
+    ///
+    /// ⚠️ **These are not placeholder strings.** The frame becomes an App
+    /// Store review screenshot, so every figure has to equal what the store
+    /// will really charge. They mirror `Products.storekit`, which is itself
+    /// kept in step with App Store Connect by hand. If a price moves in ASC,
+    /// it moves in all three.
+    ///
+    /// The whole thing is `#if DEBUG`, so a Release archive cannot be put into
+    /// this state by any launch argument or server response — same guarantee
+    /// `ScreenshotMode` already documents for its sample line and threads.
+    struct ScreenshotPricing {
+        var monthly = "$9.99"
+        var yearly = "$99.99"
+        /// ($9.99 × 12 − $99.99) ÷ ($9.99 × 12) = 16.6% → 17, which is what
+        /// `yearlySavingsPercent` computes from the live prices.
+        var savingsPercent = 17
+        var trial = "3 days"
+    }
+
+    /// Non-nil ONLY under `ScreenshotMode`. Every read of it is behind
+    /// `#if DEBUG`, so this is inert in a shipping build.
+    var screenshotPricing: ScreenshotPricing?
+    #endif
+
     /// The product the CTA will actually buy. Everything user-facing — price,
     /// renewal sentence, trial claim — reads from THIS, so the button can never
     /// charge for a plan other than the one on screen.
@@ -47,6 +80,9 @@ final class SubscriptionStore {
     /// territories, so "save 17%" written into the app is a claim that goes
     /// wrong silently the first time either price moves.
     var yearlySavingsPercent: Int? {
+        #if DEBUG
+        if let s = screenshotPricing { return s.savingsPercent }
+        #endif
         guard let m = product?.price, let y = yearlyProduct?.price, m > 0 else { return nil }
         let twelve = m * 12
         guard twelve > y else { return nil }
@@ -80,6 +116,9 @@ final class SubscriptionStore {
     /// is never shown "3 days free" and then charged $99.99 immediately —
     /// which is a refund, a one-star review, and an App Store 3.1.2 problem.
     var trialLabel: String? {
+        #if DEBUG
+        if let s = screenshotPricing { return s.trial }
+        #endif
         guard let offer = yearlyIntroOffer, offer.paymentMode == .freeTrial else { return nil }
         let n = offer.period.value
         switch offer.period.unit {
@@ -139,7 +178,55 @@ final class SubscriptionStore {
     /// storefront. NEVER a hardcoded "$9.99": the credit-pack ladder drifted to
     /// $4.99-vs-€5.99 on its top revenue product precisely because prices were
     /// assumed rather than read.
-    var displayPrice: String? { selectedProduct?.displayPrice }
+    var displayPrice: String? {
+        #if DEBUG
+        if let s = screenshotPricing {
+            return selectedPlan == .yearly ? s.yearly : s.monthly
+        }
+        #endif
+        return selectedProduct?.displayPrice
+    }
+
+    // MARK: - What the paywall may ask
+    //
+    // The paywall used to read `product` / `yearlyProduct` directly, i.e. it
+    // depended on StoreKit's `Product` type just to answer "is there a plan to
+    // show?". `Product` has no public initializer, so that made the screen
+    // impossible to render without a live StoreKit session — which is why the
+    // review screenshot attached in App Store Connect was of the paywall's
+    // FAILURE state. These four say what the view actually means, and are the
+    // single place the screenshot harness substitutes into.
+
+    /// Is there a monthly plan to sell? Distinct from "has it loaded yet".
+    var hasMonthly: Bool {
+        #if DEBUG
+        if screenshotPricing != nil { return true }
+        #endif
+        return product != nil
+    }
+
+    /// Is there a yearly plan to sell? When false the paywall offers monthly
+    /// alone rather than a choice one side of which cannot be bought.
+    var hasYearly: Bool {
+        #if DEBUG
+        if screenshotPricing != nil { return true }
+        #endif
+        return yearlyProduct != nil
+    }
+
+    var monthlyPriceDisplay: String? {
+        #if DEBUG
+        if let s = screenshotPricing { return s.monthly }
+        #endif
+        return product?.displayPrice
+    }
+
+    var yearlyPriceDisplay: String? {
+        #if DEBUG
+        if let s = screenshotPricing { return s.yearly }
+        #endif
+        return yearlyProduct?.displayPrice
+    }
 
     // MARK: - Purchase
 

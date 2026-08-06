@@ -35,7 +35,13 @@ enum ScreenshotMode {
     enum Screen: String {
         case onboarding      // page 1, the product pitch
         case lineStore       // pick a city
-        case linePaywall     // the subscription screen
+        case linePaywall     // the subscription screen, monthly selected
+        // The same screen with the YEARLY plan selected. Two frames rather
+        // than one because each App Store Connect subscription wants a review
+        // screenshot of ITSELF being bought, and the selected row is the only
+        // thing that differs — the price, the period under the CTA and the
+        // trial line all follow the selection.
+        case linePaywallYearly
         case lineInbox       // an owned number, with conversations
         case home            // the temp-SMS store
         case waiting         // waiting for a code

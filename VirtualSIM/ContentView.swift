@@ -537,16 +537,22 @@ extension ContentView {
         case .onboarding:
             break                              // handled before the gate
 
-        case .lineStore, .linePaywall:
+        case .lineStore, .linePaywall, .linePaywallYearly:
             state.tab = .line
             state.lines = []                   // not yet a subscriber
-            if shot == .linePaywall {
+            if shot == .linePaywall || shot == .linePaywallYearly {
                 state.lineCity = "toronto"
                 state.lineOffer = LineNumberOffer(phoneNumber: "+14375550128",
                                                   region: "Toronto, Ontario",
                                                   monthlyCents: 100,
                                                   upfrontCents: 100)
                 state.flow = .lineCheckout
+                // Without this the paywall renders its "temporarily
+                // unavailable" state: `simctl` does not apply the scheme's
+                // StoreKit configuration, so no products load. See
+                // `SubscriptionStore.ScreenshotPricing`.
+                subs.screenshotPricing = .init()
+                subs.selectedPlan = shot == .linePaywallYearly ? .yearly : .monthly
             }
 
         case .lineInbox:
