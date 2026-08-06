@@ -142,11 +142,21 @@ struct LineCheckoutScreen: View {
                 Task {
                     isRestoring = true
                     defer { isRestoring = false }
+                    // Cleared first so what we render afterwards describes THIS
+                    // restore and not some earlier failed purchase.
+                    subs.lastError = nil
                     _ = await iap.restorePurchases()
                     await state.loadLine(using: LineAPI(client: api))
                     if state.line != nil {
                         RHaptic.success()
                         state.flow = nil
+                    } else if let msg = subs.lastError {
+                        // A restore that recovers nothing must SAY so. Silence
+                        // reads as "it worked" — the worst possible answer for
+                        // the only person who ever taps this button: someone
+                        // who has been charged and has no number.
+                        RHaptic.warn()
+                        state.lastError = msg
                     }
                 }
             } label: {

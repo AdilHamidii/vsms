@@ -268,9 +268,36 @@ final class SubscriptionStore {
             }
         } catch {
             pending = nil
-            lastError = String(localized: "That purchase didn't complete. Please try again.")
+            // StoreKit REFUSES to sell a subscription this Apple ID already
+            // holds — it shows its own "You're currently subscribed to this"
+            // alert and then throws. The throw carries no code worth branching
+            // on (it differs by OS version and by environment), so ask the
+            // entitlement instead of guessing at the error.
+            //
+            // This matters because "Please try again" is advice that can never
+            // work in that state: every retry hits the same refusal. The user
+            // who sees it is, by definition, someone who has PAID and has no
+            // number — so the message has to name Restore, which is the control
+            // that actually recovers them.
+            lastError = await holdsLineEntitlement()
+                ? String(localized: "You're already subscribed. Tap Restore to finish setting up your number.")
+                : String(localized: "That purchase didn't complete. Please try again.")
             return false
         }
+    }
+
+    /// Does this Apple ID already hold one of our subscriptions?
+    ///
+    /// A UI hint only, never an authority — `my_line` decides whether a line
+    /// exists. StoreKit knows what Apple is charging for; it does not know
+    /// whether we ever managed to deliver it.
+    private func holdsLineEntitlement() async -> Bool {
+        for await result in Transaction.currentEntitlements {
+            if case .verified(let tx) = result, LineProduct.allIds.contains(tx.productID) {
+                return true
+            }
+        }
+        return false
     }
 
     /// Verify with the server, then provision.
@@ -294,10 +321,30 @@ final class SubscriptionStore {
         // as an unknown product on a transaction Apple has already charged.
         guard LineProduct.allIds.contains(tx.productID) else { return false }
 
-        // A renewal, or a transaction replayed on a new device. There is no
-        // number to provision — ASSN drives renewals server-side — so finish it
-        // and let `loadLine` reflect whatever the server already knows.
+        // 🔴 "No pending purchase" conflates two states that need OPPOSITE
+        // handling, and only the SERVER can tell them apart:
+        //
+        //   • a RENEWAL, or a replay on a new device — a line already exists,
+        //     ASSN drives it server-side, and finishing is correct;
+        //   • a FIRST purchase whose provisioning failed on an earlier launch
+        //     and is now being swept by `restorePurchases()`. `pending` is
+        //     in-memory, so it is nil here BY CONSTRUCTION on every relaunch.
+        //
+        // Finishing the second case retires the transaction forever: StoreKit
+        // stops redelivering it, and the user is left paying every month for a
+        // number that was never created — with Restore, their only recovery,
+        // having been the thing that destroyed the recovery. The `APIError`
+        // path below deliberately leaves the transaction unfinished for exactly
+        // this sweep; blind-finishing it here quietly undid that.
         guard let want = pending else {
+            // An unreadable server counts as "no line". Wrong in the safe
+            // direction on purpose: an unfinished transaction costs a
+            // redelivery, a wrongly finished one costs the money.
+            let lines = (try? await LineAPI(client: api).fetchAll()) ?? []
+            guard !lines.isEmpty else {
+                lastError = String(localized: "You're subscribed, but your number hasn't been set up yet. Contact support — don't buy again.")
+                return false
+            }
             await tx.finish()
             return true
         }
