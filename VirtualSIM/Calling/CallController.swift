@@ -159,10 +159,44 @@ final class CallController: NSObject {
         }
 
         do {
-            _ = try await voice.dial(to: number, from: lineNumber)
+            // ⚠️ The SDK's session id was DISCARDED here (`_ = try await …`),
+            // and it is the only key `sync-telnyx-cdr` can match a detail
+            // record against. Without it the call kept its whole 120-second
+            // reservation forever and the allowance meant nothing.
+            let session = try await voice.dial(to: number, from: lineNumber)
+            report(sessionId: session, status: "ringing")
             provider.reportOutgoingCall(with: uuid, startedConnectingAt: Date())
         } catch {
             await failCall(error.localizedDescription)
+        }
+    }
+
+    /// Fire-and-forget, with one retry.
+    ///
+    /// Never awaited on the call path: a slow network must not delay the ring,
+    /// and a failed report is not worth failing a call over. It is also not
+    /// silently lost — `settle_stale_calls()` sweeps anything still unsettled
+    /// after six hours, so the worst case of losing this is a call settled at
+    /// this device's word instead of Telnyx's.
+    private func report(
+        sessionId: String? = nil,
+        status: String? = nil,
+        answeredAt: Date? = nil,
+        durationSeconds: Int? = nil
+    ) {
+        guard let api = apiClient, let callId = currentCallId else { return }
+        Task.detached(priority: .utility) {
+            let line = LineAPI(client: api)
+            for attempt in 0..<2 {
+                do {
+                    try await line.reportCall(
+                        callId: callId, sessionId: sessionId, status: status,
+                        answeredAt: answeredAt, durationSeconds: durationSeconds)
+                    return
+                } catch {
+                    if attempt == 0 { try? await Task.sleep(for: .seconds(2)) }
+                }
+            }
         }
     }
 
@@ -175,6 +209,15 @@ final class CallController: NSObject {
     }
 
     func endCall() async {
+        // Reported BEFORE the teardown, because `resetState` clears
+        // `currentCallId` and the report needs it. A call that never reached
+        // `.active` never connected, so it is `canceled`, not a zero-second
+        // `completed` — the difference decides whether the user is billed for
+        // it at all when the CDR never arrives.
+        report(
+            status: phase == .active ? "completed" : "canceled",
+            durationSeconds: phase == .active ? Int(elapsed.rounded()) : 0)
+
         guard let uuid = currentUUID else {
             resetState()
             return
@@ -219,10 +262,15 @@ final class CallController: NSObject {
     func mediaConnected() {
         guard phase != .active else { return }
         phase = .active
-        startedAt = Date()
+        let now = Date()
+        startedAt = now
         RHaptic.success()
+        // `answered_at` had no writer anywhere. It is what separates "they
+        // picked up" from "it rang out" on the history row, and the CDR does
+        // not carry our notion of it.
+        report(status: "answered", answeredAt: now)
         if let uuid = currentUUID, isOutbound {
-            provider.reportOutgoingCall(with: uuid, connectedAt: Date())
+            provider.reportOutgoingCall(with: uuid, connectedAt: now)
         }
     }
 

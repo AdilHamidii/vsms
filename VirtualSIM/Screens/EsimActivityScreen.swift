@@ -106,7 +106,7 @@ struct EsimActivityScreen: View {
             VStack(spacing: 8) {
                 ForEach(Array(orders.enumerated()), id: \.element.id) { idx, o in
                     Button { state.openEsimDetail(o) } label: { row(o) }
-                        .buttonStyle(PressableStyle())
+                        .pressableCard()
                         .riseIn(appeared, index: startIndex + idx)
                 }
             }

@@ -80,4 +80,16 @@ extension View {
     func pressable(_ scale: CGFloat = 0.97) -> some View {
         buttonStyle(PressScaleStyle(scale: scale))
     }
+
+    /// Press feedback for a whole CARD — a large target where a scale alone is
+    /// too subtle to register, so it dims slightly as well.
+    ///
+    /// This exists so there is exactly ONE press vocabulary. A second
+    /// `PressableStyle` had grown inside `EsimCountryPlansScreen` with its own
+    /// spring and its own numbers, used on four eSIM surfaces — so identical
+    /// card taps felt different depending on which screen you were on, which
+    /// reads as parts of the app being broken rather than as a style choice.
+    func pressableCard() -> some View {
+        buttonStyle(PressScaleStyle(scale: 0.975, dim: true))
+    }
 }

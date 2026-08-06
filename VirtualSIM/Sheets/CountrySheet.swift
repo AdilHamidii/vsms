@@ -162,16 +162,24 @@ struct CountrySheet: View {
         // `.flat` on purpose: this card is as tall as the catalog, and a real
         // drop shadow on a 4,000pt surface is paid for on every frame of every
         // scroll. Depth here comes from `theme.elev` against `theme.bg`.
-        Card(elevation: .flat) {
+        // ⚠️ `visible` is HOISTED, and that is not a style preference.
+        // It is a computed property that filters and sorts the whole country
+        // list, and `visible.count` used to be read inside the ForEach content
+        // closure — so the filter and the sort ran once per ROW, ~69 times per
+        // body evaluation, on a sheet whose search field re-evaluates the body
+        // on every keystroke. Same class as the `routeIndex` fix that unfroze
+        // this very picker.
+        let rows = visible
+        return Card(elevation: .flat) {
             LazyVStack(spacing: 0) {
-                ForEach(Array(visible.enumerated()), id: \.element.id) { idx, c in
+                ForEach(Array(rows.enumerated()), id: \.element.id) { idx, c in
                     CountryRow(country: c,
                                price: price(c),
                                record: record(c),
                                poolRate: rate(c),
                                balance: state.balance,
                                selected: c.id == state.configuringCountry.id,
-                               isLast: idx == visible.count - 1) {
+                               isLast: idx == rows.count - 1) {
                         RHaptic.select()
                         onPick(c)
                         dismiss()

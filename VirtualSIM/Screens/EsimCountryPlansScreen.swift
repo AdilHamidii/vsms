@@ -204,7 +204,7 @@ struct EsimCountryPlansScreen: View {
                 .stroke(isBest ? theme.ink.opacity(0.4) : theme.sep, lineWidth: isBest ? 1.2 : 0.5))
             .contentShape(.rect)
         }
-        .buttonStyle(PressableStyle())
+        .pressableCard()
     }
 
     // MARK: - Disclosure
@@ -247,15 +247,8 @@ struct EsimCountryPlansScreen: View {
     }
 }
 
-/// Tap feedback for large card targets: a slight, fast scale-down.
-///
-/// `.buttonStyle(.plain)` gives no feedback at all on a card this big, which
-/// makes a tap that opens a full-screen cover feel like it did not register.
-struct PressableStyle: ButtonStyle {
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .scaleEffect(configuration.isPressed ? 0.975 : 1)
-            .opacity(configuration.isPressed ? 0.9 : 1)
-            .animation(.spring(response: 0.22, dampingFraction: 0.7), value: configuration.isPressed)
-    }
-}
+// `PressableStyle` lived here — a SECOND press vocabulary with its own spring
+// and its own numbers, used on four eSIM surfaces while the rest of the app
+// used `.pressable()`. Identical card taps therefore felt different depending
+// on the screen. Replaced by `.pressableCard()` in DesignSystem/Feedback.swift,
+// which is the same look driven by the one shared style.

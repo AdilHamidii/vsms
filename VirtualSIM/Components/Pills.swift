@@ -105,6 +105,6 @@ struct CreditPill: View {
             .padding(.vertical, 6)
             .background(theme.chipBg, in: .capsule)
         }
-        .buttonStyle(.plain)
+        .pressable()
     }
 }

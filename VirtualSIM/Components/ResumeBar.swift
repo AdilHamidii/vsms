@@ -63,7 +63,10 @@ struct ResumeBar: View {
                 .shadow(color: .black.opacity(0.10), radius: 10, y: 4)
                 .contentShape(.rect)
             }
-            .buttonStyle(.plain)
+            // The whole bar is one tap target and it is how a user gets back to
+            // a live order — `.plain` gave it no press feedback at all, which
+            // on a floating glass panel reads as "this isn't a button".
+            .pressable(0.98)
             .transition(.move(edge: .bottom).combined(with: .opacity))
         }
     }

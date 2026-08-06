@@ -176,6 +176,47 @@ struct LineAPI {
         )
     }
 
+    /// Hand the provider's session id back to the server.
+    ///
+    /// 🔴 WITHOUT THIS EVERY CALL COSTS ITS FULL RESERVATION AND NOTHING ELSE
+    /// IS ENFORCED. `begin-line-call` reserves a flat 120 seconds and
+    /// `sync-telnyx-cdr` settles the difference — but the poller matches only
+    /// on `provider_call_session_id`, and the id exists solely on the device,
+    /// because the server is deliberately not on the ring path. So a
+    /// ten-second call kept the whole two minutes (50 dials a month) and a
+    /// forty-minute call also cost two minutes, since the reservation was the
+    /// only thing standing between a user and unlimited talk time.
+    ///
+    /// Everything except the session id is ADVISORY. `duration_seconds` is what
+    /// this device claimed; `billed_seconds` from the detail record is the
+    /// truth. What the client uniquely knows is a KEY, not a value.
+    func reportCall(
+        callId: String,
+        sessionId: String? = nil,
+        status: String? = nil,
+        answeredAt: Date? = nil,
+        durationSeconds: Int? = nil
+    ) async throws {
+        struct Body: Encodable {
+            let call_id: String
+            let session_id: String?
+            let status: String?
+            let answered_at: String?
+            let duration_seconds: Int?
+        }
+        _ = try await client.request(
+            .post, path: "functions/v1/report-line-call",
+            body: Body(
+                call_id: callId,
+                session_id: sessionId,
+                status: status,
+                answered_at: answeredAt.map { ISO8601DateFormatter().string(from: $0) },
+                duration_seconds: durationSeconds
+            ),
+            as: APIClient.Empty.self
+        )
+    }
+
     func calls(limit: Int = 100) async throws -> [LineCall] {
         try await client.request(
             .get, path: "rest/v1/line_calls",

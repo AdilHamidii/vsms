@@ -200,7 +200,7 @@ struct EsimStoreScreen: View {
             LazyVStack(spacing: 8) {
                 ForEach(Array(countries.enumerated()), id: \.element.id) { idx, c in
                     Button { destination = c } label: { countryRow(c) }
-                        .buttonStyle(PressableStyle())
+                        .pressableCard()
                         .riseIn(appeared, index: idx)
                 }
                 if countries.isEmpty && !query.isEmpty {
@@ -269,7 +269,7 @@ struct EsimStoreScreen: View {
                 VStack(spacing: 10) {
                     ForEach(Array(state.liveEsimOrders.enumerated()), id: \.element.id) { idx, o in
                         Button { state.openEsimDetail(o) } label: { liveCard(o) }
-                            .buttonStyle(PressableStyle())
+                            .pressableCard()
                             .riseIn(appeared, index: idx)
                     }
                     Color.clear.frame(height: 130)

@@ -14,9 +14,14 @@ import SwiftUI
 /// was interrupted.
 struct PressScaleStyle: ButtonStyle {
     var scale: CGFloat = 0.985
+    /// Dim as well as scale. For a large CARD target, scale alone is too subtle
+    /// to register — see `.pressableCard()`, which is the only thing that sets
+    /// this and exists so the app has one press vocabulary rather than two.
+    var dim: Bool = false
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .scaleEffect(configuration.isPressed ? scale : 1.0)
+            .opacity(configuration.isPressed && dim ? 0.9 : 1)
             .animation(.easeOut(duration: 0.12), value: configuration.isPressed)
     }
 }

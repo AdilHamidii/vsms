@@ -247,7 +247,12 @@ final class AppState {
                 // user closed the paywall. It is cleared on leaving the tab
                 // instead, in ContentView's `.onChange(of: state.tab)`.
                 openThreadId = nil
-                dialerDigits = ""
+                // `dialerDigits` was cleared here and lived on AppState — but
+                // `DialerScreen` keeps its own `@State private var digits`, so
+                // the AppState copy was written by exactly one line and read by
+                // nothing. A draft that only one side of the app knows about is
+                // worse than no draft: it looks like the clearing rule is
+                // covered when it is not.
                 intent = tab == .line ? .line : .sms
             }
             guard flow != .checkout else { return }
@@ -312,8 +317,6 @@ final class AppState {
     var lineUnavailableReason: LineUnavailableReason?
     /// Thread open in the `.thread` cover. Cleared in `flow.didSet`.
     var openThreadId: String?
-    /// Digits typed into the dialer. Cleared in `flow.didSet`.
-    var dialerDigits = ""
 
     var esimPlans: [EsimPlan] = []
     var esimOrders: [EsimOrder] = []

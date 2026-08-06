@@ -65,11 +65,25 @@ struct LineCheckoutScreen: View {
             // the CTA falls back to a label with no price at all.
             await subs.loadProduct()
         }
-        .task {
-            while !Task.isCancelled {
-                try? await Task.sleep(for: .seconds(1))
+        // ⚠️ Ticks ONLY while there is a countdown to tick.
+        //
+        // `now` drives exactly one thing: the "Held for you · 4:12" pill. It
+        // used to be reassigned every second unconditionally, which invalidates
+        // this whole body — number card, price block, legal text, the lot — at
+        // 1 Hz on a screen that is usually showing "Available now" and has
+        // nothing to animate. `reserveNumber` is unproven against the live API
+        // and a hold is explicitly optional, so the common case is no
+        // countdown at all and the timer was pure waste.
+        //
+        // Keyed on `heldUntil` so it starts when a hold arrives and stops the
+        // moment it lapses, rather than running for the life of the screen.
+        .task(id: state.lineReservation?.heldUntil) {
+            guard let until = state.lineReservation?.heldUntil else { return }
+            while !Task.isCancelled, until > Date() {
                 now = Date()
+                try? await Task.sleep(for: .seconds(1))
             }
+            now = Date()
         }
     }
 

@@ -222,24 +222,10 @@ private struct LiveLineView: View {
         }
     }
 
-    private func emptyState(icon: String, title: LocalizedStringKey,
-                            body: LocalizedStringKey) -> some View {
-        VStack(spacing: 8) {
-            Image(systemName: icon)
-                .font(.system(size: 30)).foregroundStyle(theme.text3)
-            Text(title)
-                .font(RFont.display(16, weight: .semibold))
-                .foregroundStyle(theme.text)
-            Text(body)
-                .font(RFont.text(13))
-                .foregroundStyle(theme.text2)
-                .multilineTextAlignment(.center)
-                .fixedSize(horizontal: false, vertical: true)
-        }
-        .padding(.horizontal, 44)
-        .frame(maxWidth: .infinity)
-        .padding(.top, 50)
-    }
+    // A private `emptyState(icon:title:body:)` lived here and was never called
+    // — this screen already uses the shared `EmptyState` component, twice. Two
+    // empty-state treatments in one file is how they drift apart, and the dead
+    // one had already picked up different metrics from the live one.
 }
 
 // MARK: - Number detail

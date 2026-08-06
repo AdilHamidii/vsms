@@ -129,16 +129,26 @@ struct LineStoreScreen: View {
     ///
     /// Read from StoreKit, never a literal — the credit ladder drifted to
     /// $4.99-vs-€5.99 on its top product precisely because a price was assumed.
-    @ViewBuilder
+    /// ⚠️ Renders in BOTH states, and that is the point. It used to be wrapped
+    /// in `if let price`, so whenever StoreKit had not answered — a slow
+    /// network, or the product sitting in `MISSING_METADATA`, which returns no
+    /// product at all even in Sandbox — the anchor simply vanished and the user
+    /// went city → number → paywall with the word "monthly" appearing nowhere.
+    /// That is precisely the shape this view exists to prevent, reintroduced by
+    /// an empty branch.
+    ///
+    /// The fallback states the RECURRENCE, which is true whatever the figure
+    /// turns out to be, and never guesses the figure — a literal price is what
+    /// let the credit ladder drift to $4.99-vs-€5.99 on its top product.
     private var priceAnchor: some View {
-        if let price = subs.displayPrice {
-            Text("\(price) a month · cancel any time")
-                .font(RFont.text(13, weight: .medium))
-                .foregroundStyle(theme.text2)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 6)
-                .background(theme.chipBg, in: Capsule())
-        }
+        Text(subs.displayPrice.map { "\($0) a month · cancel any time" }
+             ?? String(localized: "Monthly subscription · cancel any time"))
+            .font(RFont.text(13, weight: .medium))
+            .foregroundStyle(theme.text2)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 6)
+            .background(theme.chipBg, in: Capsule())
+            .redacted(reason: subs.isLoadingProduct ? .placeholder : [])
     }
 
     private func capability(icon: String, title: LocalizedStringKey) -> some View {
