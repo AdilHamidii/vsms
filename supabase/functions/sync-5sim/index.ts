@@ -391,6 +391,10 @@ Deno.serve(async (req) => {
 
   const failedSet = new Set(failedCountries);
   const ctyBySlug = new Map((countries).map((c) => [c.id as string, c.fivesim_country as string]));
+  // The SERVICE half of the mapping. `services` is already filtered to rows
+  // carrying a `fivesim_product`, so this set is exactly "services 5sim can
+  // price". Needed by the ownership guard below — see the note there.
+  const svcMapped = new Set((services ?? []).map((s) => s.id as string));
 
   for (const r of routes) {
     const key = `${r.service_id}|${r.country_id}`;
@@ -400,12 +404,24 @@ Deno.serve(async (req) => {
     // A country whose fetch failed THIS RUN tells us nothing. Reading that as
     // "5sim does not serve it" would hide real inventory on a transient error.
     if (!pick && slug && failedSet.has(slug)) { skippedFailedCountry++; continue; }
-    // Not mapped at all (no 5sim product/country) — leave the row entirely
-    // alone; it keeps its current provider. This is NOT a stockout and must not
-    // be counted as one: on 5sim a bad country and an empty pool return the
-    // identical `no free phones`, so conflating them here would make a mapping
-    // regression invisible.
-    if (!pick && !slug) continue;
+    // Not mapped at all — leave the row entirely alone; it keeps its current
+    // provider. This is NOT a stockout and must not be counted as one: on 5sim
+    // a bad country and an empty pool return the identical `no free phones`, so
+    // conflating them here would make a mapping regression invisible.
+    //
+    // 🔴 BOTH halves of the mapping must be tested, and testing only the
+    // country cost us 6,900 routes across 115 services (14 of them emptied
+    // outright) before it was caught on 2026-08-06. `chosen` is keyed by
+    // (service, country) and populated ONLY from services carrying a
+    // `fivesim_product`, so a row whose SERVICE is unmapped can never receive a
+    // pick — it fell through to the write path below and was stamped
+    // `provider='5sim'`, `status='hidden'`, `premium_credits=null`.
+    //
+    // That is unrecoverable rather than merely wrong: `sync-herosms` reads
+    // `.eq("provider","herosms")` and `sync-prices` skips anything it does not
+    // own, so once a row says `5sim` the only sync that will ever look at it
+    // again is this one — which cannot price it, and re-hides it every hour.
+    if (!pick && (!slug || !svcMapped.has(r.service_id as string))) continue;
 
     const costCents = pick ? Math.round(pick.costUsd * 100) : null;
     const prev = r.fivesim_smoothed_cost_cents as number | null;
