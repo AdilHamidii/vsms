@@ -6716,6 +6716,46 @@
         }
       }
     },
+    "Couldn't load credit packs. Please try again in a moment.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Guthabenpakete konnten nicht geladen werden. Bitte gleich erneut versuchen."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No se pudieron cargar los paquetes de créditos. Inténtalo de nuevo en un momento."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Impossible de charger les packs de crédits. Veuillez réessayer dans un instant."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Impossibile caricare i pacchetti di crediti. Riprova tra poco."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "クレジットパックを読み込めませんでした。少し経ってからお試しください。"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Não foi possível carregar os pacotes de créditos. Tente novamente em instantes."
+          }
+        }
+      }
+    },
     "Couldn't load subscription details. Please try again in a moment.": {
       "localizations": {
         "de": {
@@ -7152,6 +7192,46 @@
           "stringUnit": {
             "state": "translated",
             "value": "Cobre o que você precisa"
+          }
+        }
+      }
+    },
+    "Credit packs are temporarily unavailable. Please try again in a moment.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Guthabenpakete sind vorübergehend nicht verfügbar. Bitte gleich erneut versuchen."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Los paquetes de créditos no están disponibles temporalmente. Inténtalo de nuevo en un momento."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Les packs de crédits sont momentanément indisponibles. Veuillez réessayer dans un instant."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "I pacchetti di crediti non sono momentaneamente disponibili. Riprova tra poco."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "クレジットパックは一時的にご利用いただけません。少し経ってからお試しください。"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Os pacotes de créditos estão temporariamente indisponíveis. Tente novamente em instantes."
           }
         }
       }
@@ -16971,6 +17051,46 @@
         }
       }
     },
+    "Purchase is pending parental approval.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Der Kauf wartet auf die Zustimmung der Eltern."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "La compra está pendiente de aprobación parental."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "L'achat est en attente d'approbation parentale."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "L'acquisto è in attesa dell'approvazione dei genitori."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "購入は保護者の承認待ちです。"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "A compra está aguardando aprovação dos pais."
+          }
+        }
+      }
+    },
     "Purple": {
       "localizations": {
         "de": {
@@ -20962,6 +21082,46 @@
         }
       }
     },
+    "That doesn't look like a valid phone number. Check it and try again.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Das scheint keine gültige Telefonnummer zu sein. Bitte prüfen und erneut versuchen."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ese no parece un número de teléfono válido. Compruébalo e inténtalo de nuevo."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ce numéro de téléphone ne semble pas valide. Vérifiez-le et réessayez."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Non sembra un numero di telefono valido. Controllalo e riprova."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "有効な電話番号ではないようです。番号を確認してもう一度お試しください。"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Esse não parece ser um número de telefone válido. Confira e tente novamente."
+          }
+        }
+      }
+    },
     "That email domain just ran out. Try another one.": {
       "extractionState": "stale",
       "localizations": {
@@ -21039,6 +21199,46 @@
           "stringUnit": {
             "state": "translated",
             "value": "A compra não foi concluída. Tente novamente."
+          }
+        }
+      }
+    },
+    "That purchase was made in a test environment, so no credits were added.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dieser Kauf erfolgte in einer Testumgebung, daher wurde kein Guthaben gutgeschrieben."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Esa compra se hizo en un entorno de prueba, así que no se añadieron créditos."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cet achat a été effectué dans un environnement de test, aucun crédit n'a donc été ajouté."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Quell'acquisto è stato effettuato in un ambiente di test, quindi non sono stati aggiunti crediti."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "この購入はテスト環境で行われたため、クレジットは追加されていません。"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Essa compra foi feita em um ambiente de teste, então nenhum crédito foi adicionado."
           }
         }
       }
@@ -21440,6 +21640,46 @@
           "stringUnit": {
             "state": "translated",
             "value": "Este endereço nunca recebeu um código"
+          }
+        }
+      }
+    },
+    "This credit pack isn't available right now. Please try again later.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dieses Guthabenpaket ist derzeit nicht verfügbar. Bitte später erneut versuchen."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Este paquete de créditos no está disponible ahora mismo. Inténtalo más tarde."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ce pack de crédits n'est pas disponible pour le moment. Veuillez réessayer plus tard."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Questo pacchetto di crediti non è disponibile al momento. Riprova più tardi."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "このクレジットパックは現在ご利用いただけません。しばらくしてからお試しください。"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Este pacote de créditos não está disponível agora. Tente novamente mais tarde."
           }
         }
       }
@@ -23433,6 +23673,46 @@
         }
       }
     },
+    "We couldn't confirm your purchase. Please try again.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Wir konnten Ihren Kauf nicht bestätigen. Bitte erneut versuchen."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No pudimos confirmar tu compra. Inténtalo de nuevo."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nous n'avons pas pu confirmer votre achat. Veuillez réessayer."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Non siamo riusciti a confermare il tuo acquisto. Riprova."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ご購入を確認できませんでした。もう一度お試しください。"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Não foi possível confirmar sua compra. Tente novamente."
+          }
+        }
+      }
+    },
     "We couldn't delete your account. Please try again.": {
       "localizations": {
         "de": {
@@ -23710,6 +23990,46 @@
           "stringUnit": {
             "state": "translated",
             "value": "Não foi possível carregar seu código de convite. Seus créditos e pedidos não são afetados."
+          }
+        }
+      }
+    },
+    "We couldn't start that call. Please try again.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Der Anruf konnte nicht gestartet werden. Bitte erneut versuchen."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No pudimos iniciar esa llamada. Inténtalo de nuevo."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nous n'avons pas pu passer cet appel. Veuillez réessayer."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Non siamo riusciti ad avviare la chiamata. Riprova."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "通話を開始できませんでした。もう一度お試しください。"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Não foi possível iniciar essa chamada. Tente novamente."
           }
         }
       }

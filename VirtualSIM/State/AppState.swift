@@ -1949,6 +1949,13 @@ final class AppState {
         Date() >= order.expiresAt.addingTimeInterval(grace)
     }
 
+    /// `@MainActor` for the same reason `confirmGetNumber` carries it: AppState
+    /// is `@Observable` but not otherwise actor-isolated, so without it the
+    /// `!isPlacingOrder` guard below is a racy check-then-set and two taps can
+    /// both read `false` before either writes `true`. The siblings got the
+    /// annotation; the two money-mutating methods reachable from the same
+    /// waiting screen did not.
+    @MainActor
     func cancelWaiting(using orders: OrdersAPI, wallet: WalletAPI) async {
         // !isPlacingOrder matters: the ✕ used to stay live during a reroll, so
         // this could fire mid-reroll, release the flag early (re-opening the
@@ -2012,6 +2019,7 @@ final class AppState {
     /// `differentCountry` matters when a platform rejected the number outright:
     /// the whole range is usually flagged, so another number from it will fail
     /// the same way. Falls back to the same route when there's no alternative.
+    @MainActor
     func rerollNumber(using orders: OrdersAPI, wallet: WalletAPI,
                       differentCountry: Bool) async {
         guard let order = activeOrder, !isPlacingOrder else { return }

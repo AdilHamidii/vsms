@@ -46,7 +46,15 @@ struct TabBar: View {
                                 }
                             }
                         if active {
-                            Text(item.label)
+                            // ⚠️ `LocalizedStringKey(...)`, NOT `Text(item.label)`.
+                            // `label` is a `String`, so the bare form resolves to
+                            // Text's VERBATIM initializer and never consults the
+                            // string catalog — only `Text("literal")` does. All six
+                            // locales had translations for Home / Orders / Account /
+                            // Number sitting in Localizable.xcstrings, unreachable,
+                            // while the most persistent chrome in the app rendered
+                            // English. Same workaround `PrimaryButton` already uses.
+                            Text(LocalizedStringKey(item.label))
                                 .font(RFont.display(14, weight: .semibold))
                                 .tracking(-0.2)
                         }

@@ -61,12 +61,12 @@ final class IAPStore {
             for p in fetched { map[p.id] = p }
             self.products = map
             if fetched.isEmpty {
-                self.lastError = "Credit packs are temporarily unavailable. Please try again in a moment."
+                self.lastError = String(localized: "Credit packs are temporarily unavailable. Please try again in a moment.")
             } else {
                 self.lastError = nil
             }
         } catch {
-            self.lastError = "Couldn't load credit packs. Please try again in a moment."
+            self.lastError = String(localized: "Couldn't load credit packs. Please try again in a moment.")
         }
     }
 
@@ -99,7 +99,7 @@ final class IAPStore {
         guard let product = products[pack.productId] else {
             // loadProducts already set a more specific lastError if it failed.
             if lastError == nil {
-                lastError = "This credit pack isn't available right now. Please try again later."
+                lastError = String(localized: "This credit pack isn't available right now. Please try again later.")
             }
             return false
         }
@@ -111,7 +111,7 @@ final class IAPStore {
             case .userCancelled:
                 return false
             case .pending:
-                lastError = "Purchase is pending parental approval."
+                lastError = String(localized: "Purchase is pending parental approval.")
                 return false
             @unknown default:
                 return false
@@ -166,22 +166,22 @@ final class IAPStore {
                     // a receipt we already granted, so the balance legitimately
                     // does not move again.
                     if resp.balanceChanged != true && resp.alreadyCredited != true {
-                        lastError = "That purchase was made in a test environment, so no credits were added."
+                        lastError = String(localized: "That purchase was made in a test environment, so no credits were added.")
                         return false
                     }
                     return true
                 }
-                lastError = "We couldn't confirm your purchase. Please try again."
+                lastError = String(localized: "We couldn't confirm your purchase. Please try again.")
                 return false
             } catch let apiErr as APIError {
                 lastError = apiErr.userMessage
                 return false
             } catch {
-                lastError = "We couldn't confirm your purchase. Please try again."
+                lastError = String(localized: "We couldn't confirm your purchase. Please try again.")
                 return false
             }
         case .unverified:
-            lastError = "We couldn't verify that purchase. Please try again."
+            lastError = String(localized: "We couldn't verify that purchase. Please try again.")
             return false
         }
     }

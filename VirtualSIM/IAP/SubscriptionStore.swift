@@ -183,4 +183,25 @@ final class SubscriptionStore {
 /// there pays out credits on every renewal, forever.
 enum LineProduct {
     static let monthlyId = "com.anthersystems.VirtualSIM.line.monthly"
+
+    /// The advertised monthly allowance, for the PRE-purchase paywall only.
+    ///
+    /// ⚠️ These mirror the `phone_lines` schema defaults (`sms_allowance 200`,
+    /// `voice_allowance_seconds 6000`) and they are the ONLY copy in the client.
+    /// They were previously inline literals on `LineCheckoutScreen`, which is
+    /// the shape that has already burned this codebase twice — the "+3 credits"
+    /// onboarding card that kept promising a grant after it went to zero, and
+    /// `inviteJoinerCredits`, a client constant derived from a server value that
+    /// silently became a 150% overstatement.
+    ///
+    /// Mirroring is only acceptable here because these change by MIGRATION, not
+    /// by config: `app_config` can be edited without a release, a schema default
+    /// cannot. That is the same test that made mirroring the referral bonus safe
+    /// and mirroring the signup grant unsafe.
+    ///
+    /// **If you change either default, change it here in the same commit.**
+    /// After purchase nothing reads these — `AllowanceStrip` reads the real
+    /// values off the `Line` the server returns, which is always authoritative.
+    static let smsAllowance = 200
+    static let voiceAllowanceMinutes = 100
 }

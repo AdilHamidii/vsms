@@ -342,14 +342,35 @@ extension CallController: CXProviderDelegate {
                 try await voice.answer()
                 action.fulfill()
             } catch {
+                // The phase MUST be reset. Leaving it on `.connecting` left the
+                // in-call overlay showing "Connecting…" with no timer and no
+                // explanation — `InCallOverlay` reads `phase` and never reads
+                // `lastError`, so the only thing on screen was a spinner for a
+                // call that had already failed. Reachable whenever the SDK has
+                // not attached the call object yet (`answer()` throws
+                // `noActiveCall`) or the caller hung up in the same instant.
                 lastError = error.localizedDescription
                 action.fail()
+                await endCall()
             }
         }
     }
 
     nonisolated func provider(_ provider: CXProvider, perform action: CXEndCallAction) {
         Task { @MainActor in
+            // ⚠️ THIS FIRES FOR SYSTEM-INITIATED ENDS TOO — the Dynamic Island
+            // pill, the lock screen, CarPlay, the Watch. Those never go through
+            // `endCall()`, so without reporting here the server was told
+            // nothing at all and settlement fell entirely to the CDR cron, or
+            // to the 6-hour backstop if Telnyx never billed the call.
+            //
+            // `endCall()` deliberately reports BEFORE requesting the
+            // transaction, so when the user ends from inside the app the report
+            // has already been sent and `currentCallId` is nil by the time we
+            // get here — `report()` guards on it, so this cannot double-report.
+            report(
+                status: phase == .active ? "completed" : "canceled",
+                durationSeconds: phase == .active ? Int(elapsed.rounded()) : 0)
             await voice.hangup()
             resetState()
             action.fulfill()
@@ -452,7 +473,39 @@ extension CallController: PKPushRegistryDelegate {
                 self.phase = .ringing
                 if let metadata { self.voice.handleVoIPPush(metadata: metadata) }
                 completion()
+                // STRICTLY AFTER `completion()`. iOS is waiting on that call and
+                // nothing may sit in front of it — registering the call is
+                // bookkeeping, and bookkeeping never delays the obligation that
+                // keeps VoIP push delivery alive for this app.
+                await self.registerInboundCall(peer: from)
             }
+        }
+    }
+
+    /// Create the server-side `line_calls` row for an INBOUND call.
+    ///
+    /// 🔴 Without this an inbound call did not exist as far as the backend was
+    /// concerned. `record_line_call` had exactly one caller — `begin-line-call`
+    /// on the outbound path — so `currentCallId` was never set for an inbound
+    /// call, `report()` guards on it and silently no-opped, and the call left
+    /// no history row and nothing for `sync-telnyx-cdr` to match its detail
+    /// record against. The minutes Telnyx billed us were attributed to nobody.
+    ///
+    /// Registering does NOT bill the user: the server reserves zero for
+    /// inbound, deliberately, because nobody controls who calls them.
+    private func registerInboundCall(peer: String) async {
+        guard let api = apiClient, currentCallId == nil, !peer.isEmpty else { return }
+        do {
+            let grant = try await LineAPI(client: api).beginCall(to: peer, direction: "inbound")
+            // The call can end while this round trip is in flight; adopting the
+            // id then would attach it to whatever comes next.
+            guard phase != .idle, currentUUID != nil else { return }
+            currentCallId = grant.callId
+        } catch {
+            // Never fail a ringing call over bookkeeping. The consequence is a
+            // missing history row, not a broken call — and the 6-hour sweep
+            // still has nothing to mis-settle, because no row was created.
+            lastError = nil
         }
     }
 

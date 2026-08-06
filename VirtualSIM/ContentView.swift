@@ -232,6 +232,18 @@ struct ContentView: View {
                 state.intent = .sms
                 return
             }
+            // ENTERING email mode must declare the intent too — the exit branch
+            // alone is only half the invariant. `loadEmailDomains` auto-selects
+            // an in-stock domain without touching `intent`, and `intent` only
+            // became `.email` when the user opened the domain sheet or actually
+            // started a purchase. So between the toggle and either of those,
+            // `creditsShortfall` still answered for the SMS route: Home renders
+            // "Need N more" from the e-mail price while `CreditsSheet` sized the
+            // pack from the stale SMS route behind it. Fourth instance of the
+            // PurchaseIntent bug class, and the same root cause as the exit
+            // branch below — this all happens at flow == nil, so flow's didSet
+            // never runs.
+            state.intent = .email
             Task { await state.loadEmailDomains(using: EmailAPI(client: api)) }
         }
         .onChange(of: state.lastService.id) { _, _ in

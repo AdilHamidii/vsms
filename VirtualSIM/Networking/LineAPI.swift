@@ -185,10 +185,18 @@ struct LineAPI {
     /// with a credential from `mint-line-token`. Putting a server round trip on
     /// the ring path would add its latency and its failure modes to the one
     /// interaction where a stall is unmistakable.
-    func beginCall(to: String) async throws -> LineCallGrant {
-        struct Body: Encodable { let to: String }
+    /// `direction` defaults to outbound. An INBOUND call must be registered too:
+    /// `record_line_call` is what creates the `line_calls` row, and without one
+    /// an inbound call leaves no history, no allowance accounting and — worse —
+    /// nothing for `sync-telnyx-cdr` to match its detail record against, so the
+    /// real per-minute cost is never attributed to anyone. Inbound reserves
+    /// nothing server-side, so registering it never bills the user.
+    /// For inbound, `to` is the PEER that rang us.
+    func beginCall(to: String, direction: String = "outbound") async throws -> LineCallGrant {
+        struct Body: Encodable { let to: String; let direction: String }
         return try await client.request(
-            .post, path: "functions/v1/begin-line-call", body: Body(to: to)
+            .post, path: "functions/v1/begin-line-call",
+            body: Body(to: to, direction: direction)
         )
     }
 

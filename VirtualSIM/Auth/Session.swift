@@ -56,6 +56,24 @@ final class Session {
         }
     }
 
+    /// 🔴 ONLY A GENUINE CREDENTIAL REJECTION MAY DESTROY THE SESSION.
+    ///
+    /// This used to `catch` everything and call `signOut(remote: false)`, which
+    /// nils both tokens and wipes all four Keychain keys. `bootstrap()` calls
+    /// this on EVERY cold launch, and `auth.refresh` throws on transport
+    /// failure (`URLError`), on any 5xx, and on a malformed body — so
+    /// **launching the app with no network signed the user out.** No race and
+    /// no expiry required; just being offline at the wrong moment.
+    ///
+    /// It also made a concurrent-refresh race destructive: GoTrue rotates the
+    /// refresh token on use, so if two 401s each triggered a refresh, the loser
+    /// failed and cleared the tokens the winner had just adopted.
+    ///
+    /// Only 400/401 from GoTrue means "this refresh token is no longer valid",
+    /// which is the one case where signing out is the correct, honest outcome.
+    /// Everything else is transient: keep the session and let the next request
+    /// retry. A stale access token costs one failed call; a wrongly-cleared
+    /// Keychain costs the user their session.
     @discardableResult
     func refresh() async -> Bool {
         guard let refreshToken else { return false }
@@ -63,8 +81,13 @@ final class Session {
             let s = try await auth.refresh(refreshToken: refreshToken)
             adopt(s)
             return true
+        } catch let error as APIError {
+            if case .http(let status, _) = error, status == 400 || status == 401 {
+                await signOut(remote: false)
+            }
+            return false
         } catch {
-            await signOut(remote: false)
+            // URLError and anything else unexpected — transport, not identity.
             return false
         }
     }

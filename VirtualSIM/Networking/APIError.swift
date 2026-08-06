@@ -171,6 +171,20 @@ enum APIError: Error, LocalizedError {
                     return "This number can't call emergency services. Use your phone's own number."
                 case "recipient_blocked":
                     return "You've blocked this number. Unblock it to send a message."
+                // Emitted by `begin-line-call`. All four were absent, so every
+                // one fell through to the HTTP-status fallback — which for
+                // `bad_number` meant reporting the user's own typo as a fault
+                // on our side, and told them to retry something that will fail
+                // identically every time.
+                case "bad_number":
+                    return "That doesn't look like a valid phone number. Check it and try again."
+                case "lookup_failed", "call_failed":
+                    return "We couldn't start that call. Please try again."
+                // NOTE: `begin-line-call` also emits `line_unavailable`, which
+                // is already handled above for the provisioning float guard. The
+                // copy there ("we can't set up new numbers right now") is a
+                // reasonable read for both, and a second case here would be
+                // unreachable — Swift warns about exactly that.
                 case "unauthorized":
                     return "Please sign in again."
                 default:

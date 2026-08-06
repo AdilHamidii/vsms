@@ -251,10 +251,16 @@ struct LineCheckoutScreen: View {
 
             Card(elevation: .raised) {
                 VStack(spacing: 0) {
-                    BenefitRow(icon: RIcon.message, figure: "200",
+                    // Figures come from `LineProduct`, the single client-side
+                    // mirror of the schema defaults — never inline literals.
+                    // See the note there for why mirroring is safe for these
+                    // two and was not for the signup grant.
+                    BenefitRow(icon: RIcon.message,
+                               figure: "\(LineProduct.smsAllowance)",
                                label: "texts a month, in and out")
                     RowRule()
-                    BenefitRow(icon: RIcon.phone, figure: "100",
+                    BenefitRow(icon: RIcon.phone,
+                               figure: "\(LineProduct.voiceAllowanceMinutes)",
                                label: "minutes of calls a month, in and out")
                     RowRule()
                     BenefitRow(icon: "infinity",

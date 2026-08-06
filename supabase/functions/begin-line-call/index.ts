@@ -46,8 +46,22 @@ Deno.serve(async (req) => {
   const to = String(body.to ?? "").trim();
   if (!to) return json({ error: "bad_request" }, { status: 400 });
 
+  // 🔴 INBOUND CALLS HAVE TO BE RECORDED TOO. `record_line_call` had exactly
+  // ONE caller — this function, on the outbound path — so an inbound call
+  // produced no row at all: nothing in call history, nothing consuming or even
+  // observing the allowance, and nothing for `sync-telnyx-cdr` to match its
+  // detail record against, so the real per-minute cost Telnyx bills us was
+  // never attributed to anybody. For an inbound call `to` carries the PEER,
+  // i.e. the number that rang us.
+  const direction = String(body.direction ?? "outbound") === "inbound"
+    ? "inbound"
+    : "outbound";
+
   const digits = to.replace(/\D/g, "");
-  if (EMERGENCY.has(digits)) {
+  // Only meaningful for a call we are placing. We are not dialling an inbound
+  // peer, so there is nothing to refuse — and refusing would only discard the
+  // record of a call that is happening anyway.
+  if (direction === "outbound" && EMERGENCY.has(digits)) {
     return json({ error: "emergency_blocked" }, { status: 400 });
   }
   // A bare E.164 sanity check. The provider will reject anything malformed
@@ -73,24 +87,39 @@ Deno.serve(async (req) => {
   // Calling is gated harder than inbound SMS, and identically to
   // `mint-line-token`: `past_due` keeps INBOUND working because the user cannot
   // control who contacts them, but placing a call is spending our money.
-  if (line.status !== "active" && line.status !== "grace") {
+  if (direction === "outbound" && line.status !== "active" && line.status !== "grace") {
     return json({ error: "line_suspended", status: line.status }, { status: 409 });
   }
 
-  // Claim the allowance BEFORE recording the call, so a refusal leaves no row.
-  const { data: claim, error: claimErr } = await sb.rpc("consume_line_allowance", {
-    p_line: line.id, p_kind: "voice", p_units: RESERVE_SECONDS,
-  });
-  if (claimErr) {
-    console.error(JSON.stringify({ alert: "line_call_claim_failed", detail: claimErr.message }));
-    return json({ error: "call_failed" }, { status: 500 });
-  }
-  if (!claim?.ok) {
-    const reason = String(claim?.reason ?? "call_failed");
-    return json({
-      error: reason,
-      remaining: claim?.remaining ?? null,
-    }, { status: reason === "allowance_exhausted" ? 409 : 400 });
+  // ⚠️ INBOUND IS RECORDED BUT NEVER BILLED, and that asymmetry is deliberate.
+  // The user cannot control who calls them, so charging their hard-stop
+  // allowance for it is an uncapped cost they did not choose — which is exactly
+  // why the design notes say never to bill inbound. Reserving zero keeps the
+  // row (history, and a target for the CDR to settle against) without touching
+  // the meter.
+  const reserveSeconds = direction === "outbound" ? RESERVE_SECONDS : 0;
+
+  // Declared out here so the response can report it; only the outbound branch
+  // ever fills it, and inbound legitimately reports null (nothing was reserved).
+  let remainingSeconds: number | null = null;
+
+  if (direction === "outbound") {
+    // Claim the allowance BEFORE recording the call, so a refusal leaves no row.
+    const { data: claim, error: claimErr } = await sb.rpc("consume_line_allowance", {
+      p_line: line.id, p_kind: "voice", p_units: reserveSeconds,
+    });
+    if (claimErr) {
+      console.error(JSON.stringify({ alert: "line_call_claim_failed", detail: claimErr.message }));
+      return json({ error: "call_failed" }, { status: 500 });
+    }
+    if (!claim?.ok) {
+      const reason = String(claim?.reason ?? "call_failed");
+      return json({
+        error: reason,
+        remaining: claim?.remaining ?? null,
+      }, { status: reason === "allowance_exhausted" ? 409 : 400 });
+    }
+    remainingSeconds = (claim?.remaining as number | null) ?? null;
   }
 
   // No provider session id yet — the client gets one from the SDK when the
@@ -99,11 +128,13 @@ Deno.serve(async (req) => {
   // have no provider id for is genuinely a new row.
   const { data: rec, error: recErr } = await sb.rpc("record_line_call", {
     p_line: line.id,
-    p_direction: "outbound",
+    p_direction: direction,
     p_peer: to,
     p_session_id: null,
-    p_status: "ringing",
-    p_reserved_seconds: RESERVE_SECONDS,
+    // An inbound call is already connecting when the client tells us about it;
+    // only an outbound one is genuinely still ringing at this point.
+    p_status: direction === "inbound" ? "answered" : "ringing",
+    p_reserved_seconds: reserveSeconds,
   });
   if (recErr || !rec?.ok) {
     // Hand the reservation back. Without this a failed record leaves the user
@@ -114,9 +145,13 @@ Deno.serve(async (req) => {
     // throwing, so a failed compensation looked exactly like a successful one —
     // and this is the ONLY thing that returns those two minutes. It is the same
     // class of silent money bug as the four discarded `wallet_credit` sites.
-    const { error: refundErr } = await sb.rpc("settle_line_allowance", {
-      p_line: line.id, p_kind: "voice", p_actual: 0, p_reserved: RESERVE_SECONDS,
-    });
+    // Nothing was reserved for inbound, so there is nothing to hand back —
+    // and settling a zero reservation would be a no-op write on the meter.
+    const { error: refundErr } = reserveSeconds === 0
+      ? { error: null }
+      : await sb.rpc("settle_line_allowance", {
+          p_line: line.id, p_kind: "voice", p_actual: 0, p_reserved: reserveSeconds,
+        });
     if (refundErr) {
       console.error(JSON.stringify({
         alert: "line_allowance_stuck", line: line.id, seconds: RESERVE_SECONDS,
@@ -135,7 +170,7 @@ Deno.serve(async (req) => {
     call_id: rec.call_id,
     from: line.e164,
     to,
-    reserved_seconds: RESERVE_SECONDS,
-    remaining_seconds: claim.remaining ?? null,
+    reserved_seconds: reserveSeconds,
+    remaining_seconds: remainingSeconds,
   });
 });
