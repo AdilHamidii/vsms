@@ -400,6 +400,11 @@ struct ContentView: View {
         // already assigns `flow = .thread`, and because a cover with no case
         // presents `emptyFlow` — a blank screen with no way out, which is the
         // exact failure the eSIM empty state was rebuilt to avoid.
+        case .lineStoreMore:
+            // The same store, presented as a cover so it inherits EnvBundle —
+            // covers do NOT reliably inherit @Observable env objects, which is
+            // the trap this app wraps every cover for.
+            LineStoreScreen(onOpenSms: { state.flow = nil; state.tab = .home })
         case .lineCheckout:
             LineCheckoutScreen()
         case .lineProvisioning:

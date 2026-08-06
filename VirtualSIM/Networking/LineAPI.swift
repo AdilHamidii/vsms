@@ -142,6 +142,20 @@ struct LineAPI {
     /// called, and handed back if the send fails terminally — this line has no
     /// money to refund, so the allowance is the only thing that can be made
     /// whole.
+    /// Rent a number with CREDITS. Charges, buys and provisions in one call,
+    /// and refunds itself on every failure after the charge.
+    ///
+    /// This is the ONLY route to a second number: Apple permits one active
+    /// subscription per group, so the subscription path is capped at one line
+    /// per user by construction.
+    func rentWithCredits(phoneNumber: String, city: String) async throws -> LineProvisionResult {
+        struct Body: Encodable { let phone_number: String; let city: String }
+        return try await client.request(
+            .post, path: "functions/v1/rent-line-credits",
+            body: Body(phone_number: phoneNumber, city: city)
+        )
+    }
+
     /// `lineId` names WHICH number to send from. A user may hold several, and
     /// the server falls back to a deterministic oldest-first pick when it is
     /// omitted — so leaving it nil does not fail, it sends from the wrong

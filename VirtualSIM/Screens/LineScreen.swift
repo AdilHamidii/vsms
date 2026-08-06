@@ -336,6 +336,27 @@ private struct NumberDetailView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
+                // The ONLY route to a second number. The tab shows the store
+                // only when there is no line at all, so without this the
+                // multi-number product cannot be reached by a user who already
+                // has one — which is everyone who would want another.
+                Button {
+                    RHaptic.select()
+                    state.flow = .lineStoreMore
+                } label: {
+                    HStack(spacing: 8) {
+                        Image(systemName: "plus.circle")
+                            .font(.system(size: 15, weight: .semibold))
+                        Text("Rent another number")
+                            .font(RFont.text(15, weight: .medium))
+                    }
+                    .foregroundStyle(theme.ink)
+                    .frame(maxWidth: .infinity, minHeight: 48)
+                    .background(theme.inkSoft.opacity(0.5), in: Capsule())
+                }
+                .buttonStyle(.plain)
+                .padding(.bottom, 18)
+
                 SectionHeader(label: String(localized: "Your plan"))
                     // An existing subscriber never passes through the store or
                     // the paywall, so nothing else would have loaded the

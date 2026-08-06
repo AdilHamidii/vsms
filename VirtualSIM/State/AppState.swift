@@ -25,6 +25,11 @@ enum FlowStage: String, Hashable, Identifiable {
     /// a NavigationStack push would leave the floating tab bar sitting on top
     /// of the message composer.
     case lineCheckout, lineProvisioning, thread, dialer
+    /// The number store, opened OVER a live line to rent an additional one.
+    /// The tab itself only shows the store when there is no line at all, so
+    /// without this a second number is unreachable — which made the whole
+    /// multi-number feature impossible to exercise.
+    case lineStoreMore
     var id: String { rawValue }
 }
 
