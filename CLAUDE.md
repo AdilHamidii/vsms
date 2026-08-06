@@ -2082,7 +2082,7 @@ for essentially every hidden route.
 - **`order_status` cannot grow a value without shipping the app first.** iOS `OrderStatus` (`Components/Pills.swift`) is a plain `String` enum with **no unknown case**, so a status it doesn't recognise throws on decode and breaks the Orders tab for everyone on the released build. This is why `begin_order` writes a pre-reservation row as ordinary `'waiting'` with a null `smspva_id` instead of adding a `'pending'` state.
 - **Charge and order row must be written together.** `create-order` used to charge and only insert the row after a provider reservation succeeded, so every failure left a spend+refund pointing at nothing: **258 spends vs 126 orders — 51% of paid attempts invisible**, and the real failure rate unmeasurable. `begin_order()` now does dedupe + insert + charge in one transaction under a per-user advisory lock (the old dedupe `SELECT`ed ~120 lines before the `INSERT`, with a multi-second provider call between, so two concurrent requests both passed it and both charged). A stranded row self-heals: the poller skips it for polling (`smspva_id is not null`) but the expiry sweep still closes and refunds it.
 - **Never write a status transition without an atomic claim.** Every `orders` status write is `.eq("status","waiting")` + row-count check. `check-order`'s `received` branch was the one exception and could overwrite a terminal state the expiry cron had already set — handing a user a working code they'd *already been refunded for*.
-- **A status claim and its refund must be ONE transaction, never two round-trips.** Where they are split, a worker killed in between leaves a TERMINAL row with the charge never returned — and the expiry sweeps only select `status='waiting'`, so nothing ever revisits it. No timeout value fixes this; a TypeScript rollback cannot either, because the process is gone. Seven paths had it wrong and were fixed one at a time across 2026-07-31 and 08-02 (`expire_order_claim`, `expire_order_early_claim`, `fail_esim_order_claim`, `close_email_order_claim`). If you add an eighth close path, it goes through a claim function.
+- **A status claim and its refund must be ONE transaction, never two round-trips.** Where they are split, a worker killed in between leaves a TERMINAL row with the charge never returned — and the expiry sweeps only select `status='waiting'`, so nothing ever revisits it. No timeout value fixes this; a TypeScript rollback cannot either, because the process is gone. Seven paths had it wrong and were fixed one at a time across 2026-07-31 and 08-02 (`expire_order_claim`, `expire_order_early_claim`, `fail_esim_order_claim`, `close_email_order_claim`). ⚠️ **This entry then said "if you add an eighth close path, it goes through a claim function" while TWO existing paths still did not** — `cancel-order` and `create-order`'s `failOrder`, i.e. the busiest close path in the product (`margin_too_low`, stockouts, provider faults and `order_persist_failed` all land there). Both carried the TypeScript rollback this very rule says cannot work. Closed 2026-08-06 with **`cancel_order_claim(p_order, p_late_watch_until)`** (`20260806140000`); it had never fired — a query for terminal charged orders with no matching refund returns zero — but the window is real and the failure is silent and permanent. **The lesson is about the rule, not the bug: a written invariant is not an enforced one. Grep for violators when you write one down.**
 - **`apply_migration` (MCP) mints its own version number and does NOT write a repo file.** Three migrations performing an entire provider cutover existed only in the live DB; a fresh `supabase db push` would have come up SMSPool-primary with the wrong crons scheduled. After any `apply_migration`, immediately write `supabase/migrations/<live-version>_<name>.sql` with the same SQL. Recover forgotten ones from `supabase_migrations.schema_migrations.statements`.
 - **An unqualified `UPDATE` inside a SECURITY DEFINER function fails when called
   over RPC — `UPDATE requires a WHERE clause`.** Supabase's safeupdate guard
@@ -2290,9 +2290,12 @@ It is a starting point for "is this roughly right", never a citation.
   asserted against that 39: every directory appears in exactly one, and
   `config.toml` carries a `verify_jwt = false` entry for all 18 members of the
   cron/webhook group.
-- **Catalog** (08-06): **9,358** active routes. **468 services**. 69
-  countries, **60** of them mapped to 5sim. eSIM 1,081 plans, **0 active — line
-  PAUSED**.
+- **Catalog** (08-06, AFTER the sync-5sim repair): **15,561** active routes —
+  up from 9,358, because 6,900 routes had been seized from the providers that
+  own them and hidden (see the changelog entry for that date; the 9,358 figure
+  was the DAMAGED state, not a baseline). **468 services**, 5 invisible (was
+  18). 69 countries, **60** of them mapped to 5sim. Active by owner: SMSPVA
+  7,248, HeroSMS 574, rest 5sim. eSIM 1,081 plans, **0 active — line PAUSED**.
 - **Evidence**: `rate_source='measured'` = **6 routes**, rebuilding from 0 after
   the cutover. That reset is CORRECT — see "Evidence must describe the provider
   that serves the NEXT order". `rate_source='seeded'` is now **1** row (was
@@ -2583,6 +2586,39 @@ Also this day, each verified against live DB state rather than a deploy log:
 Reasoning for each of these lives in the topic section above; this is only an
 index, so "why is it like this" has a date to search for.
 
+- **08-06** 🔴 **`sync-5sim` HAD BEEN SEIZING ROUTES IT CANNOT PRICE — 6,900 of
+  them, across 115 services, 14 of which had been emptied out of the catalog
+  entirely.** The mapping guard tested only the COUNTRY half
+  (`if (!pick && !slug) continue`), while `chosen` is keyed by (service,
+  country) and populated only from services carrying a `fivesim_product` — so
+  every route in a 5sim-mapped country whose SERVICE was unmapped fell through
+  to the write path, was stamped `provider='5sim'` / `status='hidden'` /
+  `premium_credits=null`, and was counted as a stockout. It could not heal:
+  `sync-herosms` reads `.eq("provider","herosms")` and `sync-prices` skips what
+  it does not own, so the only sync that would ever read the row again was the
+  one that cannot price it. `g2a` is the control — 60 seized, 9 survivors,
+  partitioned exactly by the country mapping, on a service the owner had
+  DELIBERATELY kept off 5sim. Repaired in `20260806130000` from per-route
+  evidence (`herosms_cost_cents` non-null ⇒ HeroSMS, else SMSPVA), returned as
+  `hidden` so the owning sync re-prices from live stock. **Active routes 9,358
+  → 15,561; invisible services 18 → 5; g2a 9 → 69 active.** Verified after a
+  real hourly run that the guard holds (`re_seized = 0`).
+- **08-06** Eight more confirmed defects closed after an 8-agent audit with an
+  adversarial verification pass (30 candidates → 21 confirmed, 8 refuted; see
+  `docs/audit-2026-08-06.md`, which records the refutations too). **The eighth
+  close path** (`cancel_order_claim` — cancel-order and create-order's failOrder
+  still split claim-and-refund across two round-trips), **`smspva_health` had no
+  writer** so create-order's pre-charge guard was permanently disarmed for 1,035
+  routes, **`check-esim-usage` un-expired terminal eSIMs** on every view,
+  **`delete-account` released nothing but SMS orders** (leaking the rented
+  Telnyx number forever while its FK-less tombstone locked the legitimate owner
+  out), **`settle_stale_calls` settled calls that were still connected**,
+  **`apply_line_renewal` reset an allowance already being spent**,
+  **`mint-line-token` reported `inbound_ready: true` with no push credential**,
+  and **`iap-verify`'s unknown-product alert told the owner to do the one thing
+  that would pay credits on every renewal forever**. Client side: cold-launching
+  offline signed users out, the tab bar shipped English to six locales, and
+  inbound calls were never recorded at all.
 - **08-06** The rented-line lifecycle made survivable. **The cancellation leak**
   (`reclaim_lapsed_lines()` scheduled nowhere, `release-lines` never written —
   $1/month per cancelled subscriber, forever), **the provisioning lockout** (a
@@ -2641,6 +2677,21 @@ billing endpoint**, so the campaign layer keeps reading fine forever. Check
 ads.apple.com → Settings → Billing.
 
 ### Known-open
+
+🔴 **OWNER ACTION, BLOCKS INBOUND CALLING ENTIRELY —
+`TELNYX_IOS_PUSH_CREDENTIAL_ID` DOES NOT EXIST.** `supabase secrets list`
+returns only `TELNYX_API_KEY`, `TELNYX_MESSAGING_PROFILE_ID` and
+`TELNYX_PUBLIC_KEY`. `createCredentialConnection` spreads
+`...(opts.pushCredentialId ? {…} : {})`, so with the var unset it silently
+omits the field rather than failing, and **every credential connection is built
+without VoIP-push capability — no inbound call can ever wake the device.** This
+is code-complete on our side and cannot be fixed from the repo: it needs a VoIP
+push credential created in the Telnyx dashboard (uploading the APNs key for
+`com.anthersystems.VirtualSIM.voip`) and then
+`supabase secrets set TELNYX_IOS_PUSH_CREDENTIAL_ID=<id>`. Until then
+`mint-line-token` correctly reports `inbound_ready: false` and logs
+`telnyx_push_credential_missing` — it used to report `true`, which is how this
+stayed invisible. **Outbound calling is unaffected.**
 
 **Top of the list as of 2026-08-05:**
 
