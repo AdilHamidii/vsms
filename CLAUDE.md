@@ -1401,6 +1401,58 @@ added yet, so the plan's note about it retiring that command is not yet true.
 `NullVoiceClient` throws rather than faking success, so a build without the SDK
 cannot look like it is placing real calls.
 
+### Calling: built, and DELIBERATELY UNREACHABLE until just before release
+
+**Owner decision, 2026-08-06: add `TelnyxRTC` and wire the dialer entry point
+immediately before shipping, so the SDK is integrated and tested in one pass.**
+Do NOT wire it earlier to "finish the feature" — that is the one change this
+section exists to prevent.
+
+What is built and live: **CallKit** (`CallController.swift` — `CXProvider`,
+the full `CXProviderDelegate`, `PKPushRegistry`, `InCallOverlay` as a ZStack
+layer in `ContentView` and a member of `EnvBundle`), **call history** (the
+`Calls` segment + `CallRow`, reachable today), the **allowance gate**
+(`begin-line-call`), **session reporting** (`report-line-call`) and **CDR
+settlement** (`sync-telnyx-cdr`, on cron). `DialerScreen` exists and
+`ContentView` has its `case .dialer`.
+
+🔴 **`flow = .dialer` IS ASSIGNED NOWHERE, ON PURPOSE.** Six comments across the
+app say so. `NullVoiceClient` throws, so an entry point today is a button that
+fails — and five surfaces (paywall, store card, onboarding, `AllowanceStrip`,
+the plan row) had their calling claims REMOVED for exactly this reason.
+**Advertising calling and wiring the dialer must land in the same commit as the
+SDK, or not at all.**
+
+**Three traps for whoever does it.** They are in the plan file
+(`~/.claude/plans/binary-humming-moonbeam.md`) which lives outside the repo, so
+they are duplicated here — losing them costs a device-only debugging session:
+
+1. 🔴 **Every `.voIP` push callback must call `CXProvider.reportNewIncomingCall`
+   SYNCHRONOUSLY inside that callback** — before any `await`, any network call,
+   before handing to the SDK. iOS terminates the app otherwise and, on repeat
+   offences, permanently stops delivering VoIP pushes to it. Report from the
+   payload metadata first, then hand to `TxClient`.
+2. 🔴 **Never call `AVAudioSession.setActive(true)` yourself.** CallKit
+   activates it and hands it over in `provider(_:didActivate:)`. Doing it
+   manually is the classic "no audio on the first call" bug.
+3. ⚠️ **`INFOPLIST_KEY_UIBackgroundModes = "audio voip"` and
+   `INFOPLIST_KEY_NSMicrophoneUsageDescription` must be set in BOTH Debug and
+   Release.** It is a space-separated string; get it wrong and PushKit fails
+   SILENTLY at runtime. Also needed: `InfoPlist.xcstrings` (the mic string is
+   not covered by `Localizable.xcstrings`) and `PrivacyInfo.xcprivacy` gaining
+   `NSPrivacyCollectedDataTypePhoneNumber` + `…OtherUserContent`.
+
+**Two costs that land the moment the package is added**, both accepted by the
+owner: `swiftc -typecheck` stops working and `xcodebuild` becomes the only
+check (update `Common commands` in the same commit), and **voice can only be
+tested on a physical device** — the simulator cannot receive a PushKit push.
+
+⚠️ **The voice adapters in `_shared/telnyx.ts` are the one block written from
+DOCS rather than probed**, and the detail-records block beside them was wrong
+TWICE for exactly that reason. `mint-line-token` records every fault to
+`app_config.telnyx_voice_faults`, so **the first real call is the probe** —
+read that key after it.
+
 ✅ **ASSN IS PROVEN, not assumed.** Apple's own test-notification endpoint
 (`POST /inApps/v1/notifications/test`) returned **`sendAttemptResult:
 SUCCESS`**, and the row landed in `line_notifications` with `processed_at` set
