@@ -208,12 +208,17 @@ final class TelnyxVoiceClient: NSObject, VoiceClient, @unchecked Sendable {
 
     // MARK: - Helpers
 
+    /// 🔴 Must match the gateway the token was actually issued for. Telnyx
+    /// sends the VoIP push itself, so getting this wrong means the push is
+    /// delivered to the wrong APNs environment and dropped — the phone never
+    /// rings and nothing anywhere reports an error.
+    ///
+    /// Derived from the provisioning profile rather than `#if DEBUG`: Xcode
+    /// signs *Run* with the Development profile whatever the configuration, so
+    /// a Release build on a device holds a sandbox token. See
+    /// `APNSEnvironment`.
     private var pushEnvironment: PushEnvironment {
-        #if DEBUG
-        .debug
-        #else
-        .production
-        #endif
+        APNSEnvironment.current == .sandbox ? .debug : .production
     }
 
     private func waitUntil(

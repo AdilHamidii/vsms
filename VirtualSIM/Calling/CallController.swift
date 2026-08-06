@@ -468,13 +468,9 @@ extension CallController: PKPushRegistryDelegate {
         )
     }
 
-    private var pushEnvironment: String {
-        #if DEBUG
-        "sandbox"
-        #else
-        "production"
-        #endif
-    }
+    /// From the provisioning profile, never `#if DEBUG` — see
+    /// `APNSEnvironment` for why the two disagree in this project.
+    private var pushEnvironment: String { APNSEnvironment.current.rawValue }
 }
 
 // MARK: - VoiceClient events

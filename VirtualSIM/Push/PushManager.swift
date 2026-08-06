@@ -94,14 +94,14 @@ final class PushManager: NSObject {
         guard let api = apiClient,
               case .signedIn = session?.status else { return }
         do {
-            #if DEBUG
-            let env = "sandbox"
-            #else
-            let env = "production"
-            #endif
+            // Read from the provisioning profile, NOT `#if DEBUG`. Xcode signs
+            // *Run* with the Development profile whatever the configuration,
+            // so a Release build on a device holds a SANDBOX token while
+            // `#if DEBUG` reported production — and a token registered against
+            // the wrong gateway is silently dropped. See `APNSEnvironment`.
             try await PushAPI(client: api).register(
                 token: token,
-                environment: env,
+                environment: APNSEnvironment.current.rawValue,
                 bundleId: Bundle.main.bundleIdentifier ?? "com.anthersystems.VirtualSIM"
             )
         } catch {
