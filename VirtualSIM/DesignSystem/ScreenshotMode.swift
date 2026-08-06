@@ -34,6 +34,7 @@ enum ScreenshotMode {
     /// Which screen to open. One launch per value.
     enum Screen: String {
         case onboarding      // page 1, the product pitch
+        case lineIntro       // the store's first page — what a second number is
         case lineStore       // pick a city
         case linePaywall     // the subscription screen, monthly selected
         // The same screen with the YEARLY plan selected. Two frames rather

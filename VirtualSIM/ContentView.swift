@@ -537,7 +537,7 @@ extension ContentView {
         case .onboarding:
             break                              // handled before the gate
 
-        case .lineStore, .linePaywall, .linePaywallYearly:
+        case .lineIntro, .lineStore, .linePaywall, .linePaywallYearly:
             state.tab = .line
             state.lines = []                   // not yet a subscriber
             if shot == .linePaywall || shot == .linePaywallYearly {
