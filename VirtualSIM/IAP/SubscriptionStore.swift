@@ -340,8 +340,15 @@ final class SubscriptionStore {
             // An unreadable server counts as "no line". Wrong in the safe
             // direction on purpose: an unfinished transaction costs a
             // redelivery, a wrongly finished one costs the money.
+            // ⚠️ `isLive`, NOT `!lines.isEmpty`. `fetchAll()` returns every
+            // `my_line` row including `released` and `failed` ones, which are
+            // deliberately retained for history — so the first version of this
+            // guard was satisfied by the corpse of a previous rental and
+            // finished the transaction anyway, which is the exact bug it was
+            // written to prevent. A resubscriber, or anyone whose earlier
+            // activation failed, hit it every time.
             let lines = (try? await LineAPI(client: api).fetchAll()) ?? []
-            guard !lines.isEmpty else {
+            guard lines.contains(where: { $0.status.isLive }) else {
                 lastError = String(localized: "You're subscribed, but your number hasn't been set up yet. Contact support — don't buy again.")
                 return false
             }

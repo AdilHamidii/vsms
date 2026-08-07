@@ -147,7 +147,13 @@ struct LineCheckoutScreen: View {
                     subs.lastError = nil
                     _ = await iap.restorePurchases()
                     await state.loadLine(using: LineAPI(client: api))
-                    if state.line != nil {
+                    // ⚠️ `isLive`, not `!= nil`. `AppState.line` falls back to
+                    // ANY line when there is no live one, so a `failed` row
+                    // from an earlier botched activation made this report
+                    // success and dismiss the screen — to the one user who can
+                    // never be told that: someone already charged who still has
+                    // no number.
+                    if state.line?.status.isLive == true {
                         RHaptic.success()
                         state.flow = nil
                     } else if let msg = subs.lastError {

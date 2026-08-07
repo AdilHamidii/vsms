@@ -87,6 +87,22 @@ private struct LiveLineView: View {
             async let t: () = state.loadLineThreads(using: LineAPI(client: api))
             async let c: () = state.loadLineCalls(using: LineAPI(client: api))
             _ = await (t, c)
+
+            // 🔴 INBOUND CALLING IS DEAD WITHOUT THIS. `registerForVoIPPushes()`
+            // had no caller anywhere in the app (2026-08-07 audit), so
+            // PKPushRegistry was never created, `pushRegistry(_:didUpdate:)`
+            // never fired, no VoIP token was ever uploaded, and Telnyx had
+            // nothing to push to. A real caller dialling the rented number
+            // produced no ring and no error — indistinguishable from a dead
+            // number. Third time this repo has shipped a reachable-looking
+            // feature whose entry point had no caller; grep for one.
+            //
+            // Registered HERE rather than in the dialer because inbound has to
+            // work for a user who never opens the dialer, and this body only
+            // renders once a live line exists — which is the condition
+            // `registerForVoIPPushes()`'s own doc comment asks for.
+            calling.registerForVoIPPushes()
+            await calling.prepareVoice()
         }
         // Tell the call controller which number it is acting as. Without this
         // the dialer mints a credential for, and calls out from, whichever line
