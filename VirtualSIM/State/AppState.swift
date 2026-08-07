@@ -585,6 +585,13 @@ final class AppState {
     /// paying for reviews. The system further throttles the actual sheet
     /// (~3 prompts/user/year), so we spend that quota only on happy outcomes.
     func shouldRequestReview(forOrderId id: String) -> Bool {
+        // 🔴 A screenshot run delivers a code by construction, so this fires
+        // and Apple's rating sheet lands squarely over the code card — which
+        // is exactly the frame the whole harness exists to produce. It reached
+        // an App Store upload once. Gated here rather than at the two call
+        // sites so a third caller cannot reintroduce it, and it also stops a
+        // harness run burning the user's ~3-prompts-per-year system quota.
+        if ScreenshotMode.isActive { return false }
         let d = UserDefaults.standard
         // A re-render of the same delivery must not double-count.
         guard d.string(forKey: PrefKey.lastCountedOrder) != id else { return false }

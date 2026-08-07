@@ -39,6 +39,7 @@ enum ScreenshotMode {
         case thread          // a real conversation on a rented number
         case compose         // starting a new conversation
         case email           // temp e-mail, code delivered
+        case emailStore      // temp e-mail, choosing a free domain
         case linePaywall     // the subscription screen, monthly selected
         // The same screen with the YEARLY plan selected. Two frames rather
         // than one because each App Store Connect subscription wants a review
@@ -182,6 +183,24 @@ extension ScreenshotMode {
                         serviceId: "telegram", countryId: "gb", ageSeconds: 8_400),
             sampleOrder(status: .expired, otp: nil, id: "o3",
                         serviceId: "tiktok", countryId: "nl", ageSeconds: 92_000),
+        ]
+    }
+
+    /// The domain picker, which is what the e-mail line actually IS: two free
+    /// consumer domains and one paid. Stock figures are realistic rather than
+    /// flattering — the free tier is genuinely the scarcest inventory, and a
+    /// picker showing thousands of free addresses would be a claim we cannot
+    /// keep.
+    ///
+    /// ⚠️ icloud.com must never appear here. It was removed from `PRICING` on
+    /// 2026-07-31 because handing out throwaway addresses on Apple's own
+    /// consumer domain, from an app on Apple's store, is an avoidable review
+    /// risk — putting it in a screenshot would reintroduce exactly that.
+    static var sampleEmailDomains: [EmailDomainOption] {
+        [
+            EmailDomainOption(domain: "outlook.com", credits: 0, available: 128),
+            EmailDomainOption(domain: "hotmail.com", credits: 0, available: 64),
+            EmailDomainOption(domain: "gmail.com", credits: 1, available: 4210),
         ]
     }
 

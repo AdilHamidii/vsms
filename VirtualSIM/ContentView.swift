@@ -652,6 +652,22 @@ extension ContentView {
             state.emailMode = true
             state.activeEmailOrder = ScreenshotMode.sampleEmailOrder
             state.flow = .emailCode
+
+        case .emailStore:
+            // The e-mail line's own screen, not its code screen. The delivered
+            // code frame is nearly identical to the SMS one — same big digits,
+            // same Done button — so on its own it does not show that a second
+            // product exists at all.
+            state.tab = .home
+            state.emailMode = true
+            state.emailDomains = ScreenshotMode.sampleEmailDomains
+            state.emailDomain = ScreenshotMode.sampleEmailDomains.first
+            Task { @MainActor in
+                await state.loadCatalog(using: CatalogAPI(client: api))
+                if let svc = state.services.first(where: { $0.id == "leboncoin" }) {
+                    state.lastService = svc
+                }
+            }
         }
     }
 }
