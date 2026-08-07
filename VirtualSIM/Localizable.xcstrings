@@ -24675,6 +24675,46 @@
         }
       }
     },
+    "We hand you a real, working e-mail address": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Wir geben Ihnen eine echte, funktionierende E-Mail-Adresse"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Te damos una dirección de correo real que funciona"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nous vous remettons une vraie adresse e-mail qui fonctionne"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ti diamo un indirizzo e-mail vero e funzionante"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "実際に使える本物のメールアドレスをお渡しします"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Entregamos um endereço de e-mail real, que funciona"
+          }
+        }
+      }
+    },
     "We hand you a real, working number": {
       "localizations": {
         "de": {

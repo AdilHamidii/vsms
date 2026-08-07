@@ -47,18 +47,19 @@ const CITIES: Record<string, { country: string; codes: string[] }> = {
 /** Headroom over the number's own first-month cost. Not a guess at future
  *  months — this only has to cover the purchase we are about to authorise.
  *
- *  ⚠️ **ZEROED 2026-08-06 (owner decision) to allow the first test purchase on
- *  a $2.33 balance**, which a Canadian number ($1.00 upfront + $1.00/month)
- *  missed by exactly 17 cents. The guard itself is untouched and still fails
- *  CLOSED: we still refuse unless the balance covers the upfront cost AND the
- *  first month, and an unquoted cost still gets a full extra month of padding
- *  via `unknownCostPad`. What is gone is the margin for what the number does
- *  AFTER it is bought — at zero, a line can provision with too little left to
- *  carry its own inbound traffic or its next month's rent.
+ *  ⚠️ Zeroed 2026-08-06 to allow the first test purchase on a $2.33 balance,
+ *  which a Canadian number ($1.00 upfront + $1.00/month) missed by 17 cents.
+ *  **RESTORED to 50 on 2026-08-07** now that the account holds $7.33 — the
+ *  note said to restore it the moment it was funded, and an App Store reviewer
+ *  subscribing in Sandbox provisions a REAL number, so this is exactly when a
+ *  line must not be able to provision with nothing left behind it.
  *
- *  Restore it to 50 once the account is funded. There is no other reason it is
- *  zero, and nothing else depends on that value. */
-const BALANCE_BUFFER_CENTS = 0;
+ *  The guard fails CLOSED either way: we refuse unless the balance covers the
+ *  upfront cost AND the first month, and an unquoted cost gets a full extra
+ *  month via `unknownCostPad`. The buffer is the margin for what the number
+ *  does AFTER it is bought — at zero, a line can provision with too little
+ *  left to carry its own inbound traffic or its next month's rent. */
+const BALANCE_BUFFER_CENTS = 50;
 
 Deno.serve(async (req) => {
   const pre = handleCors(req);

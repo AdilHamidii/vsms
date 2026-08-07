@@ -536,7 +536,13 @@ struct HomeScreen: View {
     private var explainer: some View {
         VStack(alignment: .leading, spacing: 10) {
             explainerStep(1, "Pick the service you're verifying")
-            explainerStep(2, "We hand you a real, working number")
+            // Step 2 names the thing the user is about to be given, and in
+            // e-mail mode that is not a number. The generic wording read as a
+            // promise the e-mail line cannot keep — same class as every other
+            // leak of SMS vocabulary into the e-mail flow.
+            explainerStep(2, state.emailMode
+                          ? "We hand you a real, working e-mail address"
+                          : "We hand you a real, working number")
             explainerStep(3, "The code lands here. Paste it back")
         }
         .padding(.horizontal, 14)
