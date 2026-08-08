@@ -512,6 +512,16 @@ Deno.serve(async (req) => {
   const maintenance: Record<string, unknown> = {};
   for (
     const [name, fn] of [
+      // MUST run before `evidence`: it writes the flag that the three refreshes
+      // read. Default-landed orders are the app's own pre-selection — the user
+      // never chose the service, so the number was never submitted anywhere and
+      // no code was ever requested; counting them measures our steering rather
+      // than delivery. 2.0+ clients stamp `orders.from_default` themselves, but
+      // 2.0 is still in review, so every order arriving today comes from a 1.9
+      // client and lands NULL. This is the bridge until that build ages out —
+      // it is a permanent no-op on client-stamped rows, so it is safe to leave
+      // running past adoption. See migration 20260808180000.
+      ["defaultLanded", "stamp_default_landed"],
       // Route + service + country evidence, for EVERY provider that owns
       // active routes — not just whichever one `active_sms_provider()` votes
       // for. That vote counts active ROUTES, and after the per-service split
