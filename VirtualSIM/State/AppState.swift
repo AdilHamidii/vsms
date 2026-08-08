@@ -126,6 +126,14 @@ enum PrefKey {
     static let lastCountedOrder = "review.lastCountedOrder"
     static let lastPromptVer    = "review.lastPromptVersion"
 
+    /// The most recent order the client noticed carrying a code it had not
+    /// seen before, plus when it noticed — so a foreground check can still ask
+    /// for a review after a cold launch, for someone who read the code off a
+    /// lock-screen push and never opened `OtpScreen` at all. See
+    /// `AppState.reviewableRecentDelivery`.
+    static let lastDeliveredOrderId = "review.lastDeliveredOrderId"
+    static let lastDeliveredAt      = "review.lastDeliveredAt"
+
     /// eSIM order ids whose install flow has been opened at least once.
     static let esimInstallsStarted = "esim.installsStarted"
 }
@@ -631,6 +639,34 @@ final class AppState {
         guard d.string(forKey: PrefKey.lastPromptVer) != version else { return false }
         d.set(version, forKey: PrefKey.lastPromptVer)
         return true
+    }
+
+    /// Records that the client just noticed a code on an order it hadn't seen
+    /// carrying one before — see the diff in `loadOrders`. Persisted (not just
+    /// in-memory) so a cold launch after the app was force-quit or backgrounded
+    /// through the delivery still has something to check on the next foreground.
+    private func recordCodeDelivered(orderId: String) {
+        let d = UserDefaults.standard
+        d.set(orderId, forKey: PrefKey.lastDeliveredOrderId)
+        d.set(Date().timeIntervalSince1970, forKey: PrefKey.lastDeliveredAt)
+    }
+
+    /// Whether THIS foreground should surface the native review prompt for a
+    /// user who never opened `OtpScreen`/`EmailCodeScreen` at all — the
+    /// designed flow for anyone who reads the code straight off a lock-screen
+    /// push and pastes it into the other app without reopening vSMS. Bounded
+    /// to 30 minutes so a delivery discovered long after the fact (e.g. an
+    /// unrelated cold launch days later) doesn't retroactively read as a fresh
+    /// happy moment. Every other gate — 2nd+ code, once per app version,
+    /// per-order dedupe — still lives in `shouldRequestReview`, which this
+    /// calls rather than duplicates.
+    func reviewableRecentDelivery() -> Bool {
+        let d = UserDefaults.standard
+        guard let orderId = d.string(forKey: PrefKey.lastDeliveredOrderId) else { return false }
+        let deliveredAt = d.double(forKey: PrefKey.lastDeliveredAt)
+        let elapsed = Date().timeIntervalSince1970 - deliveredAt
+        guard deliveredAt > 0, elapsed >= 0, elapsed <= 30 * 60 else { return false }
+        return shouldRequestReview(forOrderId: orderId)
     }
 
     // MARK: - Cold launch
@@ -1866,7 +1902,22 @@ final class AppState {
         if ScreenshotMode.isActive { return }
         do {
             let rows = try await api.list()
-            orders = rows.compactMap { resolve($0) }
+            // A code that appears here and wasn't on the previous fetch is new
+            // information for the foreground review prompt: the user may have
+            // read it straight off a lock-screen push and never opened
+            // `OtpScreen` at all. `hadPriorState` skips the very first
+            // population of a session — an empty prior list can't tell "just
+            // arrived" from "arrived last week", and every cold launch starts
+            // from `orders == []`. See `reviewableRecentDelivery`.
+            let hadPriorState = !orders.isEmpty
+            let previouslyDelivered = Set(orders.compactMap { $0.otp != nil ? $0.id : nil })
+            let resolved = rows.compactMap { resolve($0) }
+            orders = resolved
+            if hadPriorState {
+                for order in resolved where order.otp != nil && !previouslyDelivered.contains(order.id) {
+                    recordCodeDelivered(orderId: order.id)
+                }
+            }
         } catch {
             // keep current
         }

@@ -18,6 +18,21 @@
       "type": "Consumable"
     },
     {
+      "displayPrice": "2.99",
+      "familyShareable": false,
+      "internalID": "11111111-1111-1111-1111-111111111118",
+      "localizations": [
+        {
+          "description": "Get 8 SMS verification codes",
+          "displayName": "8 OTP Credits",
+          "locale": "en_US"
+        }
+      ],
+      "productID": "com.anthersystems.VirtualSIM.credits.8",
+      "referenceName": "8 Credits",
+      "type": "Consumable"
+    },
+    {
       "displayPrice": "5.99",
       "familyShareable": false,
       "internalID": "22222222-2222-2222-2222-222222222222",

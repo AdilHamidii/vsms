@@ -1,4 +1,5 @@
 import SwiftUI
+import StoreKit   // \.requestReview lives here — see OtpScreen / EmailCodeScreen
 
 enum ActiveSheet: String, Identifiable {
     case services, country, credits, emailDomain
@@ -29,6 +30,7 @@ struct ContentView: View {
     @Environment(SubscriptionStore.self) private var subs
     @Environment(CallController.self) private var calls
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.requestReview) private var requestReview
 
     @State private var state = AppState()
     /// Sheets presented from the TAB content (home / esim / orders / account).
@@ -288,6 +290,20 @@ struct ContentView: View {
                     await state.refreshWallet(using: WalletAPI(client: api))
                     await state.loadOrders(using: OrdersAPI(client: api))
                     await state.loadEmailOrders(using: EmailAPI(client: api))
+
+                    // The same "happiest moment" prompt `OtpScreen` fires on
+                    // `.onAppear`, for the user who never opens that screen at
+                    // all — reads the code off the lock-screen push, pastes it
+                    // into the other app, and comes back to vSMS later for
+                    // something else entirely. `loadOrders` just recorded any
+                    // code it noticed for the first time; `shouldRequestReview`
+                    // (via `reviewableRecentDelivery`) still owns every gate —
+                    // 2nd+ code, once per version, per-order dedupe — so this
+                    // is additive, never a second prompt for the same order.
+                    if state.reviewableRecentDelivery() {
+                        try? await Task.sleep(for: .seconds(1))
+                        requestReview()
+                    }
                 }
             }
         }
