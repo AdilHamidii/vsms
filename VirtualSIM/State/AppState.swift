@@ -132,9 +132,12 @@ enum PrefKey {
 
 @Observable
 final class AppState {
-    /// See `AppTab` — the rented line is the primary product, so it is the
-    /// launch tab. Seeded with the matching `intent` in `init`.
-    var tab: AppTab = .line
+    /// Temp SMS is the launch tab (owner decision 2026-08-08). The rented line
+    /// led for one release on the reasoning that it is the premium product —
+    /// but it is a $9.99/mo subscription, while temp SMS is what the store
+    /// listing, the keywords and essentially all acquisition are actually
+    /// about, and it is the line every arriving user can afford today.
+    var tab: AppTab = .home
     var balance: Int = 0
     var services: [Service] = SeedData.services
     var countries: [Country] = SeedData.countries
@@ -157,6 +160,15 @@ final class AppState {
     /// made the eSIM map rebuild all 66 annotations per frame.
     @ObservationIgnored
     private(set) var ranksByService: [String: [CountryRank]] = [:]
+    /// True until a user with no order history has actually PICKED a service.
+    ///
+    /// `applyStartupSelection` still seeds a suggested pair so the hero has
+    /// something to render and price — this flag is what stops that suggestion
+    /// being purchasable as though the user had chosen it. Cleared by
+    /// `chooseService`, and by `applyStartupSelection` for anyone who has
+    /// ordered before (a returning user genuinely wants their last route back).
+    var needsServiceChoice = false
+
     /// Guards one-time first-run selection seeding (see applyStartupSelection).
     @ObservationIgnored
     private var didSeedStartupSelection = false
@@ -1089,12 +1101,35 @@ final class AppState {
         if let recent = orders.first {
             lastService = services.first { $0.id == recent.service.id } ?? recent.service
             lastCountry = countries.first { $0.id == recent.country.id } ?? recent.country
+            needsServiceChoice = false
             return
         }
+        // 🔴 A first-run user gets a suggestion, NOT a purchase.
+        //
+        // The pair below is still computed, because the hero needs something
+        // to price and the country ranking is genuinely useful once a service
+        // IS chosen. What changed on 2026-08-08 is that it no longer counts as
+        // the user's choice: `needsServiceChoice` keeps the Get-number button
+        // hidden until they pick, so the first tap is a decision rather than a
+        // transaction.
+        //
+        // Why: measured 2026-08-07, six deliveroo/us orders from four
+        // brand-new users, every one on this exact default pair at exactly the
+        // grant size, all issued a number, NONE producing a code — while a
+        // deliberate order on the same route delivered in 86 seconds. Four of
+        // the six were never even cancelled, just left to expire. They were
+        // numbers nobody ever entered anywhere, because nobody had come for
+        // that service. The same shape produced the olx/us cluster on 08-04
+        // that was briefly investigated as sabotage.
+        //
+        // Better copy cannot fix it — `WaitingScreen` already says "Paste it
+        // into <service>, then come back". The user understood; they simply
+        // had no use for the number. So the fix has to be at SELECTION.
         if let (svc, cty) = affordableStarter() {
             lastService = svc
             lastCountry = cty
         }
+        needsServiceChoice = true
     }
 
     /// A recognizable service + country pair the current balance can afford,

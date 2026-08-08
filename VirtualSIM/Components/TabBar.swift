@@ -15,11 +15,13 @@ struct TabBar: View {
         let label: String
         let icon: String
     }
-    /// Order encodes the business: rented numbers first, then temp SMS, then
-    /// eSIM (paused, ranked last), then the utility tabs. See `AppTab`.
+    /// Order encodes the business: temp SMS first (it is the launch tab, what
+    /// the listing sells and what an arriving user can afford), then rented
+    /// numbers, then eSIM (paused, ranked last), then the utility tabs.
+    /// Swapped 2026-08-08 — see `AppState.tab`. See `AppTab`.
     private let items: [Item] = [
-        .init(id: .line,    label: "Number",  icon: RIcon.phone),
         .init(id: .home,    label: "Home",    icon: RIcon.home),
+        .init(id: .line,    label: "Number",  icon: RIcon.phone),
         .init(id: .esim,    label: "eSIM",    icon: "simcard"),
         .init(id: .account, label: "Account", icon: RIcon.user),
     ]
