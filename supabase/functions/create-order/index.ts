@@ -24,6 +24,10 @@ interface Body {
    *  swallow a genuine double-tap (~500ms), far too short to swallow a user
    *  who has walked back through checkout. */
   allow_concurrent?: boolean;
+  /** The SERVICE was the app's pre-selection, not a user choice. Advisory
+   *  metadata for delivery evidence only — see `orders.from_default`. Sent
+   *  only by 2.1+, so absent means "not recorded", never false. */
+  from_default?: boolean;
 }
 
 /** Dedupe windows in seconds: the default double-tap guard, and the shortened
@@ -654,6 +658,18 @@ Deno.serve(async (req) => {
 
   const begunStatus = (begun as { status?: string } | null)?.status;
   const orderId = (begun as { order_id?: string } | null)?.order_id;
+
+  // Advisory stamp, deliberately OUTSIDE begin_order. That function is the
+  // money path — dedupe, insert and charge in one transaction under a per-user
+  // advisory lock — and widening its signature for a statistics flag is not
+  // worth the risk. A failed write here costs one row missing from an
+  // exclusion set; it must never cost a charge, so the error is logged and
+  // swallowed rather than failing the order.
+  if (orderId && body.from_default === true) {
+    const { error: fdErr } = await sb.from("orders")
+      .update({ from_default: true }).eq("id", orderId);
+    if (fdErr) console.error("create-order: from_default stamp failed:", fdErr.message);
+  }
 
   if (begunStatus === "insufficient_credits") {
     return json({ error: "insufficient_credits", needed: cost }, { status: 402 });

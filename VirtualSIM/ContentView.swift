@@ -500,6 +500,10 @@ struct ContentView: View {
                     state.lastService = picked
                     if let best { state.lastCountry = best }
                 }
+                // The user has now CHOSEN. Everything before this was a
+                // suggestion, and the Home hero refuses to sell a suggestion —
+                // see `AppState.needsServiceChoice`.
+                state.needsServiceChoice = false
             })
         case .country:
             CountrySheet(onPick: { picked in

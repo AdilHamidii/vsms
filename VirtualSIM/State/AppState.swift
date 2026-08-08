@@ -1963,7 +1963,8 @@ final class AppState {
         do {
             let server = try await orders.create(serviceId: svc.id, countryId: cty.id,
                                                  premium: effectiveCheckoutPremium,
-                                                 allowConcurrent: concurrent)
+                                                 allowConcurrent: concurrent,
+                                                 fromDefault: needsServiceChoice)
             let order = resolve(server)
             lastService = svc
             lastCountry = cty
