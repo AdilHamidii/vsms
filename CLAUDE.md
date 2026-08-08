@@ -460,9 +460,35 @@ Four details that are load-bearing:
   Indonesia in seven minutes, every one cancelled inside 73 seconds.
 - **Orders that never held a number get their own count**, not a place in the
   delivery rate — they died inside `create-order` (stockout, `margin_too_low`)
-  and never reserved anything. The rate is over `numbered`.
+  and never reserved anything. ⚠️ **The rate is over `settled`, NOT `numbered`
+  — corrected 2026-08-08** (see the three commands below).
 - Rows are capped at 35 with an explicit *"… and N older, not shown"*. A
   silently truncated list reads as "that was everything".
+
+### `/funnel`, `/delivery`, `/subs`, `/help` (2026-08-08)
+
+Three read-only snapshot functions — `ops_funnel(interval)`,
+`ops_delivery(interval)`, `ops_subs()` — plus formatters in `_shared/opsFormat.ts`.
+**`/funnel [7d|14d|30d]`** is per-day signups → orders → numbered → codes →
+Production purchases, with **cohort** activation and buyer rates over the
+signups in the window and the signup grant read live from
+`app_config.signup_bonus_credits`. **`/delivery [24h|7d|30d]`** is per provider
+with the watchdog verdict, the SMSPVA hidden-route count and one balance line
+per provider. **`/subs`** is subscriptions by state against lines by status, and
+it *warns when the two disagree* — a live line with no subscription is rent we
+pay for nothing. `/help` lists everything and the unknown-command fallback now
+points at it rather than dumping the whole list.
+
+⚠️ **The same commit fixed three measurement defects in `ops_snapshot` /
+`orders_recent`, and all three made the bot flatter revenue or delivery:**
+`buys` did not filter `environment = 'Production'` (a $0 Sandbox receipt counted
+as a sale), and both delivery rates ran over EVERY numbered order — so they were
+mostly measuring **user impatience** (~60% of numbered orders are cancelled at a
+median 57s and deliver ~1%) and our own **default-landed** pre-selection. The
+cohort is now `status in ('received','expired') and not from_default`, identical
+to `run_watchdog`'s, which is why `/delivery` and the watchdog now agree exactly
+(11/44). Cancels, refusals, rescued codes and default-landed orders each get
+their own line instead. Live effect on the 7d digest: **15% → 25%**.
 
 ### Announcement banner + `/announce`, `/esim` (2026-07-31)
 

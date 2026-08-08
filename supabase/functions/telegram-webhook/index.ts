@@ -24,29 +24,46 @@ import { admin } from "../_shared/supabaseAdmin.ts";
 import {
   sendMessage, ownerChatId, esc, sendMessageWithId, answerCallback,
 } from "../_shared/telegram.ts";
-import { formatDigest, formatRevenue, formatGross, balanceLine, formatOrders } from "../_shared/opsFormat.ts";
+import {
+  formatDigest, formatRevenue, formatGross, balanceLine, formatOrders,
+  formatFunnel, formatDelivery, formatSubs,
+} from "../_shared/opsFormat.ts";
 // Support replies push to the user's device. Imported explicitly for the reason
 // in the note above — a free identifier here bundles fine and throws at runtime.
 import { sendPush } from "../_shared/apns.ts";
 
 const HELP = [
-  "🤖 <b>vSMS ops</b>",
+  "🤖 <b>vSMS ops</b> — /help",
   "",
+  "<b>Activity</b>",
   "/stats — last 6 hours",
   "/today — last 24 hours",
   "/week — last 7 days",
+  "/funnel — signup → order → code → purchase, per day",
+  "     <i>[7d|14d|30d]</i> · default: 7d",
   "/orders — every order, one line each, with its route",
   "     <i>[24h|7d|30d|90d|all]</i> · default: 24h",
+  "",
+  "<b>Health</b>",
+  "/delivery — per-provider delivery, cancels and refusals",
+  "     <i>[24h|7d|30d]</i> · default: 7d",
   "/balance — provider balances + watchdog",
+  "",
+  "<b>Money</b>",
   "/revenue — money customers actually paid (USD)",
   "/profit — revenue minus Apple's cut and wholesale",
   "     <i>[24h|7d|30d|90d|all]</i> · default: all",
+  "/subs — second-number subscriptions, lines and MRR",
   "",
+  "<b>Controls</b>",
   "/announce <i>message</i> — banner on Home for everyone",
   "     <code>/announce warn …</code> amber · <code>/announce off</code> clears",
   "     <code>/announce</code> alone shows what is live",
   "/esim <i>on|off</i> — put eSIMs on or off sale",
   "/lines <i>on|off</i> — put second numbers on or off sale",
+  "",
+  "<i>Every delivery rate here excludes user cancels and the app's own " +
+    "pre-selection. Purchases are Production receipts only.</i>",
 ].join("\n");
 
 /** Announcement ceiling. The banner is two or three lines on a phone; anything
@@ -67,6 +84,24 @@ const PERIODS: Record<string, string | null> = {
   "7d": "7 days", "week": "7 days",
   "30d": "30 days", "month": "30 days",
   "90d": "90 days", "quarter": "90 days",
+};
+
+/** `/funnel` accepts only DAY windows, because it prints one row per day: a
+ *  "24h" funnel would be a single line and "all" would be a wall of them. */
+const FUNNEL_PERIODS: Record<string, string> = {
+  "": "7 days", "7d": "7 days", "week": "7 days",
+  "14d": "14 days", "2w": "14 days",
+  "30d": "30 days", "month": "30 days",
+};
+
+/** `/delivery` windows. 24h is offered because a provider outage has to be
+ *  visible the same day; 30d is the longest window over which a rate here is
+ *  still about the provider currently serving the route (providers have changed
+ *  four times, and evidence does not carry across a switch). */
+const DELIVERY_PERIODS: Record<string, string> = {
+  "": "7 days", "24h": "24 hours", "today": "24 hours", "day": "24 hours",
+  "7d": "7 days", "week": "7 days",
+  "30d": "30 days", "month": "30 days",
 };
 
 Deno.serve(async (req) => {
@@ -140,7 +175,21 @@ Deno.serve(async (req) => {
   const arg = (parts[1] ?? "").replace(/^[-/]+/, "");     // tolerate "-7d" / "/7d"
 
   const sb = admin();
-  let reply = HELP;
+
+  // The FALLBACK is a pointer, not the whole help text. Answering a typo with
+  // 30 lines buries the typo, and answering plain prose with a command list
+  // does not explain why the message went nowhere — which, for the owner
+  // half-way through a support conversation, is the thing they need to know.
+  let reply: string;
+  if (cmd === "" || cmd === "/help" || cmd === "/start") {
+    reply = HELP;
+  } else if (!cmd.startsWith("/")) {
+    reply = "❓ Not a command — and no support conversation is assigned, so " +
+            "this went nowhere.\n\nPress [✅ Accept] on a thread first, or " +
+            "reply directly to a relayed message.\n\n/help for the commands.";
+  } else {
+    reply = `❓ Unknown command <b>${esc(cmd)}</b>.\n\nTry /help`;
+  }
 
   if (cmd === "/revenue" || cmd === "/profit") {
     if (!Object.hasOwn(PERIODS, arg)) {
@@ -193,6 +242,44 @@ Deno.serve(async (req) => {
     reply = error || !snap
       ? "⚠️ Couldn't read stats right now."
       : formatDigest(snap as Record<string, unknown>);
+  } else if (cmd === "/funnel") {
+    // Object.hasOwn, not `in` and not truthiness — same reasoning as PERIODS:
+    // `in` walks the prototype chain, so `/funnel constructor` would hand
+    // Object's constructor to the RPC as an interval.
+    if (!Object.hasOwn(FUNNEL_PERIODS, arg)) {
+      reply = `Unknown period <b>${esc(arg)}</b>.\n\n` +
+              `Try: <code>/funnel</code> (7d), or ` +
+              `<code>14d</code> · <code>30d</code>`;
+    } else {
+      const { data: snap, error } = await sb.rpc("ops_funnel", {
+        p_window: FUNNEL_PERIODS[arg],
+      });
+      reply = error || !snap
+        ? "⚠️ Couldn't read the funnel right now."
+        : formatFunnel(snap as Record<string, unknown>);
+      if (error) console.error("ops_funnel failed:", error.message);
+    }
+  } else if (cmd === "/delivery") {
+    if (!Object.hasOwn(DELIVERY_PERIODS, arg)) {
+      reply = `Unknown period <b>${esc(arg)}</b>.\n\n` +
+              `Try: <code>/delivery</code> (7d), or ` +
+              `<code>24h</code> · <code>30d</code>`;
+    } else {
+      const window = DELIVERY_PERIODS[arg];
+      const { data: snap, error } = await sb.rpc("ops_delivery", { p_window: window });
+      reply = error || !snap
+        ? "⚠️ Couldn't read delivery right now."
+        : formatDelivery(snap as Record<string, unknown>, arg === "" ? "7d" : arg);
+      if (error) console.error("ops_delivery failed:", error.message);
+    }
+  } else if (cmd === "/subs") {
+    // No period: subscription and line STATE is a right-now question, and the
+    // notification block inside carries its own fixed 7-day window.
+    const { data: snap, error } = await sb.rpc("ops_subs");
+    reply = error || !snap
+      ? "⚠️ Couldn't read subscriptions right now."
+      : formatSubs(snap as Record<string, unknown>);
+    if (error) console.error("ops_subs failed:", error.message);
   } else if (cmd === "/balance") {
     // BOTH providers. Reporting only SMSPool here survived the 2026-07-20
     // migration and became actively misleading: it alarmed about the provider
