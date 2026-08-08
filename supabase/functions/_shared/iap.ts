@@ -391,6 +391,7 @@ export async function verifyRenewalInfoJWS(jws: string): Promise<AppleRenewalInf
 
 const PRODUCT_TO_CREDITS: Record<string, number> = {
   "com.anthersystems.VirtualSIM.credits.5":   5,
+  "com.anthersystems.VirtualSIM.credits.8":   8,
   "com.anthersystems.VirtualSIM.credits.12":  12,
   "com.anthersystems.VirtualSIM.credits.30":  30,
   "com.anthersystems.VirtualSIM.credits.60":  60,   // for eSIM plans

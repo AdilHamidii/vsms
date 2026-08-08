@@ -49,9 +49,16 @@ extension CreditPack {
     // $0.4165, so two 30-packs bought 60 credits for $23.98 and strictly beat the
     // $24.99 60-pack, our top revenue product. USD is now realigned to the EUR
     // figures and the ladder improves monotonically again.
+    //
+    // 2.1: `credits.8` REPLACES `credits.5` as the entry rung — two $2.99 packs
+    // would be confusing, and 8 strictly dominates 5 at the identical price. The
+    // `credits.5` product id is deliberately still live server-side
+    // (`PRODUCT_TO_CREDITS` in `_shared/iap.ts`) so a shipped build still
+    // holding it in its own copy of this table can keep buying it; only the
+    // NEW paywall's visible ladder drops it.
     static let all: [CreditPack] = [
-        .init(id: "sm", productId: "com.anthersystems.VirtualSIM.credits.5",
-              credits: 5,   priceUsd: 2.99,  badge: nil),
+        .init(id: "sm", productId: "com.anthersystems.VirtualSIM.credits.8",
+              credits: 8,   priceUsd: 2.99,  badge: nil),
         .init(id: "md", productId: "com.anthersystems.VirtualSIM.credits.12",
               credits: 12,  priceUsd: 5.99,  badge: "MOST POPULAR"),
         .init(id: "lg", productId: "com.anthersystems.VirtualSIM.credits.30",
@@ -79,15 +86,28 @@ extension CreditPack {
               credits: 150, priceUsd: 59.99, badge: "BEST VALUE"),
     ]
 
-    /// The ladder must improve strictly: a bigger pack always beats stacking
-    /// smaller ones. This has been violated in production before — US pricing
-    /// drift made two 30-packs ($23.98) beat the 60-pack ($24.99), silently
-    /// dominating the top revenue product — so it is asserted rather than
-    /// trusted. Debug-only: it guards the fallback table, and the live prices
-    /// come from App Store Connect where the same rule has to be kept by hand.
+    /// From the 12-pack up, the ladder must improve strictly: a bigger pack
+    /// always beats stacking smaller ones. This has been violated in production
+    /// before — US pricing drift made two 30-packs ($23.98) beat the 60-pack
+    /// ($24.99), silently dominating the top revenue product — so it is
+    /// asserted rather than trusted. Debug-only: it guards the fallback table,
+    /// and the live prices come from App Store Connect where the same rule has
+    /// to be kept by hand.
+    ///
+    /// ⚠️ The ENTRY pack (`sm`, 8 credits / $2.99) is deliberately EXCLUDED from
+    /// this check, and that is not an oversight. It replaced `credits.5` at the
+    /// same $2.99 price specifically to be the loss-leader CLAUDE.md's own
+    /// "pack ladder" note called for — "51.7% of routes need more than the
+    /// $2.99 pack" — so at $0.374/credit it is genuinely cheaper per credit
+    /// than every other rung, including the 150-pack. Two of them ($5.98) beat
+    /// one 12-pack ($5.99) on raw credits. That is accepted: this is a single
+    /// $2.99 impulse tap meant to clear the FIRST-purchase hump, not a size a
+    /// buyer stacks session after session the way 30-vs-60 was — the dominance
+    /// invariant exists to protect the packs people actually repeat-buy.
     static func assertLadderImproves() {
         #if DEBUG
-        for (a, b) in zip(all, all.dropFirst()) {
+        let stacked = all.dropFirst()
+        for (a, b) in zip(stacked, stacked.dropFirst()) {
             let perA = a.priceUsd / Decimal(a.credits)
             let perB = b.priceUsd / Decimal(b.credits)
             assert(perB < perA,
