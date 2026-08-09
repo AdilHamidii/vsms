@@ -298,7 +298,7 @@ struct ContentView: View {
                     // something else entirely. `loadOrders` just recorded any
                     // code it noticed for the first time; `shouldRequestReview`
                     // (via `reviewableRecentDelivery`) still owns every gate —
-                    // 2nd+ code, once per version, per-order dedupe — so this
+                    // once per version, per-order dedupe — so this
                     // is additive, never a second prompt for the same order.
                     if state.reviewableRecentDelivery() {
                         try? await Task.sleep(for: .seconds(1))

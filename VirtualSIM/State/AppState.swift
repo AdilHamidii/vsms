@@ -598,8 +598,9 @@ final class AppState {
     var deliveredCount: Int { orders.filter { $0.status == .received }.count }
 
     /// Whether to surface Apple's native review sheet now that a fresh code
-    /// was delivered. Returns true at most once per app version, and only from
-    /// the user's 2nd successful code onward — a genuinely positive moment.
+    /// was delivered. Returns true at most once per app version, from the
+    /// user's FIRST successful code — a genuinely positive moment, and for
+    /// most users the only one (see the threshold note below).
     ///
     /// No credits or incentive are attached: App Store guideline 5.6.4 forbids
     /// paying for reviews. The system further throttles the actual sheet
@@ -657,7 +658,7 @@ final class AppState {
     /// push and pastes it into the other app without reopening vSMS. Bounded
     /// to 30 minutes so a delivery discovered long after the fact (e.g. an
     /// unrelated cold launch days later) doesn't retroactively read as a fresh
-    /// happy moment. Every other gate — 2nd+ code, once per app version,
+    /// happy moment. Every other gate — once per app version,
     /// per-order dedupe — still lives in `shouldRequestReview`, which this
     /// calls rather than duplicates.
     func reviewableRecentDelivery() -> Bool {
