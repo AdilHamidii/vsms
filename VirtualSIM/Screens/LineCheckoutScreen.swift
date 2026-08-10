@@ -510,15 +510,20 @@ struct LineCheckoutScreen: View {
         .background(theme.warnSoft, in: .rect(cornerRadius: RRadius.sm))
     }
 
+    /// Guideline 3.1.2(c): the purchase flow must carry functional links to the
+    /// Terms of Use (EULA) and the privacy policy. The 2.0(37) rejection taught
+    /// two things: the labels must NAME the documents ("Terms" reads as our own
+    /// terms, not the EULA the metadata declares), and links tinted like muted
+    /// body text are links a reviewer does not see. One link per line — the
+    /// German labels don't fit side by side on a 375pt screen.
     private var legal: some View {
-        HStack(spacing: 12) {
-            Link("Terms", destination: LegalLinks.terms)
-            Text(verbatim: "·").foregroundStyle(theme.text3)
-            Link("Privacy", destination: LegalLinks.privacy)
-            Spacer(minLength: 0)
+        VStack(alignment: .leading, spacing: 6) {
+            Link("Terms of Use (EULA)", destination: LegalLinks.eula)
+            Link("Privacy Policy", destination: LegalLinks.privacy)
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
         .font(RFont.text(12))
-        .tint(theme.text2)
+        .tint(theme.ink)
     }
 
     // MARK: - Action

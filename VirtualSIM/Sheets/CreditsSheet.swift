@@ -35,11 +35,14 @@ import SwiftUI
 /// no credits is standing in THIS sheet. App Review 3.1.1 also expects it
 /// wherever purchases are offered.
 ///
-/// ⚠️ **No pack is ever filtered out of this ladder.** A previous audit claimed
-/// `credits.60`/`credits.150` were not APPROVED and proposed hiding them; both
-/// read `APPROVED` in App Store Connect and credits.60 has been the top revenue
-/// product. A row degrades ONLY when StoreKit actually fails to return that
-/// product at runtime, and the marketing badges never move — see `CreditPack`.
+/// ⚠️ **Only a pack marked `optional` is ever filtered out, and only on the
+/// live StoreKit answer.** A previous audit claimed `credits.60`/`credits.150`
+/// were not APPROVED and proposed hiding them; both read `APPROVED` in App
+/// Store Connect and credits.60 has been the top revenue product. Nothing is
+/// hidden on a claim about ASC state — `visiblePacks` drops a row only when
+/// StoreKit itself did not return that product AND the pack declared its
+/// absence expected. Every other pack degrades to "Unavailable" instead, and
+/// the marketing badges never move — see `CreditPack`.
 struct CreditsSheet: View {
     @Environment(\.theme) private var theme
     @Environment(\.dismiss) private var dismiss
@@ -53,7 +56,13 @@ struct CreditsSheet: View {
     var needed: Int = 0
     var onPurchased: () async -> Void
 
-    @State private var selected: String = "md"
+    /// The pack the sheet opens on with no shortfall context, and the fallback
+    /// for every lookup below. Resolved BY ID, never by index into the ladder —
+    /// the ladder's length is not fixed (see `visiblePacks`), so an index is a
+    /// silent way to end up on a different pack than MOST POPULAR.
+    private static let defaultPackId = "md"
+
+    @State private var selected: String = CreditsSheet.defaultPackId
     @State private var purchasing = false
     @State private var didPreselect = false
     @State private var appeared = false
@@ -93,8 +102,24 @@ struct CreditsSheet: View {
         }
     }
 
+    /// The ladder AS RENDERED, and the only list any consumer below may read.
+    /// A selection, a recommendation and a row list that disagree about which
+    /// packs exist can confirm a pack that is not on screen.
+    ///
+    /// An `optional` pack drops out once StoreKit has answered without it: its
+    /// App Store review may still be pending, so its absence is expected and a
+    /// row reading "Unavailable" would advertise a pack nobody can buy yet.
+    /// Every other pack keeps that row — for an approved product, a missing
+    /// one IS the signal that the fetch broke. While products are still
+    /// loading `isMissing` is false for everything, so the full ladder renders.
+    private var visiblePacks: [CreditPack] {
+        CreditPack.all.filter { !($0.optional && isMissing($0)) }
+    }
+
     private var pack: CreditPack {
-        CreditPack.all.first { $0.id == selected } ?? CreditPack.all[1]
+        visiblePacks.first { $0.id == selected }
+            ?? visiblePacks.first { $0.id == Self.defaultPackId }
+            ?? CreditPack.all[0]
     }
 
     /// The pack the sheet opened on when there is a shortfall — the smallest
@@ -102,24 +127,28 @@ struct CreditsSheet: View {
     /// the only signal that a recommendation had been made at all.
     private var recommendedId: String? {
         guard needed > 0 else { return nil }
-        return CreditPack.all.first { $0.credits >= needed }?.id ?? CreditPack.all.last?.id
+        return visiblePacks.first { $0.credits >= needed }?.id ?? visiblePacks.last?.id
     }
 
     /// True once StoreKit has answered with at least one product. Until then a
     /// missing product means "still loading", not "unavailable" — which is the
     /// distinction that keeps a transient fetch from reading as a dead pack.
-    private var productsLoaded: Bool { !iap.products.isEmpty }
+    ///
+    /// Both this and `isMissing` go through `IAPStore` rather than reading
+    /// `iap.products` here, so the screenshot harness has a single seam — see
+    /// `IAPStore.screenshotPricing`.
+    private var productsLoaded: Bool { iap.hasLoadedProducts }
 
     private func isMissing(_ p: CreditPack) -> Bool {
-        productsLoaded && iap.products[p.productId] == nil
+        productsLoaded && !iap.has(p)
     }
 
     private var buttonLabel: String {
         if purchasing { return String(localized: "Processing…") }
-        if iap.isLoadingProducts && iap.products[pack.productId] == nil {
+        if iap.isLoadingProducts && !iap.has(pack) {
             return String(localized: "Loading…")
         }
-        if iap.products[pack.productId] == nil { return String(localized: "Unavailable") }
+        if !iap.has(pack) { return String(localized: "Unavailable") }
         // String(localized:) at the source: interpolation happens BEFORE
         // PrimaryButton's LocalizedStringKey lookup, so "Buy 12 credits" as a
         // key missed the catalog and the purchase button rendered English in
@@ -175,6 +204,13 @@ struct CreditsSheet: View {
             deriveUnit()
             withAnimation(RMotion.content) { appeared = true }
             await iap.loadProducts()
+        }
+        // An `optional` pack can be selected while the ladder is still loading
+        // and then drop out when StoreKit answers without it. Snap back, or the
+        // sheet renders no highlighted row while the CTA quotes a different pack.
+        .onChange(of: visiblePacks.map(\.id)) { _, ids in
+            guard !ids.contains(selected) else { return }
+            selected = Self.defaultPackId
         }
         .onDisappear { restoreTask?.cancel() }
     }
@@ -400,7 +436,7 @@ struct CreditsSheet: View {
 
     private var packsList: some View {
         VStack(spacing: 8) {
-            ForEach(CreditPack.all) { p in
+            ForEach(visiblePacks) { p in
                 PackRow(pack: p,
                         active: selected == p.id,
                         verifications: verifications(from: p),
@@ -511,8 +547,8 @@ struct CreditsSheet: View {
         VStack(spacing: 12) {
             PrimaryButton(
                 label: buttonLabel,
-                sub: iap.products[pack.productId] != nil ? iap.displayPrice(pack) : nil,
-                disabled: purchasing || iap.products[pack.productId] == nil,
+                sub: iap.has(pack) ? iap.displayPrice(pack) : nil,
+                disabled: purchasing || !iap.has(pack),
                 action: {
                     RHaptic.select()
                     Task { await buy() }
@@ -570,7 +606,7 @@ struct CreditsSheet: View {
     // MARK: - Behaviour
 
     /// Preselect the smallest pack that clears the current shortfall so the
-    /// user isn't left reasoning about pack sizes mid-checkout. `CreditPack.all`
+    /// user isn't left reasoning about pack sizes mid-checkout. `visiblePacks`
     /// is ascending by credits, so the first covering pack is the cheapest one.
     private func preselectForNeed() {
         guard !didPreselect else { return }

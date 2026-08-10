@@ -667,6 +667,32 @@ extension ContentView {
             state.orders = ScreenshotMode.sampleOrderRows.map(state.resolve)
             state.flow = .orders
 
+        case .credits:
+            state.tab = .home
+            // A modest balance, so the sheet leads with the balance card rather
+            // than a shortfall context that would tie the frame to one route's
+            // price. `creditsShortfall` is 0 here — the seeded catalog has no
+            // route for the default pair — so no pack is preselected and the
+            // sheet opens on MOST POPULAR, which is the frame we want.
+            state.balance = 5
+            // Without this every row renders "Unavailable" over a disabled CTA:
+            // `simctl` does not apply the scheme's StoreKit configuration, so
+            // no products load. It also keeps the `optional` credits.8 pack in
+            // the ladder — an IAP review screenshot has to show the very pack
+            // being reviewed, and that is exactly the one StoreKit would omit.
+            //
+            // ⚠️ The LIVE App Store Connect tiers, not placeholders. See
+            // `IAPStore.screenshotPricing`.
+            iap.screenshotPricing = [
+                "com.anthersystems.VirtualSIM.credits.5":   "$2.99",
+                "com.anthersystems.VirtualSIM.credits.8":   "$3.99",
+                "com.anthersystems.VirtualSIM.credits.12":  "$5.49",
+                "com.anthersystems.VirtualSIM.credits.30":  "$12.99",
+                "com.anthersystems.VirtualSIM.credits.60":  "$24.99",
+                "com.anthersystems.VirtualSIM.credits.150": "$59.99",
+            ]
+            sheet = .credits
+
         case .email:
             state.tab = .home
             state.emailMode = true
