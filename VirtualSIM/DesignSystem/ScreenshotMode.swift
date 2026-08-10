@@ -52,6 +52,11 @@ enum ScreenshotMode {
         case waiting         // waiting for a code
         case code            // the code arrived
         case orders
+        // The Buy credits sheet, for the credit packs' IAP review screenshots.
+        // Same reason the paywall needs a pricing shim: `simctl` does not apply
+        // the scheme's StoreKit configuration, so without one every row renders
+        // "Unavailable" — see `IAPStore.screenshotPricing`.
+        case credits
     }
 
     #if DEBUG
