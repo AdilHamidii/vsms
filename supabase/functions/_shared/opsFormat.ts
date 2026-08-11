@@ -98,6 +98,10 @@ const ROLE: Record<string, string> = {
   // Rent for the second-number line. $1 up front + $1/month per subscriber,
   // paid ~45 days ahead of Apple's payout, so this is a float number.
   telnyx: "second numbers",
+  // eSIM Access funds the eSIM line (provider since 2026-08-10; line paused
+  // until the account is topped up — the reading is how the owner watches the
+  // deposit land).
+  esimaccess: "eSIM",
 };
 
 /** A balance reading is only a fact while the poller that wrote it is alive.

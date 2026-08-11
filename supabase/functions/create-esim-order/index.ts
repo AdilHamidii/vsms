@@ -1,11 +1,17 @@
-// Buy an eSIM data plan: charge credits up-front, purchase at SMSPool, fetch the
-// activation profile (QR/LPA + usage), persist. No provider fallback and no
-// 20-min auto-refund — an eSIM is a one-shot provisioned profile.
+// Buy an eSIM data plan: charge credits up-front, order at eSIM Access, poll
+// briefly for the allocated profile (allocation is ASYNC, ≤~30s), persist.
+// No provider fallback and no 20-min auto-refund — an eSIM is a one-shot
+// provisioned profile. If the in-request poll misses the allocation, the row
+// stays 'provisioning' and check-esim-usage (which the shipped client polls
+// every 8s on the detail screen) finishes the job.
 
 import { handleCors, json } from "../_shared/cors.ts";
 import { notifySafe, esc } from "../_shared/telegram.ts";
 import { admin, callerUserId } from "../_shared/supabaseAdmin.ts";
-import { esimPurchase, esimProfile, esimPlans } from "../_shared/smspool.ts";
+import {
+  cancelEsim, dataMbFromBytes, listPackages, orderEsim, parseLpa, queryEsim,
+  type EaProfile,
+} from "../_shared/esimaccess.ts";
 
 interface Body { plan_id: string; }
 
@@ -17,6 +23,8 @@ interface Body { plan_id: string; }
 const ESIM_MARGIN = 4;
 const CREDIT_VALUE_USD = 0.48;
 const MAX_COST_PER_CREDIT_USD = CREDIT_VALUE_USD / ESIM_MARGIN;
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 Deno.serve(async (req) => {
   const cors = handleCors(req); if (cors) return cors;
@@ -40,32 +48,39 @@ Deno.serve(async (req) => {
   if (plan.status !== "active" || plan.retail_credits == null) {
     return json({ error: "plan_unavailable" }, { status: 409 });
   }
+
+  // Provider ownership gate — the refuseRetired() equivalent the eSIM path
+  // never had. Only eSIM Access plans ('ea:<packageCode>') are orderable: a
+  // legacy SMSPool row that somehow came back active must never have its id
+  // sent to a vendor that assigns different meanings to the same numbers
+  // (the esim_plans PK landmine, closed 2026-08-10).
+  if (typeof plan.id !== "string" || !plan.id.startsWith("ea:")) {
+    return json({ error: "plan_unavailable" }, { status: 409 });
+  }
+  const packageCode = plan.id.slice(3);
   const cost = plan.retail_credits as number;
 
   // ── Live price check ─────────────────────────────────────────────────────
-  // SMSPool's /esim/purchase takes only a plan id: it accepts no price cap and
-  // its response reports no cost, so nothing downstream can detect a bad buy.
-  // Worse, actual_cost_cents used to be filled from the CACHED catalog price,
-  // so a loss would show healthy margins in our own tables. sync-esim-plans
-  // runs once daily, leaving a 24h window in which SMSPool can raise a price
-  // and every sale in that window loses money silently.
-  //
-  // /esim/plans is the same endpoint sync-esim-plans uses, so this is a fresh
-  // quote for the exact plan we are about to buy.
+  // sync-esim-plans runs once daily, leaving a 24h window in which the
+  // provider can move a price. package/list with the exact packageCode is a
+  // fresh quote for the exact plan we are about to buy.
   //
   // Fail-CLOSED on evidence of a bad price, fail-OPEN on a failed lookup: an
-  // unreachable SMSPool must not make eSIMs unbuyable, and the cached price
-  // already satisfied the 3x margin when it was written. We only override the
-  // catalog when we actually have a contradicting number.
+  // unreachable provider must not make eSIMs unbuyable, and the cached price
+  // already satisfied the margin when it was written. We only override the
+  // catalog when we actually have a contradicting number. The price ECHO on
+  // the order call below is the second, provider-side half of this guard.
   const maxCostUsd = cost * MAX_COST_PER_CREDIT_USD;
   let liveCostUsd: number | null = null;
-  try {
-    const rows = await esimPlans(String(plan.country_code));
-    const match = (rows ?? []).find((p) => String(p.ID) === String(plan.id));
-    const usd = match ? parseFloat(String(match.price)) : NaN;
-    if (Number.isFinite(usd) && usd > 0) liveCostUsd = usd;
-  } catch (e) {
-    console.error(`esim: live price lookup failed for ${plan.id} (proceeding on cached):`, e);
+  {
+    const quote = await listPackages(packageCode);
+    if (quote.ok) {
+      const match = quote.packages.find((p) => p.packageCode === packageCode);
+      const usd = match && typeof match.price === "number" ? match.price / 10_000 : NaN;
+      if (Number.isFinite(usd) && usd > 0) liveCostUsd = usd;
+    } else {
+      console.error(`esim: live price lookup failed for ${plan.id} (proceeding on cached): ${quote.error}`);
+    }
   }
 
   if (liveCostUsd != null && liveCostUsd > maxCostUsd) {
@@ -76,6 +91,37 @@ Deno.serve(async (req) => {
     // Nothing has been charged yet: the spend happens below. Refusing here
     // costs a sale; letting it through costs real money on every sale.
     return json({ error: "margin_too_low" }, { status: 409 });
+  }
+
+  // ── Pre-charge provider-balance guard (mirrors create-order's) ──────────
+  // Refuse BEFORE charging when eSIM Access is broke: poll-active-orders
+  // writes esimaccess_health every minute, and if that reading is fresh and
+  // below this order's own ceiling the purchase can only end charge-then-
+  // refund. Fails OPEN on stale or missing data — a dead poller must not make
+  // eSIMs unbuyable. The SMSPool era had NO such guard (documented gap).
+  try {
+    const { data: h } = await sb
+      .from("app_config").select("value").eq("key", "esimaccess_health").maybeSingle();
+    const health = h?.value as { balance_usd?: number; checked_at?: string } | null;
+    const fresh = !!health?.checked_at &&
+      Date.now() - new Date(health.checked_at).getTime() < 5 * 60 * 1000;
+    if (fresh && typeof health?.balance_usd === "number" && health.balance_usd < maxCostUsd) {
+      console.error(
+        `create-esim-order: pre-charge refusal — esimaccess $${health.balance_usd} ` +
+        `below $${maxCostUsd.toFixed(2)} for plan ${plan.id}`,
+      );
+      try {
+        EdgeRuntime.waitUntil(notifySafe(
+          `🚨 <b>eSIM order refused — provider balance too low</b>\n` +
+          `have $${health.balance_usd.toFixed(2)}, this order needs up to ` +
+          `$${maxCostUsd.toFixed(2)} (plan ${esc(plan.id)})\n` +
+          `User was NOT charged. Top up eSIM Access.`,
+        ));
+      } catch { /* paging must never affect the order path */ }
+      return json({ error: "provider_unreachable" }, { status: 503 });
+    }
+  } catch (e) {
+    console.error("esim balance guard failed (proceeding):", e);
   }
 
   // Dedupe + charge in ONE transaction under a per-user advisory lock, the
@@ -129,94 +175,154 @@ Deno.serve(async (req) => {
     console.warn(`create-esim-order failed plan=${plan.id} reason=${reason} order=${orderId}`);
   };
 
-  const buy = await esimPurchase(plan.id);
-  if (!buy.ok || !buy.transactionId) {
-    // Log the PROVIDER'S OWN message, not just our classification. failEsim
-    // only ever printed the errorType, and buy.error was logged nowhere — so
-    // when three purchases failed on 2026-07-30 there was no recoverable
-    // reason anywhere in the system.
+  // ── Provider order ───────────────────────────────────────────────────────
+  // transactionId = our order UUID: eSIM Access treats a duplicate id as the
+  // SAME request, so the single retry below can never buy a second profile —
+  // a property no SMS provider offered, and the only reason a retry is safe.
+  //
+  // The price is ALWAYS echoed (live quote, else the cached catalog price):
+  // their /esim/order has no maxPrice cap and its success response reports no
+  // cost, so the echo is the only order-time price guard. Genuine drift fails
+  // 200005/200006 (PRICE_DRIFT) → refund → honest margin_too_low, instead of
+  // silently paying more than the catalog priced.
+  const costUsdForOrder = liveCostUsd ?? (plan.last_cost_cents as number) / 100;
+  const priceTenK = Math.round(costUsdForOrder * 10_000);
+
+  let buy = await orderEsim(orderId, packageCode, priceTenK);
+  if (!buy.ok && (buy.errorType === "BUSY" || buy.errorType === "TRANSPORT_ERROR" ||
+                  buy.errorType === "RATE_LIMITED")) {
+    await sleep(1500);
+    buy = await orderEsim(orderId, packageCode, priceTenK);
+  }
+
+  if (!buy.ok) {
+    // Log the PROVIDER'S OWN message, not just our classification — when three
+    // SMSPool purchases failed on 2026-07-30 there was no recoverable reason
+    // anywhere in the system because only the errorType was printed.
     console.error(
       `esim purchase FAILED plan=${plan.id} user=${userId} ` +
       `type=${buy.errorType ?? "unclassified"} detail=${buy.error ?? "(none)"}`,
     );
     await failEsim(buy.errorType ?? "purchase_failed");
-    // Page on failure too. alertEsim fires only on the SUCCESS path, so eSIM
-    // failures reached nobody — the owner found out by trying to buy one.
     try {
+      const extra =
+        buy.errorType === "BALANCE_ERROR"
+          ? `\n💸 eSIM Access balance is SHORT of ~$${costUsdForOrder.toFixed(2)} — top up.`
+          : buy.errorType === "BAD_PACKAGE"
+          ? `\n🧭 OUR catalog/mapping is wrong for this plan (package unknown at provider) — not a stockout.`
+          : "";
       EdgeRuntime.waitUntil(notifySafe(
         `🚨 <b>eSIM purchase failed</b>\n` +
-        `plan <b>${plan.id}</b> · ${cost} credits · refunded\n` +
-        `${buy.errorType ?? "unclassified"}: ${buy.error ?? "no detail"}`,
+        `plan <b>${esc(plan.id)}</b> · ${cost} credits · refunded\n` +
+        `${buy.errorType ?? "unclassified"}: ${esc(buy.error ?? "no detail")}${extra}`,
       ));
     } catch { /* paging must never affect the order path */ }
-    // Classify, don't echo. buy.error is SMSPool's own prose, which matches no
-    // case in APIError and fell through to "Something went wrong on our side"
-    // — blaming our infrastructure for SMSPool being out of stock, the exact
-    // bug the provider_unreachable rename fixed for SMS.
+    // Classify, don't echo — provider prose matches no case in APIError and
+    // falls through to "Something went wrong on our side". Existing codes ONLY:
+    // the shipped client maps these and nothing else.
+    if (buy.errorType === "PRICE_DRIFT") {
+      // Charged and refunded above; the catalog reprices on the next sync.
+      return json({ error: "margin_too_low" }, { status: 409 });
+    }
     const code = buy.errorType === "OUT_OF_STOCK"
       ? "esim_out_of_stock"
-      : buy.errorType === "AUTH_ERROR" || buy.errorType === "BALANCE_ERROR"
+      : buy.errorType === "AUTH_ERROR" || buy.errorType === "BALANCE_ERROR" ||
+        buy.errorType === "BAD_PACKAGE"
       ? "provider_unreachable"
       : "esim_purchase_failed";
     return json({ error: code }, { status: 503 });
   }
 
-  // Fetch the QR/activation profile (best-effort; a provisioning eSIM can be
-  // re-fetched later via check-esim-usage).
-  let profile = null as Awaited<ReturnType<typeof esimProfile>> | null;
-  try { profile = await esimProfile(buy.transactionId); } catch { /* keep provisioning */ }
-
-  // UPDATE the row begin_esim_order already reserved and charged for — do NOT
-  // insert a second one.
-  //
-  // This was an .insert(), so every purchase wrote TWO rows: the reserved
-  // 'provisioning' row (no smspool_tx, no expires_at) and this one. Verified
-  // live on the only sale since: same plan, 2.1s apart, 8 credits recorded for
-  // a 4-credit sale. The orphan is permanent — expire_esim_orders() only
-  // touches rows with a non-null expires_at — so the buyer sees a phantom eSIM
-  // stuck at "Provisioning" forever, ops_snapshot double-counts eSIM revenue,
-  // telegram-notify sends two "eSIM purchased" alerts, and the 2-minute dedupe
-  // blocks a genuine repeat purchase of the same plan.
-  //
-  // Claim-gated on status='provisioning' exactly like create-order:441, so a
-  // concurrent failEsim() can't race us into resurrecting a canceled order.
-  const { data: order, error: insErr } = await sb
+  // ── Persist the provider order id IMMEDIATELY, before any polling. ───────
+  // A worker killed mid-poll must not leave a PAID profile unlocatable: with
+  // ea_order_no on the row, check-esim-usage can finish the allocation later;
+  // without it the row is stuck 'provisioning' forever (the expiry sweep only
+  // touches rows with expires_at set). Claim-gated on 'provisioning' exactly
+  // like create-order:441. `provider` is written explicitly as belt-and-braces
+  // for the deploy window where begin_esim_order still inserts the default.
+  const { data: reserved, error: resErr } = await sb
     .from("esim_orders")
     .update({
-      smspool_tx: buy.transactionId,
+      provider: "esimaccess",
+      ea_order_no: buy.orderNo,
+      // The FRESH quote when we have one — actual_cost_cents used to echo the
+      // cached catalog price, which made margin analysis circular. The price
+      // echo above guarantees we paid no more than this figure.
+      actual_cost_cents: Math.round(costUsdForOrder * 100),
       updated_at: new Date().toISOString(),
-      // The FRESH quote when we have one. This column previously echoed the
-      // cached catalog price, which made it useless as a cost record — margin
-      // analysis over it was circular and could never reveal drift.
-      actual_cost_cents: liveCostUsd != null
-        ? Math.round(liveCostUsd * 100)
-        : plan.last_cost_cents,
-      status: profile?.ok ? "installed" : "provisioning",
-      activation_code: profile?.activationCode ?? null,
-      smdp_address: profile?.smdp ?? null,
-      matching_id: profile?.matchingId ?? null,
-      apn: profile?.apn ?? null,
-      sim_pin: profile?.pin ?? null,
-      sim_puk: profile?.puk ?? null,
-      data_total_mb: profile?.dataTotalMb ?? null,
-      data_used_mb: profile?.dataUsedMb ?? null,
-      activated: profile?.activated ?? false,
     })
     .eq("id", orderId)
     .eq("status", "provisioning")
     .select("*").single();
 
-  if (insErr || !order) {
-    // The eSIM is already provisioned at SMSPool (can't un-buy). Make the user
-    // whole; we eat the wholesale cost on this rare failure.
-    //
-    // This said `await refund()` — an identifier that does not exist (the local
-    // is failEsim). `deno check` reports TS2304, but esbuild bundles free
-    // identifiers without complaint, so it shipped and threw a ReferenceError
-    // at runtime on the one path where the user is already charged and the eSIM
-    // already bought: no refund, no cancel, no alert, no row.
+  if (resErr || !reserved) {
+    // The profile is (or will be) allocated at the provider but we cannot
+    // record where. Reclaim the wholesale if it is still cancellable, make the
+    // user whole, and page — this is the one path where money left twice.
+    console.error(`esim order_persist_failed order=${orderId} orderNo=${buy.orderNo}: ${resErr?.message}`);
+    try {
+      const q = await queryEsim({ orderNo: buy.orderNo });
+      if (q.ok && q.profile?.esimTranNo) {
+        const c = await cancelEsim(q.profile.esimTranNo);
+        if (!c.ok) console.error(`esim persist-fail cancel refused: ${c.error}`);
+      }
+    } catch { /* best-effort reclaim only */ }
     await failEsim("order_persist_failed");
-    return json({ error: "order_persist_failed", detail: insErr?.message }, { status: 500 });
+    try {
+      EdgeRuntime.waitUntil(notifySafe(
+        `🚨 <b>eSIM order persist FAILED</b> — provider orderNo <b>${esc(buy.orderNo)}</b>, ` +
+        `our order ${esc(orderId)}. Wholesale cancel attempted; verify by hand.`,
+      ));
+    } catch { /* ignore */ }
+    return json({ error: "order_persist_failed", detail: resErr?.message }, { status: 500 });
+  }
+
+  // ── Short in-request allocation poll (~10s worst case). ─────────────────
+  // Allocation typically completes inside 30s; catching it here hands the QR
+  // to the client in the purchase response. Missing it is fine — the row
+  // stays 'provisioning' and the detail screen's 8s check-esim-usage loop
+  // completes it. A real fault stops the poll; ALLOCATING (profile: null)
+  // keeps waiting.
+  let profile: EaProfile | null = null;
+  for (const delayMs of [2000, 3000, 5000]) {
+    await sleep(delayMs);
+    const q = await queryEsim({ orderNo: buy.orderNo });
+    if (!q.ok) { console.error(`esim allocation poll fault order=${orderId}: ${q.error}`); break; }
+    if (q.profile) { profile = q.profile; break; }
+  }
+
+  let order = reserved;
+  if (profile?.ac) {
+    const lpa = parseLpa(profile.ac);
+    const { data: fulfilled, error: fulErr } = await sb
+      .from("esim_orders")
+      .update({
+        status: "installed",
+        ea_tran_no: profile.esimTranNo,
+        iccid: profile.iccid,
+        activation_code: profile.ac,
+        smdp_address: lpa.smdp,
+        matching_id: lpa.matchingId,
+        apn: profile.apn,
+        sim_pin: profile.pin,
+        sim_puk: profile.puk,
+        data_total_mb: profile.totalVolume != null ? dataMbFromBytes(profile.totalVolume) : null,
+        // 0 is a real reading, not a missing one — the shipped client renders
+        // an unwritten column as zero usage anyway; a written 0 is honest.
+        data_used_mb: 0,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", orderId)
+      .eq("status", "provisioning")
+      .select("*").single();
+    if (fulErr || !fulfilled) {
+      // The purchase itself SUCCEEDED and ea_order_no is already persisted —
+      // check-esim-usage self-heals this row. Do not refund a delivered eSIM
+      // over a cosmetic write failure.
+      console.error(`esim fulfil-write failed order=${orderId} (self-heals via poll): ${fulErr?.message}`);
+    } else {
+      order = fulfilled;
+    }
   }
 
   // Operator alert — same non-blocking contract as iap-verify: never awaited,

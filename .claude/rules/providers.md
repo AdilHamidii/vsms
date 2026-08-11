@@ -319,6 +319,88 @@ their aggregate across all customers, not our delivery — the same class of num
 as SMSPVA's seeded per-country grade, which ranked as "proven", beat genuinely
 untested countries, and had to be demoted to `.notTested`.
 
+## eSIM Access API — the eSIM provider (probed live 2026-08-10)
+
+Base `https://api.esimaccess.com/api/v1/open`. Auth is the single header
+`RT-AccessCode: <code>` (`ESIMACCESS_ACCESS_CODE` secret) — no signature, no
+timestamp, verified live. The console also issues a "secret key"; the v1 API
+never uses it (it is for future webhook verification). Rate limit 8 req/s
+account-wide. **There is no sandbox** — the documented test path is order →
+`/esim/cancel`, which refunds the wholesale while the profile is uninstalled.
+
+Adapter: `_shared/esimaccess.ts` (fault objects, never throws, `faultOf`).
+Consumers: `sync-esim-plans`, `create-esim-order`, `check-esim-usage`,
+`poll-active-orders` (balance), `delete-account` (cancel reclaim).
+
+**Six behaviours you cannot guess from the docs:**
+
+1. **Every endpoint is POST and every response is HTTP 200, including logical
+   failures.** The envelope `{success, errorCode, errorMsg, obj}` is the only
+   authority. Some failure payloads use `errorMessage` instead of `errorMsg` —
+   read both.
+2. **`errorCode 200010` is NOT an error** — "profile is being downloaded",
+   i.e. still allocating. Ordering is ASYNC: `/esim/order` returns only
+   `orderNo`, the profile lands within ~30s and is fetched via `/esim/query`
+   (whose `pager` field is MANDATORY). The adapter maps 200010 →
+   `ALLOCATING` and `queryEsim` returns `{ok:true, profile:null}` for it.
+3. **Money is integer ten-thousandths of a USD** (10000 = $1.00) on package
+   `price`, order `amount`, and `balance` alike. `÷100` = exact cents. Data
+   volumes are BYTES with GiB marketing sizes (1GB plan = 1073741824) —
+   `dataMbFromBytes` in the adapter is the ONE conversion, shared by all
+   three writers so the usage gauge cannot drift against its total.
+4. **ICCIDs ARE REUSED** (their docs say so). `esimTranNo` is the stable
+   per-eSIM key — `esim_orders.ea_tran_no`. Never key anything on iccid.
+5. **`transactionId` on `/esim/order` is a provider-side idempotency key**
+   (≤50 chars; we pass the order UUID). A duplicate id is the SAME request,
+   which is why create-esim-order may retry once on transport faults — no SMS
+   provider ever offered that property.
+6. **The order call verifies an echoed `price`** (errorCode 200005/200006 on
+   mismatch → adapter `PRICE_DRIFT`). There is no maxPrice cap and the order
+   response reports no cost, so the echo is the ONLY order-time price guard —
+   create-esim-order always sends it.
+
+Error map: 200011 OUT_OF_STOCK · 200007 BALANCE_ERROR (our float — pages) ·
+200005/6 PRICE_DRIFT · 200010 ALLOCATING · 310241/310243 BAD_PACKAGE (OUR
+mapping is wrong — pages, never read as stockout) · 900001/000001 BUSY ·
+000101–000107/101003 AUTH_ERROR.
+
+**Catalog**: `POST /package/list {}` returns EVERYTHING unpaginated (3,002
+packages on 2026-08-10: 1,633 `dataType:1` fixed-data — what we sell; 1,369
+day-pass excluded from v1). `location` is a comma-joined Alpha-2 list **with
+trailing commas** (`"MX,US,CA,"`). Multi-country packages carry their region's
+location code as the slug prefix (`EU-42_3_30` ↔ `location/list` entry
+`{code:"EU-42", name:"Europe (40+ areas)"}`, 36 regions).
+
+🔴 **Region codes must NEVER be stored verbatim as `country_code`.** The
+shipped client's `flagEmoji()` keeps only A–Z scalars, so "NA-3" renders 🇳🇦
+Namibia for North America, "GL-139" → 🇬🇱 Greenland, "AS-7" → 🇦🇸. `REGION_CC`
+in `sync-esim-plans` maps every region to a LETTER-FREE numeric code (🌐
+fallback) — "EU" for EU-42 is the one deliberate exception (real 🇪🇺, flagcdn
+serves eu.png). Unmapped regions are SKIPPED and counted (`skipped_unmapped`),
+never guessed.
+
+**Lifecycle**: `esimStatus` — GOT_RESOURCE (allocated, ready) → IN_USE →
+USED_UP / UNUSED_EXPIRED / USED_EXPIRED, plus CANCEL / SUSPENDED / REVOKE
+(webhooks spell it REVOKED). `smdpStatus` — RELEASED → DOWNLOAD →
+INSTALLATION → ENABLED/DISABLED/DELETED. Mapping into our FROZEN 7-value
+`esim_status` enum lives in `check-esim-usage`; unknown values keep the
+current status (the Swift decoder has no unknown case — a new enum value
+blanks My eSIMs silently). `expiredTime` from the provider is authoritative
+for `expires_at`. Usage (`orderUsage`) updates only every **2–3 hours**, and
+their own docs show it exceeding `totalVolume` — clamp, never assume
+remaining ≥ 0.
+
+**Cancel** (`/esim/cancel`, by esimTranNo) refunds our balance ONLY while
+`GOT_RESOURCE` + `RELEASED` (uninstalled); later returns 200002. Suspend/
+unsuspend/revoke exist; revoke is non-refundable. **Top-up** exists
+(`/esim/topup`, `supportTopUpType 2|3`) — not wired in v1, the client's
+"Top-up-able" chip is informational.
+
+**Webhooks** exist (`/webhook/save`, six notifyTypes, no HMAC — sender-IP
+allowlist only) — NOT used in v1; the client's 8s `check-esim-usage` poll on
+the detail screen covers allocation. If ever added: dedupe on `notifyId`, and
+saving the URL fires an immediate `CHECK_HEALTH` probe that must get a 200.
+
 ## Telnyx API — what live probing found (2026-08-05)
 
 Probed with a real account and one purchased DID (**+1 415 329 3816**, id

@@ -287,7 +287,7 @@ Deno.serve(async (req) => {
     // (SMSPVA) was not shown at all.
     const { data: rows } = await sb
       .from("app_config").select("key, value")
-      .in("key", ["5sim_health", "herosms_health"]);
+      .in("key", ["5sim_health", "herosms_health", "esimaccess_health"]);
 
     const read = (k: string) => {
       const v = (rows ?? []).find((r) => r.key === k)?.value as
@@ -302,16 +302,20 @@ Deno.serve(async (req) => {
     const FRESH_MS = 10 * 60 * 1000;
     const fresh = (v: { checked_at?: string } | null) =>
       !!v?.checked_at && Date.now() - new Date(v.checked_at).getTime() <= FRESH_MS;
-    // Only the two balances that still fund something: 5sim buys every SMS,
-    // HeroSMS funds the temp-EMAIL line on its own account. SMSPVA serves
-    // nothing now and eSIMs are paused, so printing those two was noise on the
-    // one channel that has to stay readable at a glance.
+    // Only balances that fund something: 5sim buys every SMS, HeroSMS funds
+    // the temp-EMAIL line, eSIM Access funds the eSIM line (added 2026-08-10 —
+    // while the line is paused this reading is how the owner watches the $50
+    // deposit land, which is exactly when it must be visible). SMSPVA serves
+    // nothing now, so printing it was noise on the one channel that has to
+    // stay readable at a glance.
     const fiveRaw = read("5sim_health");
     const heroRaw = read("herosms_health");
+    const eaRaw = read("esimaccess_health");
     const five = fresh(fiveRaw) ? fiveRaw : null;
     const hero = fresh(heroRaw) ? heroRaw : null;
-    const checked = fiveRaw?.checked_at ?? heroRaw?.checked_at;
-    const stalePoller = (fiveRaw || heroRaw) && !five && !hero;
+    const ea = fresh(eaRaw) ? eaRaw : null;
+    const checked = fiveRaw?.checked_at ?? heroRaw?.checked_at ?? eaRaw?.checked_at;
+    const stalePoller = (fiveRaw || heroRaw || eaRaw) && !five && !hero && !ea;
 
     // Surface the watchdog verdict here too — /balance is the owner's "is
     // everything alive" reflex, so it should answer for the jobs as well.
@@ -330,6 +334,7 @@ Deno.serve(async (req) => {
       // volume, so it is the number that answers "can we sell right now".
       balanceLine("5sim", five?.balance_usd),
       balanceLine("HeroSMS", hero?.balance_usd),
+      balanceLine("esimaccess", ea?.balance_usd),
       stalePoller ? "⚠️ balance readings are STALE — the poller may be dead" : "",
       failing.length > 0
         ? `🚨 watchdog: ${esc(failing.join(", "))}`

@@ -35,9 +35,12 @@ bought one: the remaining blockers are **Telnyx float** (money, not code) and
 so calling is reachable — but **no real call has ever been placed**. See
 "Rentable second numbers". iOS frontend in SwiftUI + Supabase backend (Postgres + Auth + Edge Functions + pg_cron).
 
-**Provider split as of 2026-08-03 — 5sim is the PRIMARY SMS provider; HeroSMS
+**Provider split as of 2026-08-10 — 5sim is the PRIMARY SMS provider; HeroSMS
 and SMSPVA still serve the services 5sim does not map; HeroSMS also serves the
-whole temp-EMAIL line; SMSPool serves eSIMs only (paused).**
+whole temp-EMAIL line; eSIM Access (esimaccess.com) is the eSIM provider
+(line still paused pending a ~$50 account top-up); SMSPool survives ONLY as
+the usage/QR path for the 12 eSIMs sold before the switch —
+`check-esim-usage` routes on `esim_orders.provider`.**
 
 ⚠️ **"5sim for SMS, HeroSMS for e-mail" is the SHORTHAND, and it is wrong as a
 description of the catalog.** SMS is a THREE-way split by service ownership,
@@ -676,7 +679,7 @@ const smoothed = prev == null || cents > prev ? cents : Math.round(A*cents + (1-
 ```
 A plain `0.5*new + 0.5*prev` averages a rise against yesterday's cheaper price and sets retail BELOW what you're about to pay. That shipped once and put **4,384 routes under wholesale** in a single run. Both retail-setting syncs (`sync-prices`, `sync-esim-plans`) have the ratchet — if you add another pricing path, give it one too. `sync-herosms` deliberately has none: it records the **raw** observed cost and never derives retail, so smoothing there would only blur the number the margin gate reads.
 
-**eSIM** plans (`sync-esim-plans`) are priced **separately** at 4× wholesale (raised 3× → 4× on 2026-07-25) — `ESIM_MARGIN = 4`, `CREDIT_VALUE_USD = 0.48`, `retail_credits = ceil(usd * 4 / 0.48)` — NOT via `CREDIT_DIVISOR`, so the two product lines never collide. Inverted, the order-time ceiling in `create-esim-order` is `credits * 0.12`: SMSPool's `/esim/purchase` accepts no price cap and its response reports **no cost at all**, so the function takes a fresh `/esim/plans` quote, blocks above the ceiling, and writes that real number into `actual_cost_cents`. It fails **closed** on a bad price and **open** on a failed lookup — an unreachable SMSPool must not make eSIMs unbuyable. (Before this, `actual_cost_cents` echoed the cached catalog price, so margin analysis over it was circular and could never reveal drift.)
+**eSIM** plans (`sync-esim-plans`) are priced **separately** at 4× wholesale (raised 3× → 4× on 2026-07-25) — `ESIM_MARGIN = 4`, `CREDIT_VALUE_USD = 0.48`, `retail_credits = ceil(usd * 4 / 0.48)` — NOT via `CREDIT_DIVISOR`, so the two product lines never collide. Inverted, the order-time ceiling in `create-esim-order` is `credits * 0.12`, enforced twice since the eSIM Access switch (2026-08-10): a fresh `package/list` quote blocks above the ceiling BEFORE charging (fails **closed** on a bad price, **open** on a failed lookup — an unreachable provider must not make eSIMs unbuyable), and the order call **echoes the price**, which the provider verifies (200005/200006 → refund + `margin_too_low`) — their order response reports no cost and takes no cap, so the echo is the only order-time price guard. The real figure lands in `actual_cost_cents` (before 2026-07-30 it echoed the cached catalog price, so margin analysis over it was circular). The eSIM path also gained the same **pre-charge provider-balance guard** as SMS (reads `app_config.esimaccess_health`, fails open on stale/missing).
 
 **The divisor is PER PROVIDER, and since 2026-08-05 `MIN_MARGIN` finally MEANS
 the margin we earn.** Each provider's sync sets its own `retail_credits`.
@@ -1624,6 +1627,16 @@ gate writes `measured 0%` off just two attempts.
 
 **eSIMs are PAUSED as of 2026-07-31** while the owner switches eSIM providers.
 
+**The switch happened 2026-08-10: eSIM Access is implemented end to end and
+the line STAYS PAUSED until the owner tops the account up (~$50 minimum).**
+Resume checklist: top up → confirm `/balance` shows eSIM Access fresh → re-run
+`sync-esim-plans` once → `/esim on` (must report `plans_changed > 0`) → assert
+`select count(*) from esim_plans where status='active' and id not like 'ea:%'`
+is **0** — only `ea:` plans may ever come back on sale. The migration
+`20260810160000` nulled `last_checked_at` on every SMSPool row precisely so
+`set_esim_paused(false)`'s 3-day freshness predicate can never resurrect them.
+API behaviour lives in `@.claude/rules/providers.md` ("eSIM Access API").
+
 ```sql
 select public.set_esim_paused(true);   -- off the shelf
 select public.set_esim_paused(false);  -- back on
@@ -2124,7 +2137,7 @@ for essentially every hidden route.
 - **SMSPVA base URL is `https://api.smspva.com`**, NOT `smspva.com` (the docs spec lies — the marketing site 404s every `/activation/*` path).
 - **Edge functions die at ~150s wall clock** — a synchronous long request gets IDLE_TIMEOUT, and `EdgeRuntime.waitUntil` background tasks are killed at the same mark (both verified live 2026-07-21). Any job longer than ~2 minutes must be cursor-chunked across multiple invocations (see `sync-smspva-operators`: 12 countries/run, pg_cron fans 6 slots across a nightly maintenance window). Its public docs describe a *different, older* `priemnik.php` API; the v2 REST surface we use is undocumented but real.
 - **SMSPVA's official 174-page spec is NOT in this repo** (removed 2026-08-04 when the repo went public — it is the vendor's copyrighted document, not ours to redistribute). Keep a local copy at `docs/apidocs.pdf`, which is gitignored; obtain it from SMSPVA. Elsewhere this file has called that API "undocumented". Its status codes are load-bearing and `poll()` used to discard them: **407 = "we received the SMS but your balance is not enough to pay for it"**, so the code is being withheld, not missing. It now pages loudly on 407 and keeps the order alive (a top-up inside the window rescues the code), closes on 406/410 (order invalid/closed) via the atomic provider-close path, and logs 411 (karma/ratelimit). Treating 407 as "still waiting" polls to expiry and is indistinguishable from a stockout — which also corrupts the delivery evidence.
-- **`create-order` refuses BEFORE charging when the provider is broke.** It reads `app_config.<provider>_health`, and if that reading is under 5 minutes old and `balance_usd` is below this order's own `maxCostUsd`, it refuses up front rather than charging and refunding. It fails **OPEN** on stale or missing data, and maps to the already-shipped `provider_unreachable` copy. ⚠️ This is why a missing `<provider>_health` row is dangerous: the guard silently stops guarding. The eSIM and e-mail order paths still charge-then-refund — extend the same guard if either grows volume.
+- **`create-order` refuses BEFORE charging when the provider is broke.** It reads `app_config.<provider>_health`, and if that reading is under 5 minutes old and `balance_usd` is below this order's own `maxCostUsd`, it refuses up front rather than charging and refunding. It fails **OPEN** on stale or missing data, and maps to the already-shipped `provider_unreachable` copy. ⚠️ This is why a missing `<provider>_health` row is dangerous: the guard silently stops guarding. `create-esim-order` gained the same guard on 2026-08-10 (reads `esimaccess_health`); the e-mail order path still charges-then-refunds — extend the guard if it grows volume.
 - **Every SMSPVA response is an envelope: `{statusCode, data}`.** The value lives at `r.data.x`, never `r.x`. Reading the wrong level yields `NaN`/`undefined` and, on the balance path, wrote nothing at all — which looks *identical to a healthy provider*. Use `isOk(r)` before touching `r.data`.
 - **The Apple receipt verifier must chain to Apple's PINNED root.** `_shared/iap.ts` once took the certificate out of the attacker-supplied JWS header and verified the signature against that same certificate — circular, so anyone with a free Sign-in-with-Apple account could self-sign a payload for `credits.150` and mint credits forever. It now walks every hop of `x5c` and requires termination at **Apple Root CA - G3, matched by SHA-256 thumbprint** (pinning by subject name is defeated by a self-signed cert named "Apple Root CA - G3"), plus Apple's receipt-signing OID `1.2.840.113635.100.6.11.1` on the leaf, and validity checked at `signedDate` not `now()`. **Pin the ROOT ONLY** — the leaf expires 2027-10-13 and Apple rotates intermediates routinely, so pinning anything lower turns a normal rotation into a total purchase outage. No OCSP: a live round-trip to Apple inside checkout would fail every legitimate purchase during an Apple outage.
 - **Credits are granted only when `tx.environment === "Production"`.** Sandbox/Xcode receipts are genuine Apple-signed transactions that cost **$0** — any Apple ID can switch to a Sandbox account in Settings and "buy" packs free (this already happened: receipt id 21 credited a real user 12 credits 39s after signup). Non-production receipts are still persisted for the audit trail and still return `ok:true` so the client calls `tx.finish()` and StoreKit stops redelivering — they just move no balance and pay no referral reward. **This gate is worthless without the chain verification above**, because `environment` is just another field a forger sets to `"Production"`.
@@ -2642,6 +2655,22 @@ Also this day, each verified against live DB state rather than a deploy log:
 Reasoning for each of these lives in the topic section above; this is only an
 index, so "why is it like this" has a date to search for.
 
+- **08-10** eSIM provider switched SMSPool → **eSIM Access** (owner decision;
+  line STAYS PAUSED until the ~$50 top-up). New `_shared/esimaccess.ts`
+  (probed live: RT-AccessCode-only auth, ×10,000 money units, HTTP-200
+  failures, async allocation with 200010=ALLOCATING, esimTranNo-not-iccid);
+  `sync-esim-plans` rewritten to 2 calls + fail-loud + the flag-safe
+  `REGION_CC` map (regional/global packages included — letter-free synthetic
+  codes because `flagEmoji()` strips non-letters and "NA-3" renders 🇳🇦);
+  `create-esim-order` gained the prefix gate, a pre-charge balance guard, the
+  price echo, an idempotent retry and a two-phase persist (ea_order_no lands
+  before the allocation poll); `check-esim-usage` routes on
+  `esim_orders.provider` (legacy SMSPool body verbatim for the 12 live rows);
+  `delete-account` cancels uninstalled esimaccess profiles (wholesale
+  reclaim); `esimaccess_health` written minutely (pages muted while paused)
+  and rendered in `/balance`. Migration `20260810160000`: `ea_order_no` /
+  `ea_tran_no` / `iccid` columns, `begin_esim_order` stamps
+  `provider='esimaccess'`, SMSPool plan rows made un-resurrectable.
 - **08-10** 2.0 resubmitted as **build 39** after the 08-09 human rejection
   (3.1.2(c): the checkout's legal links were labeled bare "Terms"/"Privacy",
   tinted like muted text, and pointed at our own terms while the metadata
@@ -2910,16 +2939,19 @@ chain including a modulus check that the cert and key are actually a pair.
 Several were mis-reported by the audit and re-checked by hand — the corrections
 are as load-bearing as the findings:
 
-- 🔴 **Three landmines before the eSIM provider switch.** `esim_plans.id` IS the
-  provider's plan id AND the PK, with `esim_orders.plan_id` as an FK — a new
-  provider using small integers (SMSPool uses "1107") **overwrites rows in place
-  and silently repoints live orders at different products**, including the
-  `validity_days` that drives expiry. `esim_orders.provider` exists with **zero
-  readers**, so after a switch all live eSIMs get their transaction ids sent to
-  the wrong vendor (the eSIM path never got `refuseRetired()`). And
-  `dataUsedMb ?? 0` renders a dead provider key as **"full data remaining",
-  forever**. Also: 10 of 11 live eSIM orders have `expires_at` NULL and can never
-  be swept. **The 9-item provider-switch checklist above is entirely SMS-specific.**
+- ✅ **RESOLVED 2026-08-10 — the eSIM provider switch landed (eSIM Access) and
+  closed the three landmines this entry named.** PK collisions: new plan ids
+  are `'ea:' + packageCode`, collision-proof against SMSPool's numeric ids,
+  and old rows are kept hidden with `last_checked_at` nulled so `/esim on`
+  can never resurrect them. `esim_orders.provider` has READERS now:
+  `check-esim-usage` routes on it (smspool rows take the legacy path
+  verbatim; unknown providers are returned untouched) and `create-esim-order`
+  refuses non-`ea:` plans — the `refuseRetired()` equivalent. `dataUsedMb`:
+  the esimaccess path writes `data_used_mb` whenever usage is reported,
+  INCLUDING 0, and stamps `expires_at` from the provider's authoritative
+  `expiredTime`, so new orders are always sweepable. Still true: the 10
+  legacy SMSPool rows keep `expires_at` NULL (no provider data to backfill
+  from), and the 9-item switch checklist above remains SMS-specific.
 - ✅ **RESOLVED — the hard crash on Japanese devices is GONE**, verified
   2026-08-03 by a full audit of all 357 strings × 6 locales: **0 non-positional
   reorders**. 1.8's release notes claim this fix and the claim holds. *Original:*
