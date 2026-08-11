@@ -2358,7 +2358,10 @@ It is a starting point for "is this roughly right", never a citation.
   own them and hidden (see the changelog entry for that date; the 9,358 figure
   was the DAMAGED state, not a baseline). **468 services**, 5 invisible (was
   18). 69 countries, **60** of them mapped to 5sim. Active by owner: SMSPVA
-  7,248, HeroSMS 574, rest 5sim. eSIM 1,081 plans, **0 active — line PAUSED**.
+  7,248, HeroSMS 574, rest 5sim. eSIM (08-11, after the eSIM Access switch):
+  **1,633 `ea:` plans across 197 countries + 33 regions**, plus 1,081 legacy
+  SMSPool rows kept hidden forever; **0 active — line PAUSED** pending the
+  ~$50 top-up (`esimaccess_health` reads $0.00).
 - **Evidence**: `rate_source='measured'` = **6 routes**, rebuilding from 0 after
   the cutover. That reset is CORRECT — see "Evidence must describe the provider
   that serves the NEXT order". `rate_source='seeded'` is now **1** row (was
