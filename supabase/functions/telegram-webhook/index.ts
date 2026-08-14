@@ -25,7 +25,8 @@ import {
   sendMessage, ownerChatId, esc, sendMessageWithId, answerCallback,
 } from "../_shared/telegram.ts";
 import {
-  formatDigest, formatRevenue, formatGross, balanceLine, formatOrders,
+  formatDigest, formatRevenue, formatGross, balanceLine, TELNYX_LOW_USD,
+  formatOrders,
   formatFunnel, formatDelivery, formatSubs,
 } from "../_shared/opsFormat.ts";
 // Support replies push to the user's device. Imported explicitly for the reason
@@ -287,7 +288,8 @@ Deno.serve(async (req) => {
     // (SMSPVA) was not shown at all.
     const { data: rows } = await sb
       .from("app_config").select("key, value")
-      .in("key", ["5sim_health", "herosms_health", "esimaccess_health"]);
+      .in("key", ["5sim_health", "herosms_health", "esimaccess_health",
+                  "telnyx_health"]);
 
     const read = (k: string) => {
       const v = (rows ?? []).find((r) => r.key === k)?.value as
@@ -311,11 +313,18 @@ Deno.serve(async (req) => {
     const fiveRaw = read("5sim_health");
     const heroRaw = read("herosms_health");
     const eaRaw = read("esimaccess_health");
+    // Telnyx funds the second-number line — rent per subscriber, and the one
+    // float the owner has named as that product's hard blocker (2026-08-14:
+    // added here alongside the rental/lifecycle alerts).
+    const telnyxRaw = read("telnyx_health");
     const five = fresh(fiveRaw) ? fiveRaw : null;
     const hero = fresh(heroRaw) ? heroRaw : null;
     const ea = fresh(eaRaw) ? eaRaw : null;
-    const checked = fiveRaw?.checked_at ?? heroRaw?.checked_at ?? eaRaw?.checked_at;
-    const stalePoller = (fiveRaw || heroRaw || eaRaw) && !five && !hero && !ea;
+    const telnyx = fresh(telnyxRaw) ? telnyxRaw : null;
+    const checked = fiveRaw?.checked_at ?? heroRaw?.checked_at ??
+      eaRaw?.checked_at ?? telnyxRaw?.checked_at;
+    const stalePoller = (fiveRaw || heroRaw || eaRaw || telnyxRaw) &&
+      !five && !hero && !ea && !telnyx;
 
     // Surface the watchdog verdict here too — /balance is the owner's "is
     // everything alive" reflex, so it should answer for the jobs as well.
@@ -335,6 +344,9 @@ Deno.serve(async (req) => {
       balanceLine("5sim", five?.balance_usd),
       balanceLine("HeroSMS", hero?.balance_usd),
       balanceLine("esimaccess", ea?.balance_usd),
+      // Telnyx gets its own low-water mark: the SMS $37.50 threshold would
+      // print a permanent "top up" against $1/month rent.
+      balanceLine("Telnyx", telnyx?.balance_usd, TELNYX_LOW_USD),
       stalePoller ? "⚠️ balance readings are STALE — the poller may be dead" : "",
       failing.length > 0
         ? `🚨 watchdog: ${esc(failing.join(", "))}`

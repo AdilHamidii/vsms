@@ -112,6 +112,14 @@ const ROLE: Record<string, string> = {
  *  stale-poller banner; keep the two numbers equal.) */
 const BALANCE_FRESH_MS = 10 * 60 * 1000;
 
+/** Low-water mark for the Telnyx float, SEPARATE from LOW_BALANCE_USD. The
+ *  SMS threshold ($37.50) is sized to single-order wholesale that can reach
+ *  tens of dollars; Telnyx rent is $1/number/month + $1 upfront, so $37.50
+ *  would print a permanent "top up" and train the owner to ignore the one
+ *  warning that matters. $5 covers a couple of new rentals plus a month of
+ *  rent on the current fleet. */
+export const TELNYX_LOW_USD = 5;
+
 export interface BalanceReading {
   provider?: string;
   balance_usd?: number | null;
@@ -121,24 +129,27 @@ export interface BalanceReading {
 /** balanceLine for a reading that carries its own timestamp. A stale reading is
  *  rendered as absent and SAID to be stale — never printed as current, which is
  *  how a dead poller produced confidently wrong "all is well" digests. */
-export function balanceLineFrom(r: BalanceReading): string {
+export function balanceLineFrom(r: BalanceReading, lowUsd?: number): string {
   const name = r.provider ?? "?";
   const ageMs = r.checked_at ? Date.now() - new Date(r.checked_at).getTime() : Infinity;
-  if (typeof r.balance_usd !== "number") return balanceLine(name, undefined);
+  if (typeof r.balance_usd !== "number") return balanceLine(name, undefined, lowUsd);
   if (ageMs > BALANCE_FRESH_MS) {
-    return `${balanceLine(name, undefined)} <i>(last read ` +
+    return `${balanceLine(name, undefined, lowUsd)} <i>(last read ` +
            `${Math.round(ageMs / 60000)} min ago — poller may be dead)</i>`;
   }
-  return balanceLine(name, r.balance_usd);
+  return balanceLine(name, r.balance_usd, lowUsd);
 }
 
-export function balanceLine(name: string, usd: number | null | undefined): string {
+export function balanceLine(
+  name: string, usd: number | null | undefined,
+  lowUsd: number = LOW_BALANCE_USD,
+): string {
   const role = ROLE[name.toLowerCase()] ?? "";
   const label = `${esc(name)}${role ? ` (${role})` : ""}`;
   // A missing reading is not the same as a healthy one: if nothing has written
   // a balance we say so, rather than omitting the line and implying all is well.
   if (typeof usd !== "number") return `❔ ${label}: <i>no reading</i>`;
-  const low = usd < LOW_BALANCE_USD;
+  const low = usd < lowUsd;
   return `${low ? "⚠️" : "💰"} ${label}: <b>$${esc(usd.toFixed(2))}</b>` +
          (low ? " — <b>top up</b>" : "");
 }
@@ -889,7 +900,8 @@ export function formatSubs(raw: Record<string, unknown>): string {
     }
   }
 
-  lines.push(balanceLineFrom({ provider: "Telnyx", ...(s.telnyx ?? {}) }));
+  lines.push(balanceLineFrom({ provider: "Telnyx", ...(s.telnyx ?? {}) },
+                             TELNYX_LOW_USD));
 
   const dev = s.dev_hidden ?? {};
   if ((dev.lines ?? 0) > 0 || (dev.subs ?? 0) > 0) {

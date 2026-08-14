@@ -248,6 +248,23 @@ Deno.serve(async (req) => {
       `🌍 <b>eSIM purchased</b>\n${e.cost_credits} credits · plan ${esc(e.plan_id)} · ${esc(e.status)}`);
   }
 
+  // ── Second-number rentals (safety net; normally sent instantly by
+  //    verify-line-subscription, or by apple-notifications' SUBSCRIBED branch).
+  //    Ref matches both instant paths — original_transaction_id — so the
+  //    (kind, ref) claim dedupes across all three senders; the id fallback
+  //    covers lines with no Apple transaction (credits-billed).
+  const { data: rentedLines } = await sb
+    .from("phone_lines")
+    .select("id, e164, original_transaction_id, status, created_at")
+    .gte("created_at", since)
+    .neq("user_id", DEV_USER);
+
+  for (const l of rentedLines ?? []) {
+    await claimAndSend("line", String(l.original_transaction_id ?? l.id),
+      `📞 <b>New second number</b>\n` +
+      `${esc(l.e164 ?? "(provisioning)")} · ${esc(String(l.status))}`);
+  }
+
   // ── 6-hourly digest.
   let digest = false;
   const { data: cfg } = await sb
