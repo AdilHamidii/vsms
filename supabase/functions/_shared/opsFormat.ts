@@ -815,6 +815,12 @@ export function formatSubs(raw: Record<string, unknown>): string {
     lines_by_billing?: { billing?: string; n?: number }[];
     monthly_cost_cents?: number;
     trials_tracked?: boolean;
+    subs_list?: {
+      product?: string; state?: string; auto_renew?: boolean;
+      price_milli?: number; currency?: string; expires_at?: string;
+      environment?: string; created_at?: string;
+    }[];
+    subs_not_shown?: number;
     active_billed?: { currency?: string; milli?: number; n?: number }[];
     notifications_7d?: {
       type?: string; subtype?: string; n?: number;
@@ -835,6 +841,30 @@ export function formatSubs(raw: Record<string, unknown>): string {
     const states = (s.subs_by_state ?? [])
       .map((r) => `${esc(r.state ?? "?")} ${r.n ?? 0}`).join(" · ");
     lines.push(`📜 Subscriptions: <b>${s.subs_total}</b> — ${states}`);
+    // One row per subscription: plan, running vs cancelled, expiry. auto_renew
+    // is ASSN-authoritative (20260815100000); "cancelled" here means auto-renew
+    // off — the line stays live until the period ends, so state stays 'active'.
+    // A zero billed price is rendered as a free period: an inference from
+    // price_milli = 0 (offerType is not persisted), never a tracked fact.
+    for (const r of s.subs_list ?? []) {
+      const pid = r.product ?? "";
+      const plan = pid.endsWith(".line.monthly") ? "monthly"
+        : pid.endsWith(".line.yearly") ? "yearly"
+        : (pid || "?");
+      const free = r.price_milli === 0 ? " · free period" : "";
+      const env = r.environment && r.environment !== "Production"
+        ? ` · ${esc(r.environment)}` : "";
+      const until = r.expires_at ? esc(r.expires_at.slice(5, 10)) : "?";
+      const status = r.state === "active"
+        ? (r.auto_renew !== false
+            ? `▶️ running — renews ${until}`
+            : `🔕 cancelled — ends ${until}`)
+        : `${esc(r.state ?? "?")} — ${until}`;
+      lines.push(`   • ${esc(plan)}${free}${env} · ${status}`);
+    }
+    if ((s.subs_not_shown ?? 0) > 0) {
+      lines.push(`   <i>… and ${s.subs_not_shown} older, not shown</i>`);
+    }
   }
 
   if ((s.lines_total ?? 0) === 0) {
@@ -869,7 +899,8 @@ export function formatSubs(raw: Record<string, unknown>): string {
   // member and ASSN's offerType is not persisted, so a zero here would be an
   // assertion we cannot make.
   if (s.trials_tracked !== true) {
-    lines.push(`🧪 Trials: <i>not tracked — no offer-type column on line_subscriptions</i>`);
+    lines.push(`🧪 Trials: <i>"free period" above is inferred from a $0 billed ` +
+               `price — no offer-type column exists, so there is no tracked count</i>`);
   }
 
   // A live line whose subscription is gone is rent we pay for nothing; a live

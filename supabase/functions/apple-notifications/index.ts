@@ -28,7 +28,7 @@ import { handleCors, json } from "../_shared/cors.ts";
 import { admin } from "../_shared/supabaseAdmin.ts";
 import {
   verifyNotificationJWS, verifyTransactionJWS, verifyRenewalInfoJWS,
-  isSubscriptionProduct,
+  isSubscriptionProduct, linePlanLabel,
 } from "../_shared/iap.ts";
 import { findNumberId, releaseNumber, faultOf } from "../_shared/telnyx.ts";
 import { sendMessage, esc } from "../_shared/telegram.ts";
@@ -224,7 +224,8 @@ async function process(sb: ReturnType<typeof admin>, n: Awaited<ReturnType<typeo
         // instant alert — whichever path runs first sends, the other no-ops,
         // and a purchase whose client call never landed still gets announced.
         await alertOwner(
-          `📞 <b>New second number subscription</b>${sandbox}`,
+          `📞 <b>New second number subscription</b>\n` +
+            `${esc(linePlanLabel(tx))}${sandbox}`,
           sb, originalTx, "line");
       } else {
         const amount = tx.price != null && tx.currency
@@ -233,7 +234,8 @@ async function process(sb: ReturnType<typeof admin>, n: Awaited<ReturnType<typeo
         // across Apple's retry ladder, so retries dedupe and next month's
         // renewal still alerts.
         await alertOwner(
-          `🔄 <b>Second number renewed</b>${amount}${sandbox}`,
+          `🔄 <b>Second number renewed</b>${amount}\n` +
+            `${esc(linePlanLabel(tx))}${sandbox}`,
           sb, `renew:${tx.transactionId}`, "line_event");
       }
       return;
