@@ -103,7 +103,19 @@ Deno.serve(async (req) => {
   // on that path is another way to fail after being paid.
   let voiceProfileId = line.provider_voice_profile_id as string | null;
   if (!voiceProfileId) {
-    const prof = await createOutboundVoiceProfile({ name: `vsms-${line.id}` });
+    // Destinations come from `voice_dial_destinations()`, never from a constant
+    // here: `voice_rates.enabled` is the price gate and this is the permission
+    // gate, and the two failing to agree is the exact bug the claim function
+    // refuses to allow. On a failed read fall through to the helper's US/CA
+    // default rather than an empty list — narrower than intended still places
+    // the domestic calls the subscription actually sells, and the hourly
+    // `sync-voice-destinations` widens it on the next pass.
+    const { data: dest } = await sb.rpc("voice_dial_destinations");
+    const destinations = Array.isArray(dest) && dest.length
+      ? dest as string[]
+      : undefined;
+    const prof = await createOutboundVoiceProfile({
+      name: `vsms-${line.id}`, destinations });
     if (faultOf(prof)) return voiceFault(sb, prof, "create_voice_profile");
     voiceProfileId = prof.id;
     // Persist BEFORE the attach, so a failed attach cannot orphan a profile we
