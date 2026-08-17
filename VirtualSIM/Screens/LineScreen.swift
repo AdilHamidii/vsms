@@ -67,7 +67,10 @@ private struct LiveLineView: View {
                 ])
                 .padding(.horizontal, 16).padding(.top, 12).padding(.bottom, 10)
 
-                AllowanceStrip(line: line)
+                // The hero already states the renewal date, and the allowance
+                // resets on renewal — so the strip's own copy of it would print
+                // the same date twice on one screen.
+                AllowanceStrip(line: line, showsResetDate: false)
                     .padding(.horizontal, 20)
                     .padding(.bottom, 14)
 
@@ -141,46 +144,111 @@ private struct LiveLineView: View {
 
     // MARK: - Header
 
+    /// The number, as the centre of the screen rather than a caption.
+    ///
+    /// This is the whole product: a subscriber pays $9.99/month for this string
+    /// of digits, and it used to render as 25pt text in the top-left with a
+    /// copy glyph beside it — smaller than the segmented control under it. It
+    /// is also the thing they read aloud, paste into a signup form and show to
+    /// people, so the two actions that matter (copy, share) are given equal
+    /// weight instead of one being an icon and the other being buried in the
+    /// empty state.
+    ///
+    /// Centred, deliberately, against an app that is otherwise left-aligned.
+    /// The asymmetry is the point — it marks this as the identity of the screen
+    /// rather than one more row of information.
     private var header: some View {
-        HStack(alignment: .top) {
-            VStack(alignment: .leading, spacing: 2) {
-                // The switcher REPLACES the static label when there is more
-                // than one number, rather than sitting beside it. With a single
-                // line this is byte-identical to what shipped — multi-number
-                // must not make the common case busier.
+        VStack(spacing: 14) {
+            // Label row. The switcher REPLACES it when there is more than one
+            // number rather than sitting beside it, which is the rule the
+            // previous header established: multi-number must not make the
+            // common case busier.
+            HStack(spacing: 8) {
+                CodeFlag(code: line.countryCode, size: 20, style: .circle)
                 if state.hasMultipleLines {
                     lineSwitcher
                 } else {
-                    Text("Your number")
-                        .font(RFont.text(13)).foregroundStyle(theme.text2)
+                    Text("YOUR NUMBER")
+                        .font(RFont.text(11, weight: .semibold))
+                        .tracking(0.8)
+                        .foregroundStyle(theme.text3)
                 }
-                Button {
-                    UIPasteboard.general.string = line.e164
-                    withAnimation(RMotion.select) { copied = true }
-                    Task {
-                        try? await Task.sleep(for: .seconds(1.6))
-                        withAnimation(RMotion.select) { copied = false }
-                    }
-                } label: {
-                    HStack(spacing: 8) {
-                        Text(PhoneFormat.national(line.e164))
-                            .font(RFont.display(25, weight: .bold))
-                            .tracking(-0.6)
-                            .foregroundStyle(theme.text)
-                            .minimumScaleFactor(0.7)
-                            .lineLimit(1)
-                        Image(systemName: copied ? RIcon.check : RIcon.copy)
-                            .font(.system(size: 13, weight: .semibold))
-                            .foregroundStyle(copied ? theme.live : theme.text3)
-                    }
-                }
-                .buttonStyle(.plain)
             }
-            Spacer(minLength: 0)
+
+            Text(PhoneFormat.national(line.e164))
+                .font(RFont.display(34, weight: .bold))
+                .tracking(-1)
+                .foregroundStyle(theme.text)
+                .minimumScaleFactor(0.6)
+                .lineLimit(1)
+                .padding(.horizontal, 12)
+                // The number itself stays tappable-to-copy. It was the only
+                // copy affordance before and muscle memory is cheap to keep.
+                .onTapGesture { copyNumber() }
+
+            HStack(spacing: 10) {
+                Button { copyNumber() } label: {
+                    heroAction(icon: copied ? RIcon.check : RIcon.copy,
+                               label: copied ? "Copied" : "Copy",
+                               tint: copied ? theme.live : theme.text)
+                }
+                .buttonStyle(PressScaleStyle())
+
+                ShareLink(item: PhoneFormat.national(line.e164)) {
+                    heroAction(icon: "square.and.arrow.up", label: "Share",
+                               tint: theme.text)
+                }
+                .simultaneousGesture(TapGesture().onEnded { RHaptic.select() })
+            }
+
+            statusLine
         }
+        .frame(maxWidth: .infinity)
         .padding(.horizontal, 20)
-        .padding(.top, 6)
-        .padding(.bottom, 4)
+        .padding(.top, 10)
+        .padding(.bottom, 6)
+    }
+
+    private func heroAction(icon: String, label: LocalizedStringKey,
+                            tint: Color) -> some View {
+        HStack(spacing: 7) {
+            Image(systemName: icon)
+                .font(.system(size: 13, weight: .semibold))
+            Text(label)
+                .font(RFont.text(14, weight: .medium))
+        }
+        .foregroundStyle(tint)
+        .frame(height: 42)
+        .frame(maxWidth: .infinity)
+        .background(theme.chipBg, in: Capsule())
+    }
+
+    /// One quiet line: is it live, and when does it renew.
+    ///
+    /// Deliberately says nothing about a PROBLEM state — `LineStatusBanner`
+    /// sits directly below and explains grace, past-due and suspension in a
+    /// full sentence. Two components describing the same fault, one in three
+    /// words and one in thirty, is how they drift apart.
+    @ViewBuilder
+    private var statusLine: some View {
+        if line.status == .active, let end = line.currentPeriodEnd {
+            HStack(spacing: 6) {
+                Circle().fill(theme.live).frame(width: 6, height: 6)
+                Text("Active · renews \(end.formatted(.dateTime.day().month(.abbreviated)))")
+                    .font(RFont.text(12))
+                    .foregroundStyle(theme.text3)
+            }
+        }
+    }
+
+    private func copyNumber() {
+        UIPasteboard.general.string = line.e164
+        RHaptic.select()
+        withAnimation(RMotion.select) { copied = true }
+        Task {
+            try? await Task.sleep(for: .seconds(1.6))
+            withAnimation(RMotion.select) { copied = false }
+        }
     }
 
     /// Pick which of your numbers the tab is showing.

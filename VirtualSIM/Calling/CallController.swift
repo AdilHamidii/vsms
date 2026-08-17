@@ -121,9 +121,15 @@ final class CallController: NSObject {
     /// is the difference between a call that rings and one that pauses first.
     @discardableResult
     func prepareVoice() async -> Bool {
+        // Screenshot frames are marketing assets and must never render a fault.
+        // `loadLine` already returns early for the same reason.
+        if ScreenshotMode.isActive { readiness = .ready; return false }
         guard isVoiceAvailable, let api = apiClient else {
-            readiness = .unavailable(
-                String(localized: "Calling isn't available on this device yet."))
+            // `.unknown`, not `.unavailable`: no voice client attached means the
+            // SDK is not linked, and every entry point to calling is already
+            // gated on `isVoiceAvailable` — so the dialer is HIDDEN rather than
+            // failing, and a banner would warn about a button that is not there.
+            readiness = .unknown
             return false
         }
         do {
@@ -134,12 +140,28 @@ final class CallController: NSObject {
             readiness = grant.inboundReady ? .ready : .outboundOnly
             return true
         } catch {
-            // Named, not swallowed. `userMessage` already maps the business
-            // codes; anything else is a connectivity story, and the one thing
-            // it must never do is stay silent.
-            readiness = .unavailable(
-                (error as? APIError)?.userMessage
-                ?? String(localized: "We couldn't set your number up for calls."))
+            // ⚠️ ONLY A SERVER REFUSAL BECOMES A VISIBLE FAULT.
+            //
+            // The first version reported every failure as `.unavailable`, and a
+            // screenshot of the frame showed the result: a red banner reading
+            // "Please sign in again to continue." across the top of the main
+            // tab, because an unauthenticated call maps to `.notAuthenticated`.
+            // A dropped connection or an expired session is not "your number
+            // cannot make calls" — it is a blip that the next visit to this tab
+            // retries — and blaming the user's sign-in for a voice-token
+            // failure is the same error as `APIError.decoding` once rendering
+            // as a connectivity message.
+            //
+            // `.http` means the SERVER answered and refused, which is the only
+            // case worth alarming someone about. Everything else stays
+            // `.unknown`, which renders nothing.
+            if case .http = error as? APIError {
+                readiness = .unavailable(
+                    (error as? APIError)?.userMessage
+                    ?? String(localized: "We couldn't set your number up for calls."))
+            } else {
+                readiness = .unknown
+            }
             return false
         }
     }
