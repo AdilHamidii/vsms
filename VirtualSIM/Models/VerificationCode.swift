@@ -30,12 +30,39 @@ enum VerificationCode {
     /// languages we actually ship plus the two that dominate global SMS
     /// templates — and note these are the SENDER's words, not our UI, so they
     /// are NOT localizable strings and must not be moved into the catalog.
+    /// ⚠️ Matched on WORD BOUNDARIES, not with `contains`. The first version used
+    /// `lower.contains($0)` and "pin" then matched inside **shipping**, topping,
+    /// opinion and spinning — so "Your shipping label 74839201 is ready" cleared
+    /// the keyword bar and the app offered 74839201 as a verification code. That
+    /// is exactly the taps-Copy-gets-rejected-stops-trusting-the-number failure
+    /// this type's whole design exists to prevent.
     private static let keywords = [
         "code", "otp", "pin", "verif",          // en + fr/es/pt/it share the stem
         "bestätigung", "kode", "código", "codice", "verifica",
         "認証", "確認",                            // ja
         "password", "passcode", "one-time", "2fa",
     ]
+
+    /// True when `word` appears in `text` at the START of a word.
+    ///
+    /// Start-boundary only, deliberately: several entries are STEMS ("verif"
+    /// covers verification / vérification / verificar), so requiring a boundary
+    /// at the end too would match none of them. The start boundary alone is
+    /// what kills the false positives — in shipping, topping, opinion and
+    /// spinning the substring "pin" is always preceded by a letter.
+    ///
+    /// CJK keywords have no word boundaries, so they fall back to `contains`;
+    /// correct, because "認証" cannot occur inside an unrelated Latin word.
+    private static func mentions(_ text: String, _ word: String) -> Bool {
+        guard word.allSatisfy({ $0.isASCII }) else { return text.contains(word) }
+        var search = text[...]
+        while let r = search.range(of: word) {
+            if r.lowerBound == text.startIndex
+                || !text[text.index(before: r.lowerBound)].isLetter { return true }
+            search = text[r.upperBound...]
+        }
+        return false
+    }
 
     /// The code in `body`, or nil when nothing clears the bar.
     static func detect(in body: String?) -> String? {
@@ -58,7 +85,7 @@ enum VerificationCode {
         guard candidates.count == 1, let candidate = candidates.first else { return nil }
 
         let lower = body.lowercased()
-        if keywords.contains(where: { lower.contains($0) }) { return candidate }
+        if keywords.contains(where: { mentions(lower, $0) }) { return candidate }
 
         // No keyword. A lone number in a long sentence is far more likely to be
         // a balance, a price or a date than a code — "your balance is 1234 EUR"
