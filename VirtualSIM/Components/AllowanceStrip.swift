@@ -15,6 +15,15 @@ struct AllowanceStrip: View {
     @Environment(\.theme) private var theme
     let line: Line
 
+    /// Whether to print the reset date under the gauges.
+    ///
+    /// Off on the Number tab since the hero header gained `renews <date>`: the
+    /// allowance resets ON renewal, so the two lines are the same date by
+    /// construction and printing both says one thing twice. Kept as a parameter
+    /// rather than deleted because the strip is reusable and the date is the
+    /// right thing to show anywhere the renewal is not already stated.
+    var showsResetDate: Bool = true
+
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .top, spacing: 16) {
@@ -38,7 +47,7 @@ struct AllowanceStrip: View {
                     fraction: line.voiceFraction
                 )
             }
-            if let reset = line.allowanceResetsAt {
+            if showsResetDate, let reset = line.allowanceResetsAt {
                 // Allowances reset on RENEWAL, never on a calendar boundary —
                 // resetting on the 1st would hand a mid-month subscriber a free
                 // extra allowance. So this is the renewal date, stated plainly.

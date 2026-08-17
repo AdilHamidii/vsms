@@ -92,6 +92,26 @@ final class CallController: NSObject {
         }
     }
 
+    /// How much of calling actually works right now.
+    ///
+    /// 🔴 THIS USED TO BE INVISIBLE, and it cost subscribers. `prepareVoice`
+    /// ended in `catch { return false }` and `inboundReady` was decoded, stored
+    /// and read by NO view — so when provisioning failed (which it did for
+    /// every line sold before 2026-08-17) the user saw a dialer that silently
+    /// did nothing and had no reason to suspect anything but the app. One of
+    /// them mailed in; the rest just refunded.
+    enum Readiness: Equatable {
+        case unknown
+        /// Registered, and the number will ring.
+        case ready
+        /// Outbound works; the number will NOT ring. Worth saying out loud —
+        /// the user may have already given the number out.
+        case outboundOnly
+        /// Could not register at all. Carries the reason, never a bare bool.
+        case unavailable(String)
+    }
+    private(set) var readiness: Readiness = .unknown
+
     /// Mint a credential and open the WebRTC session.
     ///
     /// Idempotent — `connect` returns immediately when the client is already
@@ -101,14 +121,47 @@ final class CallController: NSObject {
     /// is the difference between a call that rings and one that pauses first.
     @discardableResult
     func prepareVoice() async -> Bool {
-        guard isVoiceAvailable, let api = apiClient else { return false }
+        // Screenshot frames are marketing assets and must never render a fault.
+        // `loadLine` already returns early for the same reason.
+        if ScreenshotMode.isActive { readiness = .ready; return false }
+        guard isVoiceAvailable, let api = apiClient else {
+            // `.unknown`, not `.unavailable`: no voice client attached means the
+            // SDK is not linked, and every entry point to calling is already
+            // gated on `isVoiceAvailable` — so the dialer is HIDDEN rather than
+            // failing, and a banner would warn about a button that is not there.
+            readiness = .unknown
+            return false
+        }
         do {
             let grant = try await LineAPI(client: api).mintVoiceToken(lineId: activeLineId)
             lineE164 = grant.e164
             try await voice.connect(token: grant.token)
             inboundReady = grant.inboundReady
+            readiness = grant.inboundReady ? .ready : .outboundOnly
             return true
         } catch {
+            // ⚠️ ONLY A SERVER REFUSAL BECOMES A VISIBLE FAULT.
+            //
+            // The first version reported every failure as `.unavailable`, and a
+            // screenshot of the frame showed the result: a red banner reading
+            // "Please sign in again to continue." across the top of the main
+            // tab, because an unauthenticated call maps to `.notAuthenticated`.
+            // A dropped connection or an expired session is not "your number
+            // cannot make calls" — it is a blip that the next visit to this tab
+            // retries — and blaming the user's sign-in for a voice-token
+            // failure is the same error as `APIError.decoding` once rendering
+            // as a connectivity message.
+            //
+            // `.http` means the SERVER answered and refused, which is the only
+            // case worth alarming someone about. Everything else stays
+            // `.unknown`, which renders nothing.
+            if case .http = error as? APIError {
+                readiness = .unavailable(
+                    (error as? APIError)?.userMessage
+                    ?? String(localized: "We couldn't set your number up for calls."))
+            } else {
+                readiness = .unknown
+            }
             return false
         }
     }
