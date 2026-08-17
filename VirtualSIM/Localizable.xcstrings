@@ -4889,42 +4889,42 @@
         }
       }
     },
-    "Canadian numbers that receive texts from anywhere and call out to 50+ countries": {
+    "Canadian numbers that receive US and Canadian texts and call out to 50+ countries": {
       "localizations": {
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Kanadische Nummern, die SMS von überall empfangen und in 50+ Länder telefonieren"
+            "value": "Kanadische Nummern, die SMS aus den USA und Kanada empfangen und in 50+ Länder telefonieren"
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "Números canadienses que reciben mensajes desde cualquier lugar y llaman a más de 50 países"
+            "value": "Números canadienses que reciben mensajes de EE. UU. y Canadá y llaman a más de 50 países"
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Des numéros canadiens qui reçoivent des SMS du monde entier et appellent plus de 50 pays"
+            "value": "Des numéros canadiens qui reçoivent des SMS des États-Unis et du Canada et appellent plus de 50 pays"
           }
         },
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "Numeri canadesi che ricevono messaggi da ovunque e chiamano oltre 50 paesi"
+            "value": "Numeri canadesi che ricevono messaggi da Stati Uniti e Canada e chiamano oltre 50 paesi"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "世界中からSMSを受信し、50か国以上へ発信できるカナダの番号"
+            "value": "米国とカナダからのSMSを受信し、50か国以上へ発信できるカナダの番号"
           }
         },
         "pt-BR": {
           "stringUnit": {
             "state": "translated",
-            "value": "Números canadenses que recebem mensagens de qualquer lugar e ligam para mais de 50 países"
+            "value": "Números canadenses que recebem mensagens dos EUA e do Canadá e ligam para mais de 50 países"
           }
         }
       }
@@ -18424,46 +18424,6 @@
         }
       }
     },
-    "Receive texts and calls from anywhere, and call out from it. Your real number never leaves your phone.": {
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Empfange SMS und Anrufe von überall – und telefoniere über diese Nummer. Deine echte Nummer verlässt dein Telefon nie."
-          }
-        },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Recibe mensajes y llamadas desde cualquier lugar, y llama desde él. Tu número real nunca sale de tu teléfono."
-          }
-        },
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Recevez SMS et appels du monde entier, et appelez depuis ce numéro. Votre vrai numéro ne quitte jamais votre téléphone."
-          }
-        },
-        "it": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Ricevi messaggi e chiamate da ovunque e chiama da questo numero. Il tuo numero vero non lascia mai il telefono."
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "世界中からSMSと着信を受け取り、発信もできます。あなたの本当の番号は端末から出ません。"
-          }
-        },
-        "pt-BR": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Receba mensagens e chamadas de qualquer lugar e ligue a partir dele. Seu número real nunca sai do seu telefone."
-          }
-        }
-      }
-    },
     "Receive texts and codes in the app": {
       "localizations": {
         "de": {
@@ -18504,82 +18464,122 @@
         }
       }
     },
-    "Receive texts and verification codes from anywhere": {
+    "Receive texts and verification codes from US and Canadian senders": {
       "localizations": {
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "SMS und Bestätigungscodes von überall empfangen"
+            "value": "SMS und Bestätigungscodes von US-amerikanischen und kanadischen Absendern empfangen"
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "Recibe mensajes y códigos de verificación desde cualquier lugar"
+            "value": "Recibe mensajes y códigos de verificación de remitentes de EE. UU. y Canadá"
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Recevez SMS et codes de vérification du monde entier"
+            "value": "Recevez SMS et codes de vérification d'expéditeurs américains et canadiens"
           }
         },
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "Ricevi messaggi e codici di verifica da ovunque"
+            "value": "Ricevi messaggi e codici di verifica da mittenti statunitensi e canadesi"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "世界中からSMSと認証コードを受信"
+            "value": "米国とカナダの送信元からSMSと認証コードを受信"
           }
         },
         "pt-BR": {
           "stringUnit": {
             "state": "translated",
-            "value": "Receba mensagens e códigos de verificação de qualquer lugar"
+            "value": "Receba mensagens e códigos de verificação de remetentes dos EUA e do Canadá"
           }
         }
       }
     },
-    "Receives texts and calls from anywhere. Call out to Canada, the US and 50 countries.": {
+    "Receive texts from US and Canadian numbers and services, take calls from anywhere, and call out from it. Your real number never leaves your phone.": {
       "localizations": {
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Empfängt SMS und Anrufe von überall. Anrufe nach Kanada, in die USA und in 50 Länder."
+            "value": "Empfange SMS von US-amerikanischen und kanadischen Nummern und Diensten, nimm Anrufe von überall entgegen und telefoniere über diese Nummer. Deine echte Nummer verlässt dein Telefon nie."
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "Recibe mensajes y llamadas desde cualquier lugar. Llama a Canadá, EE. UU. y 50 países."
+            "value": "Recibe mensajes de números y servicios de EE. UU. y Canadá, recibe llamadas desde cualquier lugar y llama desde él. Tu número real nunca sale de tu teléfono."
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Reçoit SMS et appels du monde entier. Appelez le Canada, les États-Unis et 50 pays."
+            "value": "Recevez des SMS de numéros et services américains et canadiens, prenez des appels du monde entier, et appelez depuis ce numéro. Votre vrai numéro ne quitte jamais votre téléphone."
           }
         },
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "Riceve messaggi e chiamate da ovunque. Chiama Canada, Stati Uniti e 50 paesi."
+            "value": "Ricevi messaggi da numeri e servizi statunitensi e canadesi, rispondi a chiamate da ovunque e chiama da questo numero. Il tuo numero vero non lascia mai il telefono."
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "世界中からSMSと着信を受け取れます。カナダ、米国、50か国へ発信できます。"
+            "value": "米国とカナダの番号やサービスからのSMSを受信し、世界中からの着信にも対応、発信もできます。あなたの本当の番号は端末から出ません。"
           }
         },
         "pt-BR": {
           "stringUnit": {
             "state": "translated",
-            "value": "Recebe mensagens e chamadas de qualquer lugar. Ligue para Canadá, EUA e 50 países."
+            "value": "Receba mensagens de números e serviços dos EUA e do Canadá, atenda chamadas de qualquer lugar e ligue a partir dele. Seu número real nunca sai do seu telefone."
+          }
+        }
+      }
+    },
+    "Receives texts from US and Canadian numbers and services, and calls from anywhere. Call out to Canada, the US and 50 countries.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Empfängt SMS von US-amerikanischen und kanadischen Nummern und Diensten und Anrufe von überall. Anrufe nach Kanada, in die USA und in 50 Länder."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Recibe mensajes de números y servicios de EE. UU. y Canadá, y llamadas desde cualquier lugar. Llama a Canadá, EE. UU. y 50 países."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Reçoit des SMS de numéros et services américains et canadiens, et des appels du monde entier. Appelez le Canada, les États-Unis et 50 pays."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Riceve messaggi da numeri e servizi statunitensi e canadesi, e chiamate da ovunque. Chiama Canada, Stati Uniti e 50 paesi."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "米国とカナダの番号やサービスからのSMS、および世界中からの着信を受信できます。カナダ、米国、50か国へ発信できます。"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Recebe mensagens de números e serviços dos EUA e do Canadá, e chamadas de qualquer lugar. Ligue para Canadá, EUA e 50 países."
           }
         }
       }
