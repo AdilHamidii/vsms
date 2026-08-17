@@ -46,6 +46,12 @@ struct DialerScreen: View {
                     RHaptic.select()
                     if key == "⌫" {
                         if !digits.isEmpty { digits.removeLast() }
+                    } else if key == "+" {
+                        // Only ever leading, as on every real dialer. A `+`
+                        // mid-number is not a country code, it is a typo, and
+                        // accepting it would produce a string `toE164` refuses
+                        // AFTER the user has finished typing.
+                        if digits.isEmpty { digits = "+" }
                     } else {
                         digits.append(key)
                     }
@@ -92,9 +98,13 @@ struct DialerScreen: View {
 
     private var readout: some View {
         VStack(spacing: 10) {
+            // `PhoneFormat.national` groups a NANP number and would mangle an
+            // international one — it has no idea where the country code ends.
+            // A leading `+` means the user is telling us the country, so show
+            // exactly what they typed.
             Text(digits.isEmpty
                  ? String(localized: "Enter a number")
-                 : PhoneFormat.national(digits))
+                 : (digits.hasPrefix("+") ? digits : PhoneFormat.national(digits)))
                 .font(RFont.mono(30, weight: .semibold))
                 .foregroundStyle(digits.isEmpty ? theme.text3 : theme.text)
                 .minimumScaleFactor(0.5)
@@ -200,6 +210,20 @@ struct Dialpad: View {
                             .contentShape(.circle)
                         }
                         .pressable(0.9)
+                        // 🔴 `+` WAS UNREACHABLE. The 0 key has always PRINTED
+                        // "+" as its subtitle, exactly like a hardware phone —
+                        // but nothing was bound to it, so no user could ever
+                        // type an international number. Long-press is the iOS
+                        // convention every phone keypad uses, and it is what
+                        // the printed glyph has been promising all along.
+                        .simultaneousGesture(
+                            LongPressGesture(minimumDuration: 0.4)
+                                .onEnded { _ in
+                                    guard key == "0" else { return }
+                                    RHaptic.select()
+                                    onKey("+")
+                                }
+                        )
                     }
                 }
             }
