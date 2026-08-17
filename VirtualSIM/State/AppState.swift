@@ -26,13 +26,12 @@ enum FlowStage: String, Hashable, Identifiable {
     /// a NavigationStack push would leave the floating tab bar sitting on top
     /// of the message composer.
     case lineCheckout, lineProvisioning, thread, dialer
-    /// Start a conversation with someone who has never texted us.
-    ///
-    /// Without this the Messages segment could only ever REPLY: threads are
-    /// created by an inbound message or by an outbound send, and every path to
-    /// `.thread` went through a row that already existed. Calls have had an
-    /// initiating affordance since the dialer landed; messages had none.
-    case compose
+    // `.compose` (start a new outbound conversation) was REMOVED 2026-08-18
+    // with the pivot to receive + call out. Outbound SMS is off the product
+    // — it is the one capability that needs carrier approval (10DLC), which
+    // the owner will not pursue — so an initiating affordance for it would
+    // advertise a feature the number does not have. Threads are now created
+    // by inbound messages only. Do not reintroduce without the send path.
     /// The number store, opened OVER a live line to rent an additional one.
     /// The tab itself only shows the store when there is no line at all, so
     /// without this a second number is unreachable — which made the whole

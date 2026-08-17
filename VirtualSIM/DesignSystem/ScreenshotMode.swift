@@ -37,7 +37,6 @@ enum ScreenshotMode {
         case lineIntro       // the store's first page — what a second number is
         case lineStore       // pick a city
         case thread          // a real conversation on a rented number
-        case compose         // starting a new conversation
         case email           // temp e-mail, code delivered
         case emailStore      // temp e-mail, choosing a free domain
         case linePaywall     // the subscription screen, monthly selected
