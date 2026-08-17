@@ -59,7 +59,7 @@ enum FlowStage: String, Hashable, Identifiable {
 /// The Number tab also renders no credit pill at all, which removes the read
 /// path this whole enum exists to discipline.
 enum PurchaseIntent: String, Hashable {
-    case sms, esim, email, line
+    case sms, esim, email, line, call
 }
 
 /// What the post-failure recovery card needs to know. Stored on AppState
@@ -324,6 +324,26 @@ final class AppState {
     /// read does not blank the screen while the fetch runs.
     var lineMessages: [String: [LineMessage]] = [:]
     var lineCalls: [LineCall] = []
+
+    /// International per-minute prices, in credits. Empty until loaded AND
+    /// empty when no destination is enabled — the dialer must treat "no match"
+    /// as uncallable in both cases, never as free.
+    var voiceRates: [VoiceRate] = []
+
+    /// Credits the dialer needs for the call being composed, DECLARED by it
+    /// alongside `intent = .call`.
+    ///
+    /// Same rule as `checkoutEsimPlan`: the amount is stated by the screen that
+    /// knows it, never re-derived by `creditsShortfall`. It must be cleared
+    /// wherever `intent` is, or the credits pill keeps sizing packs for a call
+    /// the user abandoned — which is precisely the bug `PurchaseIntent` was
+    /// introduced to kill, twice.
+    var callCreditsNeeded: Int?
+
+    /// The destination being dialled, for the credits sheet. Catalog text, so
+    /// it is rendered verbatim — translating a country label we got from the
+    /// server is the same mistake as translating a service name.
+    var callDestinationLabel: String?
     /// Cities we sell numbers in. Seeded so the picker renders instantly, then
     /// replaced by the server's list on the first search — see `LineCity.seeded`
     /// for why a city is safe to seed when an area code is not.
@@ -1026,13 +1046,22 @@ final class AppState {
             guard let c = emailDomain?.credits, c > 0 else { return 0 }
             return max(0, c - balance)
         case .line:
-            // The rented line is paid entirely through a StoreKit subscription
+            // RENTING the line is paid entirely through a StoreKit subscription
             // and never spends credits, so there is no shortfall it could
             // create. Returning 0 rather than falling through is what stops it
             // answering with whatever SMS route was last configured — the exact
-            // failure this enum exists to prevent, and the reason the Number
-            // tab renders no credit pill at all.
+            // failure this enum exists to prevent.
             return 0
+        case .call:
+            // ⚠️ An INTERNATIONAL call is the one thing on this line that does
+            // spend credits: the minute allowance covers NANP only, because a
+            // bucket denominated in minutes cannot price a $3.62/min
+            // destination. The amount is DECLARED by the dialer, never derived
+            // here — deriving it would mean this property re-matching a prefix
+            // against a rate card, and a second definition of the price is a
+            // second thing to drift.
+            guard let need = callCreditsNeeded else { return 0 }
+            return max(0, need - balance)
         case .sms:
             break
         }
@@ -1488,6 +1517,19 @@ final class AppState {
     /// one request timed out would tell a paying subscriber they have no
     /// number. Keeping the previous value is strictly better.
     @MainActor
+    /// The international rate card.
+    ///
+    /// Failure is deliberately silent and non-destructive: an empty list means
+    /// the dialer shows no price and refuses international numbers, which is
+    /// the safe direction. Quoting a stale price would be worse than quoting
+    /// none, and the SERVER re-quotes authoritatively at call time regardless —
+    /// this exists so the user sees the cost before they dial, not so the
+    /// client can decide it.
+    func loadVoiceRates(using api: LineAPI) async {
+        guard let fresh = try? await api.voiceRates() else { return }
+        voiceRates = fresh
+    }
+
     func loadLine(using api: LineAPI) async {
         guard let fresh = try? await api.fetchAll() else { return }
         lines = fresh
@@ -1668,6 +1710,12 @@ final class AppState {
         lineReservation = nil
         lineUnavailableReason = nil
         lineCity = nil
+        // The composed call's price goes with the draft. Leaving it set would
+        // let `creditsShortfall` keep sizing packs for a call that is no longer
+        // on screen — the same shape as the stale `checkoutEsimPlan` and the
+        // stale `emailDomain` before it.
+        callCreditsNeeded = nil
+        callDestinationLabel = nil
     }
 
     /// Map a refusal onto the one thing we actually know. `lines_paused` is a

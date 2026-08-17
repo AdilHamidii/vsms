@@ -266,6 +266,8 @@ struct CreditsSheet: View {
             ReceiptIconBox(symbol: "envelope")
         case .line:
             ReceiptIconBox(symbol: RIcon.phone)
+        case .call:
+            ReceiptIconBox(symbol: RIcon.phone)
         }
     }
 
@@ -278,6 +280,10 @@ struct CreditsSheet: View {
         case .esim:  state.checkoutEsimPlan?.name ?? String(localized: "eSIM data plan")
         case .email: state.emailDomain?.displayName ?? String(localized: "Temporary e-mail")
         case .line:  String(localized: "Second number")
+        // The destination is what the user is buying credits FOR, so name it.
+        // A generic "International call" would leave them checking whether the
+        // pack they are about to buy covers the country they dialled.
+        case .call:  state.callDestinationLabel ?? String(localized: "International call")
         }
     }
 
@@ -293,6 +299,8 @@ struct CreditsSheet: View {
             return String(localized: "Temporary inbox")
         case .line:
             return nil
+        case .call:
+            return String(localized: "International call")
         }
     }
 
@@ -302,6 +310,9 @@ struct CreditsSheet: View {
         case .esim:  state.checkoutEsimPlan?.retailCredits
         case .email: state.emailDomain?.credits
         case .line:  nil
+        // What the CALL costs to start, not the wallet's shortfall — the sheet
+        // renders cost and balance separately.
+        case .call:  state.callCreditsNeeded
         }
     }
 

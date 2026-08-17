@@ -19,7 +19,8 @@ import { handleCors, json } from "../_shared/cors.ts";
 import { admin, callerUserId } from "../_shared/supabaseAdmin.ts";
 import {
   createCredentialConnection, createTelephonyCredential, mintCredentialToken,
-  attachVoiceConnection, faultOf,
+  attachVoiceConnection, createOutboundVoiceProfile, attachOutboundProfile,
+  faultOf,
 } from "../_shared/telnyx.ts";
 import { resolveCallerLine } from "../_shared/lines.ts";
 
@@ -45,7 +46,7 @@ Deno.serve(async (req) => {
   const line = await resolveCallerLine(
     sb, userId, body.line_id as string | undefined, undefined,
     "id, e164, status, provider_number_id, provider_connection_id, " +
-    "provider_credential_id, provider_voice_attached",
+    "provider_credential_id, provider_voice_attached, provider_voice_profile_id",
   ) as (Record<string, unknown> & { id: string; e164: string | null }) | null;
   if (!line) return json({ error: "line_unavailable" }, { status: 409 });
 
@@ -88,6 +89,34 @@ Deno.serve(async (req) => {
     // fails we create a brand-new connection on every mint and leak one at
     // Telnyx each time.
     await persist(sb, String(line.id), { connection: connectionId });
+  }
+
+  // 🔴 WITHOUT AN OUTBOUND VOICE PROFILE, TELNYX REJECTS EVERY OUTBOUND CALL.
+  // `provider_voice_profile_id` shipped in the first line migration and nothing
+  // has ever written it — both provisioning paths pass null — so this was a
+  // second, independent reason calling never worked, hiding behind the invalid
+  // SIP username. A column with no writer is the third instance of that shape
+  // in this feature.
+  //
+  // Created lazily here, next to the connection, for the same reason: Apple has
+  // already taken the money by provisioning time, so every extra provider call
+  // on that path is another way to fail after being paid.
+  let voiceProfileId = line.provider_voice_profile_id as string | null;
+  if (!voiceProfileId) {
+    const prof = await createOutboundVoiceProfile({ name: `vsms-${line.id}` });
+    if (faultOf(prof)) return voiceFault(sb, prof, "create_voice_profile");
+    voiceProfileId = prof.id;
+    // Persist BEFORE the attach, so a failed attach cannot orphan a profile we
+    // then recreate on every mint — the same ordering as the connection above.
+    await persist(sb, String(line.id), { voiceProfile: voiceProfileId });
+
+    const attached = await attachOutboundProfile(connectionId, voiceProfileId);
+    if (faultOf(attached)) {
+      // FATAL, unlike the inbound attach. Inbound failing leaves a half-working
+      // line worth keeping; this one means the user can place no calls at all,
+      // so returning a token would hand them a dialer that cannot dial.
+      return voiceFault(sb, attached, "attach_voice_profile");
+    }
   }
 
   // 🔴 THE ATTACH IS RETRIED UNTIL IT SUCCEEDS, and that is the fix.
@@ -158,13 +187,15 @@ Deno.serve(async (req) => {
 async function persist(
   sb: ReturnType<typeof admin>,
   lineId: string,
-  what: { connection?: string; credential?: string; attached?: boolean },
+  what: { connection?: string; credential?: string; attached?: boolean;
+          voiceProfile?: string },
 ) {
   const { error } = await sb.rpc("record_line_voice_binding", {
     p_line: lineId,
     p_connection: what.connection ?? null,
     p_credential: what.credential ?? null,
     p_attached: what.attached ?? null,
+    p_voice_profile: what.voiceProfile ?? null,
   });
   if (error) {
     console.error(JSON.stringify({

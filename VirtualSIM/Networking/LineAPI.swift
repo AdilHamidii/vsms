@@ -12,6 +12,28 @@ import Foundation
 struct LineAPI {
     let client: APIClient
 
+    // MARK: - International rate card
+
+    /// What each destination costs, in credits per minute.
+    ///
+    /// Reads the `voice_rate_card` VIEW, never the `voice_rates` table — the
+    /// table is the wholesale cost book and has SELECT revoked from clients.
+    /// Columns are named explicitly rather than `select=*` so the view can gain
+    /// an internal column later without it reaching a device, which is the
+    /// mistake `routes` and `esim_plans` are still paying for.
+    ///
+    /// Only `enabled` destinations are in the view, so an empty result means
+    /// "international is not open yet", not "the fetch failed". The caller must
+    /// keep treating an unmatched number as uncallable either way.
+    func voiceRates() async throws -> [VoiceRate] {
+        try await client.request(
+            .get, path: "rest/v1/voice_rate_card",
+            query: [URLQueryItem(name: "select",
+                                 value: "prefix,iso2,label,credits_per_min,covered_by_allowance")],
+            authenticated: false
+        )
+    }
+
     // MARK: - The line itself
 
     /// Every column of `my_line`, which is already the safe projection. RLS

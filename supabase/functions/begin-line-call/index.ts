@@ -133,6 +133,66 @@ Deno.serve(async (req) => {
   // ever fills it, and inbound legitimately reports null (nothing was reserved).
   let remainingSeconds: number | null = null;
 
+  // 🔴 INTERNATIONAL IS PAID IN CREDITS, NOT MINUTES. The subscription sells a
+  // domestic (NANP) minute bucket, and a bucket denominated in MINUTES cannot
+  // survive international rates: 100 minutes is 100 minutes whether it costs
+  // $0.50 or $362. So the destination decides which meter runs, and the two are
+  // mutually exclusive — charging both would bill twice for one call.
+  //
+  // `begin_intl_call_claim` charges and writes the row in ONE transaction under
+  // the per-user advisory lock, so a refusal leaves nothing behind and a
+  // double-tap cannot charge twice. It returns `domestic` when the destination
+  // is on the allowance, which is the signal to fall through to the code below.
+  if (direction === "outbound") {
+    const { data: intl, error: intlErr } = await sb.rpc("begin_intl_call_claim", {
+      p_user: userId, p_line: line.id, p_peer: normalized,
+      p_reserve_seconds: RESERVE_SECONDS,
+    });
+    if (intlErr) {
+      console.error(JSON.stringify({
+        alert: "line_intl_claim_failed", detail: intlErr.message,
+      }));
+      return json({ error: "call_failed" }, { status: 500 });
+    }
+
+    if (intl?.ok) {
+      // Charged and recorded. Nothing below applies — the minute allowance is
+      // deliberately untouched for a call the user paid cash for.
+      return json({
+        ok: true,
+        call_id: intl.call_id,
+        from: line.e164,
+        to: normalized,
+        billing: "credits",
+        credits_reserved: intl.credits_reserved,
+        credits_per_min: intl.credits_per_min,
+        destination: { iso2: intl.iso2, label: intl.label },
+        balance: intl.balance,
+        reserved_seconds: 0,
+        remaining_seconds: null,
+      });
+    }
+
+    const intlReason = String(intl?.reason ?? "");
+    if (intlReason && intlReason !== "domestic") {
+      // `insufficient_credits` carries the shortfall so the app can open the
+      // credits sheet sized for THIS call rather than making the user guess.
+      const status = intlReason === "insufficient_credits" ? 402
+        : intlReason === "destination_unavailable" ? 409
+        : intlReason === "line_suspended" ? 409
+        : 400;
+      return json({
+        error: intlReason,
+        needed: intl?.needed ?? null,
+        balance: intl?.balance ?? null,
+        shortfall: intl?.shortfall ?? null,
+        credits_per_min: intl?.credits_per_min ?? null,
+        destination: intl?.iso2 ? { iso2: intl.iso2, label: intl.label } : null,
+      }, { status });
+    }
+    // Fall through: `domestic` means the minute allowance is the right meter.
+  }
+
   if (direction === "outbound") {
     // Claim the allowance BEFORE recording the call, so a refusal leaves no row.
     const { data: claim, error: claimErr } = await sb.rpc("consume_line_allowance", {

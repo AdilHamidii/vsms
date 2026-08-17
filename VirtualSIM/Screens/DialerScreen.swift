@@ -30,8 +30,42 @@ struct DialerScreen: View {
         return false
     }
 
+    /// The priced destination for what has been typed so far, if any.
+    private var destination: VoiceRate? {
+        state.voiceRates.match(dialled: digits)
+    }
+
+    /// True when this call is paid in credits rather than plan minutes.
+    private var isInternational: Bool {
+        guard digits.hasPrefix("+") else { return false }
+        guard let d = destination else { return false }
+        return !d.coveredByAllowance
+    }
+
+    /// Credits needed for the server's reservation block, mirroring
+    /// `begin_intl_call_claim`: RESERVE_SECONDS (120) at this destination's
+    /// rate, rounded up, minimum 1.
+    private var creditsNeeded: Int? {
+        guard isInternational, let d = destination else { return nil }
+        return max(Int((120.0 * d.creditsPerMin / 60.0).rounded(.up)), 1)
+    }
+
+    private var shortOnCredits: Bool {
+        guard let need = creditsNeeded else { return false }
+        return state.balance < need
+    }
+
     private var canDial: Bool {
-        digits.filter(\.isNumber).count >= 7 && !isEmergency && !exhausted
+        guard digits.filter(\.isNumber).count >= 7, !isEmergency else { return false }
+        if digits.hasPrefix("+") {
+            // International: the wallet pays, so plan minutes are irrelevant —
+            // an exhausted allowance must NOT block a call the user is paying
+            // cash for. It needs a price we know and a balance that covers it.
+            guard let d = destination else { return false }
+            if d.coveredByAllowance { return !exhausted }
+            return !shortOnCredits
+        }
+        return !exhausted
     }
 
     var body: some View {
@@ -62,8 +96,29 @@ struct DialerScreen: View {
             .padding(.horizontal, 24)
             .padding(.bottom, 28)
         }
+        // DECLARE the intent and the amount, never let `creditsShortfall`
+        // infer them. This is the pattern `PurchaseIntent` exists to enforce,
+        // and both are cleared in `clearLineDraft()` on leaving the tab.
+        .onChange(of: creditsNeeded) { _, need in
+            if let need {
+                state.intent = .call
+                state.callCreditsNeeded = need
+                state.callDestinationLabel = destination?.label
+            } else if state.intent == .call {
+                state.intent = .line
+                state.callCreditsNeeded = nil
+                state.callDestinationLabel = nil
+            }
+        }
         .task {
             withAnimation(RMotion.content) { appeared = true }
+            // The rate card. Cheap, cached for the session, and the dialer is
+            // the only screen that reads it — so it loads here rather than
+            // lengthening the cold-launch chain, which is already six
+            // sequential round-trips before the app is usable.
+            if state.voiceRates.isEmpty {
+                await state.loadVoiceRates(using: LineAPI(client: api))
+            }
             // Mint the credential and open the WebRTC socket while the user is
             // still typing. `placeCall` calls this again and it returns
             // immediately when already registered, so this is latency the call
@@ -111,6 +166,46 @@ struct DialerScreen: View {
                 .lineLimit(1)
                 .contentTransition(.numericText())
                 .animation(RMotion.value, value: digits)
+
+            // What this call will cost, the moment the country is unambiguous.
+            //
+            // Only shown for a `+` number: a bare national string is NANP by
+            // definition here, and quoting "included" against a number whose
+            // country we inferred would be a claim we cannot stand behind.
+            if digits.hasPrefix("+"), let rate = destination {
+                HStack(spacing: 7) {
+                    CodeFlag(code: rate.iso2, size: 18)
+                    Text(verbatim: rate.label)
+                        .font(RFont.text(12, weight: .semibold))
+                        .foregroundStyle(theme.text2)
+                    Text(verbatim: "·")
+                        .font(RFont.text(12, weight: .semibold))
+                        .foregroundStyle(theme.text3)
+                    Text(rate.rateSentence)
+                        .font(RFont.text(12, weight: .semibold))
+                        .foregroundStyle(rate.coveredByAllowance ? theme.text2 : theme.ink)
+                }
+                .transition(.opacity)
+            } else if digits.hasPrefix("+"), digits.filter(\.isNumber).count >= 2 {
+                // A country we have no price for is NOT callable. Saying so
+                // here is the whole point — the server refuses it anyway, and
+                // discovering that after tapping call is a worse experience
+                // than being told while typing.
+                Text("We can't call this country yet.")
+                    .font(RFont.text(12, weight: .medium))
+                    .foregroundStyle(theme.text3)
+            }
+
+            // Short on credits: name the number, don't just grey the button.
+            // A disabled call button with no reason is the thing that makes a
+            // user think the app is broken rather than that they need credits.
+            if shortOnCredits, let need = creditsNeeded {
+                Text("You need \(need) credits to start this call — you have \(state.balance).")
+                    .font(RFont.text(12, weight: .medium))
+                    .foregroundStyle(theme.warn)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
 
             // The refusals, each stating WHY rather than just greying a button.
             if isEmergency {

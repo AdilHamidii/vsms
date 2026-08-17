@@ -169,6 +169,14 @@ enum APIError: Error, LocalizedError {
                     return "Your number is on hold. Resubscribe to start using it again."
                 case "emergency_blocked":
                     return "This number can't call emergency services. Use your phone's own number."
+                // International calling. `destination_unavailable` covers both
+                // "we have no price for this country" and "we have a price but
+                // the destination is not switched on at the carrier" — the two
+                // are indistinguishable to the user and the action is the same,
+                // so they deliberately share one message rather than one of
+                // them leaking our provider configuration into the app.
+                case "destination_unavailable":
+                    return "We can't call this country yet."
                 case "recipient_blocked":
                     return "You've blocked this number. Unblock it to send a message."
                 // Emitted by `begin-line-call`. All four were absent, so every

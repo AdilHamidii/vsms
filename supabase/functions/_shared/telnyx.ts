@@ -558,6 +558,61 @@ export async function createCredentialConnection(opts: {
   return { id: String(r.id) };
 }
 
+/**
+ * The Outbound Voice Profile a connection needs before it can place ANY call.
+ *
+ * 🔴 NOTHING IN THIS REPO EVER CREATED ONE. `phone_lines.provider_voice_profile_id`
+ * has existed since the first line migration and both provisioning paths pass
+ * `p_voice_profile: null` — a column with no writer, which is the third
+ * instance of that shape here after `line_subscriptions` and
+ * `line_threads.blocked`. Telnyx requires a profile on the connection to place
+ * an outbound call, so this was a SECOND reason calling never worked, sitting
+ * behind the invalid SIP username and equally silent.
+ *
+ * ⚠️ `whitelisted_destinations` is where the money risk lives. A new profile
+ * allows US/CA only, which is correct for the plan's minute allowance. Adding a
+ * country here makes it DIALLABLE — it does not make it PRICED, and the two must
+ * move together: `voice_rates.enabled` is the price half, this is the
+ * permission half, and enabling either alone is a bug. Some destinations also
+ * need Level 2 verification on the account before Telnyx will activate them.
+ *
+ * `daily_spend_limit` is the backstop that turns an International Revenue Share
+ * Fraud attempt into a capped loss. It is deliberately set even though the
+ * credit reservation already bounds each call: the reservation protects the
+ * ALLOWANCE, this protects the ACCOUNT.
+ */
+export async function createOutboundVoiceProfile(opts: {
+  name: string;
+  destinations?: string[];
+  dailySpendLimitUsd?: string;
+}): Promise<{ id: string } | TelnyxFault> {
+  const r = await call<Record<string, unknown>>("POST", "/outbound_voice_profiles", {
+    name: opts.name,
+    traffic_type: "conversational",
+    service_plan: "global",
+    enabled: true,
+    // US/CA unless told otherwise — the plan's own territory, and the only
+    // destinations whose rates the minute allowance can absorb.
+    whitelisted_destinations: opts.destinations ?? ["US", "CA"],
+    daily_spend_limit_enabled: true,
+    daily_spend_limit: opts.dailySpendLimitUsd ?? "5.00",
+  });
+  if (faultOf(r)) return r;
+  return { id: String(r.id) };
+}
+
+/** Point a credential connection at its outbound profile. Without this the
+ *  connection can register and receive, but every outbound call is rejected. */
+export async function attachOutboundProfile(
+  connectionId: string, profileId: string,
+): Promise<true | TelnyxFault> {
+  const r = await call<Record<string, unknown>>(
+    "PATCH", `/credential_connections/${connectionId}`,
+    { outbound_voice_profile_id: profileId });
+  if (faultOf(r)) return r;
+  return true;
+}
+
 /** A login for one line's connection. Cache the id on
  *  `phone_lines.provider_credential_id`: DELETING it on lapse is what makes
  *  suspension real rather than client-side theatre. */

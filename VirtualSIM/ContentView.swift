@@ -260,7 +260,12 @@ struct ContentView: View {
                 state.intent = .line
             } else {
                 state.clearLineDraft()
-                if state.intent == .line { state.intent = .sms }
+                // `.call` belongs to the dialer, which lives inside this tab —
+                // so leaving the tab must retire it exactly as it retires
+                // `.line`. Resetting only `.line` would strand a `.call` intent
+                // and let the credits pill on Home size its pack for an
+                // abandoned international call.
+                if state.intent == .line || state.intent == .call { state.intent = .sms }
             }
         }
         .onChange(of: scenePhase) { _, phase in
