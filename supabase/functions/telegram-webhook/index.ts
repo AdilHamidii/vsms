@@ -209,33 +209,30 @@ Deno.serve(async (req) => {
       // cut, no wholesale, no profit. /profit is where the derived P&L lives.
       // They used to be aliases for the same P&L, which meant there was no way
       // to ask the bot for plain takings.
+      // Read the line's money FIRST — it belongs in the HEADLINE total, not a
+      // footnote. A $9.99 subscription is $9.99 taken, exactly like a credit
+      // pack, and a renewal is another $9.99.
+      const { data: lm, error: lmErr } = await sb.rpc("lines_money_snapshot", {
+        p_window: PERIODS[arg],
+      });
+      if (lmErr) console.error("lines_money_snapshot failed:", lmErr.message);
+
       const fmt = cmd === "/revenue" ? formatGross : formatRevenue;
       reply = error || !snap
-        ? "⚠️ Couldn't read revenue right now."
-        : fmt(snap as Record<string, unknown>);
+        ? "\u26a0\ufe0f Couldn't read revenue right now."
+        : fmt(snap as Record<string, unknown>,
+              lmErr ? null : (lm as Record<string, unknown> | null));
+
       if (error) console.error("revenue_snapshot failed:", error.message);
 
-      // 🔴 SUBSCRIPTIONS ARE INVISIBLE TO `revenue_snapshot`. It reads
-      // `iap_receipts`, and a line purchase is written to `line_subscriptions`
-      // instead — so the only product that bills monthly reported exactly $0
-      // here. Appended as its own block rather than merged into the totals:
-      // "collected" and "recurring" answer different questions, and on this
-      // product they differ enormously (every subscriber so far cancelled
-      // auto-renew within 16 minutes of paying).
-      if (!error && snap) {
-        const { data: lm, error: lmErr } = await sb.rpc("lines_money_snapshot", {
-          p_window: PERIODS[arg],
-        });
-        // Destructured, and a failure SAYS SO rather than silently omitting the
-        // block — an absent section reads as "no subscriptions", which is the
-        // same confidently-wrong shape this command set is being cleaned up to
-        // remove.
-        if (lmErr) {
-          console.error("lines_money_snapshot failed:", lmErr.message);
-          reply += "\n\n📞 <b>Second numbers</b>\n⚠️ Couldn't read this — figure above EXCLUDES subscriptions.";
-        } else if (lm) {
-          reply += formatLinesMoney(lm as Record<string, unknown>);
-        }
+      // A failed read must SAY the total is short, never quietly omit
+      // subscriptions — an absent block reads as "no subscriptions", which is
+      // the same falsehood in a quieter costume.
+      if (!error && snap && lmErr) {
+        reply += "\n\n\u26a0\ufe0f <b>Subscriptions not included</b> \u2014 couldn't read them, " +
+                 "so the total above is LOW.";
+      } else if (!error && snap && lm) {
+        reply += formatLinesMoney(lm as Record<string, unknown>);
       }
     }
   } else if (cmd === "/orders") {

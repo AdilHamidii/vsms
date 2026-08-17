@@ -214,7 +214,10 @@ function periodLabel(s: RevenueSnapshot): string {
  *  USD" without converting. So the native amounts are always printed alongside,
  *  and any currency missing from FX_TO_USD is listed rather than folded in at
  *  1.0 — silently treating 149 SEK as $149 would overstate revenue by 10x. */
-export function formatGross(raw: Record<string, unknown>): string {
+export function formatGross(
+  raw: Record<string, unknown>,
+  linesRaw?: Record<string, unknown> | null,
+): string {
   const s = raw as RevenueSnapshot;
   const r = s.revenue ?? {};
 
@@ -230,15 +233,36 @@ export function formatGross(raw: Record<string, unknown>): string {
     else grossUsd += amount * rate;
   }
 
+  // 🔴 SUBSCRIPTION MONEY IS REVENUE AND BELONGS IN THE HEADLINE. It was shown
+  // only as a separate block below, which meant the big number at the top was
+  // still wrong — a $9.99 subscription is $9.99 taken, exactly like a credit
+  // pack, and a renewal is another $9.99. Counted per PAYMENT EVENT from the
+  // notification stream, so renewals accumulate.
+  const lm = (linesRaw ?? {}) as LinesMoney;
+  let subsUsd = 0;
+  for (const cur of lm.by_currency ?? []) {
+    const code = (cur.currency ?? "?").toUpperCase();
+    const amount = (cur.gross_milli ?? 0) / 1000;
+    const rate = FX_TO_USD[code];
+    if (rate == null) unconverted.push(`${esc(code)} ${amount.toFixed(2)}`);
+    else subsUsd += amount * rate;
+  }
+  const subPayments = lm.payments ?? 0;
+
   const purchases = r.purchases ?? 0;
-  if (purchases === 0) {
+  if (purchases === 0 && subPayments === 0) {
     return `💵 <b>Revenue — ${esc(periodLabel(s))}</b>\n\nNo purchases in this period.`;
   }
 
   const lines: string[] = [];
   lines.push(`💵 <b>Revenue — ${esc(periodLabel(s))}</b>`);
   lines.push("");
-  lines.push(`<b>${esc(usd(grossUsd))}</b> paid by customers`);
+  lines.push(`<b>${esc(usd(grossUsd + subsUsd))}</b> paid by customers`);
+  // The split, so the headline is auditable rather than asserted — and so
+  // "how much of this recurs" is answerable at a glance.
+  if (subPayments > 0) {
+    lines.push(`   ${esc(usd(grossUsd))} credits · ${esc(usd(subsUsd))} subscriptions`);
+  }
   lines.push("");
   lines.push(`${esc(purchases)} purchases · ${esc(r.buyers ?? 0)} buyers · ` +
              `${esc(r.credits ?? 0)} credits`);
@@ -258,7 +282,10 @@ export function formatGross(raw: Record<string, unknown>): string {
   return lines.join("\n");
 }
 
-export function formatRevenue(raw: Record<string, unknown>): string {
+export function formatRevenue(
+  raw: Record<string, unknown>,
+  linesRaw?: Record<string, unknown> | null,
+): string {
   const s = raw as RevenueSnapshot;
   const r = s.revenue ?? {};
   const c = s.cost ?? {};
@@ -276,24 +303,49 @@ export function formatRevenue(raw: Record<string, unknown>): string {
     else grossUsd += amount * rate;
   }
 
+  // Subscription payments are revenue too, and Apple takes its cut of them
+  // exactly as it does on a credit pack. Counted per PAYMENT EVENT, so a
+  // renewal adds — summing `line_subscriptions` would have counted one row per
+  // subscriber no matter how many times they renewed.
+  const lm = (linesRaw ?? {}) as LinesMoney;
+  let subsUsd = 0;
+  for (const cur of lm.by_currency ?? []) {
+    const code = (cur.currency ?? "?").toUpperCase();
+    const amount = (cur.gross_milli ?? 0) / 1000;
+    const rate = FX_TO_USD[code];
+    if (rate == null) unconverted.push(`${esc(code)} ${amount.toFixed(2)}`);
+    else subsUsd += amount * rate;
+  }
+  const subPayments = lm.payments ?? 0;
+
   const purchases = r.purchases ?? 0;
-  if (purchases === 0) {
+  if (purchases === 0 && subPayments === 0) {
     return `💵 <b>Revenue — ${esc(periodLabel(s))}</b>\n\nNo purchases in this period.`;
   }
 
-  const commission = grossUsd * APPLE_COMMISSION;
-  const net = grossUsd - commission;
+  const totalGross = grossUsd + subsUsd;
+  const commission = totalGross * APPLE_COMMISSION;
+  const net = totalGross - commission;
   const smsUsd = (c.sms_cents ?? 0) / 100;
   const esimUsd = (c.esim_cents ?? 0) / 100;
   const devUsd = (c.dev_cents ?? 0) / 100;
+  // Telnyx rent for the numbers we are holding. A RUN RATE — we cannot confirm
+  // from here what was actually charged — so it is shown but NOT subtracted
+  // from profit. Folding an unverified cost into a P&L is how a profit figure
+  // becomes something you cannot defend.
+  const rentUsd = (lm.rent_run_rate_cents ?? 0) / 100;
   const profit = net - smsUsd - esimUsd - devUsd;
-  const margin = grossUsd > 0 ? Math.round((profit / grossUsd) * 100) : 0;
+  const margin = totalGross > 0 ? Math.round((profit / totalGross) * 100) : 0;
 
   const lines: string[] = [];
   lines.push(`💵 <b>Revenue — ${esc(periodLabel(s))}</b>`);
   lines.push("");
   lines.push("<pre>");
-  lines.push(row("Gross", usd(grossUsd)));
+  lines.push(row("Gross", usd(totalGross)));
+  if (subPayments > 0) {
+    lines.push(row("  credits", usd(grossUsd)));
+    lines.push(row("  subscriptions", usd(subsUsd)));
+  }
   lines.push(row(`Apple (${Math.round(APPLE_COMMISSION * 100)}%)`, `-${usd(commission)}`));
   lines.push(esc("".padEnd(20) + "-----------"));
   lines.push(row("Net revenue", usd(net)));
@@ -304,6 +356,10 @@ export function formatRevenue(raw: Record<string, unknown>): string {
   lines.push(esc("".padEnd(20) + "-----------"));
   lines.push(row("PROFIT", usd(profit)));
   lines.push("</pre>");
+  if (rentUsd > 0) {
+    lines.push(`<i>Excludes Telnyx number rent, ~${esc(usd(rentUsd))}/mo — a run ` +
+               `rate we cannot confirm was charged, so it is not in the figure above.</i>`);
+  }
 
   lines.push(`${profit >= 0 ? "📈" : "📉"} <b>${esc(margin)}% margin</b> · ` +
              `${esc(purchases)} purchases · ${esc(r.buyers ?? 0)} buyers · ` +
@@ -345,7 +401,7 @@ export function formatDigest(raw: Record<string, unknown>): string {
   const placed = o.placed ?? 0;
 
   const lines: string[] = [];
-  lines.push(`📊 <b>Last ${esc(hours)}h</b>`);
+  lines.push(`📊 <b>${esc(windowWords(hours))}</b>`);
   lines.push("");
   lines.push(`👤 Signups: <b>${s.signups ?? 0}</b>`);
 
@@ -367,18 +423,33 @@ export function formatDigest(raw: Record<string, unknown>): string {
   lines.push("");
   if (placed > 0) {
     const settled = o.settled ?? 0;
-    lines.push(`📱 Numbers: <b>${placed}</b> got a number`);
+    lines.push(`📱 <b>Numbers</b> — ${placed} got a number`);
     // The rate is over SETTLED orders, never over every numbered one. A user
     // cancel measures impatience: cancels land at a median 57s while codes land
     // at a median 58s, and cancelled orders deliver ~1%. Denominator stated
     // explicitly so the figure cannot be read without its sample.
     if (settled > 0) {
-      lines.push(`   ✅ ${o.received ?? 0}/${settled} delivered (${o.pct ?? 0}%)` +
-                 ` <i>· cancels excluded</i>`);
+      // RECONCILE THE DENOMINATOR. "92 got a number" followed by "16/47" makes
+      // the reader hunt for where 47 came from, and the honest answer — that
+      // cancels and default-landed orders are excluded because neither measures
+      // delivery — is exactly what the line should say out loud.
+      lines.push(`   ✅ <b>${o.received ?? 0} of ${settled}</b> delivered ` +
+                 `(<b>${o.pct ?? 0}%</b>)`);
+      // ⚠️ NO SUBTRACTED COUNT HERE. `placed - settled` looks like it should
+      // equal the cancelled + app-picked lines below, and it does not: an order
+      // can be BOTH, so the categories overlap and the arithmetic visibly fails.
+      // Printing a number the reader can try to reconcile and can't is worse
+      // than the bare "16/47" this replaced. Name the reason, not a figure.
+      if (placed > settled) {
+        lines.push(`   <i>of ${placed} numbered — cancels and app-picked ` +
+                   `numbers aren't judged</i>`);
+      }
     } else {
       lines.push(`   ⏳ nothing settled yet — no rate to report`);
     }
-    if ((o.cancelled ?? 0) > 0) lines.push(`   ✖ ${o.cancelled} cancelled by the user`);
+    if ((o.cancelled ?? 0) > 0) {
+      lines.push(`   ✖ ${o.cancelled} cancelled by the user <i>(not counted)</i>`);
+    }
     if ((o.waiting ?? 0) > 0) lines.push(`   ⏳ ${o.waiting} still waiting`);
     // A delivery we made that is deliberately outside the rate.
     if ((o.rescued ?? 0) > 0) {
@@ -388,7 +459,8 @@ export function formatDigest(raw: Record<string, unknown>): string {
     // deliveroo/us number was used manually and the code arrived, so these are
     // not evidence about delivery at all — nobody ever submitted the number.
     if ((o.default_landed ?? 0) > 0) {
-      lines.push(`   ↩︎ ${o.default_landed} on our own pre-selection — not rated`);
+      lines.push(`   ↩︎ ${o.default_landed} the app picked for them ` +
+                 `<i>(never used — not counted)</i>`);
     }
 
     // Only worth the extra lines when providers actually differ — during and
@@ -396,6 +468,7 @@ export function formatDigest(raw: Record<string, unknown>): string {
     // one and describes neither.
     const rows = (o.by_provider ?? []).filter((r) => (r.placed ?? 0) > 0);
     if (rows.length > 1) {
+      lines.push(`   <i>by provider</i>`);
       for (const r of rows) {
         const st = r.settled ?? 0;
         lines.push(`   · ${esc(r.provider ?? "?")}: ` +
@@ -435,18 +508,20 @@ export function formatDigest(raw: Record<string, unknown>): string {
   // `free` is always shown when non-zero: 28 of the first 29 orders were the
   // free tier, so an order count alone reads as revenue when it is nearly all
   // cost. Same honesty rule as printing the FX rate next to /revenue.
+  lines.push("");
   const m = s.emails ?? {};
   const mailPlaced = m.placed ?? 0;
   const unprovisioned = m.unprovisioned ?? 0;
   if (mailPlaced > 0 || unprovisioned > 0) {
     const freeNote = (m.free ?? 0) > 0 ? ` · ${m.free} free` : "";
-    lines.push(`📧 E-mails: <b>${mailPlaced}</b> ordered${freeNote}`);
+    lines.push(`📧 <b>E-mails</b> — ${mailPlaced} ordered${freeNote}`);
     // Same cancel rule as Numbers. The e-mail line has a provider-enforced
     // 2-minute cancel floor, so a cancel here is still a user decision and not
     // a mailbox that failed to receive.
     const mailSettled = m.settled ?? 0;
     if (mailSettled > 0) {
-      lines.push(`   ✅ ${m.received ?? 0}/${mailSettled} delivered (${m.pct ?? 0}%)`);
+      lines.push(`   ✅ <b>${m.received ?? 0} of ${mailSettled}</b> delivered ` +
+                 `(<b>${m.pct ?? 0}%</b>)`);
     } else if (mailPlaced > 0) {
       lines.push(`   ⏳ nothing settled yet — no rate to report`);
     }
@@ -462,13 +537,17 @@ export function formatDigest(raw: Record<string, unknown>): string {
   }
 
   const e = s.esims ?? {};
-  lines.push(`🌍 eSIMs: <b>${e.count ?? 0}</b>${(e.count ?? 0) > 0 ? ` · ${e.credits} credits` : ""}`);
+  if ((e.count ?? 0) > 0) {
+    lines.push("");
+    lines.push(`🌍 <b>eSIMs</b> — ${e.count} sold · ${e.credits} credits`);
+  }
 
   lines.push("");
   // HeroSMS first — it serves SMS for the services carrying 99.4% of volume.
   // SMSPVA and SMSPool are gone from this block on purpose: SMSPVA no longer
   // serves anything and eSIMs are paused, so their balances were two lines of
   // noise on the one channel that has to stay readable.
+  lines.push("<b>Float</b>");
   lines.push(balanceLine("5sim", s.fivesim_usd));
   lines.push(balanceLine("HeroSMS", s.herosms_usd));
 
@@ -918,7 +997,13 @@ export function formatSubs(raw: Record<string, unknown>): string {
 
 interface LinesMoney {
   by_currency?: CurrencyRow[];
-  purchases?: number;
+  /** Paid events in the window: first charges PLUS renewals. Derived from the
+   *  notification stream, never from `line_subscriptions` — that table holds
+   *  one row per subscription, so a renewal updates it instead of adding, and
+   *  summing it would silently drop the entire renewal history. */
+  payments?: number;
+  first_buys?: number;
+  renewals?: number;
   trials?: number;
   active?: number;
   renewing?: number;
@@ -940,29 +1025,21 @@ export function formatLinesMoney(raw: Record<string, unknown>): string {
   const s = raw as LinesMoney;
   const active = s.active ?? 0;
   const trials = s.trials ?? 0;
-  const purchases = s.purchases ?? 0;
+  const payments = s.payments ?? 0;
   const numbers = s.numbers_live ?? 0;
 
-  if (active === 0 && purchases === 0 && numbers === 0) {
+  if (active === 0 && payments === 0 && numbers === 0) {
     return "\n\n📞 <b>Second numbers</b>\nNothing sold yet.";
   }
 
-  let gross = 0;
-  const unconverted: string[] = [];
-  for (const row of s.by_currency ?? []) {
-    const code = (row.currency ?? "?").toUpperCase();
-    const amount = (row.gross_milli ?? 0) / 1000;
-    const rate = FX_TO_USD[code];
-    if (rate == null) unconverted.push(`${esc(code)} ${amount.toFixed(2)}`);
-    else gross += amount * rate;
-  }
-
+  // The MONEY is already in the headline total above. This block answers the
+  // question the headline cannot: how much of it recurs, and what it costs to
+  // keep the numbers alive.
   const out = ["", "", "📞 <b>Second numbers</b>"];
-  out.push(
-    `Collected: <b>$${gross.toFixed(2)}</b> from ${purchases} purchase${purchases === 1 ? "" : "s"}`,
-  );
-  if (unconverted.length) {
-    out.push(`   <i>not converted: ${unconverted.join(" · ")}</i>`);
+  const firsts = s.first_buys ?? 0;
+  const renewals = s.renewals ?? 0;
+  if (payments > 0) {
+    out.push(`Payments: <b>${payments}</b> — ${firsts} new · ${renewals} renewal${renewals === 1 ? "" : "s"}`);
   }
 
   // The number the owner actually needs. A subscription that will not renew is
@@ -994,4 +1071,19 @@ export function formatLinesMoney(raw: Record<string, unknown>): string {
     );
   }
   return out.join("\n");
+}
+
+/** "Last 7 days", not "Last 168h".
+ *
+ *  The digest led with a raw hour count, so the first thing the reader had to
+ *  do was arithmetic — and 168h/720h are exactly the windows nobody converts in
+ *  their head. The snapshot still carries hours; only the label changes. */
+function windowWords(hours: number): string {
+  if (hours < 1) return "Last hour";
+  if (hours < 24) return `Last ${Math.round(hours)} hours`;
+  const days = Math.round(hours / 24);
+  if (days === 1) return "Last 24 hours";
+  if (days === 7) return "Last 7 days";
+  if (days === 30 || days === 31) return "Last 30 days";
+  return `Last ${days} days`;
 }
