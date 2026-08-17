@@ -24,29 +24,47 @@ import { admin } from "../_shared/supabaseAdmin.ts";
 import {
   sendMessage, ownerChatId, esc, sendMessageWithId, answerCallback,
 } from "../_shared/telegram.ts";
-import { formatDigest, formatRevenue, formatGross, balanceLine, formatOrders } from "../_shared/opsFormat.ts";
+import {
+  formatDigest, formatRevenue, formatGross, formatLinesMoney, balanceLine,
+  formatOrders,
+  formatFunnel, formatDelivery, formatSubs,
+} from "../_shared/opsFormat.ts";
 // Support replies push to the user's device. Imported explicitly for the reason
 // in the note above — a free identifier here bundles fine and throws at runtime.
 import { sendPush } from "../_shared/apns.ts";
 
 const HELP = [
-  "🤖 <b>vSMS ops</b>",
+  "🤖 <b>vSMS ops</b> — /help",
   "",
+  "<b>Activity</b>",
   "/stats — last 6 hours",
   "/today — last 24 hours",
   "/week — last 7 days",
+  "/funnel — signup → order → code → purchase, per day",
+  "     <i>[7d|14d|30d]</i> · default: 7d",
   "/orders — every order, one line each, with its route",
   "     <i>[24h|7d|30d|90d|all]</i> · default: 24h",
+  "",
+  "<b>Health</b>",
+  "/delivery — per-provider delivery, cancels and refusals",
+  "     <i>[24h|7d|30d]</i> · default: 7d",
   "/balance — provider balances + watchdog",
+  "",
+  "<b>Money</b>",
   "/revenue — money customers actually paid (USD)",
   "/profit — revenue minus Apple's cut and wholesale",
   "     <i>[24h|7d|30d|90d|all]</i> · default: all",
+  "/subs — second-number subscriptions, lines and MRR",
   "",
+  "<b>Controls</b>",
   "/announce <i>message</i> — banner on Home for everyone",
   "     <code>/announce warn …</code> amber · <code>/announce off</code> clears",
   "     <code>/announce</code> alone shows what is live",
   "/esim <i>on|off</i> — put eSIMs on or off sale",
   "/lines <i>on|off</i> — put second numbers on or off sale",
+  "",
+  "<i>Every delivery rate here excludes user cancels and the app's own " +
+    "pre-selection. Purchases are Production receipts only.</i>",
 ].join("\n");
 
 /** Announcement ceiling. The banner is two or three lines on a phone; anything
@@ -67,6 +85,24 @@ const PERIODS: Record<string, string | null> = {
   "7d": "7 days", "week": "7 days",
   "30d": "30 days", "month": "30 days",
   "90d": "90 days", "quarter": "90 days",
+};
+
+/** `/funnel` accepts only DAY windows, because it prints one row per day: a
+ *  "24h" funnel would be a single line and "all" would be a wall of them. */
+const FUNNEL_PERIODS: Record<string, string> = {
+  "": "7 days", "7d": "7 days", "week": "7 days",
+  "14d": "14 days", "2w": "14 days",
+  "30d": "30 days", "month": "30 days",
+};
+
+/** `/delivery` windows. 24h is offered because a provider outage has to be
+ *  visible the same day; 30d is the longest window over which a rate here is
+ *  still about the provider currently serving the route (providers have changed
+ *  four times, and evidence does not carry across a switch). */
+const DELIVERY_PERIODS: Record<string, string> = {
+  "": "7 days", "24h": "24 hours", "today": "24 hours", "day": "24 hours",
+  "7d": "7 days", "week": "7 days",
+  "30d": "30 days", "month": "30 days",
 };
 
 Deno.serve(async (req) => {
@@ -140,7 +176,21 @@ Deno.serve(async (req) => {
   const arg = (parts[1] ?? "").replace(/^[-/]+/, "");     // tolerate "-7d" / "/7d"
 
   const sb = admin();
-  let reply = HELP;
+
+  // The FALLBACK is a pointer, not the whole help text. Answering a typo with
+  // 30 lines buries the typo, and answering plain prose with a command list
+  // does not explain why the message went nowhere — which, for the owner
+  // half-way through a support conversation, is the thing they need to know.
+  let reply: string;
+  if (cmd === "" || cmd === "/help" || cmd === "/start") {
+    reply = HELP;
+  } else if (!cmd.startsWith("/")) {
+    reply = "❓ Not a command — and no support conversation is assigned, so " +
+            "this went nowhere.\n\nPress [✅ Accept] on a thread first, or " +
+            "reply directly to a relayed message.\n\n/help for the commands.";
+  } else {
+    reply = `❓ Unknown command <b>${esc(cmd)}</b>.\n\nTry /help`;
+  }
 
   if (cmd === "/revenue" || cmd === "/profit") {
     if (!Object.hasOwn(PERIODS, arg)) {
@@ -164,6 +214,29 @@ Deno.serve(async (req) => {
         ? "⚠️ Couldn't read revenue right now."
         : fmt(snap as Record<string, unknown>);
       if (error) console.error("revenue_snapshot failed:", error.message);
+
+      // 🔴 SUBSCRIPTIONS ARE INVISIBLE TO `revenue_snapshot`. It reads
+      // `iap_receipts`, and a line purchase is written to `line_subscriptions`
+      // instead — so the only product that bills monthly reported exactly $0
+      // here. Appended as its own block rather than merged into the totals:
+      // "collected" and "recurring" answer different questions, and on this
+      // product they differ enormously (every subscriber so far cancelled
+      // auto-renew within 16 minutes of paying).
+      if (!error && snap) {
+        const { data: lm, error: lmErr } = await sb.rpc("lines_money_snapshot", {
+          p_window: PERIODS[arg],
+        });
+        // Destructured, and a failure SAYS SO rather than silently omitting the
+        // block — an absent section reads as "no subscriptions", which is the
+        // same confidently-wrong shape this command set is being cleaned up to
+        // remove.
+        if (lmErr) {
+          console.error("lines_money_snapshot failed:", lmErr.message);
+          reply += "\n\n📞 <b>Second numbers</b>\n⚠️ Couldn't read this — figure above EXCLUDES subscriptions.";
+        } else if (lm) {
+          reply += formatLinesMoney(lm as Record<string, unknown>);
+        }
+      }
     }
   } else if (cmd === "/orders") {
     // Same period vocabulary as /revenue, with two deliberate differences:
@@ -193,6 +266,44 @@ Deno.serve(async (req) => {
     reply = error || !snap
       ? "⚠️ Couldn't read stats right now."
       : formatDigest(snap as Record<string, unknown>);
+  } else if (cmd === "/funnel") {
+    // Object.hasOwn, not `in` and not truthiness — same reasoning as PERIODS:
+    // `in` walks the prototype chain, so `/funnel constructor` would hand
+    // Object's constructor to the RPC as an interval.
+    if (!Object.hasOwn(FUNNEL_PERIODS, arg)) {
+      reply = `Unknown period <b>${esc(arg)}</b>.\n\n` +
+              `Try: <code>/funnel</code> (7d), or ` +
+              `<code>14d</code> · <code>30d</code>`;
+    } else {
+      const { data: snap, error } = await sb.rpc("ops_funnel", {
+        p_window: FUNNEL_PERIODS[arg],
+      });
+      reply = error || !snap
+        ? "⚠️ Couldn't read the funnel right now."
+        : formatFunnel(snap as Record<string, unknown>);
+      if (error) console.error("ops_funnel failed:", error.message);
+    }
+  } else if (cmd === "/delivery") {
+    if (!Object.hasOwn(DELIVERY_PERIODS, arg)) {
+      reply = `Unknown period <b>${esc(arg)}</b>.\n\n` +
+              `Try: <code>/delivery</code> (7d), or ` +
+              `<code>24h</code> · <code>30d</code>`;
+    } else {
+      const window = DELIVERY_PERIODS[arg];
+      const { data: snap, error } = await sb.rpc("ops_delivery", { p_window: window });
+      reply = error || !snap
+        ? "⚠️ Couldn't read delivery right now."
+        : formatDelivery(snap as Record<string, unknown>, arg === "" ? "7d" : arg);
+      if (error) console.error("ops_delivery failed:", error.message);
+    }
+  } else if (cmd === "/subs") {
+    // No period: subscription and line STATE is a right-now question, and the
+    // notification block inside carries its own fixed 7-day window.
+    const { data: snap, error } = await sb.rpc("ops_subs");
+    reply = error || !snap
+      ? "⚠️ Couldn't read subscriptions right now."
+      : formatSubs(snap as Record<string, unknown>);
+    if (error) console.error("ops_subs failed:", error.message);
   } else if (cmd === "/balance") {
     // BOTH providers. Reporting only SMSPool here survived the 2026-07-20
     // migration and became actively misleading: it alarmed about the provider
@@ -200,7 +311,13 @@ Deno.serve(async (req) => {
     // (SMSPVA) was not shown at all.
     const { data: rows } = await sb
       .from("app_config").select("key, value")
-      .in("key", ["5sim_health", "herosms_health"]);
+      .in("key", ["5sim_health", "herosms_health", "esimaccess_health",
+                  // 🔴 TELNYX WAS MISSING, and it is the float for the product
+                  // that costs money PER SUBSCRIBER PER MONTH. `/balance` is
+                  // the is-everything-alive reflex, and the one balance that
+                  // can strand a paying subscriber's number was not on it —
+                  // even though `ROLE` already had a label ready for it.
+                  "telnyx_health"]);
 
     const read = (k: string) => {
       const v = (rows ?? []).find((r) => r.key === k)?.value as
@@ -215,16 +332,28 @@ Deno.serve(async (req) => {
     const FRESH_MS = 10 * 60 * 1000;
     const fresh = (v: { checked_at?: string } | null) =>
       !!v?.checked_at && Date.now() - new Date(v.checked_at).getTime() <= FRESH_MS;
-    // Only the two balances that still fund something: 5sim buys every SMS,
-    // HeroSMS funds the temp-EMAIL line on its own account. SMSPVA serves
-    // nothing now and eSIMs are paused, so printing those two was noise on the
-    // one channel that has to stay readable at a glance.
+    // Only balances that fund something: 5sim buys every SMS, HeroSMS funds
+    // the temp-EMAIL line, eSIM Access funds the eSIM line (added 2026-08-10 —
+    // while the line is paused this reading is how the owner watches the $50
+    // deposit land, which is exactly when it must be visible). SMSPVA serves
+    // nothing now, so printing it was noise on the one channel that has to
+    // stay readable at a glance.
     const fiveRaw = read("5sim_health");
     const heroRaw = read("herosms_health");
+    const eaRaw = read("esimaccess_health");
+    // Telnyx funds the SECOND-NUMBER line: $1 up front plus $1/month per
+    // subscriber, carried ~45 days ahead of Apple's payout. It was absent here
+    // while being the only float that can strand a PAYING subscriber's number,
+    // and `ROLE` already had a label waiting for it.
+    const tnxRaw = read("telnyx_health");
     const five = fresh(fiveRaw) ? fiveRaw : null;
     const hero = fresh(heroRaw) ? heroRaw : null;
-    const checked = fiveRaw?.checked_at ?? heroRaw?.checked_at;
-    const stalePoller = (fiveRaw || heroRaw) && !five && !hero;
+    const ea = fresh(eaRaw) ? eaRaw : null;
+    const tnx = fresh(tnxRaw) ? tnxRaw : null;
+    const checked = fiveRaw?.checked_at ?? heroRaw?.checked_at ?? eaRaw?.checked_at
+      ?? tnxRaw?.checked_at;
+    const stalePoller = (fiveRaw || heroRaw || eaRaw || tnxRaw)
+      && !five && !hero && !ea && !tnx;
 
     // Surface the watchdog verdict here too — /balance is the owner's "is
     // everything alive" reflex, so it should answer for the jobs as well.
@@ -243,6 +372,8 @@ Deno.serve(async (req) => {
       // volume, so it is the number that answers "can we sell right now".
       balanceLine("5sim", five?.balance_usd),
       balanceLine("HeroSMS", hero?.balance_usd),
+      balanceLine("esimaccess", ea?.balance_usd),
+      balanceLine("Telnyx", tnx?.balance_usd),
       stalePoller ? "⚠️ balance readings are STALE — the poller may be dead" : "",
       failing.length > 0
         ? `🚨 watchdog: ${esc(failing.join(", "))}`

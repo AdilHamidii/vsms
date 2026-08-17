@@ -91,10 +91,13 @@ const ROLE: Record<string, string> = {
   // its reading is still load-bearing, just for a different product.
   "5sim": "SMS",
   herosms: "e-mail",
-  // Shown by /delivery only, never in the digest: SMSPVA still owns the routes
-  // we keep as the rollback target, so its float decides whether a rollback is
-  // even possible.
-  smspva: "SMS rollback",
+  // RETIRED 2026-08-17 — it took 7 orders in 14 days and reserved ZERO
+  // numbers, so every order routed to it was a charge-and-refund. Its 5,099
+  // routes are hidden, its crons are unscheduled and `providerOrder()` no
+  // longer returns it. Kept in this map ONLY so historical rows in `/delivery`
+  // and `/orders` still render with a name rather than a bare code — labelled
+  // "retired" so a figure from before the cutover is never read as live.
+  smspva: "retired",
   // Rent for the second-number line. $1 up front + $1/month per subscriber,
   // paid ~45 days ahead of Apple's payout, so this is a float number.
   telnyx: "second numbers",
@@ -898,4 +901,97 @@ export function formatSubs(raw: Record<string, unknown>): string {
   }
 
   return lines.join("\n");
+}
+
+// ── Second-number line money ───────────────────────────────────────────────
+//
+// 🔴 `/revenue` AND `/profit` REPORT $0 FOR THIS PRODUCT AND ALWAYS HAVE.
+// Subscription purchases land in `line_subscriptions` and never in
+// `iap_receipts`, and `revenue_snapshot` reads only the latter — so the one
+// thing that bills monthly is invisible in the money commands. Verified
+// 2026-08-17: zero `iap_receipts` rows for a line product, against $19.98
+// actually collected.
+//
+// Rendered as its own block rather than folded into the totals, because
+// subscription revenue and credit-pack revenue answer different questions and
+// merging them would hide the number that matters here: how much RECURS.
+
+interface LinesMoney {
+  by_currency?: CurrencyRow[];
+  purchases?: number;
+  trials?: number;
+  active?: number;
+  renewing?: number;
+  mrr_milli?: number;
+  mrr_currency?: string | null;
+  numbers_live?: number;
+  rent_run_rate_cents?: number;
+  credit_rented?: number;
+}
+
+/** The line's money, appended to `/revenue` and `/profit`.
+ *
+ *  ⚠️ COLLECTED AND RECURRING ARE REPORTED SEPARATELY, and that separation is
+ *  the whole point. Every subscriber so far switched auto-renew off within 16
+ *  minutes of paying, so "collected $19.98" without "renews: $0" would be true
+ *  and badly misleading — the exact class of confidently-wrong figure these
+ *  commands are being cleaned up to remove. */
+export function formatLinesMoney(raw: Record<string, unknown>): string {
+  const s = raw as LinesMoney;
+  const active = s.active ?? 0;
+  const trials = s.trials ?? 0;
+  const purchases = s.purchases ?? 0;
+  const numbers = s.numbers_live ?? 0;
+
+  if (active === 0 && purchases === 0 && numbers === 0) {
+    return "\n\n📞 <b>Second numbers</b>\nNothing sold yet.";
+  }
+
+  let gross = 0;
+  const unconverted: string[] = [];
+  for (const row of s.by_currency ?? []) {
+    const code = (row.currency ?? "?").toUpperCase();
+    const amount = (row.gross_milli ?? 0) / 1000;
+    const rate = FX_TO_USD[code];
+    if (rate == null) unconverted.push(`${esc(code)} ${amount.toFixed(2)}`);
+    else gross += amount * rate;
+  }
+
+  const out = ["", "", "📞 <b>Second numbers</b>"];
+  out.push(
+    `Collected: <b>$${gross.toFixed(2)}</b> from ${purchases} purchase${purchases === 1 ? "" : "s"}`,
+  );
+  if (unconverted.length) {
+    out.push(`   <i>not converted: ${unconverted.join(" · ")}</i>`);
+  }
+
+  // The number the owner actually needs. A subscription that will not renew is
+  // a one-off sale wearing a subscription's clothes.
+  const mrr = (s.mrr_milli ?? 0) / 1000;
+  const renewing = s.renewing ?? 0;
+  if (renewing === 0) {
+    out.push(
+      `Recurring: <b>$0.00</b> — none of the ${active} active sub${active === 1 ? "" : "s"} will renew`,
+    );
+  } else {
+    const cur = (s.mrr_currency ?? "USD").toUpperCase();
+    const rate = FX_TO_USD[cur] ?? 1;
+    out.push(`Recurring: <b>$${(mrr * rate).toFixed(2)}/mo</b> from ${renewing} renewing`);
+  }
+  if (trials > 0) {
+    out.push(`   <i>${trials} free trial${trials === 1 ? "" : "s"} — paid nothing</i>`);
+  }
+
+  // Cost, stated as a RUN RATE. We hold this float ~45 days ahead of Apple's
+  // payout and cannot verify from here what Telnyx actually charged — so it is
+  // never folded into a profit figure, only shown beside it.
+  const rent = (s.rent_run_rate_cents ?? 0) / 100;
+  if (numbers > 0) {
+    const credit = s.credit_rented ?? 0;
+    const suffix = credit > 0 ? ` (${credit} rented with credits)` : "";
+    out.push(
+      `Numbers live: <b>${numbers}</b>${suffix} · rent <b>$${rent.toFixed(2)}/mo</b>`,
+    );
+  }
+  return out.join("\n");
 }
