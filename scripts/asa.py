@@ -373,7 +373,16 @@ NEGATIVES = [
     "hack", "spoof", "prank", "prank call", "fake call",
     "call recorder", "ringtone", "caller id", "reverse lookup",
     "phone number lookup", "number tracker", "track phone",
-    # navigational — the searcher wants that app, not ours
+]
+
+# Navigational brand searches, blocked as EXACT ONLY — never broad.
+#
+# A BROAD negative on "whatsapp" would also block "whatsapp verification
+# number", which is the single highest-intent query this product has; broad
+# "google voice" would block "google voice alternative", which is a user
+# actively shopping for what we sell. Exact blocks the bare navigational
+# search (the person opening WhatsApp) and keeps every qualified variant.
+NEGATIVES_EXACT = [
     "textnow", "google voice", "whatsapp", "telegram", "hushed", "burner app",
 ]
 
@@ -508,11 +517,186 @@ def cmd_budget(campaign, amount):
     print(f"HTTP {code}" + ("" if code == 200 else f" {json.dumps(res)[:300]}"))
 
 
+# ------------------------------------------------------- the live US campaign
+# These are the account's real ids (org 22495890). The US campaign already
+# exists with 30 days of history, so we EDIT it rather than building a new one:
+# a new campaign throws away Apple's bid learning and every keyword's record.
+
+US_CAMPAIGN = "2144317663"           # "vSMS EN" — becomes US-only
+US_ADGROUP = "2149912993"            # "vSMS EN main"
+EU_CAMPAIGN = "2144209783"           # paused by `consolidate`
+
+# Measured 2026-08-17 over 30 days. An install is worth $1.15 (= EUR 1.06):
+# $232.59 net / 14 buyers, 6.9% of signups buy.
+BREAKEVEN_CPA = 1.06
+
+# THE BID RULE, and it is the whole optimisation:
+#
+#     bid = BREAKEVEN_CPA x (installs / taps)
+#
+# A tap is only worth what it converts. Bidding one number across keywords
+# that convert at 36% and 52% overpays for the first and starves the second —
+# which is exactly what this account was doing, and why `sms virtual` (70% of
+# all taps, 36.5% CR) sat at CPA 1.61 while `throwaway number` at 50% CR was
+# left at a 0.28 bid it could not win volume with.
+BID_FLOOR, BID_CEIL = 0.30, 0.70
+
+# The CPA goal handed to Apple's automated bidder. Deliberately a shade BELOW
+# breakeven (1.06): a goal is a target the optimiser scatters around, not a
+# cap, so aiming exactly at breakeven leaves about half the installs above it.
+# The US ran at 1.45 for the last 30 days, so this is a real ~31% cut and will
+# cost some volume. That is the trade being made on purpose — it is one number
+# and trivially raised if delivery collapses.
+CPA_GOAL = 1.00
+
+# Observed conversion per keyword; None = no data yet, use the US average.
+US_AVG_CR = 0.427
+# (conversion rate, actual CPA in EUR, taps) measured 2026-07-18..08-17.
+#
+# CPA is the decision variable, NOT the conversion rate: `text verification`
+# converts at 50% and still lost money at 1.35, because a high conversion rate
+# on an expensive tap is still an expensive install.
+OBSERVED = {
+    "sms virtual":      (0.365, 1.61, 96),   # 70% of all taps — the money leak
+    "temp number":      (0.524, 1.00, 21),   # the one clear winner
+    "temp sms":         (0.455, 1.36, 11),
+    "sms verification": (0.333, 1.41, 3),
+    "text verification":(0.500, 1.35, 2),
+    "throwaway number": (0.500, 0.57, 2),    # cheapest in the account, n=2
+    "receive sms":      (None,  None, 2),    # 0 installs — too small to judge
+}
+OBSERVED_CR = {k: v[0] for k, v in OBSERVED.items()}
+
+# Absent from the account entirely. Seven keywords is not a campaign; this is
+# where the volume comes from, priced at the US average until each earns a rate.
+NEW_KEYWORDS = [
+    "temporary phone number", "temp phone number", "temporary number",
+    "disposable phone number", "burner number", "burner phone number",
+    "second phone number", "virtual phone number", "virtual number",
+    "receive sms online", "sms verification number", "otp number",
+    "verification code app", "phone number for verification",
+    "temporary sms", "temporary phone", "fake phone number",
+    "temp mail", "temporary email", "disposable email",
+]
+
+
+def bid_for(cr):
+    """Breakeven bid for a keyword converting at `cr`, clamped."""
+    return f"{max(BID_FLOOR, min(BID_CEIL, BREAKEVEN_CPA * (cr or US_AVG_CR))):.2f}"
+
+
+def cmd_optimize_us():
+    """US-only, EUR 20/day, per-keyword breakeven bids, plus the missing keywords.
+
+    Order matters: geo and budget first (they bound the spend), then bids, then
+    new keywords. If the run dies half way the campaign is already narrowed and
+    capped rather than broadened and uncapped.
+    """
+    print(f"campaign {US_CAMPAIGN} 'vSMS EN' -> US only, "
+          f"{DAILY_BUDGET} {CURRENCY}/day")
+    print(f"  (US spent ~5 {CURRENCY}/day over the last 30 days, so the cap is")
+    print("   a guard rail, not the constraint. Delivery is bid-limited.)")
+    print(f"pause    {EU_CAMPAIGN} 'vSMS EU'")
+    print(f"adgroup  {US_ADGROUP}: clear endTime (was 2026-08-19 — the ad group")
+    print("         was about to expire and take the campaign dark)")
+    print("  NOTE bidding is MAX_CONVERSIONS: Apple owns the bid, so neither")
+    print("  per-keyword bids nor a cpaGoal can be set. Keywords are the lever.")
+    print("\nmeasured 30d record (US) — the input to the keyword rewrite:")
+    print(f"  {'keyword':<20}{'taps':>5}{'cr':>7}{'CPA':>7}   verdict "
+          f"(breakeven {BREAKEVEN_CPA})")
+    for k, (cr, cpa, taps) in sorted(OBSERVED.items(),
+                                     key=lambda kv: -(kv[1][2] or 0)):
+        if cpa is None:
+            v = "no installs — too few taps to judge"
+        elif cpa <= BREAKEVEN_CPA:
+            v = "KEEP — profitable"
+        elif taps >= 10:
+            v = f"CUT — {cpa/BREAKEVEN_CPA:.1f}x breakeven on real volume"
+        else:
+            v = "watch — over breakeven but tiny sample"
+        print(f"  {k:<20}{taps:>5}{'n/a' if cr is None else f'{cr*100:.0f}%':>7}"
+              f"{'n/a' if cpa is None else f'{cpa:.2f}':>7}   {v}")
+    if not _confirm("would edit 1 campaign, pause 1, and retarget 1 ad group"):
+        return
+
+    tok = access_token()
+    org = org_id(tok)
+
+    # 1. narrow + cap FIRST
+    code, res = call("PUT", f"/campaigns/{US_CAMPAIGN}", tok, org, body={
+        "campaign": {"countriesOrRegions": ["US"],
+                     "dailyBudgetAmount": _eur(DAILY_BUDGET)},
+        # MUST be false unless the campaign actually has geo (city/region)
+        # targeting to discard. Opting in without it is a 400:
+        # OPT_IN_INVALID_FOR_CLEAR_GEO_TARGETING_ON_COUNTRY_OR_REGION_CHANGE.
+        "clearGeoTargetingOnCountryOrRegionChange": False})
+    print(f"US-only + budget -> HTTP {code}"
+          + ("" if code == 200 else f" {json.dumps(res)[:300]}"))
+
+    # 2. one active campaign
+    code, res = call("PUT", f"/campaigns/{EU_CAMPAIGN}", tok, org,
+                     body={"campaign": {"status": "PAUSED"}})
+    print(f"pause vSMS EU    -> HTTP {code}")
+
+    # 3. rebid what already has a record
+    code, data = call(
+        "GET", f"/campaigns/{US_CAMPAIGN}/adgroups/{US_ADGROUP}"
+               "/targetingkeywords?limit=1000", tok, org)
+    live = {k.get("text"): k for k in (data.get("data") or [])} if code == 200 else {}
+    # 3. The ad group runs Apple's automated bidding (biddingStrategy
+    #    MAX_CONVERSIONS), so defaultBidAmount is 0 and PER-KEYWORD BIDS ARE
+    #    IGNORED — a bulk bid PUT returns HTTP 200 and changes nothing, which
+    #    is how it silently looked like it had worked. Under MAX_CONVERSIONS
+    #    the only lever is cpaGoal, so the economics go there instead.
+    #
+    #    endTime is the other half, and it is the urgent one: this ad group was
+    #    set to stop on 2026-08-19. An expired ad group is exactly what took
+    #    vSMS EU to NO_AVAILABLE_AD_GROUPS — the campaign stays ENABLED and
+    #    simply stops serving, with nothing anywhere reporting a problem.
+    #    cpaGoal is NOT a lever either: "cpaGoal must be null for adgroups
+    #    under Max Conversions Campaign" (HTTP 400). So under MAX_CONVERSIONS
+    #    Apple owns the bid completely, and the ONLY things that move CPA are
+    #    the daily budget, the geo, and which keywords and negatives exist.
+    #    That is why the keyword set is the whole optimisation here — there is
+    #    no bid knob to turn. Regaining one means switching the campaign to
+    #    FIXED_BID, which discards Apple's learning and is an owner decision.
+    code, res = call("PUT", f"/campaigns/{US_CAMPAIGN}/adgroups/{US_ADGROUP}",
+                     tok, org, body={"endTime": None})
+    print(f"  endTime cleared -> HTTP {code}"
+          + ("" if code == 200 else f" {json.dumps(res)[:300]}"))
+
+    # 4. broaden — this is what actually grows volume.
+    # --no-keywords stops here: geo, budget and bids are derived from THIS
+    # account's own numbers, but which keywords to add is a research question
+    # and is better answered with real keyword-volume data than by my guess.
+    if "--no-keywords" in sys.argv:
+        print("\n--no-keywords: skipped adding keywords and negatives.")
+        print("Structure and bids are applied; the keyword set is untouched.")
+        return
+    fresh = [t for t in NEW_KEYWORDS if t not in live]
+    if fresh:
+        code, res = call(
+            "POST", f"/campaigns/{US_CAMPAIGN}/adgroups/{US_ADGROUP}"
+                    "/targetingkeywords/bulk", tok, org,
+            body=[{"text": t, "matchType": "EXACT", "bidAmount": _eur(bid_for(None))}
+                  for t in fresh])
+        print(f"  +{len(fresh)} keywords -> HTTP {code}"
+              + ("" if code in (200, 201) else f" {json.dumps(res)[:300]}"))
+
+    # 5. protect conversion
+    code, res = call(
+        "POST", f"/campaigns/{US_CAMPAIGN}/negativekeywords/bulk", tok, org,
+        body=[{"text": t, "matchType": "BROAD"} for t in NEGATIVES]
+             + [{"text": t, "matchType": "EXACT"} for t in NEGATIVES_EXACT])
+    print(f"  negatives -> HTTP {code}")
+    print("\ndone. Re-check in 7 days: ./scripts/asa.py report 7")
+
+
 COMMANDS = {
     "doctor": cmd_doctor, "acls": cmd_acls, "campaigns": cmd_campaigns,
     "adgroups": cmd_adgroups, "keywords": cmd_keywords, "report": cmd_report,
     "consolidate": cmd_consolidate, "create-us": cmd_create_us,
-    "budget": cmd_budget,
+    "budget": cmd_budget, "optimize-us": cmd_optimize_us,
 }
 
 
