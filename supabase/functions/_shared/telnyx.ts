@@ -166,12 +166,23 @@ export function faultOf<T>(v: T | TelnyxFault): v is TelnyxFault {
 export function classifyTelnyxFault(status: number, code?: string): ProviderErrorType {
   if (status === 401 || status === 403) return "AUTH_ERROR";
   if (status === 429) return "RATE_LIMITED";
+  if (status === 402) return "BALANCE_ERROR";
+  // 🔴 A MALFORMED REQUEST IS OUR BUG AND MUST NEVER READ AS A STOCKOUT.
+  // Telnyx reuses code 10015 for plain validation failures, not only for "no
+  // coverage found" — so the `user_name` defect fixed below surfaced to users
+  // as OUT_OF_STOCK, i.e. "no numbers available, try another country", for a
+  // fault that had nothing to do with stock and that no user action could
+  // clear. Observed live in `app_config.telnyx_voice_faults` on 2026-08-17.
+  //
+  // This guard comes BEFORE the code check deliberately: 400 and 422 mean the
+  // request was rejected before Telnyx ever looked at inventory, so stock
+  // cannot be the answer whatever the code says.
+  if (status === 400 || status === 422) return "TRANSPORT_ERROR";
   // 10015 is "No coverage found ... based on the provided search parameters",
   // observed live for every country Telnyx does not sell SMS+voice in.
   if (code === "10015") return "OUT_OF_STOCK";
   // 40310 "Invalid 'to' address" and 40331 "Missing whitelisted destinations"
   // are our bugs, not stock problems — never let them read as a stockout.
-  if (status === 402) return "BALANCE_ERROR";
   return "TRANSPORT_ERROR";
 }
 
@@ -476,15 +487,55 @@ export async function sendMessage(opts: {
 // the edge layer down. That is precisely the scenario `run_watchdog` is written
 // in pure SQL to survive.
 
+/// 🔴 `user_name` IS A SIP USERNAME, NOT A LABEL — and passing our readable
+/// connection name there made calling IMPOSSIBLE for every subscriber from the
+/// day the feature shipped.
+///
+/// Telnyx requires it to be **4–32 characters, alphanumeric only**, with at
+/// least one letter among the first five. We sent `vsms-<line-uuid>`: 41
+/// characters AND hyphenated, so `POST /credential_connections` returned a
+/// validation error on every single call. No line ever received a connection, a
+/// credential or a voice attach — all five sold showed null across
+/// `provider_connection_id`, `provider_credential_id` and
+/// `provider_voice_attached` — so outbound AND inbound calling were unreachable
+/// by construction while the paywall advertised them.
+///
+/// Recorded live in `app_config.telnyx_voice_faults` at 2026-08-17T00:31:39Z:
+/// "Must contain only letters and numbers; no spacing allowed" — one minute
+/// after a paying subscriber's fifth failed dial, four minutes before they
+/// cancelled.
+///
+/// `connection_name` is a display label and keeps the readable form; only the
+/// SIP fields are constrained. Deriving both from ONE string is what hid this:
+/// the constraint lives on one field while the value looked perfectly fine.
+const SIP_MAX = 32;
+
+/** Alphanumeric, <= 32 chars, guaranteed to start with a letter. The `vsms`
+ *  prefix satisfies the "letter among the first five" rule on its own, so the
+ *  remainder can be pure hex. 24 hex chars of a v4 UUID is ~96 bits — far past
+ *  any collision concern on an account holding one connection per line. */
+function sipSafe(seed: string): string {
+  return ("vsms" + seed.replace(/[^a-zA-Z0-9]/g, "")).slice(0, SIP_MAX);
+}
+
+/** A SIP password Telnyx will accept. `randomUUID()` is hex, so roughly 10% of
+ *  the time its first five characters are all digits — which trips the same
+ *  "at least one letter early" rule that broke `user_name`, and would have
+ *  turned this into an INTERMITTENT failure the moment the username was fixed.
+ *  Seeding a letter in front removes the class outright. */
+function sipPassword(): string {
+  return "v" + crypto.randomUUID().replace(/-/g, "").slice(0, 24);
+}
+
 export async function createCredentialConnection(opts: {
   name: string; pushCredentialId?: string;
 }): Promise<{ id: string } | TelnyxFault> {
   const r = await call<Record<string, unknown>>("POST", "/credential_connections", {
     connection_name: opts.name,
-    user_name: opts.name,
+    user_name: sipSafe(opts.name),
     // Telnyx requires a password on the connection even though the client
     // authenticates with a short-lived token rather than these credentials.
-    password: crypto.randomUUID().replace(/-/g, ""),
+    password: sipPassword(),
     ...(opts.pushCredentialId
       ? { ios_push_credential_id: opts.pushCredentialId }
       : {}),

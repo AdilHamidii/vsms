@@ -18,6 +18,7 @@
 import { handleCors, json } from "../_shared/cors.ts";
 import { admin, callerUserId } from "../_shared/supabaseAdmin.ts";
 import { resolveCallerLine } from "../_shared/lines.ts";
+import { toE164, assumesNanp } from "../_shared/phone.ts";
 
 /// Emergency numbers are refused HERE as well as on the client.
 ///
@@ -32,6 +33,7 @@ const EMERGENCY = new Set(["911", "112", "999", "000", "110", "119", "988"]);
 /// so a single call cannot consume it, and well over a typical verification
 /// call so most calls settle DOWNWARD rather than overshooting.
 const RESERVE_SECONDS = 120;
+
 
 Deno.serve(async (req) => {
   const pre = handleCors(req);
@@ -65,12 +67,23 @@ Deno.serve(async (req) => {
   if (direction === "outbound" && EMERGENCY.has(digits)) {
     return json({ error: "emergency_blocked" }, { status: 400 });
   }
-  // A bare E.164 sanity check. The provider will reject anything malformed
-  // anyway, but doing it here means we never reserve allowance for a call that
-  // cannot be placed.
-  if (!/^\+?[1-9]\d{7,14}$/.test(to.replace(/[\s()-]/g, ""))) {
-    return json({ error: "bad_number" }, { status: 400 });
-  }
+
+  // 🔴 THE DIALLED NUMBER MUST BE E.164 AND THE CLIENT DID NOT MAKE IT SO.
+  // `DialerScreen` sent the raw keypad string, so a US number arrived as
+  // "4054003316" — no `+`, no country code. The old check here was
+  // `/^\+?[1-9]\d{7,14}$/`, which ACCEPTS a bare national number, so nothing
+  // caught it and we happily reserved allowance for a call the provider could
+  // never place. Live on 2026-08-17 a subscriber dialled "4054003316", watched
+  // it fail, redialled "14054003316" — still no `+` — and cancelled four
+  // minutes later.
+  //
+  // Normalising server-side as well as on the client is deliberate: a shipped
+  // build cannot be fixed, and this is the last point before we spend the
+  // user's allowance. NANP is the right default because the sellable catalogue
+  // is US/CA only (both +1); `country_code` is asserted against that below so
+  // this cannot silently misdial if a non-NANP country is ever sold.
+  const normalized = toE164(to);
+  if (!normalized) return json({ error: "bad_number" }, { status: 400 });
 
   const sb = admin();
 
@@ -80,8 +93,26 @@ Deno.serve(async (req) => {
   // ⚠️ `.maybeSingle()` here ERRORED once a user held two numbers, so every
   // call attempt returned `lookup_failed`. The client names the line it is
   // calling FROM; the id is re-scoped to this user inside the helper.
-  const line = await resolveCallerLine(sb, userId, body.line_id);
+  // `country_code` is named explicitly — the helper's default column list is
+  // `id, e164, status`, and a column that is not selected reads as undefined
+  // rather than erroring, which would quietly disable the NANP guard below.
+  const line = await resolveCallerLine(
+    sb, userId, body.line_id, undefined, "id, e164, status, country_code");
   if (!line) return json({ error: "line_unavailable" }, { status: 409 });
+
+  // The NANP assumption above, made explicit. Every number we can sell without
+  // regulatory paperwork is +1 (US/CA/PR/VI), so defaulting a bare 10-digit
+  // string to +1 is correct today — but it is an ASSUMPTION, and the moment a
+  // non-NANP line is sold it becomes a silent misdial to the wrong country.
+  // Refuse loudly instead, rather than letting the default rot into a bug.
+  const cc = (line as { country_code?: string }).country_code;
+  if (direction === "outbound" && !assumesNanp(cc) && !to.trim().startsWith("+")) {
+    console.error(JSON.stringify({
+      alert: "line_call_ambiguous_number", line: line.id, country: cc,
+      detail: "non-NANP line dialled a number with no country code",
+    }));
+    return json({ error: "bad_number" }, { status: 400 });
+  }
 
   // Calling is gated harder than inbound SMS, and identically to
   // `mint-line-token`: `past_due` keeps INBOUND working because the user cannot
@@ -128,7 +159,11 @@ Deno.serve(async (req) => {
   const { data: rec, error: recErr } = await sb.rpc("record_line_call", {
     p_line: line.id,
     p_direction: direction,
-    p_peer: to,
+    // The NORMALIZED number, never the raw one. `line_calls.peer_e164` is
+    // named for the format it is supposed to hold, and it was storing bare
+    // national strings ("4054003316") — which also means `sync-telnyx-cdr`
+    // could never match a detail record back to the call.
+    p_peer: normalized,
     p_session_id: null,
     // An inbound call is already connecting when the client tells us about it;
     // only an outbound one is genuinely still ringing at this point.
@@ -168,7 +203,9 @@ Deno.serve(async (req) => {
     ok: true,
     call_id: rec.call_id,
     from: line.e164,
-    to,
+    // Echo the NORMALIZED number so the client dials exactly what we
+    // authorised and recorded, rather than its own unqualified string.
+    to: normalized,
     reserved_seconds: reserveSeconds,
     remaining_seconds: remainingSeconds,
   });

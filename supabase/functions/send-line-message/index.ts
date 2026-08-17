@@ -14,6 +14,7 @@ import { handleCors, json } from "../_shared/cors.ts";
 import { admin, callerUserId } from "../_shared/supabaseAdmin.ts";
 import { sendMessage, faultOf } from "../_shared/telnyx.ts";
 import { resolveCallerLine } from "../_shared/lines.ts";
+import { toE164, assumesNanp } from "../_shared/phone.ts";
 
 /** GSM-7 fits 160 chars in one segment, 153 when concatenated; any non-GSM
  *  character forces UCS-2 at 70/67. Estimated locally ONLY to charge the
@@ -56,6 +57,15 @@ Deno.serve(async (req) => {
     return json({ error: "emergency_blocked" }, { status: 400 });
   }
 
+  // 🔴 THIS ENDPOINT HAD NO NUMBER VALIDATION AT ALL — only the emergency check
+  // above. Replies happened to work because the peer arrives from an inbound
+  // webhook already in E.164; a user typing a NEW recipient sent whatever they
+  // typed straight to the provider, spent a segment of their allowance on it,
+  // and got back a failure whose reason we then discarded. Same defect as the
+  // dialer, one product surface over.
+  const recipient = toE164(to);
+  if (!recipient) return json({ error: "bad_number" }, { status: 400 });
+
   const sb = admin();
 
   // WHICH line to send from. A user may now hold several, so the client names
@@ -66,8 +76,21 @@ Deno.serve(async (req) => {
   // ⚠️ This was `.maybeSingle()` on the user's lines, which ERRORS on more than
   // one row: the moment a second number existed, sending a text returned
   // `lookup_failed` for every message.
-  const line = await resolveCallerLine(sb, userId, body.line_id);
+  const line = await resolveCallerLine(
+    sb, userId, body.line_id, undefined, "id, e164, status, country_code");
   if (!line) return json({ error: "line_unavailable" }, { status: 409 });
+
+  // `toE164` defaults a bare 10-digit string to +1, which is right while the
+  // catalogue is US/CA only. Assert it rather than letting the assumption rot
+  // into a silent misdial the day a non-NANP number is sold.
+  const cc = (line as { country_code?: string }).country_code;
+  if (!assumesNanp(cc) && !to.startsWith("+")) {
+    console.error(JSON.stringify({
+      alert: "line_message_ambiguous_number", line: line.id, country: cc,
+      detail: "non-NANP line addressed a number with no country code",
+    }));
+    return json({ error: "bad_number" }, { status: 400 });
+  }
 
   const segments = estimateSegments(text);
 
@@ -76,7 +99,7 @@ Deno.serve(async (req) => {
   const { data: begun, error: beginErr } = await sb.rpc("begin_outbound_message", {
     p_user: userId,
     p_line: line.id,
-    p_to: to,
+    p_to: recipient,
     p_body: text,
     p_segments: segments,
   });
@@ -93,7 +116,7 @@ Deno.serve(async (req) => {
 
   const sent = await sendMessage({
     from: String(begun.from),
-    to,
+    to: recipient,
     text,
     profileId: Deno.env.get("TELNYX_MESSAGING_PROFILE_ID") ?? undefined,
   });

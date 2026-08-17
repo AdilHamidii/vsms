@@ -162,11 +162,27 @@ final class CallController: NSObject {
         isOutbound = true
         phase = .dialing
 
+        // 🔴 THE NUMBER WE DIAL MUST BE THE NUMBER THE SERVER AUTHORISED.
+        // `DialerScreen` hands us the raw keypad string, so a US number arrived
+        // here as "4054003316" — no `+`, no country code — and went straight to
+        // both `CXHandle` and the WebRTC SDK. Every such call failed. Observed
+        // live 2026-08-17: a subscriber dialled, failed, redialled the same
+        // number with a leading 1 (still not E.164), failed again, and
+        // cancelled their subscription four minutes later.
+        //
+        // `begin-line-call` now normalises to E.164 and echoes the canonical
+        // value back, so we adopt ITS answer rather than re-deriving one. That
+        // keeps a single definition of the dialled number across the client,
+        // the `line_calls` row and the provider — which is also what lets
+        // `sync-telnyx-cdr` match a detail record back to the call.
+        let dialled: String
         do {
             let begun = try await LineAPI(client: api)
                 .beginCall(to: number, lineId: activeLineId)
             currentCallId = begun.callId
             remainingSeconds = begun.remainingSeconds
+            dialled = begun.to
+            peer = begun.to
         } catch let err as APIError {
             phase = .idle
             lastError = err.userMessage
@@ -185,7 +201,7 @@ final class CallController: NSObject {
         // handling with the phone app.
         let uuid = UUID()
         currentUUID = uuid
-        let handle = CXHandle(type: .phoneNumber, value: number)
+        let handle = CXHandle(type: .phoneNumber, value: dialled)
         let action = CXStartCallAction(call: uuid, handle: handle)
         do {
             try await callControl.request(CXTransaction(action: action))
@@ -205,7 +221,7 @@ final class CallController: NSObject {
             // and it is the only key `sync-telnyx-cdr` can match a detail
             // record against. Without it the call kept its whole 120-second
             // reservation forever and the allowance meant nothing.
-            let session = try await voice.dial(to: number, from: lineNumber)
+            let session = try await voice.dial(to: dialled, from: lineNumber)
             report(sessionId: session, legId: voice.providerLegId, status: "ringing")
             provider.reportOutgoingCall(with: uuid, startedConnectingAt: Date())
         } catch {

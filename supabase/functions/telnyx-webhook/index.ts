@@ -216,12 +216,39 @@ async function handleReceipt(
   const cost = payload.cost as { amount?: string } | undefined;
   const costUsd = cost?.amount != null ? parseFloat(String(cost.amount)) : null;
 
+  // 🔴 THE REASON A MESSAGE FAILED WAS BEING THROWN AWAY. `raw` is only
+  // Telnyx's coarse status — "delivery_failed" — which is the same string for a
+  // bad number, an unregistered 10DLC campaign, a carrier block and a spam
+  // filter. The actual cause travels in `errors[]`, and we dropped it on write.
+  //
+  // That cost a real diagnosis: three outbound messages from a Canadian line to
+  // US numbers failed on 2026-08-17 and the stored rows could not say whether
+  // it was carrier filtering or something we controlled. Keep the code and the
+  // title, capped so one verbose payload cannot bloat the column.
+  const errs = payload.errors as Array<Record<string, unknown>> | undefined;
+  const failDetail = (() => {
+    if (status !== "failed") return null;
+    const first = errs?.[0];
+    if (!first) return raw;
+    const code = first.code == null ? "" : `${first.code}: `;
+    const text = String(first.detail ?? first.title ?? "");
+    return `${raw} (${code}${text})`.slice(0, 300);
+  })();
+  if (status === "failed") {
+    // Loud, because a sustained run of one code is an operational signal —
+    // 10DLC rejection looks identical to a bad number until you read this.
+    console.error(JSON.stringify({
+      alert: "line_message_failed", message: row.id, raw,
+      code: errs?.[0]?.code ?? null, detail: errs?.[0]?.detail ?? null,
+    }));
+  }
+
   const { error } = await sb.rpc("settle_outbound_message_claim", {
     p_message: row.id,
     p_provider_id: providerId,
     p_status: status,
     p_cost_cents: costUsd != null ? Math.round(costUsd * 100) : null,
-    p_error: status === "failed" ? raw : null,
+    p_error: failDetail,
     // Telnyx's own segment count is authoritative; ours is a local estimate
     // that errs low on purpose.
     p_segments: payload.parts != null ? Number(payload.parts) : null,

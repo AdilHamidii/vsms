@@ -178,13 +178,20 @@ async function persist(
  *  adapters never got. */
 async function voiceFault(
   sb: ReturnType<typeof admin>,
-  fault: { type: string; detail?: string },
+  fault: { type: string; detail?: string; status?: number; code?: string },
   stage: string,
 ) {
   console.error(JSON.stringify({ alert: "line_voice_fault", stage, ...fault }));
   await sb.from("app_config").upsert({
     key: "telnyx_voice_faults",
+    // ⚠️ STATUS AND CODE ARE THE DIAGNOSTIC, and this key used to drop both.
+    // The `user_name` defect sat here for two days showing only
+    // `type: OUT_OF_STOCK` — which was itself the wrong classification — while
+    // the HTTP status that would have named it a validation failure was
+    // discarded on write. Keep them: this key exists because these adapters
+    // were written from docs, so the first real call IS the probe.
     value: { stage, type: fault.type, detail: fault.detail ?? null,
+             status: fault.status ?? null, code: fault.code ?? null,
              at: new Date().toISOString() },
   }, { onConflict: "key" });
   return json({ error: "provider_unreachable" }, { status: 502 });
