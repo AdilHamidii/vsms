@@ -73,10 +73,26 @@ import { markSuccess, poll, type OrderProvider } from "../_shared/providers.ts";
 //
 // The fallback is the SHORT one on purpose: an unknown provider should not be
 // able to trap a user, and 90s is already above every measured p50.
+//
+// 🔴 5sim IS 90 FOR NOW, NOT ITS p90 OF 155 — AND THIS IS THE CLIENT'S FAULT,
+// NOT THE DATA'S. `WaitingScreen.minHoldSeconds` is a HARDCODED 90 in shipped
+// 2.0, so raising the server past it unlocks a Cancel button the server then
+// refuses: the tap returns 429, and the copy quotes a THIRD number ("three
+// minutes") that matches neither constant. Measured 2026-08-18: 13 of the last
+// 29 5sim cancels landed in exactly that 85–158s gap — nearly half of them
+// would have hit a button that appears, is tapped, and fails.
+//
+// The file's own invariant says it: the client may only ever be RAISED ahead
+// of the server, never lowered behind it. So the server waits for the client.
+// Raise this to 155 in the SAME release that (a) makes WaitingScreen read a
+// per-provider hold and (b) makes the 429 copy use `retry_after_seconds`
+// instead of a literal. Cost of waiting: ~2 late 5sim codes a month (2 of 32
+// ever landed in 90–155s), which is small; a broken button on 45% of cancels
+// is not.
 const MIN_HOLD_BY_PROVIDER: Record<string, number> = {
-  "5sim": 155,      // its own p90
+  "5sim": 90,       // p90 is 155 — raise WITH the client, see above
   herosms: 90,      // max arrival ever observed is 86s
-  smspva: 145,      // retired from routing; kept so an in-flight row resolves
+  smspva: 90,       // retired from routing; kept so an in-flight row resolves
 };
 const MIN_HOLD_FALLBACK = 90;
 
