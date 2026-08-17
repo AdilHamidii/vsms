@@ -174,7 +174,7 @@ extension ScreenshotMode {
             createdAt: now.addingTimeInterval(-ageSeconds),
             expiresAt: now.addingTimeInterval(480 - ageSeconds),
             arrivedAt: otp == nil ? nil : now.addingTimeInterval(-2),
-            closedAt: nil, tier: "standard")
+            closedAt: nil, tier: "standard", provider: "5sim")
     }
 
     /// History with BOTH outcomes in it. An all-green list would be the same

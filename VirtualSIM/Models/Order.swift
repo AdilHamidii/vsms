@@ -15,6 +15,9 @@ struct Order: Identifiable, Hashable {
     var createdAt: Date { server.createdAt }
     var expiresAt: Date { server.expiresAt }
     var costCredits: Int { server.costCredits }
+    /// Which provider filled this order. nil = not recorded, which is NOT the
+    /// same as "no provider" — see `AppState.minHoldSeconds(forProvider:)`.
+    var providerId: String? { server.provider }
 
     /// True when this order ended without a code and the credits went back.
     ///

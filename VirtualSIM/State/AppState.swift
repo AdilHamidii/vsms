@@ -2249,6 +2249,68 @@ final class AppState {
         Date() >= order.expiresAt.addingTimeInterval(grace)
     }
 
+    // MARK: - The minimum hold
+
+    /// Seconds a paid order must be held before it can be destroyed, PER
+    /// PROVIDER. Mirrors `MIN_HOLD_BY_PROVIDER` in `cancel-order`.
+    ///
+    /// ⚠️ **These must equal the server's values, and this table may only ever
+    /// be RAISED AHEAD of the server, never lowered behind it.** A client that
+    /// offers cancel before the server allows it collects a 429 on a button the
+    /// user has already tapped; a client that holds longer than the server
+    /// merely waits. That asymmetry is why the sequencing is: client first,
+    /// server second.
+    ///
+    /// 5sim's measured p90 arrival is 155s, so its server-side hold is intended
+    /// to go to 155 — deliberately NOT yet, because a shipped client rendering
+    /// a 90s countdown against a 155s server hold produces exactly the broken
+    /// button above (measured 2026-08-18: 13 of the last 29 5sim cancels landed
+    /// in that 85–158s gap). Raise the 5sim row here first, ship it, and only
+    /// then raise `MIN_HOLD_BY_PROVIDER["5sim"]` to 155.
+    static let minHoldByProvider: [String: Int] = [
+        "5sim":    90,   // → 155 once this client is in the field, see above
+        "herosms": 90,   // max arrival ever observed is 86s
+        "smspva":  90,   // retired from routing; kept so an in-flight row resolves
+    ]
+
+    /// Used for an unrecorded or unknown provider. Matches the server's
+    /// `MIN_HOLD_FALLBACK`, so an order whose provider we cannot read behaves
+    /// exactly as it did before this table existed.
+    static let minHoldFallback = 90
+
+    static func minHoldSeconds(forProvider provider: String?) -> Int {
+        guard let provider, let hold = minHoldByProvider[provider] else {
+            return minHoldFallback
+        }
+        return hold
+    }
+
+    /// When the SERVER last said the hold on an order expires.
+    ///
+    /// The table above is our mirror of the server's constants and can be stale
+    /// by a release; `cancel-order`'s 429 carries `retry_after_seconds`, which
+    /// is the server's own arithmetic on its own clock and therefore always
+    /// right. Recording it re-locks the button for exactly that long instead of
+    /// leaving a live control that fails every time it is pressed.
+    ///
+    /// Keyed by order id and never pruned: it holds at most a handful of
+    /// entries per session, each a `Date`.
+    private(set) var serverHoldUntil: [String: Date] = [:]
+
+    /// Seconds still to run on the server-declared hold, or nil if we have
+    /// never been told or it has passed.
+    func serverHoldRemaining(forOrder id: String) -> Int? {
+        guard let until = serverHoldUntil[id] else { return nil }
+        let left = Int(until.timeIntervalSinceNow.rounded(.up))
+        return left > 0 ? left : nil
+    }
+
+    /// Record `retry_after_seconds` off a refused cancel/reroll.
+    private func noteServerHold(from error: APIError, orderId: String) {
+        guard let secs = error.retryAfterSeconds, secs > 0 else { return }
+        serverHoldUntil[orderId] = Date().addingTimeInterval(TimeInterval(secs))
+    }
+
     /// `@MainActor` for the same reason `confirmGetNumber` carries it: AppState
     /// is `@Observable` but not otherwise actor-isolated, so without it the
     /// `!isPlacingOrder` guard below is a racy check-then-set and two taps can
@@ -2301,6 +2363,11 @@ final class AppState {
             // from every screen and the code reachable only by push. The 180s
             // minimum hold made that reachable ON PURPOSE: every early ✕ tap
             // returns 429 `cancel_too_early`.
+            //
+            // Take the server's own countdown when it sent one: our mirror of
+            // its constants can be a release behind, and re-locking the control
+            // is what stops the user tapping a button that cannot work yet.
+            noteServerHold(from: apiErr, orderId: order.id)
             lastError = apiErr.userMessage
         } catch {
             lastError = "Couldn't cancel that order. Please try again."
@@ -2405,6 +2472,9 @@ final class AppState {
                 return
             }
         } catch let apiErr as APIError {
+            // A reroll releases the number exactly like a cancel, so it hits
+            // the same hold and carries the same `retry_after_seconds`.
+            noteServerHold(from: apiErr, orderId: order.id)
             lastError = apiErr.userMessage
             return
         } catch {
@@ -2471,9 +2541,20 @@ final class AppState {
     /// retry steering makes the new attempt draw a fresh number on a rotated
     /// carrier. Steers to the measured-best country when one exists, else the
     /// same route.
-    func retryFromRecovery() {
+    /// - Parameter country: the country the CARD OFFERED, when it offered one.
+    ///
+    /// ⚠️ This parameter is the fix for a silent contradiction, not a
+    /// convenience. The recovery card has two suggestion sources: our own
+    /// measured record (`bestMeasuredCountry`) and, when we have measured
+    /// nothing, the vendor's network-wide ranking (`bestRankedCountry`). This
+    /// function only ever consulted the FIRST — and the ranked branch exists
+    /// precisely when the measured one returns nil, so on that branch
+    /// `suggested` collapsed to `r.failedCountry`: the button said "Try Poland"
+    /// and re-ordered the country that had just failed. The caller now passes
+    /// what it rendered, so the label and the order cannot disagree.
+    func retryFromRecovery(country: Country? = nil) {
         guard let r = recovery else { return }
-        let suggested = bestMeasuredCountry(for: r.service)?.country ?? r.failedCountry
+        let suggested = country ?? bestMeasuredCountry(for: r.service)?.country ?? r.failedCountry
         recovery = nil
         startCheckout(service: r.service, country: suggested)
     }

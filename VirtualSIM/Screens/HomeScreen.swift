@@ -206,6 +206,14 @@ struct HomeScreen: View {
                 .displayType(28)
                 .foregroundStyle(theme.text)
                 .fixedSize(horizontal: false, vertical: true)
+        } else if isSuggestion {
+            // Naming the service here would be the same overclaim the hero
+            // below makes: the app picked it, the user has not, and the CTA
+            // underneath refuses to sell it. State the product instead.
+            Text("Get a verification number")
+                .displayType(28)
+                .foregroundStyle(theme.text)
+                .fixedSize(horizontal: false, vertical: true)
         } else {
             Text("Get a number for \(state.lastService.name)")
                 .displayType(28)
@@ -213,6 +221,18 @@ struct HomeScreen: View {
                 .fixedSize(horizontal: false, vertical: true)
         }
     }
+
+    /// The hero is showing the app's OWN pre-selection, which the CTA will not
+    /// sell (see `heroCTA` and `AppState.needsServiceChoice`).
+    ///
+    /// Everything priced or graded is suppressed in this state. It used to
+    /// render "TikTok · 2 cr · worked 1 of 4 · Hit or miss" above a button
+    /// reading "Choose a service" — four assertions about a route that is not
+    /// on offer, two of them measurements, all of them about a service the user
+    /// never named. `from_default` orders deliver 2.4% against 17.2% for chosen
+    /// ones, so this is not a cosmetic mismatch: it is evidence attached to the
+    /// wrong decision.
+    private var isSuggestion: Bool { state.needsServiceChoice && !state.emailMode }
 
     private var routeCost: Int? {
         state.cost(for: state.lastService, country: state.lastCountry)
@@ -286,8 +306,13 @@ struct HomeScreen: View {
                 ReceiptRow(label: "Service", onTap: openServices, leading: {
                     ServiceLogo(service: state.lastService, size: 32, radius: 9)
                 }, trailing: {
+                    // The secondary line says WHOSE choice this is. Without it
+                    // the row is indistinguishable from a service the user
+                    // picked, which is the whole confusion this state creates.
                     ReceiptValue(primary: state.lastService.name,
-                                 secondaryText: state.lastService.category,
+                                 secondaryText: isSuggestion
+                                     ? String(localized: "Suggested. Tap to change")
+                                     : state.lastService.category,
                                  chev: true)
                 })
 
@@ -377,6 +402,18 @@ struct HomeScreen: View {
     private var priceValue: some View {
         if state.emailMode {
             emailHeroPrice
+        } else if isSuggestion {
+            // No price, because nothing is on sale yet. A figure here is a
+            // quote for a route the button will not buy, and the user reads it
+            // as what THEIR verification will cost.
+            VStack(alignment: .trailing, spacing: 1) {
+                Text("—")
+                    .font(RFont.display(22, weight: .bold))
+                    .foregroundStyle(theme.text3)
+                Text("Once you pick a service")
+                    .font(RFont.text(12))
+                    .foregroundStyle(theme.text3)
+            }
         } else if let routeCost {
             VStack(alignment: .trailing, spacing: 1) {
                 HStack(alignment: .firstTextBaseline, spacing: 3) {
@@ -429,7 +466,13 @@ struct HomeScreen: View {
     /// the row is gone.
     @ViewBuilder
     private var evidenceStrip: some View {
-        if state.showMetrics, state.emailMode {
+        // ⚠️ Nothing measured is rendered for a route the user did not choose.
+        // "Worked 1 of 4" and "Hit or miss" are real measurements about a real
+        // route — they are simply not about the purchase this screen is
+        // offering, which is currently no purchase at all.
+        if isSuggestion {
+            EmptyView()
+        } else if state.showMetrics, state.emailMode {
             VStack(alignment: .leading, spacing: 0) {
                 Rectangle()
                     .fill(theme.sep)
