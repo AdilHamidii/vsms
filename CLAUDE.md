@@ -139,7 +139,8 @@ supabase functions deploy create-order check-order cancel-order register-push ia
   create-esim-order check-esim-usage redeem-referral \
   create-email-order check-email-order email-domains support-send \
   search-line-numbers reserve-line-number verify-line-subscription rent-line-credits \
-  send-line-message line-thread-action mint-line-token begin-line-call report-line-call
+  send-line-message line-thread-action mint-line-token begin-line-call report-line-call \
+  record-attribution
 # Cron-gated functions MUST ship --no-verify-jwt: their pg_cron relays send
 # only x-cron-secret, no Authorization header. winback lived in the JWT group
 # until 2026-07-21 and silently 401'd on every daily run — zero nudges ever
@@ -166,6 +167,9 @@ supabase functions deploy poll-active-orders sync-prices sync-5sim sync-herosms 
 # owns 560 active SMS routes AND the e-mail line's balance.
 # DELETED 2026-07-30: sync-virtualsms/, sync-smspool/, smspool-catalog/ — all
 # three are gone from disk AND undeployed.
+# ✅ Re-asserted 2026-08-18: the two lists are exhaustive — 23 + 19 = **42**,
+# against `ls supabase/functions | grep -v _shared | wc -l`. record-attribution
+# (Apple Search Ads) joined the JWT group that day.
 # ✅ As of 2026-08-06 the two lists ARE exhaustive — 21 + 18 = **39**, asserted
 # against `ls supabase/functions | grep -v _shared | wc -l`. They were not
 # before: this comment claimed 19, then 25, then 26 while two functions
@@ -2931,6 +2935,37 @@ read healthy. `paymentModel: PAYG` plus a previously observed
 `CREDIT_CARD_DECLINED` makes it a billing interruption, and Apple exposes **no
 billing endpoint**, so the campaign layer keeps reading fine forever. Check
 ads.apple.com → Settings → Billing.
+
+### ASA attribution — which keyword produced a PAYING user (2026-08-18)
+
+Until this landed, ASA reported installs, `iap_receipts` recorded purchases,
+and **the two were never joined** — so every bid was set on the cheap half of
+the funnel. `AppState.submitAttributionIfNeeded` reads
+`AAAttribution.attributionToken()` (framework `AdServices`, autolinked — no
+project change) and posts it to **`record-attribution`**, which resolves it
+against `https://api-adservices.apple.com/api/v1/` and writes one row per user
+to `public.install_attributions`. Read it with **`attribution_summary()`**
+(installs / buyers / purchases / credits per campaign+keyword; service-role
+only, Production receipts only).
+
+Five things that are load-bearing:
+- **It runs AFTER `bootPhase = .ready`**, last in `coldStart`. A measurement may
+  never lengthen the boot critical path.
+- **It cannot throw out.** Every failure is swallowed; a simulator has no token
+  at all and that is ordinary, not an error.
+- **The `attribution.submitted` pref is set only on SUCCESS**, so a launch with
+  no network retries next time. The token is per install, so one success is all
+  there ever is to send.
+- **Apple's 404 is AMBIGUOUS** — organic, or the token is not resolvable yet
+  (documented propagation delay). The function retries once after ~3s and then
+  takes it at face value. An UNREACHABLE Apple writes **no row**, so an absent
+  row means "not measured", never "organic".
+- **The table cascades from `auth.users` on purpose.** It is user data, not a
+  grant tombstone — do not "fix" it to match `signup_grants` / `iap_grants`.
+
+Not built: a `/attribution` Telegram command. `attribution_summary()` is the
+payoff and is queryable by hand; the bot surface needs a formatter in
+`_shared/opsFormat.ts` and is worth doing once there is data in the table.
 
 ### Known-open
 

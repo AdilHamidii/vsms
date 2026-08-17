@@ -1,3 +1,4 @@
+import AdServices
 import SwiftUI
 
 /// Tab order encodes the business, and the business changed on 2026-08-05:
@@ -136,6 +137,13 @@ enum PrefKey {
 
     /// eSIM order ids whose install flow has been opened at least once.
     static let esimInstallsStarted = "esim.installsStarted"
+
+    /// Set once the AdServices attribution token has been accepted by
+    /// `record-attribution`. The token is per INSTALL, so one successful
+    /// submission is all there ever is to send — and re-sending on every cold
+    /// launch would be a round-trip that can only ever overwrite a row with
+    /// itself.
+    static let attributionSubmitted = "attribution.submitted"
 }
 
 @Observable
@@ -763,6 +771,47 @@ final class AppState {
         // existed and had no caller, so email activations never appeared in
         // history at all.
         await loadEmailOrders(using: EmailAPI(client: api))
+
+        // Also behind the reveal, and last: attribution is a MEASUREMENT, and
+        // no measurement may lengthen the boot critical path. It is also the
+        // only thing here that can tell us which Search Ads campaign produced
+        // a paying user — the app spends on ASA daily and, until this landed,
+        // installs and purchases were never joined at all.
+        await submitAttributionIfNeeded(api: api)
+    }
+
+    /// Hand Apple's AdServices attribution token to `record-attribution`, once
+    /// per install.
+    ///
+    /// Three properties, all deliberate:
+    /// - **It can never throw out or block anything.** Every failure path is
+    ///   swallowed. A campaign we cannot attribute is a reporting gap; a cold
+    ///   launch that fails because of one is an outage.
+    /// - **The pref is set only on SUCCESS**, so a launch with no network
+    ///   retries on the next one. The token stays valid for the install.
+    /// - **The simulator has no token** — `attributionToken()` throws there —
+    ///   which is ordinary, not an error worth surfacing.
+    func submitAttributionIfNeeded(api: APIClient) async {
+        let defaults = UserDefaults.standard
+        guard !defaults.bool(forKey: PrefKey.attributionSubmitted) else { return }
+
+        let token: String
+        do {
+            token = try AAAttribution.attributionToken()
+        } catch {
+            // Simulator, or a device that has no token to give. Not retried
+            // within this launch and not reported: there is nothing to send.
+            return
+        }
+        guard !token.isEmpty else { return }
+
+        do {
+            try await AttributionAPI(client: api).submit(token: token)
+            defaults.set(true, forKey: PrefKey.attributionSubmitted)
+        } catch {
+            // Left unset on purpose — the next cold launch tries again.
+            print("attribution submit failed: \(error)")
+        }
     }
 
     /// Leave a failed cold start without data rather than trapping the user.
