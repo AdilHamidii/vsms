@@ -260,9 +260,16 @@ Deno.serve(async (req) => {
   } else if (cmd === "/stats" || cmd === "/today" || cmd === "/week") {
     const window = cmd === "/stats" ? "6 hours" : cmd === "/today" ? "24 hours" : "7 days";
     const { data: snap, error } = await sb.rpc("ops_snapshot", { p_window: window });
+    // Same window, so the subscription figure describes the same period as
+    // everything above it. A mismatched window here would be a quiet lie.
+    const { data: dlm, error: dlmErr } = await sb.rpc("lines_money_snapshot", {
+      p_window: window,
+    });
+    if (dlmErr) console.error("lines_money_snapshot (digest) failed:", dlmErr.message);
     reply = error || !snap
       ? "⚠️ Couldn't read stats right now."
-      : formatDigest(snap as Record<string, unknown>);
+      : formatDigest(snap as Record<string, unknown>,
+                     dlmErr ? null : (dlm as Record<string, unknown> | null));
   } else if (cmd === "/funnel") {
     // Object.hasOwn, not `in` and not truthiness — same reasoning as PERIODS:
     // `in` walks the prototype chain, so `/funnel constructor` would hand

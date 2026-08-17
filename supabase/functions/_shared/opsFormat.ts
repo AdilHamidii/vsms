@@ -394,7 +394,10 @@ export function formatRevenue(
   return lines.join("\n");
 }
 
-export function formatDigest(raw: Record<string, unknown>): string {
+export function formatDigest(
+  raw: Record<string, unknown>,
+  linesRaw?: Record<string, unknown> | null,
+): string {
   const s = raw as Snapshot;
   const hours = s.window_hours ?? 6;
   const o = s.orders ?? {};
@@ -418,6 +421,35 @@ export function formatDigest(raw: Record<string, unknown>): string {
   // switched their Apple ID to a Sandbox account and is taking packs for free.
   if ((buys.sandbox ?? 0) > 0) {
     lines.push(`   ⚠️ ${buys.sandbox} Sandbox receipt(s) — $0 paid, not counted`);
+  }
+
+  // Subscription money, on its own line rather than folded into the one above.
+  //
+  // ⚠️ THE TWO FIGURES ARE NOT THE SAME KIND OF NUMBER. The credits line is an
+  // ESTIMATE — `ops_snapshot` counts credits, not receipts, so it multiplies by
+  // a mid-range USD_PER_CREDIT and marks itself with a `~`. Subscription
+  // revenue is EXACT, read from the signed price on each payment event. Adding
+  // an exact figure to an estimate and printing one total would launder the
+  // approximation into something that looks precise, so they stay apart.
+  const lm = (linesRaw ?? {}) as LinesMoney;
+  const subPayments = lm.payments ?? 0;
+  if (subPayments > 0) {
+    let subUsd = 0;
+    for (const cur of lm.by_currency ?? []) {
+      const rate = FX_TO_USD[(cur.currency ?? "?").toUpperCase()];
+      if (rate != null) subUsd += ((cur.gross_milli ?? 0) / 1000) * rate;
+    }
+    const renewals = lm.renewals ?? 0;
+    const renewNote = renewals > 0
+      ? ` · ${renewals} renewal${renewals === 1 ? "" : "s"}`
+      : "";
+    lines.push(`📞 Subscriptions: <b>${subPayments}</b> · ` +
+               `<b>$${esc(subUsd.toFixed(2))}</b>${renewNote}`);
+  }
+  // A free trial takes no money but DOES rent a number, so it is a cost with no
+  // revenue — invisible if only paid events were reported.
+  if ((lm.trials ?? 0) > 0) {
+    lines.push(`   <i>${lm.trials} free trial${lm.trials === 1 ? "" : "s"} — $0</i>`);
   }
 
   lines.push("");

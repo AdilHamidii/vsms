@@ -257,8 +257,15 @@ Deno.serve(async (req) => {
 
   if (due) {
     const { data: snap } = await sb.rpc("ops_snapshot", { p_window: "6 hours" });
+    // Same 6-hour window as the snapshot above it.
+    const { data: dlm, error: dlmErr } = await sb.rpc("lines_money_snapshot", {
+      p_window: "6 hours",
+    });
+    if (dlmErr) console.error("lines_money_snapshot (digest) failed:", dlmErr.message);
     if (snap) {
-      const r = await sendMessage(formatDigest(snap as Record<string, unknown>))
+      const r = await sendMessage(formatDigest(
+        snap as Record<string, unknown>,
+        dlmErr ? null : (dlm as Record<string, unknown> | null)))
         .catch((e) => ({ ok: false, status: 0, body: String(e) }));
       if (r.ok) {
         digest = true;
