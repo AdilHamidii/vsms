@@ -242,6 +242,7 @@ struct ThreadScreen: View {
 struct MessageBubble: View {
     @Environment(\.theme) private var theme
     let message: LineMessage
+    @State private var copiedCode = false
 
     var body: some View {
         HStack {
@@ -256,6 +257,38 @@ struct MessageBubble: View {
                         message.isOutbound ? theme.ink : theme.elev,
                         in: .rect(cornerRadius: 17))
                     .fixedSize(horizontal: false, vertical: true)
+
+                // Receiving a verification code is most of why this line
+                // exists, and until now the code was raw text to select by
+                // hand — while both other product lines extract it and offer
+                // one tap. Inbound only: a code we SENT is not a code to copy.
+                if !message.isOutbound,
+                   let code = VerificationCode.detect(in: message.body) {
+                    Button {
+                        UIPasteboard.general.string = code
+                        withAnimation(RMotion.select) { copiedCode = true }
+                        RHaptic.select()
+                        Task {
+                            try? await Task.sleep(for: .seconds(1.6))
+                            withAnimation(RMotion.select) { copiedCode = false }
+                        }
+                    } label: {
+                        HStack(spacing: 5) {
+                            Image(systemName: copiedCode ? RIcon.check : "doc.on.doc")
+                                .font(.system(size: 10, weight: .semibold))
+                            Text(copiedCode ? "Copied" : "Copy \(code)")
+                                .font(RFont.text(11, weight: .semibold))
+                        }
+                        .foregroundStyle(copiedCode ? theme.live : theme.ink)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                        .background(
+                            (copiedCode ? theme.live : theme.ink).opacity(0.12),
+                            in: .rect(cornerRadius: 10))
+                    }
+                    .buttonStyle(.plain)
+                    .padding(.horizontal, 4)
+                }
 
                 HStack(spacing: 4) {
                     Text(message.timestamp, format: .dateTime.hour().minute())

@@ -53,6 +53,8 @@ private struct LiveLineView: View {
             header
             LineStatusBanner(line: line)
                 .padding(.horizontal, 20)
+            VoiceReadinessNotice(readiness: calling.readiness)
+                .padding(.horizontal, 20)
 
             if line.status.isSettingUp {
                 provisioning
@@ -103,6 +105,28 @@ private struct LiveLineView: View {
             // `registerForVoIPPushes()`'s own doc comment asks for.
             calling.registerForVoIPPushes()
             await calling.prepareVoice()
+        }
+        // The allowance is spent by a call that happens OUTSIDE this view:
+        // CallKit is a system overlay, not a navigation change, so `.task` does
+        // not re-run when the call ends and the meter kept reading whatever it
+        // read before — a user could talk for ten minutes and still see the
+        // full 100 remaining until the next cold launch. The meter is the thing
+        // they check to decide whether the plan is worth keeping.
+        //
+        // Keyed on the RETURN to `.idle` rather than on any particular end
+        // path, because there are four of them (in-call button, remote hangup,
+        // CallKit's own end action, and a failure) and one of them would
+        // eventually be missed.
+        .onChange(of: calling.phase) { _, phase in
+            guard phase == .idle else { return }
+            Task {
+                // `report-line-call` settles the claim server-side; give it a
+                // moment to land, otherwise this reads the pre-settlement row
+                // and looks exactly like the bug it fixes.
+                try? await Task.sleep(for: .seconds(2))
+                await state.loadLine(using: LineAPI(client: api))
+                await state.loadLineCalls(using: LineAPI(client: api))
+            }
         }
         // Tell the call controller which number it is acting as. Without this
         // the dialer mints a credential for, and calls out from, whichever line
@@ -650,5 +674,61 @@ struct CallRow: View {
                 ? String(localized: "Incoming") : String(localized: "Outgoing")
         }
         return PhoneFormat.duration(s)
+    }
+}
+
+/// Says out loud which half of calling is working.
+///
+/// 🔴 THE SIGNAL EXISTED AND NOTHING RENDERED IT. `mint-line-token` has always
+/// returned `inbound_ready`, `LineModels` decoded it, `CallController` stored
+/// it — and no view read it, so a number that could not ring looked identical
+/// to one that could. Every line sold before 2026-08-17 was in that state, and
+/// the only reason we found out was one customer bothering to send an e-mail.
+///
+/// Two rules this deliberately follows:
+///
+/// - **Silent when everything works.** A banner that is always present is
+///   chrome nobody reads; this renders nothing for `.ready` and `.unknown`.
+///   `.unknown` in particular means "not attempted yet", which is not the same
+///   as broken and must not be drawn as a fault.
+/// - **It never blames the user's connection for a server problem.** The
+///   `.unavailable` reason comes from `APIError.userMessage`, which maps the
+///   business codes; the fallback says what we could not do, not what they
+///   should go and check.
+struct VoiceReadinessNotice: View {
+    @Environment(\.theme) private var theme
+    let readiness: CallController.Readiness
+
+    var body: some View {
+        switch readiness {
+        case .ready, .unknown:
+            EmptyView()
+        case .outboundOnly:
+            // The user may already have given this number out, so the useful
+            // sentence is what to DO, not merely that something is wrong.
+            notice(icon: "phone.badge.waveform", tint: theme.warn,
+                   text: Text("You can make calls, but your number can't receive them yet. Reopen this tab in a moment — we're still setting it up."))
+        case .unavailable(let reason):
+            notice(icon: "phone.down", tint: theme.fail, text: Text(reason))
+        }
+    }
+
+    private func notice(icon: String, tint: Color, text: Text) -> some View {
+        HStack(alignment: .top, spacing: 9) {
+            Image(systemName: icon)
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(tint)
+                .padding(.top, 2)
+            text
+                .font(RFont.text(12, weight: .medium))
+                .foregroundStyle(theme.text)
+                .lineSpacing(2)
+                .fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 11)
+        .background(tint.opacity(0.12), in: .rect(cornerRadius: 14))
+        .padding(.top, 10)
     }
 }

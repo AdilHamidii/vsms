@@ -92,6 +92,26 @@ final class CallController: NSObject {
         }
     }
 
+    /// How much of calling actually works right now.
+    ///
+    /// 🔴 THIS USED TO BE INVISIBLE, and it cost subscribers. `prepareVoice`
+    /// ended in `catch { return false }` and `inboundReady` was decoded, stored
+    /// and read by NO view — so when provisioning failed (which it did for
+    /// every line sold before 2026-08-17) the user saw a dialer that silently
+    /// did nothing and had no reason to suspect anything but the app. One of
+    /// them mailed in; the rest just refunded.
+    enum Readiness: Equatable {
+        case unknown
+        /// Registered, and the number will ring.
+        case ready
+        /// Outbound works; the number will NOT ring. Worth saying out loud —
+        /// the user may have already given the number out.
+        case outboundOnly
+        /// Could not register at all. Carries the reason, never a bare bool.
+        case unavailable(String)
+    }
+    private(set) var readiness: Readiness = .unknown
+
     /// Mint a credential and open the WebRTC session.
     ///
     /// Idempotent — `connect` returns immediately when the client is already
@@ -101,14 +121,25 @@ final class CallController: NSObject {
     /// is the difference between a call that rings and one that pauses first.
     @discardableResult
     func prepareVoice() async -> Bool {
-        guard isVoiceAvailable, let api = apiClient else { return false }
+        guard isVoiceAvailable, let api = apiClient else {
+            readiness = .unavailable(
+                String(localized: "Calling isn't available on this device yet."))
+            return false
+        }
         do {
             let grant = try await LineAPI(client: api).mintVoiceToken(lineId: activeLineId)
             lineE164 = grant.e164
             try await voice.connect(token: grant.token)
             inboundReady = grant.inboundReady
+            readiness = grant.inboundReady ? .ready : .outboundOnly
             return true
         } catch {
+            // Named, not swallowed. `userMessage` already maps the business
+            // codes; anything else is a connectivity story, and the one thing
+            // it must never do is stay silent.
+            readiness = .unavailable(
+                (error as? APIError)?.userMessage
+                ?? String(localized: "We couldn't set your number up for calls."))
             return false
         }
     }
