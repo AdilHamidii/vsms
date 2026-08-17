@@ -7,17 +7,42 @@ import { esc } from "./telegram.ts";
 interface ProviderRow {
   provider?: string;
   placed?: number;
+  /** The rate cohort: numbered, not cancelled, not default-landed. */
+  settled?: number;
   received?: number;
   failed?: number;
+  cancelled?: number;
   pct?: number | null;
 }
 
 interface Snapshot {
   window_hours?: number;
   signups?: number;
-  purchases?: { count?: number; credits?: number };
+  purchases?: {
+    count?: number; credits?: number;
+    /** Sandbox/Xcode receipts. Apple-signed, genuine, and worth $0 — they were
+     *  counted as purchases here until 2026-08-08. Now excluded from `count`
+     *  and reported on their own line, because a burst of them means somebody
+     *  is buying credit packs for free. */
+    sandbox?: number;
+  };
   orders?: {
-    placed?: number; received?: number; failed?: number; pct?: number | null;
+    /** Orders that actually reserved a number. */
+    placed?: number;
+    /** THE RATE DENOMINATOR: numbered AND not cancelled by the user AND not
+     *  landed on the app's own pre-selection. Cancels measure impatience (they
+     *  land at a median 57s against a median 58s arrival and deliver ~1%), and
+     *  a default-landed order measures our steering — the user never chose that
+     *  service and never entered the number anywhere. */
+    settled?: number;
+    received?: number; failed?: number; pct?: number | null;
+    cancelled?: number;
+    /** Codes that arrived AFTER a cancel. The refund stands and the code is
+     *  given away free, so it is a delivery we made and deliberately not part
+     *  of the rate. */
+    rescued?: number;
+    waiting?: number;
+    default_landed?: number;
     /** Charged-and-refunded attempts that never reserved a number. Excluded
      *  from `placed` so they cannot masquerade as delivery failures. */
     numberless?: number;
@@ -28,11 +53,13 @@ interface Snapshot {
     by_provider?: ProviderRow[];
   };
   /** Temp-EMAIL line. Same evidence shape as `orders`: `placed` counts only
-   *  orders that got a usable mailbox, and `unprovisioned` (status='failed',
-   *  create-email-order never provisioned one) is reported separately for the
-   *  same reason `numberless` is — it is not a delivery failure. */
+   *  orders that got a usable mailbox, `settled` is the rate cohort, and
+   *  `unprovisioned` (status='failed', create-email-order never provisioned
+   *  one) is reported separately for the same reason `numberless` is — it is
+   *  not a delivery failure. */
   emails?: {
-    placed?: number; received?: number; failed?: number; pct?: number | null;
+    placed?: number; settled?: number; received?: number; failed?: number;
+    pct?: number | null; cancelled?: number;
     unprovisioned?: number; free?: number; credits?: number;
   };
   esims?: { count?: number; credits?: number };
@@ -64,7 +91,46 @@ const ROLE: Record<string, string> = {
   // its reading is still load-bearing, just for a different product.
   "5sim": "SMS",
   herosms: "e-mail",
+  // Shown by /delivery only, never in the digest: SMSPVA still owns the routes
+  // we keep as the rollback target, so its float decides whether a rollback is
+  // even possible.
+  smspva: "SMS rollback",
+  // Rent for the second-number line. $1 up front + $1/month per subscriber,
+  // paid ~45 days ahead of Apple's payout, so this is a float number.
+  telnyx: "second numbers",
+  // eSIM Access funds the eSIM line (provider since 2026-08-10; line paused
+  // until the account is topped up — the reading is how the owner watches the
+  // deposit land).
+  esimaccess: "eSIM",
 };
+
+/** A balance reading is only a fact while the poller that wrote it is alive.
+ *  ops_snapshot nulls stale readings in SQL; the newer commands get the raw
+ *  reading plus its timestamp so they can say WHICH failure it is — "no
+ *  reading" and "a 4-hour-old reading" are different problems.
+ *  (`/balance` in telegram-webhook carries its own copy of this window for its
+ *  stale-poller banner; keep the two numbers equal.) */
+const BALANCE_FRESH_MS = 10 * 60 * 1000;
+
+export interface BalanceReading {
+  provider?: string;
+  balance_usd?: number | null;
+  checked_at?: string | null;
+}
+
+/** balanceLine for a reading that carries its own timestamp. A stale reading is
+ *  rendered as absent and SAID to be stale — never printed as current, which is
+ *  how a dead poller produced confidently wrong "all is well" digests. */
+export function balanceLineFrom(r: BalanceReading): string {
+  const name = r.provider ?? "?";
+  const ageMs = r.checked_at ? Date.now() - new Date(r.checked_at).getTime() : Infinity;
+  if (typeof r.balance_usd !== "number") return balanceLine(name, undefined);
+  if (ageMs > BALANCE_FRESH_MS) {
+    return `${balanceLine(name, undefined)} <i>(last read ` +
+           `${Math.round(ageMs / 60000)} min ago — poller may be dead)</i>`;
+  }
+  return balanceLine(name, r.balance_usd);
+}
 
 export function balanceLine(name: string, usd: number | null | undefined): string {
   const role = ROLE[name.toLowerCase()] ?? "";
@@ -287,12 +353,40 @@ export function formatDigest(raw: Record<string, unknown>): string {
   } else {
     lines.push(`💳 Purchases: <b>0</b>`);
   }
+  // Production-only above. A Sandbox receipt is a genuine Apple-signed
+  // transaction that moved $0, and this digest counted them as sales until
+  // 2026-08-08. Shown rather than dropped: several in a window means somebody
+  // switched their Apple ID to a Sandbox account and is taking packs for free.
+  if ((buys.sandbox ?? 0) > 0) {
+    lines.push(`   ⚠️ ${buys.sandbox} Sandbox receipt(s) — $0 paid, not counted`);
+  }
 
   lines.push("");
   if (placed > 0) {
-    lines.push(`📱 Numbers: <b>${placed}</b> ordered`);
-    lines.push(`   ✅ ${o.received ?? 0} delivered (${o.pct ?? 0}%)`);
-    lines.push(`   ❌ ${o.failed ?? 0} failed`);
+    const settled = o.settled ?? 0;
+    lines.push(`📱 Numbers: <b>${placed}</b> got a number`);
+    // The rate is over SETTLED orders, never over every numbered one. A user
+    // cancel measures impatience: cancels land at a median 57s while codes land
+    // at a median 58s, and cancelled orders deliver ~1%. Denominator stated
+    // explicitly so the figure cannot be read without its sample.
+    if (settled > 0) {
+      lines.push(`   ✅ ${o.received ?? 0}/${settled} delivered (${o.pct ?? 0}%)` +
+                 ` <i>· cancels excluded</i>`);
+    } else {
+      lines.push(`   ⏳ nothing settled yet — no rate to report`);
+    }
+    if ((o.cancelled ?? 0) > 0) lines.push(`   ✖ ${o.cancelled} cancelled by the user`);
+    if ((o.waiting ?? 0) > 0) lines.push(`   ⏳ ${o.waiting} still waiting`);
+    // A delivery we made that is deliberately outside the rate.
+    if ((o.rescued ?? 0) > 0) {
+      lines.push(`   🎁 ${o.rescued} code(s) landed after a cancel (refund stood)`);
+    }
+    // The app's own pre-selection. Settled by hand on 2026-08-04: a cancelled
+    // deliveroo/us number was used manually and the code arrived, so these are
+    // not evidence about delivery at all — nobody ever submitted the number.
+    if ((o.default_landed ?? 0) > 0) {
+      lines.push(`   ↩︎ ${o.default_landed} on our own pre-selection — not rated`);
+    }
 
     // Only worth the extra lines when providers actually differ — during and
     // after a migration the blended rate averages a dead provider with a live
@@ -300,8 +394,12 @@ export function formatDigest(raw: Record<string, unknown>): string {
     const rows = (o.by_provider ?? []).filter((r) => (r.placed ?? 0) > 0);
     if (rows.length > 1) {
       for (const r of rows) {
+        const st = r.settled ?? 0;
         lines.push(`   · ${esc(r.provider ?? "?")}: ` +
-                   `${r.received ?? 0}/${r.placed ?? 0} (${r.pct ?? 0}%)`);
+                   (st > 0
+                     ? `${r.received ?? 0}/${st} (${r.pct ?? 0}%)`
+                     : `${r.placed ?? 0} numbered, none settled`) +
+                   ((r.cancelled ?? 0) > 0 ? ` · ${r.cancelled} cancelled` : ""));
       }
     }
   } else {
@@ -340,10 +438,16 @@ export function formatDigest(raw: Record<string, unknown>): string {
   if (mailPlaced > 0 || unprovisioned > 0) {
     const freeNote = (m.free ?? 0) > 0 ? ` · ${m.free} free` : "";
     lines.push(`📧 E-mails: <b>${mailPlaced}</b> ordered${freeNote}`);
-    if (mailPlaced > 0) {
-      lines.push(`   ✅ ${m.received ?? 0} delivered (${m.pct ?? 0}%)`);
-      lines.push(`   ❌ ${m.failed ?? 0} failed`);
+    // Same cancel rule as Numbers. The e-mail line has a provider-enforced
+    // 2-minute cancel floor, so a cancel here is still a user decision and not
+    // a mailbox that failed to receive.
+    const mailSettled = m.settled ?? 0;
+    if (mailSettled > 0) {
+      lines.push(`   ✅ ${m.received ?? 0}/${mailSettled} delivered (${m.pct ?? 0}%)`);
+    } else if (mailPlaced > 0) {
+      lines.push(`   ⏳ nothing settled yet — no rate to report`);
     }
+    if ((m.cancelled ?? 0) > 0) lines.push(`   ✖ ${m.cancelled} cancelled by the user`);
     // The mailbox itself was never issued — the e-mail analogue of a numberless
     // SMS order, and deliberately outside the rate above. Five of these in one
     // 7-minute burst is what exposed the free tier running dry.
@@ -381,6 +485,7 @@ interface OrderRow {
   actual_cost_cents?: number | null;
   got_code?: boolean;
   got_number?: boolean;
+  from_default?: boolean;
   is_dev?: boolean;
   held_s?: number;
 }
@@ -404,6 +509,8 @@ export function formatOrders(raw: Record<string, unknown>, windowLabel: string):
   const s = raw as {
     total?: number; numbered?: number; delivered?: number; waiting?: number;
     cancelled?: number; expired?: number; no_number?: number;
+    settled?: number; settled_codes?: number; rescued?: number;
+    default_landed?: number;
     spend_cents?: number; rows?: OrderRow[];
     email?: { total?: number; received?: number };
     esim?: { total?: number };
@@ -420,21 +527,35 @@ export function formatOrders(raw: Record<string, unknown>, windowLabel: string):
   } else {
     const numbered = s.numbered ?? 0;
     const delivered = s.delivered ?? 0;
-    // Rate is over orders that actually HELD a number. Orders that died inside
-    // create-order never reserved anything, so counting them would understate
-    // the provider — they get their own line instead.
-    const pct = numbered > 0 ? Math.round((delivered / numbered) * 100) : null;
+    // Rate is over orders that actually held a number AND that the user let
+    // run AND that the user chose. Orders that died inside create-order never
+    // reserved anything; a cancel measures impatience, not the provider; and a
+    // default-landed order was never entered anywhere by anyone. All three get
+    // their own line instead of dragging the rate down.
+    const settled = s.settled ?? 0;
+    const settledCodes = s.settled_codes ?? 0;
+    const pct = settled > 0 ? Math.round((settledCodes / settled) * 100) : null;
 
     lines.push("");
     lines.push(`<b>${total}</b> orders · <b>${numbered}</b> got a number · ` +
-               `<b>${delivered}</b> delivered${pct === null ? "" : ` (${pct}%)`}`);
+               (settled > 0
+                 ? `<b>${settledCodes}/${settled}</b> delivered (${pct}%)`
+                 : `<i>nothing settled yet</i>`));
 
     const bits: string[] = [];
     if ((s.cancelled ?? 0) > 0) bits.push(`${s.cancelled} cancelled`);
     if ((s.expired ?? 0) > 0) bits.push(`${s.expired} expired`);
     if ((s.waiting ?? 0) > 0) bits.push(`${s.waiting} still waiting`);
     if ((s.no_number ?? 0) > 0) bits.push(`${s.no_number} never got a number`);
+    if ((s.default_landed ?? 0) > 0) bits.push(`${s.default_landed} our own pick`);
+    if ((s.rescued ?? 0) > 0) bits.push(`${s.rescued} rescued after a cancel`);
     if (bits.length) lines.push(`<i>${esc(bits.join(" · "))}</i>`);
+    // Say what the rate leaves out, but only when it actually left something
+    // out — otherwise it is a caveat about nothing.
+    if (settled > 0 && (settled !== numbered || delivered !== settledCodes)) {
+      lines.push(`<i>rate excludes cancels and our own pre-selection ` +
+                 `(${delivered} code${delivered === 1 ? "" : "s"} in total)</i>`);
+    }
 
     lines.push(`💸 Wholesale paid: <b>$${esc(((s.spend_cents ?? 0) / 100).toFixed(2))}</b>`);
     lines.push("");
@@ -448,6 +569,9 @@ export function formatOrders(raw: Record<string, unknown>, windowLabel: string):
       if (!r.got_number) extra.push("no number");
       else if (!r.got_code) extra.push(r.status === "canceled" ? "cancelled" : (r.status ?? ""));
       if (r.tier === "premium") extra.push("real SIM");
+      // Flagged because it changes what the row MEANS: the user did not pick
+      // this route, so a missing code here says nothing about the pool.
+      if (r.from_default) extra.push("our pick");
       if (r.is_dev) extra.push("dev");
       const tail = extra.filter(Boolean).join(", ");
       lines.push(`${mark} <code>${esc(t)}</code> ${esc(route)} · ` +
@@ -469,6 +593,308 @@ export function formatOrders(raw: Record<string, unknown>, windowLabel: string):
   if (otherBits.length) {
     lines.push("");
     lines.push(otherBits.join(" · "));
+  }
+
+  return lines.join("\n");
+}
+
+// ── /funnel ─────────────────────────────────────────────────────────────────
+
+interface FunnelDay {
+  d?: string; signups?: number; users_ordering?: number; orders?: number;
+  numbered?: number; codes?: number; buys?: number; credits?: number;
+}
+
+/** `/funnel` — per-day activity plus the two rates that decide whether the
+ *  product works.
+ *
+ *  Both percentages are COHORT rates over the signups inside the window (of the
+ *  people who arrived, how many ordered / paid), never ratio-of-totals: a window
+ *  holding yesterday's buyers and today's signups would otherwise produce a
+ *  figure describing nobody. Measured here, activation is a single-session event
+ *  — median signup → first order 123 seconds — so "ever ordered" and "ordered in
+ *  this window" are the same population in practice.
+ *
+ *  The signup grant is printed because it is the thing that most changes these
+ *  numbers and it moves with no release: it has been 5, 0, 1, 3, 0 and 2 within
+ *  days. Read live from app_config; a MISSING row is printed as missing, never
+ *  as zero. */
+export function formatFunnel(raw: Record<string, unknown>): string {
+  const s = raw as {
+    days?: number; rows?: FunnelDay[];
+    totals?: {
+      signups?: number; activated?: number; buyers?: number; orders?: number;
+      numbered?: number; codes?: number; buys?: number; credits?: number;
+      default_landed?: number;
+    };
+    signup_grant?: number | null;
+  };
+  const rows = s.rows ?? [];
+  const t = s.totals ?? {};
+  const signups = t.signups ?? 0;
+  const pct = (n: number) => signups > 0 ? `${Math.round((n / signups) * 1000) / 10}%` : "—";
+
+  const lines: string[] = [];
+  lines.push(`📈 <b>Funnel · last ${esc(s.days ?? 7)} days</b>`);
+  lines.push("");
+
+  // <pre> so the columns line up in Telegram's monospace font. Six narrow
+  // columns fit a phone; anything wider wraps and stops being a table.
+  lines.push("<pre>");
+  lines.push(esc("date  sgn usr ord num cod buy"));
+  for (const r of rows) {
+    const day = String(r.d ?? "").slice(5);           // MM-DD
+    lines.push(esc(
+      day.padEnd(5) +
+      String(r.signups ?? 0).padStart(4) +
+      String(r.users_ordering ?? 0).padStart(4) +
+      String(r.orders ?? 0).padStart(4) +
+      String(r.numbered ?? 0).padStart(4) +
+      String(r.codes ?? 0).padStart(4) +
+      String(r.buys ?? 0).padStart(4),
+    ));
+  }
+  lines.push("</pre>");
+
+  lines.push(`👤 <b>${signups}</b> signups → <b>${t.activated ?? 0}</b> ordered ` +
+             `(${esc(pct(t.activated ?? 0))}) → <b>${t.buyers ?? 0}</b> bought ` +
+             `(${esc(pct(t.buyers ?? 0))})`);
+  lines.push(`<i>both % are of the ${signups} who signed up in this window</i>`);
+  lines.push(`📱 ${t.orders ?? 0} orders · ${t.numbered ?? 0} got a number · ` +
+             `${t.codes ?? 0} codes`);
+  lines.push(`💳 ${t.buys ?? 0} purchases · ${t.credits ?? 0} credits`);
+
+  // The grant decides WHICH single route new users land on, not just how much
+  // they can buy, so it belongs next to the activation rate.
+  lines.push(typeof s.signup_grant === "number"
+    ? `🎁 Signup grant: <b>${s.signup_grant}</b> credit${s.signup_grant === 1 ? "" : "s"}`
+    : `🎁 Signup grant: <i>no reading</i> — app_config.signup_bonus_credits missing`);
+
+  // Only when there are any. These are orders on the app's own pre-selection:
+  // the user never chose the service and never submitted the number, so they
+  // are excluded from every delivery rate in the bot.
+  if ((t.default_landed ?? 0) > 0) {
+    lines.push(`↩︎ default-landed: <b>${t.default_landed}</b> ` +
+               `<i>— our own pre-selection, not delivery evidence</i>`);
+  }
+
+  return lines.join("\n");
+}
+
+// ── /delivery ───────────────────────────────────────────────────────────────
+
+interface DeliveryProvider {
+  provider?: string; numbered?: number; settled?: number; codes?: number;
+  cancelled?: number; rescued?: number; waiting?: number;
+  default_landed?: number; refusals?: number; pct?: number | null;
+}
+
+/** `/delivery` — per provider, because a blended rate averages a dead provider
+ *  with a live one and describes neither (it once read 10% while the live
+ *  provider was at 43%).
+ *
+ *  Every rate here is `codes / settled`, where settled = held a number AND was
+ *  not cancelled by the user AND was not the app's own pre-selection. Cancels
+ *  and refusals are printed in their own columns so the sample the rate uses is
+ *  always visible beside the sample it does not. */
+export function formatDelivery(raw: Record<string, unknown>, windowLabel: string): string {
+  const s = raw as {
+    by_provider?: DeliveryProvider[];
+    totals?: DeliveryProvider;
+    watchdog?: { failing?: { check?: string; detail?: string }[]; checked_at?: string | null };
+    smspva_hidden_routes?: number;
+    balances?: BalanceReading[];
+  };
+  const rows = (s.by_provider ?? []).filter(
+    (r) => (r.numbered ?? 0) > 0 || (r.refusals ?? 0) > 0,
+  );
+  const tot = s.totals ?? {};
+
+  const lines: string[] = [];
+  lines.push(`📶 <b>Delivery · last ${esc(windowLabel)}</b>`);
+  lines.push("");
+
+  if (rows.length === 0) {
+    lines.push("<i>No SMS orders in this window.</i>");
+  } else {
+    lines.push("<pre>");
+    lines.push(esc("prov      num set cod   % can ref"));
+    const line = (r: DeliveryProvider, name: string) => esc(
+      name.slice(0, 8).padEnd(9) +
+      String(r.numbered ?? 0).padStart(4) +
+      String(r.settled ?? 0).padStart(4) +
+      String(r.codes ?? 0).padStart(4) +
+      (r.pct == null ? "—" : String(r.pct)).padStart(4) +
+      String(r.cancelled ?? 0).padStart(4) +
+      String(r.refusals ?? 0).padStart(4),
+    );
+    for (const r of rows) lines.push(line(r, r.provider ?? "?"));
+    if (rows.length > 1) lines.push(line(tot, "ALL"));
+    lines.push("</pre>");
+    lines.push(`<i>num=got a number · set=settled (not cancelled, not our own ` +
+               `pick) · cod=codes · can=cancelled · ref=refused before a number</i>`);
+
+    const extra: string[] = [];
+    if ((tot.waiting ?? 0) > 0) extra.push(`${tot.waiting} still waiting`);
+    if ((tot.rescued ?? 0) > 0) extra.push(`${tot.rescued} rescued after a cancel`);
+    if ((tot.default_landed ?? 0) > 0) {
+      extra.push(`${tot.default_landed} on our own pre-selection`);
+    }
+    if (extra.length) lines.push(`<i>${esc(extra.join(" · "))}</i>`);
+  }
+
+  // The watchdog verdict, because "is delivery bad" and "is a JOB dead" look
+  // identical from a delivery rate alone.
+  lines.push("");
+  const wd = s.watchdog ?? {};
+  const failing = [...(wd.failing ?? [])];
+  const wdAgeMs = wd.checked_at ? Date.now() - new Date(wd.checked_at).getTime() : Infinity;
+  // A frozen verdict is not health — the same rule telegram-notify enforces.
+  if (wdAgeMs > 30 * 60 * 1000) {
+    failing.push({ check: "watchdog_stale", detail: "the watchdog itself is not running" });
+  }
+  if (failing.length === 0) {
+    lines.push("🟢 watchdog: all jobs healthy");
+  } else {
+    for (const f of failing) {
+      lines.push(`🚨 watchdog: <b>${esc(f.check)}</b> — ${esc(f.detail ?? "")}`);
+    }
+  }
+
+  // 7k+ SMSPVA routes are held shut by the reservation-collapse guard. Printed
+  // because "the catalog looks small" needs a legible cause, and because a
+  // resync could reopen them.
+  const hidden = s.smspva_hidden_routes;
+  if (typeof hidden === "number") {
+    lines.push(`🙈 SMSPVA routes hidden: <b>${hidden}</b> ` +
+               `<i>(reservation-collapse guard)</i>`);
+  }
+
+  // One line per provider, ALWAYS. An omitted balance reads as healthy, which
+  // is exactly the failure that hid SMSPVA having no monitoring at all while it
+  // served 100% of SMS.
+  for (const b of s.balances ?? []) lines.push(balanceLineFrom(b));
+
+  return lines.join("\n");
+}
+
+// ── /subs ───────────────────────────────────────────────────────────────────
+
+/** List price of the Second Number subscription, per month, in the USA base
+ *  territory. The MRR below is an ESTIMATE off this figure and says so; the
+ *  actual per-currency amounts Apple billed are printed beside it whenever any
+ *  active subscription carries them, for the same reason /revenue prints its FX
+ *  rate — an estimate must be auditable rather than asserted. */
+const LINE_PRICE_USD = 9.99;
+
+/** `/subs` — the Second Number line.
+ *
+ *  It renders all-zero today and that is the point. This is the product whose
+ *  lifecycle shipped with `reclaim_lapsed_lines()` scheduled in no cron job and
+ *  `release-lines` never written: an ordinary Apple cancellation left the number
+ *  rented at $1/month forever, discoverable only on the Telnyx invoice. So the
+ *  subscription state and the LINE state are shown side by side, and a
+ *  divergence between them is called out rather than left to be noticed. */
+export function formatSubs(raw: Record<string, unknown>): string {
+  const s = raw as {
+    subs_total?: number; subs_active?: number;
+    subs_by_state?: { state?: string; n?: number }[];
+    lines_total?: number;
+    lines_by_status?: { status?: string; n?: number }[];
+    lines_by_billing?: { billing?: string; n?: number }[];
+    monthly_cost_cents?: number;
+    trials_tracked?: boolean;
+    active_billed?: { currency?: string; milli?: number; n?: number }[];
+    notifications_7d?: {
+      type?: string; subtype?: string; n?: number;
+      unprocessed?: number; errored?: number;
+    }[];
+    telnyx?: BalanceReading;
+    dev_hidden?: { lines?: number; subs?: number };
+  };
+
+  const active = s.subs_active ?? 0;
+  const lines: string[] = [];
+  lines.push("📞 <b>Second Number</b>");
+  lines.push("");
+
+  if ((s.subs_total ?? 0) === 0) {
+    lines.push("<i>No subscribers yet.</i>");
+  } else {
+    const states = (s.subs_by_state ?? [])
+      .map((r) => `${esc(r.state ?? "?")} ${r.n ?? 0}`).join(" · ");
+    lines.push(`📜 Subscriptions: <b>${s.subs_total}</b> — ${states}`);
+  }
+
+  if ((s.lines_total ?? 0) === 0) {
+    lines.push("<i>No numbers rented.</i>");
+  } else {
+    const st = (s.lines_by_status ?? [])
+      .map((r) => `${esc(r.status ?? "?")} ${r.n ?? 0}`).join(" · ");
+    lines.push(`📱 Lines: <b>${s.lines_total}</b> — ${st}`);
+    const bill = (s.lines_by_billing ?? [])
+      .map((r) => `${esc(r.billing ?? "?")} ${r.n ?? 0}`).join(" · ");
+    if (bill) lines.push(`   billed: ${bill} <i>(only 'apple' earns the MRR below)</i>`);
+    const rent = (s.monthly_cost_cents ?? 0) / 100;
+    if (rent > 0) lines.push(`   💸 provider rent: <b>$${esc(rent.toFixed(2))}</b>/mo`);
+  }
+
+  // Est. net MRR. The commission rate is PRINTED next to it, exactly as
+  // /profit does — a margin figure must never be readable without its
+  // assumption, and 15% vs 30% is the difference between this line being right
+  // and being 18% out.
+  const net = LINE_PRICE_USD * (1 - APPLE_COMMISSION);
+  lines.push("");
+  lines.push(`💵 Est. net MRR: <b>${esc(usd(active * net))}</b>`);
+  lines.push(`<i>${active} active × $${esc(LINE_PRICE_USD.toFixed(2))} list − Apple ` +
+             `${Math.round(APPLE_COMMISSION * 100)}% (Small Business Program) = ` +
+             `${esc(usd(net))} each</i>`);
+  const billed = (s.active_billed ?? [])
+    .map((b) => `${esc((b.currency ?? "?").toUpperCase())} ` +
+                `${((b.milli ?? 0) / 1000).toFixed(2)} ×${b.n ?? 0}`).join(" + ");
+  if (billed) lines.push(`💱 actually billed: ${billed}`);
+
+  // ⚠️ Reported as untracked, never as "0 trials". line_sub_state has no trial
+  // member and ASSN's offerType is not persisted, so a zero here would be an
+  // assertion we cannot make.
+  if (s.trials_tracked !== true) {
+    lines.push(`🧪 Trials: <i>not tracked — no offer-type column on line_subscriptions</i>`);
+  }
+
+  // A live line whose subscription is gone is rent we pay for nothing; a live
+  // subscription with no line is a customer paying for nothing. Both are
+  // silent, and both have happened.
+  const activeLines = (s.lines_by_status ?? [])
+    .filter((r) => ["active", "grace", "past_due"].includes(r.status ?? ""))
+    .reduce((a, r) => a + (r.n ?? 0), 0);
+  if (active !== activeLines) {
+    lines.push(`⚠️ <b>${active} active sub(s) vs ${activeLines} live line(s)</b> — ` +
+               `these should match. A line with no subscription is rent we are ` +
+               `paying for nothing; a subscription with no line is a customer ` +
+               `paying for nothing.`);
+  }
+
+  const notifs = s.notifications_7d ?? [];
+  if (notifs.length === 0) {
+    lines.push("🔔 ASSN last 7d: <i>none</i>");
+  } else {
+    lines.push(`🔔 ASSN last 7d: ` + notifs.map((n) =>
+      `${esc(n.type ?? "?")}${n.subtype ? `/${esc(n.subtype)}` : ""} ×${n.n ?? 0}`,
+    ).join(" · "));
+    const stuck = notifs.reduce((a, n) => a + (n.unprocessed ?? 0), 0);
+    const bad = notifs.reduce((a, n) => a + (n.errored ?? 0), 0);
+    if (stuck > 0 || bad > 0) {
+      lines.push(`   ⚠️ ${stuck} unprocessed · ${bad} errored — a dropped ` +
+                 `notification is a lapse the line state machine never sees`);
+    }
+  }
+
+  lines.push(balanceLineFrom({ provider: "Telnyx", ...(s.telnyx ?? {}) }));
+
+  const dev = s.dev_hidden ?? {};
+  if ((dev.lines ?? 0) > 0 || (dev.subs ?? 0) > 0) {
+    lines.push(`<i>dev account hidden: ${dev.lines ?? 0} line(s), ` +
+               `${dev.subs ?? 0} sub(s) — they cost real rent</i>`);
   }
 
   return lines.join("\n");

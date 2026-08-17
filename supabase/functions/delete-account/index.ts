@@ -9,6 +9,7 @@ import {
   deleteTelephonyCredential, faultOf, findNumberId, releaseNumber,
 } from "../_shared/telnyx.ts";
 import { cancelActivation } from "../_shared/heromail.ts";
+import { cancelEsim, queryEsim } from "../_shared/esimaccess.ts";
 
 Deno.serve(async (req) => {
   const cors = handleCors(req); if (cors) return cors;
@@ -151,17 +152,36 @@ Deno.serve(async (req) => {
   }
 
   // ── In-flight eSIM orders. ────────────────────────────────────────────────
-  // SMSPool exposes no cancel for a purchased eSIM, so there is nothing to call
-  // — but a `provisioning` row cascading away leaves a live data plan at the
-  // provider that we can never look up, monitor or refund. Report it so it is
-  // recoverable by hand instead of vanishing.
+  // An uninstalled eSIM Access profile CAN be cancelled (wholesale comes back
+  // to our balance — the provider refuses once installed, which is the safety
+  // we want), so try; SMSPool exposes no cancel at all. Either way a row
+  // cascading away leaves a plan at the provider we can never look up again,
+  // so every one is reported and recoverable by hand instead of vanishing.
   const { data: esims } = await sb
-    .from("esim_orders").select("id, smspool_tx")
-    .eq("user_id", userId).eq("status", "provisioning");
+    .from("esim_orders").select("id, provider, smspool_tx, ea_order_no, ea_tran_no")
+    .eq("user_id", userId).in("status", ["provisioning", "installed"]);
 
   for (const e of esims ?? []) {
+    if (e.provider === "esimaccess" && (e.ea_tran_no || e.ea_order_no)) {
+      try {
+        let tranNo = e.ea_tran_no as string | null;
+        if (!tranNo && e.ea_order_no) {
+          const q = await queryEsim({ orderNo: e.ea_order_no as string });
+          tranNo = q.ok ? q.profile?.esimTranNo ?? null : null;
+        }
+        if (tranNo) {
+          const c = await cancelEsim(tranNo);
+          console.error(JSON.stringify({
+            alert: "delete_account_esim_cancel", order: e.id,
+            tranNo, cancelled: c.ok, ...(c.ok ? {} : { detail: c.error }),
+          }));
+          continue;
+        }
+      } catch { /* fall through to the abandoned report */ }
+    }
     console.error(JSON.stringify({
-      alert: "delete_account_esim_abandoned", order: e.id, tx: e.smspool_tx,
+      alert: "delete_account_esim_abandoned", order: e.id,
+      provider: e.provider, tx: e.smspool_tx ?? e.ea_order_no,
     }));
   }
 

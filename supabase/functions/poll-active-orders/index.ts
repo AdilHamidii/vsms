@@ -5,7 +5,7 @@
 import { handleCors, json } from "../_shared/cors.ts";
 import { admin } from "../_shared/supabaseAdmin.ts";
 import { markDead, markSuccess, poll, type OrderProvider } from "../_shared/providers.ts";
-import { getBalanceUsd } from "../_shared/smspool.ts";
+import { getBalanceUsd as getEsimaccessBalanceUsd } from "../_shared/esimaccess.ts";
 import { getBalanceUsd as getHeroBalanceUsd } from "../_shared/herosms.ts";
 import { getProfile as getFivesimProfile, type FiveProfile } from "../_shared/fivesim.ts";
 import { getBalance as getSmspvaBalance, isOk } from "../_shared/smspva.ts";
@@ -171,6 +171,12 @@ Deno.serve(async (req) => {
     /** Extra fields merged into the stored blob, read AFTER `read()` so a
      *  provider can hand back more than a balance without a second call. */
     readExtra?: () => Promise<Record<string, unknown> | null>,
+    /** Write the reading but skip the tier pages. Used for eSIM Access while
+     *  the eSIM line is PAUSED: "balance EMPTY — orders failing NOW" is false
+     *  when nothing can order, and a false page on the one channel that must
+     *  stay readable is how a real one gets missed. The tier is still stamped
+     *  so unpausing does not replay old crossings. */
+    muteAlerts = false,
   ) {
     try {
       const bal = await read();
@@ -197,7 +203,7 @@ Deno.serve(async (req) => {
       // again. telegram-notify's claimAndSend already gets this right; these
       // three sites did not.
       let alerted = true;
-      if (tier > prevTier) {
+      if (tier > prevTier && !muteAlerts) {
         console.error(`${key} balance $${bal} crossed below $${BALANCE_TIERS[tier - 1]}`);
         alerted = await notifySafe(
           tier >= BALANCE_TIERS.length
@@ -278,6 +284,15 @@ Deno.serve(async (req) => {
     return r && isOk(r) ? Number(r.data.balance) : null;
   };
 
+  // eSIM Access's page mute is gated on the eSIM pause — see recordBalance's
+  // muteAlerts note. Read once per run; a failed read unmutes (fail loud).
+  let esimPaused = false;
+  try {
+    const { data: ep } = await sb
+      .from("app_config").select("value").eq("key", "esim_paused").maybeSingle();
+    esimPaused = ep?.value === true;
+  } catch { /* unmuted is the safe default */ }
+
   await Promise.all([
     // 5sim is the PRIMARY SMS provider. This key is also what create-order's
     // pre-charge balance guard reads (`${providers[0]}_health`) — without it
@@ -309,6 +324,15 @@ Deno.serve(async (req) => {
     // $1/month FOREVER, so running dry does not merely block a sale, it means
     // an existing subscriber's number cannot be renewed.
     recordBalance("telnyx_health", "Telnyx (rented lines)", readTelnyxBalance),
+    // eSIM Access funds the eSIM line (provider since 2026-08-10). This key is
+    // ALSO what create-esim-order's pre-charge guard reads — without a writer
+    // here that guard is permanently disarmed, the exact SMSPVA failure above.
+    // With no ESIMACCESS_ACCESS_CODE set the reader returns null and nothing
+    // is written — /balance renders "no reading", never a healthy zero.
+    recordBalance(
+      "esimaccess_health", "eSIM Access (eSIM)", getEsimaccessBalanceUsd,
+      undefined, esimPaused,
+    ),
   ]);
 
   // ── Auto-expire overdue orders. Each expiry is an atomic claim (flip
