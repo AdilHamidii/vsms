@@ -263,7 +263,7 @@ private struct OwnershipPage: View {
                 // list of destinations. "worldwide" is deliberately not
                 // claimed — `voice_rates` carries 50 enabled destinations and
                 // 49 explicit refusals, so the honest word is the count.
-                BenefitRow(icon: "flag", label: "Canadian numbers that receive texts from anywhere and call out to 50+ countries")
+                BenefitRow(icon: "flag", label: "Canadian numbers that receive US and Canadian texts and call out to 50+ countries")
                 RowRule()
                 BenefitRow(icon: RIcon.shield,
                            label: "No ads, no tracking, no email list",

@@ -510,7 +510,15 @@ struct LineStoreScreen: View {
             // delayed, so a roadmap sentence would be a promise nobody intends
             // to keep. What replaces it is the calling reach, which is the
             // thing this product can actually do outward.
-            Text("Receives texts and calls from anywhere. Call out to Canada, the US and 50 countries.")
+            // "US and Canadian" is deliberate, not a hedge: the numbers carry
+            // `international_inbound: false` and Telnyx silently ignores the
+            // PATCH to change it — a European phone texting this number
+            // produces NOTHING, no failure, no webhook. Verification codes come
+            // from services, which send from NANP, so the useful claim is true
+            // and the broader one would be the next refund. Calling OUT is
+            // genuinely worldwide. See providers.md "US NUMBERS ARE
+            // DOMESTIC-ONLY FOR SMS".
+            Text("Receives texts from US and Canadian numbers and services, and calls from anywhere. Call out to Canada, the US and 50 countries.")
                 .font(RFont.text(12))
                 .foregroundStyle(theme.text2)
                 .lineSpacing(2)

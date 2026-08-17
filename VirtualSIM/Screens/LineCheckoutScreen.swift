@@ -205,7 +205,7 @@ struct LineCheckoutScreen: View {
             // works (3 of 3 inbound) and is what people came for, then sells
             // calling out — which is real, priced, and was invisible to anyone
             // deciding whether to buy.
-            Text("Receive texts and calls from anywhere, and call out from it. Your real number never leaves your phone.")
+            Text("Receive texts from US and Canadian numbers and services, take calls from anywhere, and call out from it. Your real number never leaves your phone.")
                 .font(RFont.text(15))
                 .foregroundStyle(theme.text2)
                 .lineSpacing(3)
@@ -320,7 +320,7 @@ struct LineCheckoutScreen: View {
                     // Figures come from `LineProduct`, the single client-side
                     // mirror of the schema defaults — never inline literals.
                     BenefitRow(icon: RIcon.message,
-                               label: "Receive texts and verification codes from anywhere")
+                               label: "Receive texts and verification codes from US and Canadian senders")
                     RowRule()
                     // "in and out" is still TRUE for calls, which is exactly
                     // why the texts row could not simply borrow the wording.
