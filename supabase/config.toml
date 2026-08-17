@@ -121,3 +121,6 @@ verify_jwt = false
 verify_jwt = false
 [functions.sync-telnyx-cdr]
 verify_jwt = false
+
+[functions.sync-voice-destinations]
+verify_jwt = false
