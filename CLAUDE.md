@@ -27,9 +27,17 @@ when nobody has the relevant file open.
 ## What this is
 
 **vSMS** (App Store display name; formerly "vSIM OTP" — the Xcode target/scheme is still `VirtualSIM`) — iOS app selling three products, all paid with in-app **credits**: (1) **temporary phone numbers** for SMS verification codes, (2) **temporary e-mail addresses**, and (3) **eSIM data plans** priced at 4× wholesale (line currently PAUSED). A
-**fourth** line — rentable second numbers with two-way SMS and voice, billed by
-**StoreKit subscription rather than credits** — is LIVE ON THE APP STORE in 2.0
-and is the app's first tab. **Six numbers rented, five subscriptions, and all
+**fourth** line — rentable second numbers, billed by **StoreKit subscription
+rather than credits** — is LIVE ON THE APP STORE in 2.0. ⚠️ **PIVOTED
+2026-08-18 (owner decision): the product is now "RECEIVE texts + codes from
+US/Canadian senders, take calls from anywhere, CALL OUT worldwide". OUTBOUND
+SMS IS DROPPED** — it is the one capability needing carrier approval (10DLC),
+which the owner will not pursue. In 2.1 every send affordance is gone
+(`ComposeScreen` deleted, `ThreadScreen` is read-only, `.compose` flow
+removed) and `send-line-message` refuses everything with
+`outbound_sms_retired`. The tab is the SECOND tab (Home is first — reverted
+2026-08-08; this line said "first tab" for ten days after). **Six numbers
+rented, five subscriptions, and all
 five cancelled auto-renew — median 3.9 minutes after paying.** Neither half of
 the product works yet: **no call has ever connected** (7 attempts, none reaching
 the provider) and **outbound SMS is 1 sent against 6 failed** (`40010`, 10DLC).
@@ -1817,11 +1825,27 @@ asserting a provider switch in the second case would be a guess dressed as fact.
 
 ### The minimum hold (now 90s), and the late-code rescue (2026-07-27)
 
-⚠️ **`MIN_HOLD_SECONDS` is 90, NOT 180 — lowered 2026-08-03.** This whole
-section was written for 180 and much of the reasoning below still quotes it;
-the *arguments* stand, the *number* does not. Read `cancel-order/index.ts:44`
-before quoting a figure. 1.8's release notes tell users "90 seconds instead of
-3 minutes", so the shipped copy and the constant agree.
+⚠️ **THE HOLD IS PER-PROVIDER as of 2026-08-18 — `MIN_HOLD_BY_PROVIDER` in
+`cancel-order`, ALL AT 90 TODAY.** This whole section was written for a flat
+180 and much of the reasoning below still quotes it; the *arguments* stand,
+the *number* does not. Read `cancel-order/index.ts` before quoting a figure.
+
+Why per-provider: measured over every code ever delivered, HeroSMS has NEVER
+arrived after 86s (p90 79s) while 5sim's p90 is 155s. One number cannot be
+right for both. **5sim is deliberately held at 90, not its p90 of 155**,
+because shipped 2.0's `WaitingScreen.minHoldSeconds` is a hardcoded 90 —
+raising the server first unlocked a Cancel the server then refused (13 of 29
+recent 5sim cancels landed in that 90–155s gap), i.e. exactly the invariant
+that file states: the client may only ever be RAISED ahead of the server.
+It was raised to 155 and reverted the same day. **2.1 fixes the client side**
+(`AppState.minHoldByProvider` mirrors the server, and `WaitingScreen` honours
+`retry_after_seconds` from a 429 so the button re-locks instead of erroring)
+— raise the 5sim server value to 155 ONLY after 2.1 is adopted, in the same
+change as the client table.
+
+⚠️ Do NOT justify a longer hold with "otherwise the code is lost": since
+2026-07-27 a cancel does NOT release the number — the poller still delivers
+a late code free. The hold protects the code from a REROLL, not a cancel.
 
 Cancels landed at a **median of 57s**; codes arrive at a **median of 58s**, p90
 134s, and 45% of codes that arrive do so after 60s. Users were destroying orders
@@ -2518,13 +2542,23 @@ It is a starting point for "is this roughly right", never a citation.
   2026-08-10; 174 of 175 territories live). Apple/MIIT forbids CallKit in apps
   sold on the China App Store, and 2.0 ships CallKit. Re-adding China requires
   gating CallKit off by storefront first — do not re-tick it casually.
-- **Signup grant: 2 credits — RESTORED 2026-08-08** (owner decision; it was 0
-  from 08-04 to 08-08, and 5 → 0 → 1 → 3 → 0 in the two days before that).
-  Measured effect of the restore: signups placing an order went **~8%/day →
-  ~45%/day** within 48h, while purchases stayed flat — the grant buys
-  *activation*, not instant purchases; see Retention. `handle_new_user()` reads
+- **Signup grant: 0 credits — SET 2026-08-18** (owner decision, after the
+  first-session audit). It was 2 from 08-08 to 08-18, and 5 → 0 → 1 → 3 → 0
+  in the two days before that. The 08-18 case: **27 of 28 buyers ever bought
+  BEFORE placing an order** (median 3.0 min after signup); 112 users ordered
+  free and never paid, and 106 of them still hold credits — nobody is refused
+  a paywall, they take a free order that fails (first-order delivery 12.8%,
+  and ≤2cr routes deliver 10.4% vs 26.7% at 5+cr) and leave. A 2cr grant
+  pinned every new user to the worst inventory. Grant 0 puts the paywall in
+  front of a GOOD route. ⚠️ Known cost, measured on the 08-04→08 zero era:
+  activation fell to ~8%/day; purchases stayed flat. Watch signup→purchase
+  over the next 14 days, not signup→order. `handle_new_user()` reads
   `app_config.signup_bonus_credits` live, clamped 0–50, tombstoned via
-  `signup_grants`. Rollback is one UPDATE, no deploy.
+  `signup_grants`. Rollback is one UPDATE, no deploy. Note `telegram-notify`
+  already renders 0 correctly ("no signup credit (grant is 0)").
+- **Free e-mail cap: 1/user/day — CUT from 3 on 2026-08-17.** Free email had
+  been outselling paid SMS ~5:1 (Aug 15: 3 SMS orders vs 22 free emails) and
+  has earned one credit in its lifetime. `app_config.email_free_daily_cap = 1`.
 
 ### ⚠️ The grant size decides which ONE route new users land on
 
@@ -2792,6 +2826,43 @@ Also this day, each verified against live DB state rather than a deploy log:
 Reasoning for each of these lives in the topic section above; this is only an
 index, so "why is it like this" has a date to search for.
 
+- **08-17/18** Owner asked to "fix everything" toward $2,000/mo (lifetime is
+  $273; best month ~$200 net). Three parallel audits (money, first-session
+  funnel, number-line pivot) plus the ASA research. **The catalog was 39%
+  unfillable**: SMSPVA was retired from routing that morning and the hourly
+  `sync-prices` re-activated all 6,305 of its routes the same evening — 5,955
+  with no 5sim/HeroSMS fallback. Fixed in code (`SMSPVA_RETIRED` in
+  `sync-prices`) and via `blocked_routes` (survives the evidence un-hide);
+  15,293 → 8,988 active routes, zero unfillable. **The Apple-lapse leak**:
+  the only active→suspended path was an EXPIRED notification, zero had ever
+  arrived, and three yearly trials were lapsing in 40h — `reclaim_lapsed_
+  lines()` gained a `current_period_end` backstop (20260818110000) 88 minutes
+  before the first one. **The watchdog watched no money**: added provider
+  RUNWAY (fired at once — 5sim covered ~2.6 days), the credit-line rent
+  heartbeat, and the lapse STATE, as a companion function so no existing
+  clause was regenerated (20260818120000). **Apple refunds now revoke
+  credits** (`revoke_iap_purchase`, one transaction, capped at the balance
+  with the shortfall paged — `wallets_balance_check` deliberately kept). **ASA
+  keyword rewrite** applied and read-back-verified: 11 second-number/
+  authenticator terms paused, `sms verification` resumed, 4 verification
+  terms added, first 23 negatives; the €20/day is spent 14.6% because the
+  account goes dark 1 day in 3 (both campaigns, identical days — billing, no
+  API can show it). **AdServices attribution** shipped end to end (client in
+  2.1). **Money settings by owner decision**: signup grant 2 → **0**, free
+  email cap 3 → **1**, orphan-number sweep ON, `line.yearly` KEPT on sale.
+  **The number line PIVOTED to receive + call out** (see the header) — 2.1
+  removes every send affordance, sells international calling on the store
+  screen for the first time, and the inbound push now leads with the
+  extracted code. Copy corrected the same day: "receives texts from anywhere"
+  was FALSE (`international_inbound: false`, unfixable via API) → "US and
+  Canadian senders". **First-session fixes in 2.1**: RecoveryScreen's ranked
+  retry silently re-ordered the FAILED country (117 users saw it), the hero
+  priced and graded a route the button would not buy, no purchase moment
+  existed after a delivered code, the paywall dead-ended on a partial
+  StoreKit answer, per-provider hold + `retry_after_seconds` in the client.
+  **A regression I introduced and reverted the same day**: raising the 5sim
+  hold to 155 while shipped 2.0 hardcodes 90 — see the hold section. 2.1 is
+  build 40, built and plist-asserted, **submission HELD** by owner decision.
 - **08-17** The second-number line met its first real customers and most of it
   did not work. **Voice was provisioned lazily** in `mint-line-token` while
   messaging was provisioned at rental, so five of six sold numbers had no Telnyx
