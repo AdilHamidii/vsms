@@ -52,13 +52,32 @@ export function nanpCountry(e164: string): "US" | "CA" | null {
  */
 export function canSendTo(
   lineCc: string | null | undefined, recipient: string,
-): { ok: true } | { ok: false; reason: "cross_border"; from: string; to: string } {
+): { ok: true }
+  | { ok: false; reason: "cross_border" | "international"; from: string; to: string } {
   const from = (lineCc ?? "").toUpperCase();
   const to = nanpCountry(recipient);
-  // Unknown on either side passes: this guard exists to stop a KNOWN failure,
-  // and inventing refusals out of missing data is how a catalogue quietly loses
-  // destinations it could actually serve.
-  if (!from || !to) return { ok: true };
-  if (from === to) return { ok: true };
-  return { ok: false, reason: "cross_border", from, to };
+
+  // An unknown SENDER passes. This guard exists to stop a known failure, and
+  // inventing refusals out of missing data is how a catalogue quietly loses
+  // destinations it could serve.
+  if (!from) return { ok: true };
+
+  // A non-NANP DESTINATION is not unknown — it is definitely international, and
+  // `features.sms.international_outbound` reads FALSE on our numbers. Letting
+  // it through was the first version's bug: a text to +33 sailed past this
+  // check, reserved a segment, and failed at the provider exactly like a US
+  // one. Refusing it is not a guess; it is the number's own capability.
+  if (from === "US" || from === "CA") {
+    if (!to) {
+      return { ok: false, reason: "international", from, to: "INTL" };
+    }
+    if (from !== to) return { ok: false, reason: "cross_border", from, to };
+    return { ok: true };
+  }
+
+  // A sender we do not classify (no NANP line exists today) keeps the old
+  // permissive behaviour rather than being grounded by a rule written for
+  // someone else's numbering plan.
+  if (!to) return { ok: true };
+  return from === to ? { ok: true } : { ok: false, reason: "cross_border", from, to };
 }
