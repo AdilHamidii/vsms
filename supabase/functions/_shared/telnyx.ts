@@ -220,8 +220,22 @@ async function call<T>(
   try {
     parsed = text ? JSON.parse(text) : {};
   } catch {
-    // Telnyx is consistently JSON; an unparseable body means a proxy or an
-    // outage page, which is transport, not a business refusal.
+    // 🔴 "TELNYX IS CONSISTENTLY JSON" IS FALSE, AND IT THREW AWAY A GOOD
+    // TOKEN. `POST /telephony_credentials/{id}/token` answers **201 with a
+    // bare JWT as text/plain**. This branch turned that success into a
+    // TRANSPORT_ERROR, so `mint-line-token` returned `provider_unreachable`
+    // and no call could be placed — even though Telnyx had just issued the
+    // credential. Caught on the very first successful mint, 2026-08-17, by the
+    // `status` field added to `telnyx_voice_faults`: a fault carrying **201**
+    // is a contradiction in terms.
+    //
+    // `mintCredentialToken` already anticipates this ("returns a bare JWT as
+    // text/plain on some API versions") and branches on `typeof r === "string"`
+    // — but that branch was UNREACHABLE, because this one converted the body
+    // to a fault first. Hand the raw text back on a successful status and let
+    // the caller decide; every other endpoint returns JSON and is unaffected.
+    if (resp.ok) return text as unknown as T;
+    // A non-2xx with an unparseable body really is a proxy or an outage page.
     return {
       telnyxFault: true, type: "TRANSPORT_ERROR", status: resp.status,
       detail: text.slice(0, 200),
@@ -571,7 +585,22 @@ export async function mintCredentialToken(
   if (faultOf(r)) return r;
   // This endpoint returns a bare JWT as text/plain on some API versions and a
   // wrapped object on others — accept both rather than guessing.
-  if (typeof r === "string") return { token: r };
+  //
+  // ✅ CONFIRMED text/plain on 2026-08-17, on the first mint that ever
+  // succeeded: HTTP 201 with the raw JWT as the whole body. This branch was
+  // unreachable until `call()` stopped treating an unparseable OK body as a
+  // fault — see the note there.
+  //
+  // TRIMMED, because a trailing newline survives every check we make and then
+  // fails inside `TxConfig` on the device, where the only symptom is a call
+  // that will not connect and nothing logged server-side.
+  if (typeof r === "string") {
+    const t = r.trim();
+    return t
+      ? { token: t }
+      : { telnyxFault: true, type: "TRANSPORT_ERROR", status: 200,
+          detail: "empty token body" };
+  }
   const obj = r as Record<string, unknown>;
   const tok = obj.token ?? obj.data ?? null;
   // TRANSPORT_ERROR, not a stockout: the call SUCCEEDED and the body was not
