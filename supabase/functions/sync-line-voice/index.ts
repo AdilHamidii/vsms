@@ -68,7 +68,17 @@ Deno.serve(async (req) => {
     .from("phone_lines")
     .select("id, e164, provider_number_id, provider_connection_id, provider_credential_id, provider_voice_profile_id, provider_voice_attached")
     .in("status", ["active", "grace"])
-    .is("provider_connection_id", null)
+    // ⚠️ NOT `provider_connection_id is null` ALONE — that was the first version
+    // and it could not see the state this sweep exists to fix.
+    // `provisionLineVoice` creates the connection FIRST and persists it
+    // immediately, so a line whose profile, credential or voice-attach step
+    // faulted keeps a non-null connection. The narrow predicate skipped exactly
+    // those rows: Telnyx rejects every outbound call from a connection with no
+    // profile, and `provider_voice_attached = false` means the number never
+    // rings — both permanent, while the sweep reported success.
+    .or("provider_connection_id.is.null,provider_voice_profile_id.is.null," +
+        "provider_credential_id.is.null,provider_voice_attached.is.null," +
+        "provider_voice_attached.is.false")
     .limit(MAX_REPAIR) as unknown as { data: (LineVoiceRow & { e164: string | null })[] | null };
 
   let repaired = 0;
@@ -132,11 +142,17 @@ Deno.serve(async (req) => {
   // Still unprovisioned AFTER the repair pass — the number that says whether
   // this sweep is winning. Non-zero for more than a couple of runs means repair
   // is failing rather than catching up, which the faults will name.
+  // The SAME predicate as the repair pass. It used to be the narrow one, so the
+  // metric could not see the half-provisioned state either — it reported
+  // `unprovisioned: 0, ok: true` over lines that could neither call nor ring.
+  // A health counter blind to the failure it measures is worse than none.
   const { count: unprovisioned } = await sb
     .from("phone_lines")
     .select("id", { count: "exact", head: true })
-    .is("provider_connection_id", null)
-    .in("status", ["active", "grace"]);
+    .in("status", ["active", "grace"])
+    .or("provider_connection_id.is.null,provider_voice_profile_id.is.null," +
+        "provider_credential_id.is.null,provider_voice_attached.is.null," +
+        "provider_voice_attached.is.false");
 
   const ok = repairFaults.length === 0 && patchFaults.length === 0;
   await sb.from("app_config").upsert({

@@ -145,6 +145,28 @@ async function process(sb: ReturnType<typeof admin>, n: Awaited<ReturnType<typeo
   // Both inner payloads are JWS in their own right and are verified, never
   // decoded. A notification is exactly as trustworthy as its signatures.
   const tx = await verifyTransactionJWS(txJws);
+
+  // 🔴 REFUND TRAFFIC FOR **CREDIT PACKS** REACHES THIS FUNCTION AND USED TO
+  // DIE ON THE NEXT LINE. Live `line_notifications` holds 15 CONSUMPTION_REQUEST
+  // rows and 3 REFUND_DECLINED, every one with a null original_transaction_id —
+  // i.e. every one returned before the switch below. So the handler added
+  // earlier today has never once fired, and the product that actually generates
+  // refund requests was the one it could not see.
+  //
+  // Handled BEFORE the subscription filter, and deliberately only for the two
+  // types where a human has to act inside a deadline. Everything else about a
+  // consumable still belongs to `iap-verify`, not here.
+  if (n.notificationType === "CONSUMPTION_REQUEST" && !isSubscriptionProduct(tx.productId)) {
+    await alertOwner(
+      `⏳ <b>Refund requested — 12h to respond</b>\n` +
+      `credit pack: ${esc(tx.productId)}\n` +
+      `tx ${esc(tx.originalTransactionId)}\n` +
+      `<i>Credits already granted are NOT revoked automatically — see the ` +
+      `known-open note. Apple decides the refund.</i>`,
+      sb, tx.originalTransactionId);
+    return;
+  }
+
   if (!isSubscriptionProduct(tx.productId)) return;   // not our line
 
   const ri = riJws ? await verifyRenewalInfoJWS(riJws).catch(() => null) : null;
