@@ -15,6 +15,7 @@ import { admin, callerUserId } from "../_shared/supabaseAdmin.ts";
 import { sendMessage, faultOf } from "../_shared/telnyx.ts";
 import { resolveCallerLine } from "../_shared/lines.ts";
 import { toE164, assumesNanp } from "../_shared/phone.ts";
+import { canSendTo } from "../_shared/nanp.ts";
 
 /** GSM-7 fits 160 chars in one segment, 153 when concatenated; any non-GSM
  *  character forces UCS-2 at 70/67. Estimated locally ONLY to charge the
@@ -44,7 +45,11 @@ Deno.serve(async (req) => {
   const userId = await callerUserId(req);
   if (!userId) return json({ error: "unauthorized" }, { status: 401 });
 
-  let body: { to?: string; text?: string } = {};
+  // `line_id` was MISSING from this type while line 81 read it — the client has
+  // always sent it (`LineAPI.swift`), so multi-number sending worked in
+  // production purely because deploy does not type-check. `deno check` rejects
+  // it, which is the only reason it was ever visible.
+  let body: { to?: string; text?: string; line_id?: string } = {};
   try { body = await req.json(); } catch { /* guarded below */ }
 
   const to = (body.to ?? "").trim();
@@ -90,6 +95,27 @@ Deno.serve(async (req) => {
       detail: "non-NANP line addressed a number with no country code",
     }));
     return json({ error: "bad_number" }, { status: 400 });
+  }
+
+  // 🔴 REFUSE A SEND WE KNOW THE CARRIER WILL REJECT.
+  //
+  // Every cross-border attempt has come back `40010: The sending number is not
+  // 10DLC-registered but is required to be by the carrier` — 6 of 7 lifetime
+  // outbound messages. Attempting it anyway reserves a segment, calls the
+  // provider, fails, and refunds: a round trip whose only product is a red
+  // "Not sent" under the user's message. Refusing up front costs them nothing
+  // and can say WHY, which the provider's failure could not.
+  //
+  // This is the same shape as `create-order`'s pre-charge provider-balance
+  // guard: when we already know the answer, do not spend the user's allowance
+  // to hear it from someone else.
+  const reach = canSendTo(cc, recipient);
+  if (!reach.ok) {
+    return json({
+      error: "cross_border_sms",
+      from_country: reach.from,
+      to_country: reach.to,
+    }, { status: 409 });
   }
 
   const segments = estimateSegments(text);

@@ -478,7 +478,12 @@ struct LineStoreScreen: View {
                 .font(.system(size: 12, weight: .semibold))
                 .foregroundStyle(theme.text2)
                 .padding(.top, 2)
-            Text("US numbers are coming soon. A Canadian number works with US and Canadian phones today.")
+            // ⚠️ This claimed the number "works with US and Canadian phones
+            // today". It receives from both — but every SEND to a US number is
+            // rejected by the carrier (40010, 10DLC not registered). The
+            // measurement that sentence was written from (a CA→US delivery on
+            // 2026-08-05, no brand, no campaign) no longer reproduces.
+            Text("Receives texts and calls from anywhere. Sending texts works to Canadian numbers today — US sending is coming.")
                 .font(RFont.text(12))
                 .foregroundStyle(theme.text2)
                 .lineSpacing(2)

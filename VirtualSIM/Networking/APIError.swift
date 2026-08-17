@@ -179,6 +179,13 @@ enum APIError: Error, LocalizedError {
                     return String(localized: "We can't call this country yet.")
                 case "recipient_blocked":
                     return String(localized: "You've blocked this number. Unblock it to send a message.")
+                // Names the real limit instead of the carrier's rejection.
+                // Every cross-border send has come back "the sending number is
+                // not 10DLC-registered", which is true, unfixable by the user,
+                // and meaningless to them. What they can act on is: this number
+                // texts Canada today, and it can still RECEIVE from anywhere.
+                case "cross_border_sms":
+                    return String(localized: "Your Canadian number can only text Canadian numbers right now. It can still receive texts from anywhere.")
                 // Emitted by `begin-line-call`. All four were absent, so every
                 // one fell through to the HTTP-status fallback — which for
                 // `bad_number` meant reporting the user's own typo as a fault
