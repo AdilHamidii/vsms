@@ -112,7 +112,8 @@ Deno.serve(async (req) => {
   const reach = canSendTo(cc, recipient);
   if (!reach.ok) {
     return json({
-      error: "cross_border_sms",
+      error: reach.reason === "international"
+        ? "international_sms" : "cross_border_sms",
       from_country: reach.from,
       to_country: reach.to,
     }, { status: 409 });
