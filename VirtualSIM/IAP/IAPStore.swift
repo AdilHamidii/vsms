@@ -56,6 +56,13 @@ final class IAPStore {
     private(set) var isRestoring = false
 
     func loadProducts() async {
+        #if DEBUG
+        // The shim already answers for every pack. Letting the real fetch run
+        // would find no products (`simctl` applies no StoreKit configuration),
+        // set `lastError`, and put "Credit packs are temporarily unavailable"
+        // into a frame whose whole purpose is showing the packs.
+        if screenshotPricing != nil { return }
+        #endif
         if isLoadingProducts { return }
         isLoadingProducts = true
         defer { isLoadingProducts = false }
@@ -74,10 +81,57 @@ final class IAPStore {
         }
     }
 
+    #if DEBUG
+    /// Display prices keyed by productId, non-nil ONLY under `ScreenshotMode`.
+    ///
+    /// Xcode applies `Products.storekit` when Xcode itself launches the app;
+    /// `simctl` does not, so a scripted screenshot run loads no products and
+    /// every row of the ladder renders "Unavailable" over a disabled CTA. That
+    /// is the same failure that put the paywall's error state into App Store
+    /// Connect as a review screenshot — see `SubscriptionStore.ScreenshotPricing`.
+    ///
+    /// ⚠️ **These are not placeholder strings.** The frame becomes an App Store
+    /// review screenshot for the credit packs, so every figure has to equal what
+    /// the store will really charge. They are set at the call site from the live
+    /// App Store Connect tiers, which `Products.storekit` and
+    /// `CreditPack.priceUsd` are kept in step with by hand. If a price moves in
+    /// ASC, it moves in all three.
+    ///
+    /// Per-credit needs no shim: it falls through to `CreditPack.perCredit`,
+    /// derived from the same `priceUsd` those tiers are mirrored into.
+    ///
+    /// The whole thing is `#if DEBUG`, so a Release archive cannot be put into
+    /// this state by any launch argument or server response.
+    var screenshotPricing: [String: String]?
+    #endif
+
+    /// Has StoreKit answered at all? Distinct from "this pack is missing":
+    /// until it has, a missing product means "still loading". Every consumer
+    /// goes through this rather than `products.isEmpty`, so the screenshot
+    /// harness has ONE place to substitute into.
+    var hasLoadedProducts: Bool {
+        #if DEBUG
+        if screenshotPricing != nil { return true }
+        #endif
+        return !products.isEmpty
+    }
+
+    /// Is there something to sell for this pack? False once loading has
+    /// finished means the row degrades — or, for an `optional` pack, drops out.
+    func has(_ pack: CreditPack) -> Bool {
+        #if DEBUG
+        if let s = screenshotPricing { return s[pack.productId] != nil }
+        #endif
+        return products[pack.productId] != nil
+    }
+
     /// Display price for a pack — uses real StoreKit price if loaded,
     /// else the static fallback from `CreditPack`.
     func displayPrice(_ pack: CreditPack) -> String {
-        products[pack.productId]?.displayPrice ?? pack.price
+        #if DEBUG
+        if let s = screenshotPricing, let p = s[pack.productId] { return p }
+        #endif
+        return products[pack.productId]?.displayPrice ?? pack.price
     }
 
     /// Per-credit price for a pack, derived from the live StoreKit price so it

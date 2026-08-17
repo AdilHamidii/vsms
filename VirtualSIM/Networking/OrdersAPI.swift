@@ -39,17 +39,27 @@ struct OrdersAPI {
     /// first one and the 180s hold means it cannot be released yet. It shortens
     /// `begin_order`'s dedupe window from 15s to 3s; without it, walking back
     /// through checkout inside 15s silently hands back the SAME order.
+    /// `fromDefault` records that the SERVICE was the app's own pre-selection
+    /// rather than something the user picked. It exists so delivery evidence
+    /// can exclude those orders: measured 2026-08-07, six such orders from
+    /// four brand-new users all got numbers and none got a code, because the
+    /// numbers were never entered anywhere — nobody had come for that service.
+    /// Scoring them as delivery failures measures our own steering and drags
+    /// the `delivery-degraded` watchdog down with it.
     func create(serviceId: String, countryId: String, premium: Bool = false,
-                allowConcurrent: Bool = false) async throws -> ServerOrder {
+                allowConcurrent: Bool = false,
+                fromDefault: Bool = false) async throws -> ServerOrder {
         struct Body: Encodable {
             let service_id: String; let country_id: String; let tier: String
             let allow_concurrent: Bool
+            let from_default: Bool
         }
         let env: OrderEnvelope = try await client.request(
             .post, path: "functions/v1/create-order",
             body: Body(service_id: serviceId, country_id: countryId,
                        tier: premium ? "premium" : "standard",
-                       allow_concurrent: allowConcurrent)
+                       allow_concurrent: allowConcurrent,
+                       from_default: fromDefault)
         )
         return env.order
     }

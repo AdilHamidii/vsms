@@ -8,6 +8,9 @@ struct OrdersScreen: View {
     @Environment(APIClient.self) private var api
 
     var openCredits: () -> Void
+    /// Non-nil when presented as a COVER rather than a tab. Orders stopped
+    /// being a tab on 2026-08-06, and the tab bar was its only way out.
+    var onClose: (() -> Void)? = nil
 
     @State private var tab: OrdersTab = .all
 
@@ -197,7 +200,18 @@ struct OrdersScreen: View {
     }
 
     private var header: some View {
-        HStack {
+        HStack(spacing: 12) {
+            if let onClose {
+                Button(action: onClose) {
+                    Image(systemName: RIcon.close)
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(theme.text2)
+                        .frame(width: 34, height: 34)
+                        .background(theme.chipBg, in: .circle)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Close")
+            }
             Text("Orders")
                 .displayType(28)
                 .foregroundStyle(theme.text)

@@ -87,6 +87,22 @@ private struct LiveLineView: View {
             async let t: () = state.loadLineThreads(using: LineAPI(client: api))
             async let c: () = state.loadLineCalls(using: LineAPI(client: api))
             _ = await (t, c)
+
+            // 🔴 INBOUND CALLING IS DEAD WITHOUT THIS. `registerForVoIPPushes()`
+            // had no caller anywhere in the app (2026-08-07 audit), so
+            // PKPushRegistry was never created, `pushRegistry(_:didUpdate:)`
+            // never fired, no VoIP token was ever uploaded, and Telnyx had
+            // nothing to push to. A real caller dialling the rented number
+            // produced no ring and no error — indistinguishable from a dead
+            // number. Third time this repo has shipped a reachable-looking
+            // feature whose entry point had no caller; grep for one.
+            //
+            // Registered HERE rather than in the dialer because inbound has to
+            // work for a user who never opens the dialer, and this body only
+            // renders once a live line exists — which is the condition
+            // `registerForVoIPPushes()`'s own doc comment asks for.
+            calling.registerForVoIPPushes()
+            await calling.prepareVoice()
         }
         // Tell the call controller which number it is acting as. Without this
         // the dialer mints a credential for, and calls out from, whichever line
@@ -230,6 +246,7 @@ private struct LiveLineView: View {
                     title: "Your number is ready",
                     message: "Texts sent to it land here. Share it with someone to get started."
                 )
+                composeButton
                 ShareLink(item: PhoneFormat.national(line.e164)) {
                     Text("Share my number")
                         .font(RFont.text(15, weight: .medium))
@@ -244,6 +261,7 @@ private struct LiveLineView: View {
         } else {
             ScrollView {
                 LazyVStack(spacing: 8) {
+                    composeButton.padding(.bottom, 6)
                     ForEach(state.threadsForSelectedLine) { thread in
                         ThreadRow(thread: thread) {
                             state.openThreadId = thread.id
@@ -255,6 +273,34 @@ private struct LiveLineView: View {
                 .padding(.bottom, 120)
             }
         }
+    }
+
+    /// The one entry point to a NEW conversation, in both states — mirroring
+    /// `dialButton`.
+    ///
+    /// Present in the empty state too, because that is where it is needed
+    /// most: "Share my number" was the only affordance there, so a user whose
+    /// number had never been texted could do nothing with it but wait. Unlike
+    /// the dialer this has no capability gate — outbound SMS needs no client
+    /// SDK, only the allowance, which the compose screen states rather than
+    /// hiding behind a disabled button.
+    private var composeButton: some View {
+        Button {
+            RHaptic.select()
+            state.flow = .compose
+        } label: {
+            HStack(spacing: 8) {
+                Image(systemName: "square.and.pencil")
+                    .font(.system(size: 14, weight: .semibold))
+                Text("New message")
+                    .font(RFont.text(15, weight: .medium))
+            }
+            .foregroundStyle(theme.text)
+            .frame(maxWidth: .infinity)
+            .frame(height: 48)
+            .background(theme.chipBg, in: Capsule())
+        }
+        .buttonStyle(PressScaleStyle())
     }
 
     // MARK: - Calls

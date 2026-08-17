@@ -9,6 +9,15 @@ struct CreditPack: Identifiable, Hashable {
     let priceUsd: Decimal
     /// Optional marketing badge, e.g. "MOST POPULAR" / "BEST VALUE". nil = no badge.
     let badge: String?
+    /// An OPTIONAL pack is dropped from the visible ladder when StoreKit has
+    /// answered and did not return this product — its App Store review may still
+    /// be pending, so its absence is expected rather than a load failure. Every
+    /// other pack renders "Unavailable" in that case, because for an approved
+    /// product a missing row IS the signal that something broke. The product id
+    /// stays in `allProductIds`: the request list is not the visible list, and
+    /// the pack must appear the moment Apple starts returning it, with no
+    /// release.
+    var optional: Bool = false
 
     /// Static fallback price string.
     var price: String { priceUsd.formatted(.currency(code: "USD")) }
@@ -49,11 +58,20 @@ extension CreditPack {
     // $0.4165, so two 30-packs bought 60 credits for $23.98 and strictly beat the
     // $24.99 60-pack, our top revenue product. USD is now realigned to the EUR
     // figures and the ladder improves monotonically again.
+    //
+    // 2.1: `credits.8` sits ALONGSIDE `credits.5` at $3.99 rather than replacing
+    // it (owner decision 2026-08-10). The 12-pack dropped $5.99 → $5.49 in the
+    // same decision so the six-rung ladder stays strictly monotonic per credit.
+    // `credits.8` is the one rung marked `optional`: its App Store review is
+    // pending, and until Apple returns it StoreKit answers with five products,
+    // not six.
     static let all: [CreditPack] = [
         .init(id: "sm", productId: "com.anthersystems.VirtualSIM.credits.5",
               credits: 5,   priceUsd: 2.99,  badge: nil),
+        .init(id: "s8", productId: "com.anthersystems.VirtualSIM.credits.8",
+              credits: 8,   priceUsd: 3.99,  badge: nil, optional: true),
         .init(id: "md", productId: "com.anthersystems.VirtualSIM.credits.12",
-              credits: 12,  priceUsd: 5.99,  badge: "MOST POPULAR"),
+              credits: 12,  priceUsd: 5.49,  badge: "MOST POPULAR"),
         .init(id: "lg", productId: "com.anthersystems.VirtualSIM.credits.30",
               credits: 30,  priceUsd: 12.99, badge: nil),
         // Larger packs for eSIM data plans (which run pricier than OTP numbers).
@@ -79,12 +97,16 @@ extension CreditPack {
               credits: 150, priceUsd: 59.99, badge: "BEST VALUE"),
     ]
 
-    /// The ladder must improve strictly: a bigger pack always beats stacking
-    /// smaller ones. This has been violated in production before — US pricing
-    /// drift made two 30-packs ($23.98) beat the 60-pack ($24.99), silently
-    /// dominating the top revenue product — so it is asserted rather than
-    /// trusted. Debug-only: it guards the fallback table, and the live prices
-    /// come from App Store Connect where the same rule has to be kept by hand.
+    /// The WHOLE ladder must improve strictly: a bigger pack always beats
+    /// stacking smaller ones. This has been violated in production before — US
+    /// pricing drift made two 30-packs ($23.98) beat the 60-pack ($24.99),
+    /// silently dominating the top revenue product — so it is asserted rather
+    /// than trusted. Debug-only: it guards the fallback table, and the live
+    /// prices come from App Store Connect where the same rule has to be kept by
+    /// hand.
+    ///
+    /// The 2026-08-10 ladder satisfies it at every step, entry rung included:
+    /// 0.598 > 0.49875 > 0.4575 > 0.433 > 0.4165 > 0.39993 per credit.
     static func assertLadderImproves() {
         #if DEBUG
         for (a, b) in zip(all, all.dropFirst()) {

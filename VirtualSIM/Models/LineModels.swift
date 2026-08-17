@@ -449,6 +449,33 @@ enum PhoneFormat {
         return "(\(String(d[1...3]))) \(String(d[4...6]))-\(String(d[7...10]))"
     }
 
+    /// Anything a person might type → E.164, or nil when it cannot be one.
+    ///
+    /// The server hands `to` STRAIGHT to Telnyx (it only strips non-digits to
+    /// test the emergency set), so a recipient that is not already E.164 fails
+    /// at the provider — after the allowance has been consumed and the row
+    /// written, because `begin_outbound_message` runs first. Normalising here
+    /// is what keeps a typo from costing a text.
+    ///
+    /// NANP only, matching `national(_:)` and the catalogue: US and Canada are
+    /// the only countries Telnyx sells us without an in-country address. A
+    /// number already in `+…` form is passed through untouched rather than
+    /// guessed at — we cannot validate an arbitrary country and a half-mangled
+    /// international number is worse than the raw one.
+    static func e164(_ input: String) -> String? {
+        let trimmed = input.trimmingCharacters(in: .whitespaces)
+        if trimmed.hasPrefix("+") {
+            let digits = trimmed.dropFirst().filter(\.isNumber)
+            return digits.count >= 8 ? "+" + digits : nil
+        }
+        let digits = trimmed.filter(\.isNumber)
+        switch digits.count {
+        case 10: return "+1" + digits                          // 4375550128
+        case 11 where digits.hasPrefix("1"): return "+" + digits // 14375550128
+        default: return nil
+        }
+    }
+
     /// `87 min` / `1:23` style duration for call rows.
     static func duration(_ seconds: Int) -> String {
         let m = seconds / 60, s = seconds % 60

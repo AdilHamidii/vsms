@@ -25,11 +25,29 @@ enum FlowStage: String, Hashable, Identifiable {
     /// a NavigationStack push would leave the floating tab bar sitting on top
     /// of the message composer.
     case lineCheckout, lineProvisioning, thread, dialer
+    /// Start a conversation with someone who has never texted us.
+    ///
+    /// Without this the Messages segment could only ever REPLY: threads are
+    /// created by an inbound message or by an outbound send, and every path to
+    /// `.thread` went through a row that already existed. Calls have had an
+    /// initiating affordance since the dialer landed; messages had none.
+    case compose
     /// The number store, opened OVER a live line to rent an additional one.
     /// The tab itself only shows the store when there is no line at all, so
     /// without this a second number is unreachable — which made the whole
     /// multi-number feature impossible to exercise.
     case lineStoreMore
+    /// Order history.
+    ///
+    /// It was a TAB until 2026-08-06. Home already carries a `Recent` section
+    /// with a "See all", so a whole tab for the same data was the fifth item
+    /// in a bar competing for the thumb — and the least-used one, since the
+    /// three rows on Home answer the question most of the time. It is a cover
+    /// now, reached from that link and from the three places that say "check
+    /// your orders". Removing it from the bar had to keep every one of those
+    /// routes working, which is why this exists rather than the tab simply
+    /// disappearing.
+    case orders
     var id: String { rawValue }
 }
 
@@ -108,15 +126,26 @@ enum PrefKey {
     static let lastCountedOrder = "review.lastCountedOrder"
     static let lastPromptVer    = "review.lastPromptVersion"
 
+    /// The most recent order the client noticed carrying a code it had not
+    /// seen before, plus when it noticed — so a foreground check can still ask
+    /// for a review after a cold launch, for someone who read the code off a
+    /// lock-screen push and never opened `OtpScreen` at all. See
+    /// `AppState.reviewableRecentDelivery`.
+    static let lastDeliveredOrderId = "review.lastDeliveredOrderId"
+    static let lastDeliveredAt      = "review.lastDeliveredAt"
+
     /// eSIM order ids whose install flow has been opened at least once.
     static let esimInstallsStarted = "esim.installsStarted"
 }
 
 @Observable
 final class AppState {
-    /// See `AppTab` — the rented line is the primary product, so it is the
-    /// launch tab. Seeded with the matching `intent` in `init`.
-    var tab: AppTab = .line
+    /// Temp SMS is the launch tab (owner decision 2026-08-08). The rented line
+    /// led for one release on the reasoning that it is the premium product —
+    /// but it is a $9.99/mo subscription, while temp SMS is what the store
+    /// listing, the keywords and essentially all acquisition are actually
+    /// about, and it is the line every arriving user can afford today.
+    var tab: AppTab = .home
     var balance: Int = 0
     var services: [Service] = SeedData.services
     var countries: [Country] = SeedData.countries
@@ -139,6 +168,15 @@ final class AppState {
     /// made the eSIM map rebuild all 66 annotations per frame.
     @ObservationIgnored
     private(set) var ranksByService: [String: [CountryRank]] = [:]
+    /// True until a user with no order history has actually PICKED a service.
+    ///
+    /// `applyStartupSelection` still seeds a suggested pair so the hero has
+    /// something to render and price — this flag is what stops that suggestion
+    /// being purchasable as though the user had chosen it. Cleared by
+    /// `chooseService`, and by `applyStartupSelection` for anyone who has
+    /// ordered before (a returning user genuinely wants their last route back).
+    var needsServiceChoice = false
+
     /// Guards one-time first-run selection seeding (see applyStartupSelection).
     @ObservationIgnored
     private var didSeedStartupSelection = false
@@ -580,13 +618,21 @@ final class AppState {
     var deliveredCount: Int { orders.filter { $0.status == .received }.count }
 
     /// Whether to surface Apple's native review sheet now that a fresh code
-    /// was delivered. Returns true at most once per app version, and only from
-    /// the user's 2nd successful code onward — a genuinely positive moment.
+    /// was delivered. Returns true at most once per app version, from the
+    /// user's FIRST successful code — a genuinely positive moment, and for
+    /// most users the only one (see the threshold note below).
     ///
     /// No credits or incentive are attached: App Store guideline 5.6.4 forbids
     /// paying for reviews. The system further throttles the actual sheet
     /// (~3 prompts/user/year), so we spend that quota only on happy outcomes.
     func shouldRequestReview(forOrderId id: String) -> Bool {
+        // 🔴 A screenshot run delivers a code by construction, so this fires
+        // and Apple's rating sheet lands squarely over the code card — which
+        // is exactly the frame the whole harness exists to produce. It reached
+        // an App Store upload once. Gated here rather than at the two call
+        // sites so a third caller cannot reintroduce it, and it also stops a
+        // harness run burning the user's ~3-prompts-per-year system quota.
+        if ScreenshotMode.isActive { return false }
         let d = UserDefaults.standard
         // A re-render of the same delivery must not double-count.
         guard d.string(forKey: PrefKey.lastCountedOrder) != id else { return false }
@@ -614,6 +660,34 @@ final class AppState {
         guard d.string(forKey: PrefKey.lastPromptVer) != version else { return false }
         d.set(version, forKey: PrefKey.lastPromptVer)
         return true
+    }
+
+    /// Records that the client just noticed a code on an order it hadn't seen
+    /// carrying one before — see the diff in `loadOrders`. Persisted (not just
+    /// in-memory) so a cold launch after the app was force-quit or backgrounded
+    /// through the delivery still has something to check on the next foreground.
+    private func recordCodeDelivered(orderId: String) {
+        let d = UserDefaults.standard
+        d.set(orderId, forKey: PrefKey.lastDeliveredOrderId)
+        d.set(Date().timeIntervalSince1970, forKey: PrefKey.lastDeliveredAt)
+    }
+
+    /// Whether THIS foreground should surface the native review prompt for a
+    /// user who never opened `OtpScreen`/`EmailCodeScreen` at all — the
+    /// designed flow for anyone who reads the code straight off a lock-screen
+    /// push and pastes it into the other app without reopening vSMS. Bounded
+    /// to 30 minutes so a delivery discovered long after the fact (e.g. an
+    /// unrelated cold launch days later) doesn't retroactively read as a fresh
+    /// happy moment. Every other gate — once per app version,
+    /// per-order dedupe — still lives in `shouldRequestReview`, which this
+    /// calls rather than duplicates.
+    func reviewableRecentDelivery() -> Bool {
+        let d = UserDefaults.standard
+        guard let orderId = d.string(forKey: PrefKey.lastDeliveredOrderId) else { return false }
+        let deliveredAt = d.double(forKey: PrefKey.lastDeliveredAt)
+        let elapsed = Date().timeIntervalSince1970 - deliveredAt
+        guard deliveredAt > 0, elapsed >= 0, elapsed <= 30 * 60 else { return false }
+        return shouldRequestReview(forOrderId: orderId)
     }
 
     // MARK: - Cold launch
@@ -1093,12 +1167,35 @@ final class AppState {
         if let recent = orders.first {
             lastService = services.first { $0.id == recent.service.id } ?? recent.service
             lastCountry = countries.first { $0.id == recent.country.id } ?? recent.country
+            needsServiceChoice = false
             return
         }
+        // 🔴 A first-run user gets a suggestion, NOT a purchase.
+        //
+        // The pair below is still computed, because the hero needs something
+        // to price and the country ranking is genuinely useful once a service
+        // IS chosen. What changed on 2026-08-08 is that it no longer counts as
+        // the user's choice: `needsServiceChoice` keeps the Get-number button
+        // hidden until they pick, so the first tap is a decision rather than a
+        // transaction.
+        //
+        // Why: measured 2026-08-07, six deliveroo/us orders from four
+        // brand-new users, every one on this exact default pair at exactly the
+        // grant size, all issued a number, NONE producing a code — while a
+        // deliberate order on the same route delivered in 86 seconds. Four of
+        // the six were never even cancelled, just left to expire. They were
+        // numbers nobody ever entered anywhere, because nobody had come for
+        // that service. The same shape produced the olx/us cluster on 08-04
+        // that was briefly investigated as sabotage.
+        //
+        // Better copy cannot fix it — `WaitingScreen` already says "Paste it
+        // into <service>, then come back". The user understood; they simply
+        // had no use for the number. So the fix has to be at SELECTION.
         if let (svc, cty) = affordableStarter() {
             lastService = svc
             lastCountry = cty
         }
+        needsServiceChoice = true
     }
 
     /// A recognizable service + country pair the current balance can afford,
@@ -1507,6 +1604,10 @@ final class AppState {
 
     @MainActor
     func loadEmailOrders(using api: EmailAPI) async {
+        // Screenshot frames seed this collection directly. The read below is
+        // RLS-filtered and would succeed with an EMPTY list, silently wiping
+        // the sample — which is how the thread frame came back black.
+        if ScreenshotMode.isActive { return }
         do { emailOrders = try await api.list() } catch { /* keep what we have */ }
     }
 
@@ -1531,6 +1632,10 @@ final class AppState {
     }
 
     func loadLine(using api: LineAPI) async {
+        // Screenshot frames seed this collection directly. The read below is
+        // RLS-filtered and would succeed with an EMPTY list, silently wiping
+        // the sample — which is how the thread frame came back black.
+        if ScreenshotMode.isActive { return }
         guard let fresh = try? await api.fetchAll() else { return }
         lines = fresh
         // Drop a selection whose line is gone — released, or refunded away —
@@ -1601,11 +1706,19 @@ final class AppState {
     /// user was reading is the worse of the two.
     @MainActor
     func loadLineThreads(using api: LineAPI) async {
+        // Screenshot frames seed this collection directly. The read below is
+        // RLS-filtered and would succeed with an EMPTY list, silently wiping
+        // the sample — which is how the thread frame came back black.
+        if ScreenshotMode.isActive { return }
         if let fresh = try? await api.threads() { lineThreads = fresh }
     }
 
     @MainActor
     func loadLineCalls(using api: LineAPI) async {
+        // Screenshot frames seed this collection directly. The read below is
+        // RLS-filtered and would succeed with an EMPTY list, silently wiping
+        // the sample — which is how the thread frame came back black.
+        if ScreenshotMode.isActive { return }
         if let fresh = try? await api.calls() { lineCalls = fresh }
     }
 
@@ -1621,6 +1734,10 @@ final class AppState {
     /// thread that looks empty.
     @MainActor
     func loadLineMessages(using api: LineAPI, threadId: String) async {
+        // Screenshot frames seed this collection directly. The read below is
+        // RLS-filtered and would succeed with an EMPTY list, silently wiping
+        // the sample — which is how the thread frame came back black.
+        if ScreenshotMode.isActive { return }
         guard let fresh = try? await api.messages(threadId: threadId) else { return }
         lineMessages[threadId] = fresh.reversed()
     }
@@ -1828,9 +1945,28 @@ final class AppState {
     }
 
     func loadOrders(using api: OrdersAPI) async {
+        // Screenshot frames seed this collection directly. The read below is
+        // RLS-filtered and would succeed with an EMPTY list, silently wiping
+        // the sample — which is how the thread frame came back black.
+        if ScreenshotMode.isActive { return }
         do {
             let rows = try await api.list()
-            orders = rows.compactMap { resolve($0) }
+            // A code that appears here and wasn't on the previous fetch is new
+            // information for the foreground review prompt: the user may have
+            // read it straight off a lock-screen push and never opened
+            // `OtpScreen` at all. `hadPriorState` skips the very first
+            // population of a session — an empty prior list can't tell "just
+            // arrived" from "arrived last week", and every cold launch starts
+            // from `orders == []`. See `reviewableRecentDelivery`.
+            let hadPriorState = !orders.isEmpty
+            let previouslyDelivered = Set(orders.compactMap { $0.otp != nil ? $0.id : nil })
+            let resolved = rows.compactMap { resolve($0) }
+            orders = resolved
+            if hadPriorState {
+                for order in resolved where order.otp != nil && !previouslyDelivered.contains(order.id) {
+                    recordCodeDelivered(orderId: order.id)
+                }
+            }
         } catch {
             // keep current
         }
@@ -1927,7 +2063,8 @@ final class AppState {
         do {
             let server = try await orders.create(serviceId: svc.id, countryId: cty.id,
                                                  premium: effectiveCheckoutPremium,
-                                                 allowConcurrent: concurrent)
+                                                 allowConcurrent: concurrent,
+                                                 fromDefault: needsServiceChoice)
             let order = resolve(server)
             lastService = svc
             lastCountry = cty
@@ -2259,9 +2396,10 @@ final class AppState {
     }
 
     func finishOtp() {
-        flow = nil
         activeOrder = nil
-        tab = .orders
+        // Orders is a cover now, not a tab — assigning `flow` last so the
+        // OTP cover is replaced rather than dismissed to nothing.
+        flow = .orders
     }
 
     /// Best country for `service` by MEASURED evidence only — the sole basis

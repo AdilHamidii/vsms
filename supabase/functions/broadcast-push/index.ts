@@ -39,9 +39,24 @@ import { sendPush } from "../_shared/apns.ts";
  *  cannot accidentally target one person with a broadcast message. */
 type Segment = "topped_up" | "not_topped_up" | "all";
 
-/** How far back a wallet 'adjustment' counts as "the top-up we just did".
+/** How far back a wallet credit counts as "the top-up we just did".
  *  Deliberately short: this function must not resurrect an older make-good. */
 const TOPUP_LOOKBACK_HOURS = 6;
+
+/** Which ledger reasons mean "we just put credits in your wallet".
+ *
+ *  `signup_bonus` was added 2026-08-07: the retroactive make-good for the 43
+ *  users who signed up while the signup grant was 0 was written with that
+ *  reason, which is the semantically correct one — so keying the segment on
+ *  'adjustment' alone matched NOBODY, and the only other option was `all`,
+ *  which would have told the whole install base their balance changed when it
+ *  had not. That is precisely the failure the comment on `Segment` warns about.
+ *
+ *  ⚠️ Inside the lookback this also matches ordinary NEW signups, who really
+ *  did just receive their bonus — so the message stays true for them. Keep any
+ *  copy sent through this segment true for both cases: state that credits are
+ *  in the wallet, never that they are compensation for something specific. */
+const TOPUP_REASONS = ["adjustment", "signup_bonus"];
 
 /** A broadcast is not a loop that should ever run away. Well above the ~200
  *  devices on file, low enough to be a real backstop. */
@@ -86,7 +101,7 @@ Deno.serve(async (req) => {
   const { data: adj, error: adjErr } = await sb
     .from("wallet_transactions")
     .select("user_id")
-    .eq("reason", "adjustment")
+    .in("reason", TOPUP_REASONS)
     .gte("created_at", since);
   if (adjErr) {
     console.error("broadcast-push: adjustment read failed:", adjErr.message);

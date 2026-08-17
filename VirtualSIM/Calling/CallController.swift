@@ -268,14 +268,18 @@ final class CallController: NSObject {
     }
 
     func endCall() async {
+        // Reentrancy guard. Three unguarded paths reach here — the in-call
+        // button, `remoteEnded()`, and CallKit's own CXEndCallAction delegate
+        // fired by this function's own `callControl.request` — and `placeCall`
+        // already guards itself the same way.
+        guard phase != .ending else { return }
+
         // Reported BEFORE the teardown, because `resetState` clears
         // `currentCallId` and the report needs it. A call that never reached
         // `.active` never connected, so it is `canceled`, not a zero-second
         // `completed` — the difference decides whether the user is billed for
         // it at all when the CDR never arrives.
-        report(
-            status: phase == .active ? "completed" : "canceled",
-            durationSeconds: phase == .active ? Int(elapsed.rounded()) : 0)
+        reportFinalOnce()
 
         guard let uuid = currentUUID else {
             resetState()
@@ -307,6 +311,32 @@ final class CallController: NSObject {
         RHaptic.select()
     }
 
+    /// One final report per call, claimed by whoever gets there first.
+    ///
+    /// 🔴 The comment on `provider(_:perform: CXEndCallAction)` used to assert
+    /// that `currentCallId` was already nil by the time it ran, so it "cannot
+    /// double-report". That is not what the code does: `endCall()` sets
+    /// `phase = .ending` BEFORE its first `await`, and `resetState()` runs only
+    /// AFTER it. `@MainActor` serialises execution between suspension points —
+    /// it does not prevent a second Task interleaving across one. So the
+    /// delegate (which `endCall()` itself triggers via `callControl.request`)
+    /// ran while the first call was still suspended, read `phase != .active`,
+    /// and sent a SECOND report of `canceled` / 0s after the correct one.
+    ///
+    /// That is not cosmetic: `settle_stale_calls` falls back to
+    /// `duration_seconds` to settle the allowance when no CDR ever arrives.
+    private var didReportFinal = false
+
+    /// Check-and-set with no `await` between the two, which is what makes this
+    /// a real claim on `@MainActor` rather than a hopeful flag.
+    private func reportFinalOnce() {
+        guard !didReportFinal else { return }
+        didReportFinal = true
+        report(
+            status: phase == .active ? "completed" : "canceled",
+            durationSeconds: phase == .active ? Int(elapsed.rounded()) : 0)
+    }
+
     private func resetState() {
         phase = .idle
         peer = ""
@@ -315,6 +345,7 @@ final class CallController: NSObject {
         isSpeaker = false
         currentUUID = nil
         currentCallId = nil
+        didReportFinal = false
     }
 
     /// Called by the SDK once media is flowing.
@@ -390,13 +421,12 @@ extension CallController: CXProviderDelegate {
             // nothing at all and settlement fell entirely to the CDR cron, or
             // to the 6-hour backstop if Telnyx never billed the call.
             //
-            // `endCall()` deliberately reports BEFORE requesting the
-            // transaction, so when the user ends from inside the app the report
-            // has already been sent and `currentCallId` is nil by the time we
-            // get here — `report()` guards on it, so this cannot double-report.
-            report(
-                status: phase == .active ? "completed" : "canceled",
-                durationSeconds: phase == .active ? Int(elapsed.rounded()) : 0)
+            // `endCall()` reports before requesting the transaction, and
+            // `reportFinalOnce()` is what actually makes that safe — this
+            // delegate is invoked BY that request while `endCall()` is still
+            // suspended, so `currentCallId` has NOT been cleared yet and the
+            // old "cannot double-report" reasoning did not hold.
+            reportFinalOnce()
             await voice.hangup()
             resetState()
             action.fulfill()

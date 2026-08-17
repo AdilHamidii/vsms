@@ -536,7 +536,13 @@ struct HomeScreen: View {
     private var explainer: some View {
         VStack(alignment: .leading, spacing: 10) {
             explainerStep(1, "Pick the service you're verifying")
-            explainerStep(2, "We hand you a real, working number")
+            // Step 2 names the thing the user is about to be given, and in
+            // e-mail mode that is not a number. The generic wording read as a
+            // promise the e-mail line cannot keep — same class as every other
+            // leak of SMS vocabulary into the e-mail flow.
+            explainerStep(2, state.emailMode
+                          ? "We hand you a real, working e-mail address"
+                          : "We hand you a real, working number")
             explainerStep(3, "The code lands here. Paste it back")
         }
         .padding(.horizontal, 14)
@@ -566,7 +572,25 @@ struct HomeScreen: View {
     /// path when short, instead of a dead greyed-out button.
     @ViewBuilder
     private var heroCTA: some View {
-        if let routeCost {
+        // 🔴 A first-run user must CHOOSE before they can buy.
+        //
+        // The route below it is a suggestion the app computed, and selling a
+        // suggestion is what produced six deliveroo/us numbers for four
+        // brand-new users who had never heard of Deliveroo — every one issued,
+        // none ever entered anywhere, four not even cancelled. The credits are
+        // refunded automatically, so the cost is not money: it is the single
+        // session a new user gives us, spent proving nothing.
+        //
+        // Deliberately a real, labelled action rather than a disabled button:
+        // the next step IS picking a service, so the button should do that.
+        if state.needsServiceChoice && !state.emailMode {
+            PrimaryButton(
+                label: "Choose a service",
+                sub: String(localized: "What are you verifying?"),
+                icon: RIcon.search,
+                action: { RHaptic.select(); openServices() }
+            )
+        } else if let routeCost {
             if state.balance < routeCost {
                 PrimaryButton(
                     label: "Buy credits",

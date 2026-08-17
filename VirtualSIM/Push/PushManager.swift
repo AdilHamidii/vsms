@@ -30,6 +30,12 @@ final class PushManager: NSObject {
     /// them. iOS shows the dialog only while status is notDetermined, so
     /// repeat calls are free.
     func requestAuthorizationAndRegister() async {
+        // A system permission dialog in an App Store screenshot is a defect —
+        // it covers the product and it is not ours to show. Gated here rather
+        // than at each call site so no future caller can reintroduce it; the
+        // whole check compiles away in Release, where `isActive` is a stored
+        // `false`.
+        if ScreenshotMode.isActive { return }
         let center = UNUserNotificationCenter.current()
         center.delegate = self
         do {
@@ -55,6 +61,9 @@ final class PushManager: NSObject {
     /// unreachable. Provisional keeps the contextual prompt intact while making
     /// every signup addressable.
     func registerProvisionalIfUndetermined() async {
+        // Provisional shows no dialog, but it still registers with APNs from a
+        // harness run. Same gate as above, same reason.
+        if ScreenshotMode.isActive { return }
         let center = UNUserNotificationCenter.current()
         center.delegate = self
         let settings = await center.notificationSettings()

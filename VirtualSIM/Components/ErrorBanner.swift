@@ -37,7 +37,12 @@ struct ErrorBanner: View {
         // `APIError.appleSignInCanceled` maps to the empty string, so a user
         // dismissing Apple's own sheet used to raise an empty banner: an icon,
         // a close button and no text.
-        if let message = state.lastError, !message.isEmpty {
+        // A screenshot run drives the UI from synthetic state, so its network
+        // calls legitimately fail — the email frame came back with "Please
+        // sign in again to continue." across the top of the product. The
+        // banner is honest about a real session and pure noise here, and this
+        // compiles away in Release.
+        if let message = state.lastError, !message.isEmpty, !ScreenshotMode.isActive {
             let blocking = Self.isBlocking(message)
 
             VStack(alignment: .leading, spacing: 10) {
@@ -130,8 +135,7 @@ struct ErrorBanner: View {
             actionButton(label: String(localized: "Check your orders"),
                          icon: RIcon.inbox) {
                 state.lastError = nil
-                state.flow = nil
-                state.tab = .orders
+                state.flow = .orders
             }
         }
     }

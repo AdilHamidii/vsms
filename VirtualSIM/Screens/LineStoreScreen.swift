@@ -4,9 +4,9 @@ import SwiftUI
 ///
 /// ── Why this is a sequence and not one long page ──────────────────────────
 ///
-/// It asks the user to CHOOSE twice before it ever mentions money: pick a city,
-/// pick your actual number, and only then see the price. Two reasons, and the
-/// second is the important one:
+/// Three steps — read the pitch, pick a city, pick your actual number — and
+/// only then the price. So the user CHOOSES twice before money is mentioned.
+/// Two reasons, and the second is the important one:
 ///
 /// 1. Each step renders instantly. A single page had to wait on a Telnyx search
 ///    before it could show anything, and the whole screen sat blank meanwhile.
@@ -33,15 +33,29 @@ struct LineStoreScreen: View {
     /// `HomeScreen(onOpenEsim:)`.
     var onOpenSms: () -> Void
 
-    private enum Step: Hashable { case city, number }
-    @State private var step: Step = .city
+    private enum Step: Hashable { case intro, city, number }
+
+    /// Opens on the pitch. The one exception is the screenshot harness, whose
+    /// `lineStore` frame has always been the city list — the App Store
+    /// screenshots would otherwise silently change meaning on the next run.
+    @State private var step: Step =
+        ScreenshotMode.screen == .lineStore ? .city : .intro
+
+    /// Which way the last move went.
+    ///
+    /// A fixed edge per step works only while there are two steps and
+    /// therefore one boundary. `city` now has a neighbour on either side, so
+    /// there is no single edge that is correct for both — it has to slide out
+    /// of whichever side it is being pushed toward.
+    @State private var goingForward = true
     @State private var appeared = false
 
     var body: some View {
         ZStack {
             switch step {
-            case .city:   cityStep.transition(stepTransition(forward: true))
-            case .number: numberStep.transition(stepTransition(forward: false))
+            case .intro:  introStep.transition(pushTransition)
+            case .city:   cityStep.transition(pushTransition)
+            case .number: numberStep.transition(pushTransition)
             }
         }
         .background(theme.bg)
@@ -61,35 +75,87 @@ struct LineStoreScreen: View {
         }
     }
 
-    private func stepTransition(forward: Bool) -> AnyTransition {
+    private var pushTransition: AnyTransition {
         .asymmetric(
-            insertion: .move(edge: forward ? .leading : .trailing).combined(with: .opacity),
-            removal: .move(edge: forward ? .leading : .trailing).combined(with: .opacity))
+            insertion: .move(edge: goingForward ? .trailing : .leading)
+                .combined(with: .opacity),
+            removal: .move(edge: goingForward ? .leading : .trailing)
+                .combined(with: .opacity))
     }
 
-    // MARK: - Step 1 · city
+    /// Direction is set OUTSIDE the animation, so `pushTransition` is resolved
+    /// against the new value in the same update that moves the step.
+    private func go(to next: Step, forward: Bool) {
+        goingForward = forward
+        withAnimation(RMotion.panel) { step = next }
+    }
+
+    // MARK: - Step 1 · the pitch, alone
+    //
+    // The city list used to sit under this card on the same scroll, so the
+    // launch screen opened on a wall of seven rows plus a footnote plus an
+    // escape link — the reader had to get past a decision to finish reading
+    // what the product even was. One page, one job: say what this is, then ask.
+    //
+    // Nothing here touches the network.
+
+    private var introStep: some View {
+        // `minHeight` equal to the viewport is what puts the CTA in the thumb
+        // zone on a short page while still letting the whole thing scroll at
+        // accessibility type sizes. A plain VStack would clip; a plain
+        // ScrollView would leave the button stranded mid-screen.
+        GeometryReader { proxy in
+            ScrollView {
+                VStack(alignment: .leading, spacing: 0) {
+                    header(kicker: "Second number", title: "Your own number")
+
+                    // Two spacers, not one. With a single spacer under the
+                    // card the whole pitch clung to the top and left a third
+                    // of the screen empty above the button; equal-priority
+                    // spacers split the slack so the card floats between the
+                    // title and the CTA instead.
+                    Spacer(minLength: 16)
+
+                    pitch.riseIn(appeared, index: 0)
+                    usSoon.padding(.top, 16).riseIn(appeared, index: 1)
+
+                    Spacer(minLength: 24)
+
+                    PrimaryButton(label: String(localized: "Choose a city")) {
+                        go(to: .city, forward: true)
+                    }
+                    .riseIn(appeared, index: 2)
+
+                    smsEscape.padding(.top, 12).riseIn(appeared, index: 3)
+                }
+                .padding(.horizontal, 20)
+                // Clears the floating tab bar + resume bar.
+                .padding(.bottom, 120)
+                .frame(minHeight: proxy.size.height, alignment: .top)
+            }
+        }
+    }
+
+    // MARK: - Step 2 · city
     //
     // Renders with zero network dependency: the city list is seeded and only
     // replaced once a search has run. See `LineCity.seeded`.
 
     private var cityStep: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 0) {
-                header(kicker: "Second number", title: "Your own number")
-                pitch.padding(.top, 16).riseIn(appeared, index: 0)
-
-                SectionHeader(label: String(localized: "Where should it be?"))
-                    .padding(.top, 24)
-                    .riseIn(appeared, index: 1)
-
-                cityList.riseIn(appeared, index: 2)
-
-                usSoon.padding(.top, 16).riseIn(appeared, index: 3)
-                smsEscape.padding(.top, 24).riseIn(appeared, index: 4)
+        VStack(spacing: 0) {
+            // The question IS the title here, so there is no separate
+            // `SectionHeader` — printing "Where should it be?" twice, once as
+            // a heading and once as a section label, is the shape this screen
+            // just got rid of.
+            backHeader(title: "Where should it be?", subtitle: nil, back: .intro)
+            ScrollView {
+                VStack(alignment: .leading, spacing: 0) {
+                    cityList
+                    usSoon.padding(.top, 16)
+                }
+                .padding(.horizontal, 20)
+                .padding(.bottom, 120)
             }
-            .padding(.horizontal, 20)
-            // Clears the floating tab bar + resume bar.
-            .padding(.bottom, 120)
         }
     }
 
@@ -182,7 +248,7 @@ struct LineStoreScreen: View {
                 // Move first, load second. The tap is the commitment, so the
                 // next screen appears immediately and fills in — rather than
                 // the user waiting on this one with nothing happening.
-                withAnimation(RMotion.panel) { step = .number }
+                go(to: .number, forward: true)
                 await state.loadLineNumbers(using: LineAPI(client: api), city: city.id)
             }
         } label: {
@@ -212,11 +278,11 @@ struct LineStoreScreen: View {
         .buttonStyle(PressScaleStyle())
     }
 
-    // MARK: - Step 2 · number
+    // MARK: - Step 3 · number
 
     private var numberStep: some View {
         VStack(spacing: 0) {
-            backHeader
+            backHeader(title: "Pick your number", subtitle: cityLabel, back: .city)
             if state.isLoadingLineNumbers, state.lineOffers.isEmpty {
                 numberSkeleton
             } else if state.lineOffers.isEmpty {
@@ -227,10 +293,13 @@ struct LineStoreScreen: View {
         }
     }
 
-    private var backHeader: some View {
+    /// Shared by steps 2 and 3, so the two inner pages cannot drift apart in
+    /// title weight, back-button size or spacing.
+    private func backHeader(title: LocalizedStringKey, subtitle: String?,
+                            back: Step) -> some View {
         HStack(spacing: 12) {
             Button {
-                withAnimation(RMotion.panel) { step = .city }
+                go(to: back, forward: false)
             } label: {
                 Image(systemName: RIcon.back)
                     .font(.system(size: 15, weight: .semibold))
@@ -239,14 +308,16 @@ struct LineStoreScreen: View {
                     .background(theme.chipBg, in: .circle)
             }
             .buttonStyle(.plain)
+            // Without this VoiceOver reads the SF Symbol's name.
+            .accessibilityLabel("Back")
 
             VStack(alignment: .leading, spacing: 1) {
-                Text("Pick your number")
+                Text(title)
                     .font(RFont.display(19, weight: .bold))
                     .tracking(-0.4)
                     .foregroundStyle(theme.text)
-                if let label = cityLabel {
-                    Text(label)
+                if let subtitle {
+                    Text(subtitle)
                         .font(RFont.text(12))
                         .foregroundStyle(theme.text2)
                 }
@@ -359,7 +430,7 @@ struct LineStoreScreen: View {
                 .multilineTextAlignment(.center)
                 .fixedSize(horizontal: false, vertical: true)
             GhostButton(label: "Try another city", fillsWidth: false) {
-                withAnimation(RMotion.panel) { step = .city }
+                go(to: .city, forward: false)
             }
             .padding(.top, 8)
         }

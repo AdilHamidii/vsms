@@ -81,6 +81,85 @@ const MAX_WHOLESALE_CENTS = 100_000;
 // (empty/partial response) would wrongly inactivate the whole catalog.
 const DEACTIVATE_FLOOR = 5000;
 
+// ─── SMSPVA serviceability guards (added 2026-08-08) ──────────────────────
+//
+// THE PROBLEM THESE SOLVE: `getAllPrices()` is a PRICE-ONLY feed. BulkPriceRow
+// is {service, serviceDescription, country, price} — there is no stock field,
+// and SMSPVA exposes no stock endpoint at all (see _shared/smspva.ts: every
+// endpoint is price, balance, conversions or order lifecycle). So this sync
+// marks a route `active` on the strength of a QUOTE, with no evidence anyone
+// can actually buy it. That is the same phantom-price trap sync-herosms hit
+// with `getPrices` — "advertises a price with ZERO stock behind it" — one
+// provider over, except here we cannot even detect it per route.
+//
+// Measured 2026-08-08 over the trailing 7 days: SMSPVA took 46 orders,
+// **41 never reserved a number and 0 delivered a code**. Reservation rate by
+// tier was premium 0/26 and standard 5/20, and the 5 that did reserve all
+// expired codeless. Meanwhile 5sim and HeroSMS sat at 100% reservation in
+// every 7-day window across 30 days. SMSPVA ran at 95–100% itself until
+// 2026-07-25 and then decayed 97% → 76% → 68% → 40.6% → 10.9%.
+//
+// Both guards below only ever move `status`, are recomputed from live data on
+// every hourly run, and therefore UN-HIDE by themselves. Neither deletes a
+// route, neither touches another provider's rows, and neither needs a redeploy
+// to reverse.
+
+/** Trailing window for the reservation-rate verdict. */
+const RESERVE_LOOKBACK_DAYS = 7;
+/** Minimum SMSPVA orders in the window before the rate means anything.
+ *
+ *  Reachability was checked rather than guessed, because this repo has already
+ *  shipped a watchdog gate that could never fire: SMSPVA's LOWEST 7-day order
+ *  count over the last 30 days was 10, so 8 is comfortably reachable whenever
+ *  the provider is actually being sold.
+ *
+ *  It is also the ANTI-DEADLOCK term, and that is its more important job. Once
+ *  the collapse verdict hides every SMSPVA route, no further SMSPVA orders can
+ *  be placed, so the window drains; ~7 days later `n` falls under this floor,
+ *  the verdict clears on its own, and the catalog is re-offered for a fresh
+ *  trial. Since SMSPVA publishes no stock, OUR OWN ORDERS ARE THE ONLY
+ *  INSTRUMENT WE HAVE — a permanent hide would be unfalsifiable. */
+const RESERVE_MIN_ORDERS = 8;
+/** Reservation rate under this (percent) is a collapse.
+ *
+ *  Derived from measurement, not taste. Over 30 days of rolling 7-day windows:
+ *  5sim and HeroSMS never read below 100.0%, healthy SMSPVA never below 95.7%,
+ *  and the lowest reading during its healthy era was 68.6%. The first firing
+ *  window reads 40.6%. So 50 sits in a wide empty band — it cannot fire on a
+ *  working provider and it fires decisively on this one. */
+const RESERVE_MIN_PCT = 50;
+/** Matches create-order's own staleness bound for a health reading. */
+const HEALTH_FRESH_MS = 5 * 60 * 1000;
+
+/** ⚠️ MIRRORS OF create-order CONSTANTS — CHANGE BOTH TOGETHER.
+ *
+ *  These four reproduce `maxCostUsd` from create-order/index.ts exactly (see
+ *  the block around `const maxCostUsd = Math.min(...)`). They are duplicated
+ *  rather than shared because `_shared/*` is bundled per function, so moving
+ *  them would force a redeploy of the busiest money path in the product to
+ *  change a catalog sync. Same trade this repo already makes for
+ *  CREDIT_DIVISOR across the four syncs — and the same standing warning: a
+ *  constant duplicated across files WILL drift. If create-order's ceiling
+ *  changes and this does not, the only symptom is routes that stay visible
+ *  while checkout refuses them, which is precisely the bug being fixed here. */
+const NET_USD_PER_CREDIT = 0.40;
+const SMSPVA_MIN_MARGIN = 8.0;      // MIN_MARGIN_BY_PROVIDER.smspva
+const CEILING_SLACK_MULTIPLE = 3.0;
+const CEILING_HEADROOM_USD = 0.10;
+const MAX_REVENUE_FRACTION = 0.5;
+
+/** The order-time ceiling create-order will compute for an SMSPVA route at
+ *  `credits`. If the live balance is below this, create-order refuses the order
+ *  BEFORE charging and returns `provider_unreachable` — so the route is not
+ *  buyable, however good its price looks. */
+function orderCeilingUsd(credits: number): number {
+  return Math.min(
+    (credits * NET_USD_PER_CREDIT / SMSPVA_MIN_MARGIN) * CEILING_SLACK_MULTIPLE +
+      CEILING_HEADROOM_USD,
+    credits * NET_USD_PER_CREDIT * MAX_REVENUE_FRACTION,
+  );
+}
+
 function priceToCredits(price: number): number {
   if (!Number.isFinite(price) || price <= 0) return MIN_CREDITS;
   const raw = Math.ceil(price / CREDIT_DIVISOR);
@@ -144,6 +223,69 @@ Deno.serve(async (req) => {
   const { data: blkRow } = await sb
     .from("app_config").select("value").eq("key", "blocked_routes").maybeSingle();
   const blocked = new Set<string>(Array.isArray(blkRow?.value) ? (blkRow!.value as string[]) : []);
+
+  // ── Guard 1: affordability ────────────────────────────────────────────
+  // poll-active-orders writes {balance_usd, checked_at} every 60s. A route
+  // whose own order ceiling exceeds that balance is refused pre-charge by
+  // create-order, so listing it can only produce `provider_unreachable` —
+  // copy which does NOT say "we are out of float" and reads to the user as
+  // the app being broken.
+  //
+  // FAILS OPEN on a missing or stale reading, deliberately matching
+  // create-order's identical guard. A hide driven by a monitoring blip would
+  // take the catalog down for a reason that is not real, which is worse than
+  // what it prevents.
+  const { data: healthRow } = await sb
+    .from("app_config").select("value").eq("key", "smspva_health").maybeSingle();
+  const health = healthRow?.value as { balance_usd?: number; checked_at?: string } | null;
+  const healthFresh = !!health?.checked_at &&
+    Date.now() - new Date(health.checked_at).getTime() < HEALTH_FRESH_MS;
+  const balanceUsd = healthFresh && typeof health?.balance_usd === "number"
+    ? health.balance_usd
+    : null;
+
+  // ── Guard 2: reservation collapse ─────────────────────────────────────
+  // The provider-wide verdict. Counted on `smspva_number is not null`, i.e.
+  // did the provider hand us a number at all — NOT on delivery.
+  //
+  // That choice is the whole point. This repo has twice built a gate on
+  // delivery and measured user impatience instead: 59% of numbered orders are
+  // cancelled by the user, so a delivery-based rate says more about the
+  // waiting screen than about the provider (see the HeroSMS rollback that was
+  // nearly triggered on exactly this error, and the delivery-collapse watchdog
+  // that fired at "ZERO codes" while real delivery was ~73%). A reservation
+  // either happened or it did not, it is decided in about one second, and the
+  // user cannot influence it. It is the one clean provider-side signal.
+  //
+  // FAILS OPEN if the read errors — a DB hiccup must never hide the catalog.
+  let reserveOrders = 0;
+  let reserveOk = 0;
+  let reserveCollapsed = false;
+  let reserveReadFailed = false;
+  {
+    const since = new Date(Date.now() - RESERVE_LOOKBACK_DAYS * 86_400_000).toISOString();
+    const { data: recent, error: rErr } = await sb
+      .from("orders")
+      .select("smspva_number")
+      .eq("provider", "smspva")
+      .gte("created_at", since);
+    if (rErr || !recent) {
+      reserveReadFailed = true;
+      console.error("sync-prices: smspva reservation read failed", rErr?.message);
+    } else {
+      reserveOrders = recent.length;
+      reserveOk = recent.filter((o) => o.smspva_number != null).length;
+      reserveCollapsed = reserveOrders >= RESERVE_MIN_ORDERS &&
+        (100 * reserveOk / reserveOrders) < RESERVE_MIN_PCT;
+      if (reserveCollapsed) {
+        console.error(
+          `sync-prices: SMSPVA reservation collapse — ${reserveOk}/${reserveOrders} ` +
+            `(${(100 * reserveOk / reserveOrders).toFixed(1)}%) over ${RESERVE_LOOKBACK_DAYS}d, ` +
+            `below ${RESERVE_MIN_PCT}%. Hiding every SMSPVA route until it recovers.`,
+        );
+      }
+    }
+  }
 
   // A single smspva_code may map to MULTIPLE catalog services — fan a price row
   // out to every one of them, never just the last.
@@ -215,6 +357,8 @@ Deno.serve(async (req) => {
   let unknownCountries = 0;
   let badRows = 0;              // unparseable OR non-positive price (treat as unavailable)
   let fannedOut = 0;            // extra updates produced by shared-code fan-out
+  let hiddenUnaffordable = 0;   // route ceiling above the live SMSPVA balance
+  let hiddenCollapsed = 0;      // hidden by the provider-wide reservation verdict
   const seenCountries = new Set<string>();
   const pricedServiceIds = new Set<string>();
   const unknownServiceCodes = new Set<string>();
@@ -255,7 +399,21 @@ Deno.serve(async (req) => {
         ? cents
         : Math.round(SMOOTH_ALPHA * cents + (1 - SMOOTH_ALPHA) * prev);
       const credits = priceToCredits(smoothed / 100);
-      const hide = blocked.has(key) || cents > MAX_WHOLESALE_CENTS;
+
+      // Serviceability, on top of the existing price/blocklist hides. Both are
+      // recomputed every run from live data, so both un-hide on their own: the
+      // upsert below flips `status` back to 'active' the moment the condition
+      // clears. Nothing here is sticky.
+      //
+      // `credits` is retail (the STANDARD tier). A premium order is priced off
+      // `premium_credits`, which is never below retail, so its ceiling is never
+      // lower — testing retail is the narrower hide, and we only remove a route
+      // when even its cheapest tier is unaffordable.
+      const unaffordable = balanceUsd != null && orderCeilingUsd(credits) > balanceUsd;
+      if (unaffordable) hiddenUnaffordable++;
+      if (reserveCollapsed) hiddenCollapsed++;
+      const hide = blocked.has(key) || cents > MAX_WHOLESALE_CENTS ||
+        reserveCollapsed || unaffordable;
 
       updates.push({
         service_id:         svcs[i].id,
@@ -354,6 +512,16 @@ Deno.serve(async (req) => {
   const maintenance: Record<string, unknown> = {};
   for (
     const [name, fn] of [
+      // MUST run before `evidence`: it writes the flag that the three refreshes
+      // read. Default-landed orders are the app's own pre-selection — the user
+      // never chose the service, so the number was never submitted anywhere and
+      // no code was ever requested; counting them measures our steering rather
+      // than delivery. 2.0+ clients stamp `orders.from_default` themselves, but
+      // 2.0 is still in review, so every order arriving today comes from a 1.9
+      // client and lands NULL. This is the bridge until that build ages out —
+      // it is a permanent no-op on client-stamped rows, so it is safe to leave
+      // running past adoption. See migration 20260808180000.
+      ["defaultLanded", "stamp_default_landed"],
       // Route + service + country evidence, for EVERY provider that owns
       // active routes — not just whichever one `active_sms_provider()` votes
       // for. That vote counts active ROUTES, and after the per-service split
@@ -404,6 +572,29 @@ Deno.serve(async (req) => {
     unknownCountries,
     badRows,
     flatRows: flat.length,
+    // Why SMSPVA routes are (or are not) on the shelf this run. Reported rather
+    // than logged because "the hide silently stopped applying" and "the hide is
+    // working" are otherwise indistinguishable from the outside — the same
+    // reason set_esim_paused() returns plans_changed/plans_active.
+    smspvaServiceability: {
+      balanceUsd,
+      healthFresh,
+      reserveLookbackDays: RESERVE_LOOKBACK_DAYS,
+      reserveOrders,
+      reserveOk,
+      reservePct: reserveOrders > 0
+        ? Math.round(1000 * reserveOk / reserveOrders) / 10
+        : null,
+      reserveMinOrders: RESERVE_MIN_ORDERS,
+      reserveMinPct: RESERVE_MIN_PCT,
+      reserveCollapsed,
+      reserveReadFailed,
+      hiddenUnaffordable,
+      hiddenCollapsed,
+      unhidesWhen: reserveCollapsed
+        ? `reservation rate returns to >= ${RESERVE_MIN_PCT}%, or the ${RESERVE_LOOKBACK_DAYS}d window falls below ${RESERVE_MIN_ORDERS} orders (automatic re-probe)`
+        : "n/a — not collapsed",
+    },
     maintenance,
     servicesWithoutPricesCount: servicesWithoutPrices.length,
     servicesWithoutPrices: servicesWithoutPrices.slice(0, 40),

@@ -34,7 +34,12 @@ enum ScreenshotMode {
     /// Which screen to open. One launch per value.
     enum Screen: String {
         case onboarding      // page 1, the product pitch
+        case lineIntro       // the store's first page — what a second number is
         case lineStore       // pick a city
+        case thread          // a real conversation on a rented number
+        case compose         // starting a new conversation
+        case email           // temp e-mail, code delivered
+        case emailStore      // temp e-mail, choosing a free domain
         case linePaywall     // the subscription screen, monthly selected
         // The same screen with the YEARLY plan selected. Two frames rather
         // than one because each App Store Connect subscription wants a review
@@ -47,6 +52,11 @@ enum ScreenshotMode {
         case waiting         // waiting for a code
         case code            // the code arrived
         case orders
+        // The Buy credits sheet, for the credit packs' IAP review screenshots.
+        // Same reason the paywall needs a pricing shim: `simctl` does not apply
+        // the scheme's StoreKit configuration, so without one every row renders
+        // "Unavailable" — see `IAPStore.screenshotPricing`.
+        case credits
     }
 
     #if DEBUG
@@ -117,6 +127,99 @@ extension ScreenshotMode {
                        unreadCount: 0, blocked: false,
                        createdAt: now.addingTimeInterval(-172_800)),
         ]
+    }
+
+    /// The open conversation behind the `thread` frame. Both directions,
+    /// because a one-sided list does not show that this is a real two-way
+    /// number rather than a receive-only inbox.
+    static var sampleMessages: [LineMessage] {
+        let now = Date()
+        func msg(_ id: String, _ dir: LineMsgDirection, _ body: String,
+                 _ ago: TimeInterval) -> LineMessage {
+            LineMessage(
+                id: id, threadId: "t1", lineId: "sample-line", direction: dir,
+                e164From: dir == .inbound ? "+14165550199" : "+14375550128",
+                e164To: dir == .inbound ? "+14375550128" : "+14165550199",
+                body: body, status: .delivered, segments: 1,
+                sentAt: dir == .outbound ? now.addingTimeInterval(-ago) : nil,
+                receivedAt: dir == .inbound ? now.addingTimeInterval(-ago) : nil,
+                createdAt: now.addingTimeInterval(-ago))
+        }
+        return [
+            msg("m1", .inbound,  "Hi! Is the bike still available?", 900),
+            msg("m2", .outbound, "It is — still has the original receipt too.", 780),
+            msg("m3", .inbound,  "Could I see it tomorrow around 6?", 600),
+            msg("m4", .outbound, "6 works. I'll send the address closer to the time.", 480),
+            msg("m5", .inbound,  "Is the bike still available?", 120),
+        ]
+    }
+
+    /// A temp-SMS order whose code has arrived — the moment the whole product
+    /// exists for, and the one state the harness could never render.
+    ///
+    /// ⚠️ `123456` is deliberately not a plausible code. A screenshot is
+    /// marketing, and a realistic-looking OTP beside a real service's logo
+    /// invites the reading that it came from that service.
+    static func sampleOrder(status: OrderStatus, otp: String?,
+                            id: String = "sample-order",
+                            serviceId: String = "whatsapp",
+                            countryId: String = "us",
+                            ageSeconds: TimeInterval = 74) -> ServerOrder {
+        let now = Date()
+        return ServerOrder(
+            id: id, userId: "sample-user", serviceId: serviceId,
+            countryId: countryId, smspvaId: "sample",
+            smspvaNumber: "+12025550143", costCredits: 6, status: status,
+            otp: otp, rawMessage: otp.map { "Your code is \($0)" },
+            createdAt: now.addingTimeInterval(-ageSeconds),
+            expiresAt: now.addingTimeInterval(480 - ageSeconds),
+            arrivedAt: otp == nil ? nil : now.addingTimeInterval(-2),
+            closedAt: nil, tier: "standard")
+    }
+
+    /// History with BOTH outcomes in it. An all-green list would be the same
+    /// dishonesty as a seeded success rate — the refund line is a real part of
+    /// the product and the Orders screen exists partly to show it.
+    static var sampleOrderRows: [ServerOrder] {
+        [
+            sampleOrder(status: .received, otp: "123456", id: "o1",
+                        serviceId: "whatsapp", countryId: "us", ageSeconds: 300),
+            sampleOrder(status: .received, otp: "123456", id: "o2",
+                        serviceId: "telegram", countryId: "gb", ageSeconds: 8_400),
+            sampleOrder(status: .expired, otp: nil, id: "o3",
+                        serviceId: "tiktok", countryId: "nl", ageSeconds: 92_000),
+        ]
+    }
+
+    /// The domain picker, which is what the e-mail line actually IS: two free
+    /// consumer domains and one paid. Stock figures are realistic rather than
+    /// flattering — the free tier is genuinely the scarcest inventory, and a
+    /// picker showing thousands of free addresses would be a claim we cannot
+    /// keep.
+    ///
+    /// ⚠️ icloud.com must never appear here. It was removed from `PRICING` on
+    /// 2026-07-31 because handing out throwaway addresses on Apple's own
+    /// consumer domain, from an app on Apple's store, is an avoidable review
+    /// risk — putting it in a screenshot would reintroduce exactly that.
+    static var sampleEmailDomains: [EmailDomainOption] {
+        [
+            EmailDomainOption(domain: "outlook.com", credits: 0, available: 128),
+            EmailDomainOption(domain: "hotmail.com", credits: 0, available: 64),
+            EmailDomainOption(domain: "gmail.com", credits: 1, available: 4210),
+        ]
+    }
+
+    /// The temp-EMAIL line, delivered. Free tier, because that is the one a
+    /// new user actually meets first.
+    static var sampleEmailOrder: ServerEmailOrder {
+        ServerEmailOrder(
+            id: "sample-email", serviceId: "leboncoin", site: "leboncoin.fr",
+            domain: "outlook.com", email: "quiet.harbor4192@outlook.com",
+            costCredits: 0, status: .received, code: "123456",
+            createdAt: ISO8601DateFormatter().string(
+                from: Date().addingTimeInterval(-160)),
+            expiresAt: ISO8601DateFormatter().string(
+                from: Date().addingTimeInterval(1_160)))
     }
 }
 #endif

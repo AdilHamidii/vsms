@@ -9,4 +9,8 @@ enum LegalLinks {
     static let terms   = URL(string: "https://superficial-watch-d12.notion.site/Terms-3704b908b4b78000a931d5ea6fcc6023?source=copy_link")!
     static let privacy = URL(string: "https://superficial-watch-d12.notion.site/Privacy-Policy-3704b908b4b7801aa6fbfe1bacdaec09?source=copy_link")!
     static let refund  = URL(string: "https://superficial-watch-d12.notion.site/Refund-Policy-3704b908b4b7803dbe5cef0346e00e20?source=copy_link")!
+    /// Apple's standard EULA — what the App Store metadata declares (no custom
+    /// EULA is set in ASC), so the in-app link must point at the same document.
+    /// Required in the subscription purchase flow by guideline 3.1.2(c).
+    static let eula    = URL(string: "https://www.apple.com/legal/internet-services/itunes/dev/stdeula/")!
 }

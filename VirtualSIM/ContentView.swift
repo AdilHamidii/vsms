@@ -1,4 +1,5 @@
 import SwiftUI
+import StoreKit   // \.requestReview lives here — see OtpScreen / EmailCodeScreen
 
 enum ActiveSheet: String, Identifiable {
     case services, country, credits, emailDomain
@@ -29,6 +30,7 @@ struct ContentView: View {
     @Environment(SubscriptionStore.self) private var subs
     @Environment(CallController.self) private var calls
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.requestReview) private var requestReview
 
     @State private var state = AppState()
     /// Sheets presented from the TAB content (home / esim / orders / account).
@@ -88,7 +90,7 @@ struct ContentView: View {
                                 state.buyAgain(o)
                             }
                         },
-                        onSeeAllOrders: { state.tab = .orders },
+                        onSeeAllOrders: { state.flow = .orders },
                         onOpenEsim: { state.tab = .esim }
                     )
                 case .esim:
@@ -172,10 +174,17 @@ struct ContentView: View {
         .animation(.easeOut(duration: 0.35), value: state.bootPhase)
         .task {
             #if DEBUG
-            // Screenshots run offline against seeded data, so the cold-start
-            // chain is skipped entirely — six sequential fetches would either
-            // fail without a real token or make each frame depend on whatever
-            // the catalog happens to hold today. See `ScreenshotMode`.
+            // The cold-start chain is skipped entirely — six sequential
+            // fetches would fail without a real token. See `ScreenshotMode`.
+            //
+            // ⚠️ This comment used to claim screenshots "run offline against
+            // seeded data". They do not: `routes` carries a `public read` RLS
+            // policy, so the scenePhase refresh below loads the LIVE catalog
+            // with nothing but the publishable key. Verified 2026-08-06 — the
+            // Home frame rendered whatsapp/us at 48 credits and 37%, matching
+            // production to the digit. So prices and network rates in these
+            // frames DO move when a provider reprices, and a frame captured
+            // months apart will differ.
             if let shot = ScreenshotMode.screen {
                 applyScreenshotState(shot)
                 return
@@ -286,6 +295,20 @@ struct ContentView: View {
                     await state.refreshWallet(using: WalletAPI(client: api))
                     await state.loadOrders(using: OrdersAPI(client: api))
                     await state.loadEmailOrders(using: EmailAPI(client: api))
+
+                    // The same "happiest moment" prompt `OtpScreen` fires on
+                    // `.onAppear`, for the user who never opens that screen at
+                    // all — reads the code off the lock-screen push, pastes it
+                    // into the other app, and comes back to vSMS later for
+                    // something else entirely. `loadOrders` just recorded any
+                    // code it noticed for the first time; `shouldRequestReview`
+                    // (via `reviewableRecentDelivery`) still owns every gate —
+                    // once per version, per-order dedupe — so this
+                    // is additive, never a second prompt for the same order.
+                    if state.reviewableRecentDelivery() {
+                        try? await Task.sleep(for: .seconds(1))
+                        requestReview()
+                    }
                 }
             }
         }
@@ -416,6 +439,13 @@ struct ContentView: View {
             LineProvisioningScreen()
         case .thread:
             ThreadScreen()
+        case .compose:
+            ComposeScreen()
+        case .orders:
+            // Was a tab until 2026-08-06. As a cover it needs its own way out,
+            // which a tab never did — the tab bar WAS the way out.
+            OrdersScreen(openCredits: { flowSheet = .credits },
+                         onClose: { state.flow = nil })
         case .dialer:
             // Still gated on a real WebRTC client being attached, even though
             // `TelnyxVoiceClient` is now wired in `AuthGate`. The guard is what
@@ -491,6 +521,10 @@ struct ContentView: View {
                     state.lastService = picked
                     if let best { state.lastCountry = best }
                 }
+                // The user has now CHOSEN. Everything before this was a
+                // suggestion, and the Home hero refuses to sell a suggestion —
+                // see `AppState.needsServiceChoice`.
+                state.needsServiceChoice = false
             })
         case .country:
             CountrySheet(onPick: { picked in
@@ -542,7 +576,7 @@ extension ContentView {
         case .onboarding:
             break                              // handled before the gate
 
-        case .lineStore, .linePaywall, .linePaywallYearly:
+        case .lineIntro, .lineStore, .linePaywall, .linePaywallYearly:
             state.tab = .line
             state.lines = []                   // not yet a subscriber
             if shot == .linePaywall || shot == .linePaywallYearly {
@@ -565,11 +599,126 @@ extension ContentView {
             state.lines = [ScreenshotMode.sampleLine]
             state.lineThreads = ScreenshotMode.sampleThreads
 
+        case .thread:
+            state.tab = .line
+            state.lines = [ScreenshotMode.sampleLine]
+            state.lineThreads = ScreenshotMode.sampleThreads
+            state.lineMessages = ["t1": ScreenshotMode.sampleMessages]
+            state.openThreadId = "t1"
+            state.flow = .thread
+
+        case .compose:
+            state.tab = .line
+            state.lines = [ScreenshotMode.sampleLine]
+            state.lineThreads = ScreenshotMode.sampleThreads
+            state.flow = .compose
+
         case .home:
             state.tab = .home
+            // Pin a pair that PUBLISHES a network rate, so the frame shows the
+            // delivery figure the whole picker is built around. The default
+            // pair may publish nothing, and a store screenshot with a blank
+            // where the rate goes sells the opposite of the feature.
+            //
+            // leboncoin/Austria measured 5 credits at 87% on 2026-08-06 — a
+            // real, bookable pair. The figure is NOT hardcoded here; it is
+            // whatever the route publishes at capture time, so the frame
+            // cannot claim a rate the catalog does not.
+            //
+            // ⚠️ leboncoin is not in `SeedData`, so this has to await the
+            // fetch. Which is possible because the catalog is FETCHED here,
+            // not seeded — `routes` carries a `public read` policy, so the
+            // publishable key alone is enough. See the corrected note at the
+            // call site.
+            Task { @MainActor in
+                await state.loadCatalog(using: CatalogAPI(client: api))
+                if let svc = state.services.first(where: { $0.id == "leboncoin" }) {
+                    state.lastService = svc
+                }
+                if let cty = state.countries.first(where: { $0.id == "at" }) {
+                    state.lastCountry = cty
+                }
+                // Home's Recent section renders from `orders`, so without this
+                // the frame collapsed it entirely and looked like the feature
+                // was gone. Seeded AFTER the catalog so each row resolves its
+                // real service logo and flag.
+                //
+                // 🔴 Seeded, never fetched. `loadOrders` is gated in screenshot
+                // mode on purpose: the account these run against is the dev
+                // account, and letting it through would publish real order
+                // history — real numbers, real codes — into an App Store frame.
+                state.orders = ScreenshotMode.sampleOrderRows.map(state.resolve)
+            }
 
-        case .waiting, .code, .orders:
-            state.tab = shot == .orders ? .orders : .home
+        // ⚠️ These three set REAL STATE now. Until 2026-08-06 the whole group
+        // set only `tab`, so `waiting` and `code` were byte-identical captures
+        // of the Home screen and `orders` was an empty state — three frames
+        // that had never once shown what their names claim. Caught by checksum,
+        // not by eye: the files looked plausible.
+        case .waiting:
+            state.tab = .home
+            state.activeOrder = state.resolve(
+                ScreenshotMode.sampleOrder(status: .waiting, otp: nil))
+            state.flow = .waiting
+
+        case .code:
+            state.tab = .home
+            state.activeOrder = state.resolve(
+                ScreenshotMode.sampleOrder(status: .received, otp: "123456"))
+            state.flow = .otp
+
+        case .orders:
+            state.tab = .home
+            state.orders = ScreenshotMode.sampleOrderRows.map(state.resolve)
+            state.flow = .orders
+
+        case .credits:
+            state.tab = .home
+            // A modest balance, so the sheet leads with the balance card rather
+            // than a shortfall context that would tie the frame to one route's
+            // price. `creditsShortfall` is 0 here — the seeded catalog has no
+            // route for the default pair — so no pack is preselected and the
+            // sheet opens on MOST POPULAR, which is the frame we want.
+            state.balance = 5
+            // Without this every row renders "Unavailable" over a disabled CTA:
+            // `simctl` does not apply the scheme's StoreKit configuration, so
+            // no products load. It also keeps the `optional` credits.8 pack in
+            // the ladder — an IAP review screenshot has to show the very pack
+            // being reviewed, and that is exactly the one StoreKit would omit.
+            //
+            // ⚠️ The LIVE App Store Connect tiers, not placeholders. See
+            // `IAPStore.screenshotPricing`.
+            iap.screenshotPricing = [
+                "com.anthersystems.VirtualSIM.credits.5":   "$2.99",
+                "com.anthersystems.VirtualSIM.credits.8":   "$3.99",
+                "com.anthersystems.VirtualSIM.credits.12":  "$5.49",
+                "com.anthersystems.VirtualSIM.credits.30":  "$12.99",
+                "com.anthersystems.VirtualSIM.credits.60":  "$24.99",
+                "com.anthersystems.VirtualSIM.credits.150": "$59.99",
+            ]
+            sheet = .credits
+
+        case .email:
+            state.tab = .home
+            state.emailMode = true
+            state.activeEmailOrder = ScreenshotMode.sampleEmailOrder
+            state.flow = .emailCode
+
+        case .emailStore:
+            // The e-mail line's own screen, not its code screen. The delivered
+            // code frame is nearly identical to the SMS one — same big digits,
+            // same Done button — so on its own it does not show that a second
+            // product exists at all.
+            state.tab = .home
+            state.emailMode = true
+            state.emailDomains = ScreenshotMode.sampleEmailDomains
+            state.emailDomain = ScreenshotMode.sampleEmailDomains.first
+            Task { @MainActor in
+                await state.loadCatalog(using: CatalogAPI(client: api))
+                if let svc = state.services.first(where: { $0.id == "leboncoin" }) {
+                    state.lastService = svc
+                }
+            }
         }
     }
 }
