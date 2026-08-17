@@ -37,6 +37,21 @@ const EMERGENCY = new Set(["911", "112", "999", "000", "110", "119"]);
 
 const MAX_BODY = 1600;
 
+/** 🔴 OUTBOUND SMS IS RETIRED (owner decision, 2026-08-18).
+ *
+ *  Sending is the one capability on this line needing carrier approval — 10DLC
+ *  brand + campaign, or toll-free verification — and both require declaring a
+ *  use case that "we rent numbers and users send whatever they like" cannot
+ *  satisfy. The owner is not pursuing either. Lifetime outbound is 1 sent
+ *  against 6 failed (`40010`); inbound is 3 of 3.
+ *
+ *  ⚠️ Typed `boolean`, NOT inferred as the literal `true`, and that is
+ *  load-bearing rather than styling: with a literal, TypeScript folds the whole
+ *  send path below into unreachable code, loses every narrowing across it, and
+ *  `deno check` fails with 14 errors on code that is correct. The annotation
+ *  keeps the path type-checked so it stays maintainable while switched off. */
+const OUTBOUND_SMS_RETIRED: boolean = true;
+
 Deno.serve(async (req) => {
   const pre = handleCors(req);
   if (pre) return pre;
@@ -60,6 +75,21 @@ Deno.serve(async (req) => {
   const digits = to.replace(/\D/g, "");
   if (EMERGENCY.has(digits)) {
     return json({ error: "emergency_blocked" }, { status: 400 });
+  }
+
+  // Refused HERE, above everything, rather than by deleting the endpoint:
+  // shipped 2.0 still renders a composer, so this is the surface those clients
+  // hit. They render the generic 409 copy (`outbound_sms_retired` reaches
+  // `APIError` only in 2.1), which is still strictly better than spending a
+  // segment of the allowance to buy a carrier rejection the user cannot act on.
+  //
+  // Everything below is left INTACT on purpose: if a registration path ever
+  // clears, flipping the flag restores a send path known to have worked rather
+  // than asking someone to rebuild it. Delete both together, never the flag
+  // alone — the `canSendTo` guard further down is still the right refusal for a
+  // cross-border send and must survive this being switched back on.
+  if (OUTBOUND_SMS_RETIRED) {
+    return json({ error: "outbound_sms_retired" }, { status: 409 });
   }
 
   // 🔴 THIS ENDPOINT HAD NO NUMBER VALIDATION AT ALL — only the emergency check

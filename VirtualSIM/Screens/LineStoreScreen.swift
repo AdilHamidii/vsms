@@ -163,6 +163,15 @@ struct LineStoreScreen: View {
     /// long as `flow = .dialer` was assigned nowhere, and was restored in the
     /// same commit that linked the SDK and wired the dialer. Keep that
     /// ordering for anything added here.
+    ///
+    /// 🔴 **OUTBOUND SMS WAS DROPPED ENTIRELY (owner decision, 2026-08-18) and
+    /// every promise of it came off this card in the same change.** Lifetime
+    /// outbound is 1 sent against 6 failed — every cross-border attempt refused
+    /// by the carrier for want of 10DLC registration, which the owner is not
+    /// pursuing. Inbound is 3 of 3. So the card now leads with the half that
+    /// demonstrably works and sells the half that was invisible: international
+    /// calling existed only inside the dialer and was never mentioned to anyone
+    /// deciding whether to buy.
     private var pitch: some View {
         Card(elevation: .raised) {
             VStack(alignment: .leading, spacing: 0) {
@@ -173,14 +182,32 @@ struct LineStoreScreen: View {
                     .fixedSize(horizontal: false, vertical: true)
                     .padding(.horizontal, 16)
                     .padding(.top, 18)
+                    .padding(.bottom, 8)
+
+                // The situations, not the medium. Every one of these is
+                // somebody sending a code TO the number.
+                Text("Give it to marketplaces, dating apps, a side business or a bank. Your verification codes and texts land here, with one tap to copy the code.")
+                    .font(RFont.text(13))
+                    .lineSpacing(2)
+                    .foregroundStyle(theme.text2)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.horizontal, 16)
                     .padding(.bottom, 14)
 
                 RowRule()
                 BenefitRow(icon: RIcon.message,
-                           label: "Send and receive texts in the app")
+                           label: "Receive texts and codes in the app")
                 RowRule()
                 BenefitRow(icon: RIcon.phone,
                            label: "Make and take calls in the app")
+                RowRule()
+                // Sold here for the first time. The rates, the credit cost and
+                // the per-minute price all existed and were reachable ONLY from
+                // inside the dialer — i.e. only after paying — so nobody
+                // deciding whether to subscribe ever knew the number could call
+                // abroad at all.
+                BenefitRow(icon: RIcon.globe,
+                           label: "Call 50+ countries, priced per minute before you dial")
                 RowRule()
                 // The actual reason to buy, and it used to be the last clause
                 // of a paragraph. It is the only line here that names a
@@ -478,12 +505,12 @@ struct LineStoreScreen: View {
                 .font(.system(size: 12, weight: .semibold))
                 .foregroundStyle(theme.text2)
                 .padding(.top, 2)
-            // ⚠️ This claimed the number "works with US and Canadian phones
-            // today". It receives from both — but every SEND to a US number is
-            // rejected by the carrier (40010, 10DLC not registered). The
-            // measurement that sentence was written from (a CA→US delivery on
-            // 2026-08-05, no brand, no campaign) no longer reproduces.
-            Text("Receives texts and calls from anywhere. Sending texts works to Canadian numbers today — US sending is coming.")
+            // ⚠️ NO SENDING PROMISE OF ANY KIND, and the "US sending is coming"
+            // half is gone rather than softened — outbound SMS is dropped, not
+            // delayed, so a roadmap sentence would be a promise nobody intends
+            // to keep. What replaces it is the calling reach, which is the
+            // thing this product can actually do outward.
+            Text("Receives texts and calls from anywhere. Call out to Canada, the US and 50 countries.")
                 .font(RFont.text(12))
                 .foregroundStyle(theme.text2)
                 .lineSpacing(2)

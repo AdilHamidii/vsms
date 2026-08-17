@@ -265,11 +265,71 @@ async function findMessage(
   return data ? { id: String(data.id) } : null;
 }
 
+/** The verification code in `text`, or null.
+ *
+ *  A port of the client's `VerificationCode.detect` (`Models/VerificationCode
+ *  .swift`) — kept deliberately IN SYNC with it and deliberately CONSERVATIVE.
+ *  There was nothing to reuse: the other two product lines take the code from
+ *  the provider (`sms[].code`, `activation.value`) and never parse a body, so
+ *  no shared extractor exists.
+ *
+ *  Two bars, either of which a candidate must clear: the message mentions a
+ *  verification keyword, or it is essentially just the code. A single digit run
+ *  is required outright — "your code for order 4471 is 90210" must resolve to
+ *  nothing rather than to the order number. A WRONG code on the lock screen is
+ *  worse than no code: the user reads it, types it, is rejected, and stops
+ *  trusting the number.
+ *
+ *  ⚠️ Keyword matching is on the START of a word, not `contains`. The Swift
+ *  version shipped `contains` first and "pin" matched inside **shipping**,
+ *  topping and opinion — so "Your shipping label 74839201 is ready" was offered
+ *  as a code. */
+function detectCode(text: string): string | null {
+  const candidates = text.split(/\D+/).filter((s) => s.length >= 4 && s.length <= 8);
+  if (candidates.length !== 1) return null;
+  const code = candidates[0];
+
+  const lower = text.toLowerCase();
+  const keywords = [
+    "code", "otp", "pin", "verif",
+    "bestätigung", "kode", "código", "codice", "verifica",
+    "認証", "確認",
+    "password", "passcode", "one-time", "2fa",
+  ];
+  const mentions = (word: string) => {
+    // CJK has no word boundaries and cannot occur inside a Latin word.
+    if (/[^\x00-\x7F]/.test(word) && !/[a-zà-ÿ]/i.test(word)) return lower.includes(word);
+    let from = 0;
+    for (;;) {
+      const i = lower.indexOf(word, from);
+      if (i < 0) return false;
+      if (i === 0 || !/\p{L}/u.test(lower[i - 1])) return true;
+      from = i + word.length;
+    }
+  };
+  if (keywords.some(mentions)) return code;
+
+  // No keyword: accept only when the message is essentially the code itself.
+  // A lone number in a sentence is far more likely a balance, price or date.
+  return text.trim().length <= code.length + 4 ? code : null;
+}
+
 /** Alert push for an inbound text.
  *
  *  ⚠️ Carries `kind` and `threadId`, never `orderId`. `PushManager` routes on
  *  `orderId` and would deep-link a text message into the SMS refund screen —
- *  the same trap the late-code rescue push had to avoid. */
+ *  the same trap the late-code rescue push had to avoid.
+ *
+ *  ⚠️ **The CODE LEADS the body when we can find one.** Receiving verification
+ *  codes is what this product is sold as, and the lock screen is where a code
+ *  is actually read — yet the body was the raw message, so the glanceable part
+ *  was "Your code is 483920. Do not share…" with the digits buried mid-sentence
+ *  and often truncated. The client already extracts the code in-thread; the
+ *  push did not, which is the one place extraction pays for itself.
+ *
+ *  The raw message is kept as the fallback and is APPENDED even when a code is
+ *  found, never replaced — the sender's own words carry which service it is
+ *  from, and a bare six digits with no context is its own kind of useless. */
 async function pushInbound(
   sb: ReturnType<typeof admin>, userId: string, peer: string,
   text: string, threadId: string,
@@ -278,12 +338,17 @@ async function pushInbound(
     .select("token, environment").eq("user_id", userId);
   if (!devices?.length) return;
 
+  const code = detectCode(text);
+  const body = code ? `${code} — ${text}` : text;
+
   for (const d of devices) {
     await sendPush(String(d.token), {
       alertTitle: peer,
       // Truncated: a lock-screen preview is not the place for a 1,600-character
-      // message, and the full text is one tap away.
-      alertBody: text.length > 140 ? text.slice(0, 139) + "…" : text,
+      // message, and the full text is one tap away. Truncating AFTER prefixing
+      // is what guarantees the code survives the cut — it is now the first
+      // thing in the string rather than whatever the sender put there.
+      alertBody: body.length > 140 ? body.slice(0, 139) + "…" : body,
       customData: { kind: "line_message", threadId },
     }, (d.environment as "sandbox" | "production" | null) ?? undefined);
   }

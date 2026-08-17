@@ -4489,6 +4489,46 @@
         }
       }
     },
+    "Call 50+ countries, priced per minute before you dial": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "In 50+ Länder telefonieren – Minutenpreis vor dem Anruf sichtbar"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Llama a más de 50 países, con el precio por minuto antes de marcar"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Appelez plus de 50 pays, prix à la minute affiché avant l'appel"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Chiama oltre 50 paesi, con il prezzo al minuto prima di comporre"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "50か国以上に発信。通話前に分あたりの料金を表示"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ligue para mais de 50 países, com o preço por minuto antes de discar"
+          }
+        }
+      }
+    },
     "Calling": {
       "localizations": {
         "de": {
@@ -4809,46 +4849,6 @@
         }
       }
     },
-    "Canadian numbers that exchange texts and calls with US and Canadian phones": {
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Kanadische Nummern für SMS und Anrufe mit Telefonen in den USA und Kanada"
-          }
-        },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Números canadienses que intercambian mensajes y llamadas con teléfonos de EE. UU. y Canadá"
-          }
-        },
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Des numéros canadiens qui échangent SMS et appels avec les téléphones américains et canadiens"
-          }
-        },
-        "it": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Numeri canadesi che scambiano messaggi e chiamate con telefoni di USA e Canada"
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "米国・カナダの電話とSMSや通話をやり取りできるカナダの番号"
-          }
-        },
-        "pt-BR": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Números canadenses que trocam mensagens e chamadas com telefones dos EUA e do Canadá"
-          }
-        }
-      }
-    },
     "Canadian numbers that exchange texts with US and Canadian phones": {
       "localizations": {
         "de": {
@@ -4885,6 +4885,46 @@
           "stringUnit": {
             "state": "translated",
             "value": "Números canadenses que trocam SMS com telefones dos EUA e do Canadá"
+          }
+        }
+      }
+    },
+    "Canadian numbers that receive texts from anywhere and call out to 50+ countries": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kanadische Nummern, die SMS von überall empfangen und in 50+ Länder telefonieren"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Números canadienses que reciben mensajes desde cualquier lugar y llaman a más de 50 países"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Des numéros canadiens qui reçoivent des SMS du monde entier et appellent plus de 50 pays"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Numeri canadesi che ricevono messaggi da ovunque e chiamano oltre 50 paesi"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "世界中からSMSを受信し、50か国以上へ発信できるカナダの番号"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Números canadenses que recebem mensagens de qualquer lugar e ligam para mais de 50 países"
           }
         }
       }
@@ -8123,46 +8163,6 @@
         }
       }
     },
-    "Dana": {
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Dana"
-          }
-        },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Dana"
-          }
-        },
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Dana"
-          }
-        },
-        "it": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Dana"
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Dana"
-          }
-        },
-        "pt-BR": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Dana"
-          }
-        }
-      }
-    },
     "Danger zone": {
       "extractionState": "manual",
       "localizations": {
@@ -10447,6 +10447,46 @@
           "stringUnit": {
             "state": "translated",
             "value": "Obtendo seu endereço"
+          }
+        }
+      }
+    },
+    "Give it to marketplaces, dating apps, a side business or a bank. Your verification codes and texts land here, with one tap to copy the code.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gib sie an Marktplätze, Dating-Apps, ein Nebengeschäft oder eine Bank weiter. Deine Bestätigungscodes und SMS landen hier – mit einem Tippen kopiert."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dásela a marketplaces, apps de citas, un negocio paralelo o un banco. Tus códigos de verificación y mensajes llegan aquí, y copias el código con un toque."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Donnez-le aux marketplaces, applis de rencontre, à une activité secondaire ou à une banque. Vos codes de vérification et SMS arrivent ici, avec une seule touche pour copier le code."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dallo a marketplace, app di incontri, un'attività secondaria o una banca. I tuoi codici di verifica e i messaggi arrivano qui, con un tocco per copiare il codice."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "フリマ、マッチングアプリ、副業、銀行に渡せます。認証コードやSMSはここに届き、ワンタップでコピーできます。"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dê o número a marketplaces, apps de namoro, um negócio paralelo ou um banco. Seus códigos de verificação e mensagens chegam aqui, com um toque para copiar o código."
           }
         }
       }
@@ -18384,6 +18424,166 @@
         }
       }
     },
+    "Receive texts and calls from anywhere, and call out from it. Your real number never leaves your phone.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Empfange SMS und Anrufe von überall – und telefoniere über diese Nummer. Deine echte Nummer verlässt dein Telefon nie."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Recibe mensajes y llamadas desde cualquier lugar, y llama desde él. Tu número real nunca sale de tu teléfono."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Recevez SMS et appels du monde entier, et appelez depuis ce numéro. Votre vrai numéro ne quitte jamais votre téléphone."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ricevi messaggi e chiamate da ovunque e chiama da questo numero. Il tuo numero vero non lascia mai il telefono."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "世界中からSMSと着信を受け取り、発信もできます。あなたの本当の番号は端末から出ません。"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Receba mensagens e chamadas de qualquer lugar e ligue a partir dele. Seu número real nunca sai do seu telefone."
+          }
+        }
+      }
+    },
+    "Receive texts and codes in the app": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "SMS und Codes in der App empfangen"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Recibe mensajes y códigos en la app"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Recevez SMS et codes dans l'app"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ricevi messaggi e codici nell'app"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "SMSと認証コードをアプリで受信"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Receba mensagens e códigos no app"
+          }
+        }
+      }
+    },
+    "Receive texts and verification codes from anywhere": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "SMS und Bestätigungscodes von überall empfangen"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Recibe mensajes y códigos de verificación desde cualquier lugar"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Recevez SMS et codes de vérification du monde entier"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ricevi messaggi e codici di verifica da ovunque"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "世界中からSMSと認証コードを受信"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Receba mensagens e códigos de verificação de qualquer lugar"
+          }
+        }
+      }
+    },
+    "Receives texts and calls from anywhere. Call out to Canada, the US and 50 countries.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Empfängt SMS und Anrufe von überall. Anrufe nach Kanada, in die USA und in 50 Länder."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Recibe mensajes y llamadas desde cualquier lugar. Llama a Canadá, EE. UU. y 50 países."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Reçoit SMS et appels du monde entier. Appelez le Canada, les États-Unis et 50 pays."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Riceve messaggi e chiamate da ovunque. Chiama Canada, Stati Uniti e 50 paesi."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "世界中からSMSと着信を受け取れます。カナダ、米国、50か国へ発信できます。"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Recebe mensagens e chamadas de qualquer lugar. Ligue para Canadá, EUA e 50 países."
+          }
+        }
+      }
+    },
     "Recent": {
       "extractionState": "manual",
       "localizations": {
@@ -18627,46 +18827,6 @@
         }
       }
     },
-    "Renew your subscription to send messages again.": {
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Erneuern Sie Ihr Abo, um wieder Nachrichten zu senden."
-          }
-        },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Renueva tu suscripción para volver a enviar mensajes."
-          }
-        },
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Renouvelez votre abonnement pour envoyer à nouveau des messages."
-          }
-        },
-        "it": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Rinnova l'abbonamento per inviare di nuovo messaggi."
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "再びメッセージを送信するには、サブスクリプションを更新してください。"
-          }
-        },
-        "pt-BR": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Renove sua assinatura para enviar mensagens novamente."
-          }
-        }
-      }
-    },
     "Renews": {
       "localizations": {
         "de": {
@@ -18864,46 +19024,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Alugar outro número"
-          }
-        }
-      }
-    },
-    "Rental viewing": {
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Wohnungsbesichtigung"
-          }
-        },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Visita del piso"
-          }
-        },
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Visite appartement"
-          }
-        },
-        "it": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Visita casa"
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "内見"
-          }
-        },
-        "pt-BR": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Visita ao imóvel"
           }
         }
       }
@@ -19865,126 +19985,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Enviar"
-          }
-        }
-      }
-    },
-    "Send and receive texts in the app": {
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "SMS in der App senden und empfangen"
-          }
-        },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Envía y recibe mensajes en la app"
-          }
-        },
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Envoyez et recevez des SMS dans l'app"
-          }
-        },
-        "it": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Invia e ricevi SMS nell'app"
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "アプリ内でSMSを送受信"
-          }
-        },
-        "pt-BR": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Envie e receba mensagens no app"
-          }
-        }
-      }
-    },
-    "Send and receive texts right here. Your real number stays private.": {
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "SMS direkt hier senden und empfangen. Ihre echte Nummer bleibt privat."
-          }
-        },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Envía y recibe mensajes aquí mismo. Tu número real queda en privado."
-          }
-        },
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Envoyez et recevez des SMS ici même. Votre vrai numéro reste privé."
-          }
-        },
-        "it": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Invia e ricevi SMS proprio qui. Il tuo numero vero resta privato."
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "このアプリでSMSの送受信ができます。本当の番号は非公開のままです。"
-          }
-        },
-        "pt-BR": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Envie e receba mensagens aqui mesmo. Seu número real continua privado."
-          }
-        }
-      }
-    },
-    "Send texts": {
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "SMS senden"
-          }
-        },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Enviar mensajes"
-          }
-        },
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Envoyer des SMS"
-          }
-        },
-        "it": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Invia SMS"
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "SMSを送信"
-          }
-        },
-        "pt-BR": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Enviar mensagens"
           }
         }
       }
@@ -21117,46 +21117,6 @@
         }
       }
     },
-    "Sorry, running 10 min late": {
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Sorry, ich komme 10 Min später"
-          }
-        },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Perdona, llego 10 min tarde"
-          }
-        },
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Désolé, j'aurai 10 min de retard"
-          }
-        },
-        "it": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Scusa, arrivo con 10 min di ritardo"
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "すみません、10分ほど遅れます"
-          }
-        },
-        "pt-BR": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Desculpa, vou atrasar 10 min"
-          }
-        }
-      }
-    },
     "Speaker": {
       "localizations": {
         "de": {
@@ -22038,46 +21998,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Testado por nós"
-          }
-        }
-      }
-    },
-    "Texts left": {
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Verbleibende SMS"
-          }
-        },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Mensajes restantes"
-          }
-        },
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "SMS restants"
-          }
-        },
-        "it": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Messaggi rimasti"
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "残りメッセージ"
-          }
-        },
-        "pt-BR": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Mensagens restantes"
           }
         }
       }
@@ -23120,6 +23040,46 @@
           "stringUnit": {
             "state": "translated",
             "value": "Este número continua ativo e ainda é reembolsado se nenhum código chegar."
+          }
+        }
+      }
+    },
+    "This number receives texts but doesn't send them. Calls work — tap the phone icon.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Diese Nummer empfängt SMS, sendet aber keine. Anrufe funktionieren – tippe auf das Telefonsymbol."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Este número recibe mensajes, pero no los envía. Las llamadas sí funcionan: toca el icono del teléfono."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ce numéro reçoit les SMS mais n'en envoie pas. Les appels fonctionnent : touchez l'icône du téléphone."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Questo numero riceve messaggi ma non li invia. Le chiamate funzionano: tocca l'icona del telefono."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "この番号はSMSを受信できますが送信はできません。通話は利用できます。電話アイコンをタップしてください。"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Este número recebe mensagens, mas não envia. As chamadas funcionam — toque no ícone do telefone."
           }
         }
       }
@@ -24504,6 +24464,46 @@
           "stringUnit": {
             "state": "translated",
             "value": "Válido até %@"
+          }
+        }
+      }
+    },
+    "Verification": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Verifizierung"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Verificación"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vérification"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Verifica"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "認証"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Verificação"
           }
         }
       }
@@ -26588,46 +26588,6 @@
         }
       }
     },
-    "You've blocked this number. Unblock it to send.": {
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Sie haben diese Nummer blockiert. Heben Sie die Blockierung auf, um zu senden."
-          }
-        },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Has bloqueado este número. Desbloquéalo para enviar."
-          }
-        },
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Vous avez bloqué ce numéro. Débloquez-le pour envoyer."
-          }
-        },
-        "it": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Hai bloccato questo numero. Sbloccalo per inviare."
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "この番号をブロックしています。送信するにはブロックを解除してください。"
-          }
-        },
-        "pt-BR": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Você bloqueou este número. Desbloqueie para enviar."
-          }
-        }
-      }
-    },
     "You've used all your texts this month. They reset when your plan renews.": {
       "localizations": {
         "de": {
@@ -26708,46 +26668,6 @@
         }
       }
     },
-    "You've used this month's texts. They reset when your subscription renews.": {
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Sie haben die SMS dieses Monats aufgebraucht. Sie werden mit der Verlängerung Ihres Abos zurückgesetzt."
-          }
-        },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Has agotado los mensajes de este mes. Se reinician cuando se renueva tu suscripción."
-          }
-        },
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Vous avez utilisé vos SMS du mois. Ils se réinitialisent au renouvellement de votre abonnement."
-          }
-        },
-        "it": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Hai usato gli SMS di questo mese. Si azzerano al rinnovo dell'abbonamento."
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "今月のSMSを使い切りました。サブスクリプションの更新時にリセットされます。"
-          }
-        },
-        "pt-BR": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Você usou as mensagens deste mês. Elas voltam quando sua assinatura renovar."
-          }
-        }
-      }
-    },
     "You've used today's free addresses. Try again tomorrow, or pick Gmail or iCloud.": {
       "extractionState": "stale",
       "localizations": {
@@ -26785,46 +26705,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Você usou os endereços grátis de hoje. Tente amanhã ou escolha Gmail ou iCloud."
-          }
-        }
-      }
-    },
-    "You: Yes, 7pm 👍": {
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Sie: Ja, 19 Uhr 👍"
-          }
-        },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Tú: Sí, a las 19:00 👍"
-          }
-        },
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Vous : Oui, 19 h 👍"
-          }
-        },
-        "it": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Tu: Sì, alle 19 👍"
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "あなた: はい、19時に👍"
-          }
-        },
-        "pt-BR": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Você: Sim, 19h 👍"
           }
         }
       }
@@ -27077,6 +26957,46 @@
         }
       }
     },
+    "Your code is 483920": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dein Code lautet 483920"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tu código es 483920"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Votre code est 483920"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Il tuo codice è 483920"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "認証コードは483920です"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Seu código é 483920"
+          }
+        }
+      }
+    },
     "Your credits have been put back. Try another domain from the picker.": {
       "localizations": {
         "de": {
@@ -27273,46 +27193,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Seu número"
-          }
-        }
-      }
-    },
-    "Your number can't make or take calls yet. Texting works now, and calls arrive in a future update.": {
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Ihre Nummer kann noch keine Anrufe tätigen oder annehmen. SMS funktionieren jetzt, Anrufe kommen in einem späteren Update."
-          }
-        },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Tu número aún no puede hacer ni recibir llamadas. Los mensajes ya funcionan y las llamadas llegarán en una próxima actualización."
-          }
-        },
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Votre numéro ne peut pas encore passer ni recevoir d'appels. Les SMS fonctionnent déjà, les appels arriveront dans une prochaine mise à jour."
-          }
-        },
-        "it": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Il tuo numero non può ancora fare o ricevere chiamate. Gli SMS funzionano già e le chiamate arriveranno in un aggiornamento futuro."
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "この番号ではまだ発着信はできません。SMSは今すぐ使え、通話は今後のアップデートで対応します。"
-          }
-        },
-        "pt-BR": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Seu número ainda não faz nem recebe chamadas. As mensagens já funcionam, e as chamadas chegam em uma atualização futura."
           }
         }
       }
@@ -27837,42 +27717,42 @@
         }
       }
     },
-    "Your subscription lapsed. You can still receive texts and calls, but you can't send or dial out until you renew.": {
+    "Your subscription lapsed. You can still receive texts and calls, but you can't call out until you renew.": {
       "localizations": {
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Ihr Abo ist abgelaufen. Sie können weiterhin SMS und Anrufe empfangen, aber erst nach einer Verlängerung wieder senden oder anrufen."
+            "value": "Dein Abo ist abgelaufen. Du kannst weiterhin SMS und Anrufe empfangen, aber erst nach der Verlängerung wieder anrufen."
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "Tu suscripción venció. Puedes seguir recibiendo mensajes y llamadas, pero no podrás enviar ni llamar hasta que la renueves."
+            "value": "Tu suscripción caducó. Aún puedes recibir mensajes y llamadas, pero no podrás llamar hasta que la renueves."
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Votre abonnement a expiré. Vous pouvez toujours recevoir des SMS et des appels, mais vous ne pouvez plus en envoyer ni en passer avant de le renouveler."
+            "value": "Votre abonnement a expiré. Vous recevez toujours SMS et appels, mais vous ne pouvez plus appeler avant de le renouveler."
           }
         },
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "Il tuo abbonamento è scaduto. Puoi ancora ricevere messaggi e chiamate, ma non puoi inviarne né effettuarne finché non lo rinnovi."
+            "value": "Il tuo abbonamento è scaduto. Puoi ancora ricevere messaggi e chiamate, ma non puoi chiamare finché non lo rinnovi."
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "サブスクリプションが失効しました。SMSと着信は引き続き受け取れますが、更新するまで送信と発信はできません。"
+            "value": "サブスクリプションが失効しました。SMSと着信は引き続き受け取れますが、更新するまで発信はできません。"
           }
         },
         "pt-BR": {
           "stringUnit": {
             "state": "translated",
-            "value": "Sua assinatura expirou. Você ainda recebe mensagens e chamadas, mas não pode enviar nem ligar até renovar."
+            "value": "Sua assinatura expirou. Você ainda recebe mensagens e chamadas, mas não pode ligar até renovar."
           }
         }
       }
@@ -29218,46 +29098,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "mensagens"
-          }
-        }
-      }
-    },
-    "texts a month, in and out": {
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "SMS pro Monat, ein- und ausgehend"
-          }
-        },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "mensajes al mes, entrantes y salientes"
-          }
-        },
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "SMS par mois, envoyés et reçus"
-          }
-        },
-        "it": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "SMS al mese, in entrata e in uscita"
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "SMS/月（送受信）"
-          }
-        },
-        "pt-BR": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "mensagens por mês, enviadas e recebidas"
           }
         }
       }

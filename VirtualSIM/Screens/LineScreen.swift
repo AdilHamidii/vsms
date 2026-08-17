@@ -338,7 +338,6 @@ private struct LiveLineView: View {
                     title: "Your number is ready",
                     message: "Texts sent to it land here. Share it with someone to get started."
                 )
-                composeButton
                 ShareLink(item: PhoneFormat.national(line.e164)) {
                     Text("Share my number")
                         .font(RFont.text(15, weight: .medium))
@@ -353,7 +352,6 @@ private struct LiveLineView: View {
         } else {
             ScrollView {
                 LazyVStack(spacing: 8) {
-                    composeButton.padding(.bottom, 6)
                     ForEach(state.threadsForSelectedLine) { thread in
                         ThreadRow(thread: thread) {
                             state.openThreadId = thread.id
@@ -367,33 +365,17 @@ private struct LiveLineView: View {
         }
     }
 
-    /// The one entry point to a NEW conversation, in both states — mirroring
-    /// `dialButton`.
-    ///
-    /// Present in the empty state too, because that is where it is needed
-    /// most: "Share my number" was the only affordance there, so a user whose
-    /// number had never been texted could do nothing with it but wait. Unlike
-    /// the dialer this has no capability gate — outbound SMS needs no client
-    /// SDK, only the allowance, which the compose screen states rather than
-    /// hiding behind a disabled button.
-    private var composeButton: some View {
-        Button {
-            RHaptic.select()
-            state.flow = .compose
-        } label: {
-            HStack(spacing: 8) {
-                Image(systemName: "square.and.pencil")
-                    .font(.system(size: 14, weight: .semibold))
-                Text("New message")
-                    .font(RFont.text(15, weight: .medium))
-            }
-            .foregroundStyle(theme.text)
-            .frame(maxWidth: .infinity)
-            .frame(height: 48)
-            .background(theme.chipBg, in: Capsule())
-        }
-        .buttonStyle(PressScaleStyle())
-    }
+    // 🔴 A "New message" button lived here, in both states, and is GONE
+    // (owner decision, 2026-08-18: outbound SMS is dropped, not delayed).
+    // Every send this product ever attempted to a US number came back
+    // `40010 — the sending number is not 10DLC-registered`, and registration
+    // is not being pursued. HIDDEN rather than disabled, which is the rule
+    // `dialButton` already follows: a disabled button still advertises the
+    // feature, and here the feature is never coming back.
+    //
+    // Messages is now a RECEIVING surface. "Share my number" is the correct
+    // and only affordance in the empty state, because giving the number out is
+    // genuinely the whole next step.
 
     // MARK: - Calls
 
@@ -516,9 +498,13 @@ private struct NumberDetailView: View {
                         divider
                         row(label: renewLabel, value: renewValue)
                         divider
-                        row(label: "Texts left",
-                            value: "\(line.smsRemaining) of \(line.smsAllowance)")
-                        divider
+                        // 🔴 A "Texts left · N of 200" row lived here and is
+                        // GONE. It metered an allowance that can no longer be
+                        // spent (outbound SMS dropped 2026-08-18), and it must
+                        // NOT be turned into an inbound counter: inbound is
+                        // never metered, so a received-texts figure would
+                        // invent a cap this product does not have. Same rule
+                        // that removed the figure from the paywall.
                         // Restored with the dialer. It was removed while
                         // calling was unreachable, because a plan row stating
                         // an unspendable balance is a promise — a subscriber
@@ -644,10 +630,12 @@ struct LineStatusBanner: View {
                  text: "There's a problem with your payment. Update it to keep your number. Everything still works for now.")
         case .pastDue:
             Copy(icon: "exclamationmark.circle", tint: theme.fail,
-                 // The receive/send split is the point of this banner: inbound
+                 // The receive/dial split is the point of this banner: inbound
                  // stays on because the user cannot control who contacts them,
-                 // while outbound is what lapsing withdraws.
-                 text: "Your subscription lapsed. You can still receive texts and calls, but you can't send or dial out until you renew.")
+                 // while outbound is what lapsing withdraws. It said "send or
+                 // dial out" — sending is gone product-wide, so naming it here
+                 // would advertise a capability by describing its loss.
+                 text: "Your subscription lapsed. You can still receive texts and calls, but you can't call out until you renew.")
         case .suspended:
             Copy(icon: "lock", tint: theme.fail,
                  text: "Your number is on hold. Resubscribe to get it back before it's released for good.")

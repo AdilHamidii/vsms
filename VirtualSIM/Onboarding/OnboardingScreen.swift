@@ -252,18 +252,18 @@ private struct OwnershipPage: View {
                                label: "A monthly subscription, cancel anytime")
                 }
                 RowRule()
-                // ⚠️ The North-America limit is REAL and must not be softened.
-                // A Canadian number is domestic-only for SMS
-                // (`international_inbound: false`, and the write to change it
-                // returns 200 and silently does nothing), so a European user
-                // cannot text it from their own phone. Better said here than
-                // discovered after paying.
+                // ⚠️ Rewritten 2026-08-18 with the pivot. It said the number
+                // "exchanges texts and calls with US and Canadian phones",
+                // which sold SENDING — dropped product-wide, because it is the
+                // one capability needing carrier registration (10DLC) and
+                // lifetime outbound is 1 sent against 6 failed.
                 //
-                // Stated for texts AND calls deliberately: we have measured the
-                // SMS restriction and have NOT probed international voice, so
-                // claiming worldwide calling would be a guess sold as a fact.
-                // Widen it only against a real outbound call.
-                BenefitRow(icon: "flag", label: "Canadian numbers that exchange texts and calls with US and Canadian phones")
+                // What replaces it is the two things that are true and were
+                // both under-sold: it RECEIVES, and it calls OUT to a priced
+                // list of destinations. "worldwide" is deliberately not
+                // claimed — `voice_rates` carries 50 enabled destinations and
+                // 49 explicit refusals, so the honest word is the count.
+                BenefitRow(icon: "flag", label: "Canadian numbers that receive texts from anywhere and call out to 50+ countries")
                 RowRule()
                 BenefitRow(icon: RIcon.shield,
                            label: "No ads, no tracking, no email list",
@@ -449,21 +449,24 @@ private struct LineDemo: View {
     /// the exact jump the old demos held blank space to avoid.
     private var threads: some View {
         VStack(spacing: 0) {
-            threadRow(initial: "M",
+            // ⚠️ The ARRIVING row is a verification code, because receiving
+            // codes is what this product is now sold as. It used to be a
+            // marketplace question, with a second row reading "You: Yes, 7pm
+            // 👍" — a rendered OUTBOUND message, i.e. the demo card
+            // demonstrated the one capability that was dropped on 2026-08-18.
+            threadRow(initial: "#",
                       tint: theme.ink,
-                      name: "Marketplace",
-                      snippet: "Is the bike still available?",
+                      name: "Verification",
+                      snippet: "Your code is 483920",
                       stamp: "now",
                       unread: true)
                 .opacity(arrived ? 1 : 0)
                 .offset(y: arrived ? 0 : -6)
             RowRule(inset: 62).opacity(arrived ? 1 : 0)
-            // Reads "you sent this" without needing a bubble — the two-way part
-            // of the product, which every other line in this app cannot do.
-            threadRow(initial: "D",
+            threadRow(initial: "M",
                       tint: theme.text2,
-                      name: "Dana",
-                      snippet: "You: Yes, 7pm 👍",
+                      name: "Marketplace",
+                      snippet: "Is the bike still available?",
                       stamp: "2m",
                       unread: false)
             RowRule(inset: 62)
@@ -509,33 +512,53 @@ private struct LineDemo: View {
         .padding(.vertical, 11)
     }
 
-    /// This was an INCOMING CALL row — "Answered right here in the app" — and
-    /// was replaced with a THIRD conversation when calling was unreachable.
+    /// An INCOMING CALL, restored 2026-08-18.
     ///
-    /// **Deliberately NOT reverted now that calling ships.** The constraint is
-    /// gone but the design reason stands on its own: the point of this card is
-    /// that the number keeps a history across different people, which is
-    /// exactly what a disposable number on page 2 cannot do, and two rows made
-    /// that read as a coincidence rather than a list. Calling is stated on the
-    /// benefit list instead, where it does not cost the card its argument.
+    /// It was one originally, then became a third conversation while calling
+    /// was unreachable, and stayed one afterwards for a design reason — three
+    /// conversations read as a list where two read as a coincidence. That
+    /// reason is now outweighed: with sending dropped, three chat rows sell a
+    /// two-way messenger this product is not. Two inbound texts plus a call is
+    /// the actual shape of the thing.
     private var callRow: some View {
-        threadRow(initial: "R",
-                  tint: theme.text2,
-                  name: "Rental viewing",
-                  snippet: "Sorry, running 10 min late",
-                  stamp: "1h",
-                  unread: false)
+        HStack(spacing: 12) {
+            Image(systemName: "phone.arrow.down.left")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(theme.text2)
+                .frame(width: 32, height: 32)
+                .background(theme.chipBg, in: .circle)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Incoming call")
+                    .font(RFont.text(14, weight: .semibold))
+                    .foregroundStyle(theme.text)
+                Text("Answered right here in the app")
+                    .font(RFont.text(13))
+                    .foregroundStyle(theme.text2)
+                    .lineLimit(1)
+            }
+
+            Spacer(minLength: 8)
+
+            Text("1h")
+                .font(RFont.text(11))
+                .foregroundStyle(theme.text3)
+        }
+        .padding(.horizontal, 18)
+        .padding(.vertical, 11)
     }
 
     /// Stated as what is INCLUDED, never as a meter reading. A part-filled bar
     /// here would be inventing a usage figure for a user who has none.
     private var allowance: some View {
         HStack(alignment: .firstTextBaseline, spacing: 18) {
-            included(icon: RIcon.message, figure: "200", unit: "texts")
-            // The 100-minute voice allowance is REAL in the schema and is NOT
-            // shown, because the dialer does not exist yet. A figure a buyer
-            // cannot spend is a promise, not a spec sheet. It goes back the day
-            // calling ships — see the same note in `LineCheckoutScreen`.
+            // ⚠️ This showed "200 texts" and the comment below argued that the
+            // 100 minutes were withheld because the dialer did not exist yet:
+            // **a figure a buyer cannot spend is a promise, not a spec sheet.**
+            // That rule now cuts the other way. Calling ships; sending does
+            // not, and inbound is never metered — so the texts figure is the
+            // unspendable one and the minutes are the real inclusion.
+            included(icon: RIcon.phone, figure: "100", unit: "minutes")
             Spacer(minLength: 0)
             Text("every month")
                 .font(RFont.text(11))

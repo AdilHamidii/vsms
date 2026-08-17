@@ -198,6 +198,13 @@ enum APIError: Error, LocalizedError {
                 // them leaking our provider configuration into the app.
                 case "destination_unavailable":
                     return String(localized: "We can't call this country yet.")
+                // Outbound SMS was retired product-wide on 2026-08-18, so
+                // `send-line-message` refuses every send with this code. The
+                // message must not read as a fault or a temporary outage —
+                // nothing is coming back — and it points at the capability that
+                // DOES work outward, which is calling.
+                case "outbound_sms_retired":
+                    return String(localized: "This number receives texts but doesn't send them. Calls work — tap the phone icon.")
                 case "recipient_blocked":
                     return String(localized: "You've blocked this number. Unblock it to send a message.")
                 // Names the real limit instead of the carrier's rejection.
