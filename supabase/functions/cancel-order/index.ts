@@ -41,7 +41,48 @@ import { markSuccess, poll, type OrderProvider } from "../_shared/providers.ts";
 // NOTE this is now EQUAL to PRE_RESERVATION_GRACE_MS rather than 2x it, so the
 // numberless-cancel guard below is no longer subsumed — it is coincident, and
 // still the backstop if this ever drops under 90s. Do not remove it.
-const MIN_HOLD_SECONDS = 90;
+// ── THE HOLD IS NOW PER-PROVIDER (2026-08-18) ────────────────────────────────
+//
+// This is the shape the note above asked for, and it became implementable the
+// moment SMSPVA was retired: the two providers that actually serve orders now
+// have arrival curves so different that one flat number is wrong for both.
+//
+// Re-measured over every code the account has ever delivered, by provider:
+//
+//     provider   codes   p50    p90    max    arrived after 90s
+//     5sim         32     50s   155s   324s   6 of 32
+//     herosms       8     42s    79s    86s   0 of 8
+//
+// So 90s is already generous for HeroSMS — no code has EVER arrived after 86s,
+// and everything past that is provably dead time the user spends watching a
+// spent number. On 5sim the p90 is 155s, so a flat 90s cuts the tail off the
+// provider serving 7,769 of 8,988 active routes.
+//
+// A flat 150s was considered and REJECTED: it buys ~2 extra 5sim codes (only 2
+// of 32 land in the 90–150s window; 4 of the 6 late ones arrive after 150s
+// anyway) at the cost of trapping every HeroSMS user for 60s with nothing
+// coming. That trade is what made the old 180s hold a problem — users could
+// not leave the screen to go and paste the number.
+//
+// ⚠️ RAISING A HOLD IS NOT FREE, AND THE COST IS NOT THE CODE. Since
+// 2026-07-27 a cancel does NOT release the number: it refunds, stamps
+// `late_watch_until`, and `poll-active-orders` still delivers a late code for
+// free. So the hold does not protect the CODE from a cancel — it protects it
+// from a REROLL, which does release. Do not justify a longer hold with
+// "otherwise the code is lost"; that stopped being true.
+//
+// The fallback is the SHORT one on purpose: an unknown provider should not be
+// able to trap a user, and 90s is already above every measured p50.
+const MIN_HOLD_BY_PROVIDER: Record<string, number> = {
+  "5sim": 155,      // its own p90
+  herosms: 90,      // max arrival ever observed is 86s
+  smspva: 145,      // retired from routing; kept so an in-flight row resolves
+};
+const MIN_HOLD_FALLBACK = 90;
+
+function minHoldFor(provider: string | null | undefined): number {
+  return MIN_HOLD_BY_PROVIDER[provider ?? ""] ?? MIN_HOLD_FALLBACK;
+}
 
 // Grace during which an order that has NOT yet been given a number cannot be
 // cancelled at all — see the unconditional guard below. Sized to create-order's
@@ -115,10 +156,11 @@ Deno.serve(async (req) => {
   // Newer clients read `retry_after_seconds` and render an exact countdown.
   {
     const heldSeconds = (Date.now() - new Date(order.created_at as string).getTime()) / 1000;
-    if (heldSeconds < MIN_HOLD_SECONDS) {
+    const minHold = minHoldFor(order.provider as string | null);
+    if (heldSeconds < minHold) {
       return json({
         error: "cancel_too_early",
-        retry_after_seconds: Math.max(1, Math.ceil(MIN_HOLD_SECONDS - heldSeconds)),
+        retry_after_seconds: Math.max(1, Math.ceil(minHold - heldSeconds)),
       }, { status: 429 });
     }
   }
