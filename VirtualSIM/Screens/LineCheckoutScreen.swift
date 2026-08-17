@@ -194,7 +194,18 @@ struct LineCheckoutScreen: View {
                 .fixedSize(horizontal: false, vertical: true)
                 .padding(.top, 8)
 
-            Text("Send and receive texts right here. Your real number stays private.")
+            // ⚠️ This said "Send and receive texts right here", and outbound is
+            // 1 sent against 6 failed lifetime — every cross-border attempt
+            // rejected by the carrier for want of 10DLC registration. Four of
+            // five subscribers cancelled within ten minutes of paying, and the
+            // one we can trace bought at 00:25 and gave up at 00:35.
+            //
+            // Leads with RECEIVING because that is the half that demonstrably
+            // works (3 of 3 inbound) and is what people came for. The sending
+            // limit is stated in the same breath rather than discovered after
+            // payment — CLAUDE.md calls that "a refund-generating surprise
+            // rather than a limitation they will infer".
+            Text("Receive texts and calls from anywhere, and keep your real number private. Sending texts works to Canadian numbers today.")
                 .font(RFont.text(15))
                 .foregroundStyle(theme.text2)
                 .lineSpacing(3)
