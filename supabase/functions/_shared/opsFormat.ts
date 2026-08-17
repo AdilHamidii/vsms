@@ -115,6 +115,14 @@ const ROLE: Record<string, string> = {
  *  stale-poller banner; keep the two numbers equal.) */
 const BALANCE_FRESH_MS = 10 * 60 * 1000;
 
+/** Low-water mark for the Telnyx float, SEPARATE from LOW_BALANCE_USD. The
+ *  SMS threshold ($37.50) is sized to single-order wholesale that can reach
+ *  tens of dollars; Telnyx rent is $1/number/month + $1 upfront, so $37.50
+ *  would print a permanent "top up" and train the owner to ignore the one
+ *  warning that matters. $5 covers a couple of new rentals plus a month of
+ *  rent on the current fleet. */
+export const TELNYX_LOW_USD = 5;
+
 export interface BalanceReading {
   provider?: string;
   balance_usd?: number | null;
@@ -124,24 +132,27 @@ export interface BalanceReading {
 /** balanceLine for a reading that carries its own timestamp. A stale reading is
  *  rendered as absent and SAID to be stale — never printed as current, which is
  *  how a dead poller produced confidently wrong "all is well" digests. */
-export function balanceLineFrom(r: BalanceReading): string {
+export function balanceLineFrom(r: BalanceReading, lowUsd?: number): string {
   const name = r.provider ?? "?";
   const ageMs = r.checked_at ? Date.now() - new Date(r.checked_at).getTime() : Infinity;
-  if (typeof r.balance_usd !== "number") return balanceLine(name, undefined);
+  if (typeof r.balance_usd !== "number") return balanceLine(name, undefined, lowUsd);
   if (ageMs > BALANCE_FRESH_MS) {
-    return `${balanceLine(name, undefined)} <i>(last read ` +
+    return `${balanceLine(name, undefined, lowUsd)} <i>(last read ` +
            `${Math.round(ageMs / 60000)} min ago — poller may be dead)</i>`;
   }
-  return balanceLine(name, r.balance_usd);
+  return balanceLine(name, r.balance_usd, lowUsd);
 }
 
-export function balanceLine(name: string, usd: number | null | undefined): string {
+export function balanceLine(
+  name: string, usd: number | null | undefined,
+  lowUsd: number = LOW_BALANCE_USD,
+): string {
   const role = ROLE[name.toLowerCase()] ?? "";
   const label = `${esc(name)}${role ? ` (${role})` : ""}`;
   // A missing reading is not the same as a healthy one: if nothing has written
   // a balance we say so, rather than omitting the line and implying all is well.
   if (typeof usd !== "number") return `❔ ${label}: <i>no reading</i>`;
-  const low = usd < LOW_BALANCE_USD;
+  const low = usd < lowUsd;
   return `${low ? "⚠️" : "💰"} ${label}: <b>$${esc(usd.toFixed(2))}</b>` +
          (low ? " — <b>top up</b>" : "");
 }
@@ -918,6 +929,12 @@ export function formatSubs(raw: Record<string, unknown>): string {
     lines_by_billing?: { billing?: string; n?: number }[];
     monthly_cost_cents?: number;
     trials_tracked?: boolean;
+    subs_list?: {
+      product?: string; state?: string; auto_renew?: boolean;
+      price_milli?: number; currency?: string; expires_at?: string;
+      environment?: string; created_at?: string;
+    }[];
+    subs_not_shown?: number;
     active_billed?: { currency?: string; milli?: number; n?: number }[];
     notifications_7d?: {
       type?: string; subtype?: string; n?: number;
@@ -938,6 +955,30 @@ export function formatSubs(raw: Record<string, unknown>): string {
     const states = (s.subs_by_state ?? [])
       .map((r) => `${esc(r.state ?? "?")} ${r.n ?? 0}`).join(" · ");
     lines.push(`📜 Subscriptions: <b>${s.subs_total}</b> — ${states}`);
+    // One row per subscription: plan, running vs cancelled, expiry. auto_renew
+    // is ASSN-authoritative (20260815100000); "cancelled" here means auto-renew
+    // off — the line stays live until the period ends, so state stays 'active'.
+    // A zero billed price is rendered as a free period: an inference from
+    // price_milli = 0 (offerType is not persisted), never a tracked fact.
+    for (const r of s.subs_list ?? []) {
+      const pid = r.product ?? "";
+      const plan = pid.endsWith(".line.monthly") ? "monthly"
+        : pid.endsWith(".line.yearly") ? "yearly"
+        : (pid || "?");
+      const free = r.price_milli === 0 ? " · free period" : "";
+      const env = r.environment && r.environment !== "Production"
+        ? ` · ${esc(r.environment)}` : "";
+      const until = r.expires_at ? esc(r.expires_at.slice(5, 10)) : "?";
+      const status = r.state === "active"
+        ? (r.auto_renew !== false
+            ? `▶️ running — renews ${until}`
+            : `🔕 cancelled — ends ${until}`)
+        : `${esc(r.state ?? "?")} — ${until}`;
+      lines.push(`   • ${esc(plan)}${free}${env} · ${status}`);
+    }
+    if ((s.subs_not_shown ?? 0) > 0) {
+      lines.push(`   <i>… and ${s.subs_not_shown} older, not shown</i>`);
+    }
   }
 
   if ((s.lines_total ?? 0) === 0) {
@@ -972,7 +1013,8 @@ export function formatSubs(raw: Record<string, unknown>): string {
   // member and ASSN's offerType is not persisted, so a zero here would be an
   // assertion we cannot make.
   if (s.trials_tracked !== true) {
-    lines.push(`🧪 Trials: <i>not tracked — no offer-type column on line_subscriptions</i>`);
+    lines.push(`🧪 Trials: <i>"free period" above is inferred from a $0 billed ` +
+               `price — no offer-type column exists, so there is no tracked count</i>`);
   }
 
   // A live line whose subscription is gone is rent we pay for nothing; a live
@@ -1003,7 +1045,8 @@ export function formatSubs(raw: Record<string, unknown>): string {
     }
   }
 
-  lines.push(balanceLineFrom({ provider: "Telnyx", ...(s.telnyx ?? {}) }));
+  lines.push(balanceLineFrom({ provider: "Telnyx", ...(s.telnyx ?? {}) },
+                             TELNYX_LOW_USD));
 
   const dev = s.dev_hidden ?? {};
   if ((dev.lines ?? 0) > 0 || (dev.subs ?? 0) > 0) {

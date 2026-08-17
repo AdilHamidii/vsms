@@ -316,10 +316,19 @@ Deno.serve(async (req) => {
 
   const { data: cfg } = await sb
     .from("app_config").select("key, value")
-    .in("key", ["blocked_routes", "fivesim_live"]);
+    .in("key", ["blocked_routes", "fivesim_live", "route_price_floors"]);
   const blocked = new Set<string>(
     (cfg?.find((r) => r.key === "blocked_routes")?.value as string[] | undefined) ?? [],
   );
+  // Owner-set retail floors, keyed "service|country" like blocked_routes
+  // (seeded 2026-08-13: {"uber|uk": 3} so the route prices above the 2-credit
+  // signup grant and stops being the default landing for free wallets). A floor
+  // only ever RAISES retail_credits — raising loosens the order-time margin
+  // ceiling, so it can never produce margin_too_low. ⚠️ Applied by THIS sync
+  // only: if a floored route is ever re-homed to another provider, that
+  // provider's sync repriced it with no floor.
+  const floors = (cfg?.find((r) => r.key === "route_price_floors")?.value as
+    Record<string, number> | undefined) ?? {};
   // Fails CLOSED: absent config means shadow mode. In shadow we write the
   // fivesim_* and pool_* columns but touch neither `provider` nor `status` nor
   // `retail_credits`, so the live catalog is untouched and the run's counters
@@ -460,7 +469,13 @@ Deno.serve(async (req) => {
     if (live) {
       row.provider = "5sim";
       row.status = status;
-      row.retail_credits = smoothed != null ? priceToCredits(smoothed / 100) : r.retail_credits;
+      {
+        const computed = smoothed != null ? priceToCredits(smoothed / 100) : r.retail_credits as number | null;
+        const floor = floors[key];
+        row.retail_credits = computed != null && Number.isFinite(floor)
+          ? Math.max(computed, Math.max(1, Math.floor(floor)))
+          : computed;
+      }
       // 5sim has no Real SIM tier: it sells virtual pools and names no carrier.
       // The shipped app renders the tier chips off premium_credits and
       // create-order 409s a premium request without a pin, so it MUST be NULL

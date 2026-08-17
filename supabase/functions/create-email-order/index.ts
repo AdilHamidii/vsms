@@ -40,12 +40,21 @@ const PRICING: Record<string, number> = {
  *  not fail the instant the vendor moves a cent.
  *
  *  The FREE tier cannot use a margin ratio — N=0 makes any ceiling 0 — so it
- *  gets an absolute cap instead. At $0.0034 list, $0.02 is ~6x headroom and
- *  still refuses anything that has quietly become expensive. */
+ *  gets an absolute cap instead.
+ *
+ *  ⚠️ Owner decision 2026-08-13: "free emails should always get accepted."
+ *  The cap was $0.02 (~6x the $0.0034 list price), which silently made the
+ *  free tier unavailable for any service whose mailboxes price higher —
+ *  facebook quotes $0.051 on BOTH free domains, so the most-wanted target was
+ *  never free, and the refusal rendered SMS copy ("costs more than expected").
+ *  $1.00 is a GLITCH GUARD in the MAX_WHOLESALE_CENTS tradition, not a price
+ *  policy: every real-world quote passes; a mis-parsed $99 must not be bought
+ *  for $0. Worst-case exposure is bounded by email_free_daily_cap (3/user/day),
+ *  not by this constant. */
 const NET_USD_PER_CREDIT = 0.30;
 const MIN_MARGIN = 6.0;
 const CEILING_HEADROOM_USD = 0.10;
-const FREE_MAX_COST_USD = 0.02;
+const FREE_MAX_COST_USD = 1.00;
 
 Deno.serve(async (req) => {
   const cors = handleCors(req); if (cors) return cors;

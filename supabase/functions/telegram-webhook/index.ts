@@ -25,7 +25,8 @@ import {
   sendMessage, ownerChatId, esc, sendMessageWithId, answerCallback,
 } from "../_shared/telegram.ts";
 import {
-  formatDigest, formatRevenue, formatGross, formatLinesMoney, balanceLine,
+  formatDigest, formatRevenue, formatGross, formatLinesMoney,
+  balanceLine, TELNYX_LOW_USD,
   formatOrders,
   formatFunnel, formatDelivery, formatSubs,
 } from "../_shared/opsFormat.ts";
@@ -316,11 +317,6 @@ Deno.serve(async (req) => {
     const { data: rows } = await sb
       .from("app_config").select("key, value")
       .in("key", ["5sim_health", "herosms_health", "esimaccess_health",
-                  // 🔴 TELNYX WAS MISSING, and it is the float for the product
-                  // that costs money PER SUBSCRIBER PER MONTH. `/balance` is
-                  // the is-everything-alive reflex, and the one balance that
-                  // can strand a paying subscriber's number was not on it —
-                  // even though `ROLE` already had a label ready for it.
                   "telnyx_health"]);
 
     const read = (k: string) => {
@@ -345,19 +341,18 @@ Deno.serve(async (req) => {
     const fiveRaw = read("5sim_health");
     const heroRaw = read("herosms_health");
     const eaRaw = read("esimaccess_health");
-    // Telnyx funds the SECOND-NUMBER line: $1 up front plus $1/month per
-    // subscriber, carried ~45 days ahead of Apple's payout. It was absent here
-    // while being the only float that can strand a PAYING subscriber's number,
-    // and `ROLE` already had a label waiting for it.
-    const tnxRaw = read("telnyx_health");
+    // Telnyx funds the second-number line — rent per subscriber, and the one
+    // float the owner has named as that product's hard blocker (2026-08-14:
+    // added here alongside the rental/lifecycle alerts).
+    const telnyxRaw = read("telnyx_health");
     const five = fresh(fiveRaw) ? fiveRaw : null;
     const hero = fresh(heroRaw) ? heroRaw : null;
     const ea = fresh(eaRaw) ? eaRaw : null;
-    const tnx = fresh(tnxRaw) ? tnxRaw : null;
-    const checked = fiveRaw?.checked_at ?? heroRaw?.checked_at ?? eaRaw?.checked_at
-      ?? tnxRaw?.checked_at;
-    const stalePoller = (fiveRaw || heroRaw || eaRaw || tnxRaw)
-      && !five && !hero && !ea && !tnx;
+    const telnyx = fresh(telnyxRaw) ? telnyxRaw : null;
+    const checked = fiveRaw?.checked_at ?? heroRaw?.checked_at ??
+      eaRaw?.checked_at ?? telnyxRaw?.checked_at;
+    const stalePoller = (fiveRaw || heroRaw || eaRaw || telnyxRaw) &&
+      !five && !hero && !ea && !telnyx;
 
     // Surface the watchdog verdict here too — /balance is the owner's "is
     // everything alive" reflex, so it should answer for the jobs as well.
@@ -377,7 +372,9 @@ Deno.serve(async (req) => {
       balanceLine("5sim", five?.balance_usd),
       balanceLine("HeroSMS", hero?.balance_usd),
       balanceLine("esimaccess", ea?.balance_usd),
-      balanceLine("Telnyx", tnx?.balance_usd),
+      // Telnyx gets its own low-water mark: the SMS $37.50 threshold would
+      // print a permanent "top up" against $1/month rent.
+      balanceLine("Telnyx", telnyx?.balance_usd, TELNYX_LOW_USD),
       stalePoller ? "⚠️ balance readings are STALE — the poller may be dead" : "",
       failing.length > 0
         ? `🚨 watchdog: ${esc(failing.join(", "))}`

@@ -25,6 +25,7 @@ import { handleCors, json } from "../_shared/cors.ts";
 import { admin, callerUserId } from "../_shared/supabaseAdmin.ts";
 import {
   verifyTransactionJWS, isSubscriptionProduct, IapVerificationError,
+  linePlanLabel,
 } from "../_shared/iap.ts";
 import {
   orderNumber, getOrder, findNumberId, attachMessagingProfile,
@@ -269,7 +270,8 @@ Deno.serve(async (req) => {
     return json({ error: "provision_failed" }, { status: 500 });
   }
 
-  await alertNewLine(sb, e164, tx.originalTransactionId, tx.environment);
+  await alertNewLine(sb, e164, tx.originalTransactionId, tx.environment,
+    linePlanLabel(tx));
 
   return json({ ok: true, line_id: lineId, e164 });
 });
@@ -347,6 +349,7 @@ async function quoteMonthlyCents(e164: string): Promise<number> {
  */
 async function alertNewLine(
   sb: ReturnType<typeof admin>, e164: string, ref: string, env: string,
+  plan: string,
 ) {
   try {
     const { data: claimed } = await sb.from("telegram_events")
@@ -355,7 +358,7 @@ async function alertNewLine(
 
     const sandbox = env !== "Production" ? `\n<i>${esc(env)}</i>` : "";
     const r = await sendMessage(
-      `📞 <b>New second number</b>\n${esc(e164)}${sandbox}`);
+      `📞 <b>New second number</b>\n${esc(e164)} · ${esc(plan)}${sandbox}`);
     if (!r.ok) {
       console.error("line alert send failed, releasing claim", r.status, r.body);
       await sb.from("telegram_events")

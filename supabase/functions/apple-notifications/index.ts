@@ -28,7 +28,7 @@ import { handleCors, json } from "../_shared/cors.ts";
 import { admin } from "../_shared/supabaseAdmin.ts";
 import {
   verifyNotificationJWS, verifyTransactionJWS, verifyRenewalInfoJWS,
-  isSubscriptionProduct,
+  isSubscriptionProduct, linePlanLabel,
 } from "../_shared/iap.ts";
 import { findNumberId, releaseNumber, faultOf } from "../_shared/telnyx.ts";
 import { sendMessage, esc } from "../_shared/telegram.ts";
@@ -213,6 +213,31 @@ async function process(sb: ReturnType<typeof admin>, n: Awaited<ReturnType<typeo
           assn_renewal_no_live_line: originalTx, reason: data?.reason ?? null,
         }));
       }
+      // Alerts AFTER the state write succeeded — an alert must never describe
+      // a transition that did not commit. Sandbox events (the reviewer's
+      // subscription is always Sandbox) are labelled so they cannot be read
+      // as revenue.
+      const sandbox = tx.environment !== "Production"
+        ? `\n<i>${esc(tx.environment ?? "?")}</i>` : "";
+      if (type === "SUBSCRIBED") {
+        // SAME (kind='line', ref=originalTx) claim as verify-line-subscription's
+        // instant alert — whichever path runs first sends, the other no-ops,
+        // and a purchase whose client call never landed still gets announced.
+        await alertOwner(
+          `📞 <b>New second number subscription</b>\n` +
+            `${esc(linePlanLabel(tx))}${sandbox}`,
+          sb, originalTx, "line");
+      } else {
+        const amount = tx.price != null && tx.currency
+          ? ` — ${(tx.price / 1000).toFixed(2)} ${esc(tx.currency)}` : "";
+        // Ref is the renewal's OWN transaction id: unique per renewal, stable
+        // across Apple's retry ladder, so retries dedupe and next month's
+        // renewal still alerts.
+        await alertOwner(
+          `🔄 <b>Second number renewed</b>${amount}\n` +
+            `${esc(linePlanLabel(tx))}${sandbox}`,
+          sb, `renew:${tx.transactionId}`, "line_event");
+      }
       return;
     }
 
@@ -229,6 +254,12 @@ async function process(sb: ReturnType<typeof admin>, n: Awaited<ReturnType<typeo
           p_original_tx: originalTx, p_grace_until: until,
         });
         if (error) throw new Error(`enter_line_grace_claim: ${error.message}`);
+        // notificationUUID as ref: unique per event, stable across Apple's
+        // retry ladder — retries dedupe, a later re-entry into grace alerts.
+        await alertOwner(
+          `⚠️ <b>Line billing issue — in grace</b>` +
+          (until ? `\nservice stays live until ${esc(until)}` : ""),
+          sb, `grace:${n.notificationUUID}`, "line_event");
         return;
       }
       // Billing retry without grace: receive still works, send does not. The
@@ -237,6 +268,9 @@ async function process(sb: ReturnType<typeof admin>, n: Awaited<ReturnType<typeo
         p_original_tx: originalTx,
       });
       if (error) throw new Error(`mark_line_past_due_claim: ${error.message}`);
+      await alertOwner(
+        `⚠️ <b>Line past due</b>\noutbound paused, inbound still works`,
+        sb, `pastdue:${n.notificationUUID}`, "line_event");
       return;
     }
 
@@ -251,6 +285,10 @@ async function process(sb: ReturnType<typeof admin>, n: Awaited<ReturnType<typeo
         p_original_tx: originalTx, p_hold_until: hold,
       });
       if (error) throw new Error(`suspend_line_claim: ${error.message}`);
+      await alertOwner(
+        `❌ <b>Line subscription ended</b>\nnumber suspended — held ` +
+        `${HOLD_DAYS} days, then released (rent stops)`,
+        sb, `expired:${n.notificationUUID}`, "line_event");
       return;
     }
 
@@ -264,6 +302,14 @@ async function process(sb: ReturnType<typeof admin>, n: Awaited<ReturnType<typeo
         .update({ auto_renew: on, updated_at: new Date().toISOString() })
         .eq("original_transaction_id", originalTx);
       if (error) throw new Error(`auto_renew update: ${error.message}`);
+      // The owner's "someone cancelled" signal — auto-renew off is the churn
+      // event; EXPIRED only arrives when the paid month runs out.
+      await alertOwner(
+        on
+          ? `🔔 <b>Line auto-renew re-enabled</b>`
+          : `🔕 <b>Line cancelled (auto-renew off)</b>\nstays live until ` +
+            `the period ends${periodEnd ? ` (${esc(periodEnd)})` : ""}`,
+        sb, `renewstatus:${n.notificationUUID}`, "line_event");
       return;
     }
 
@@ -410,16 +456,23 @@ async function releaseLine(sb: ReturnType<typeof admin>, lineId: string) {
 }
 
 /** Exactly-once via the (kind, ref) claim row, releasing the claim on a failed
- *  send so the sweep can still deliver it. */
-async function alertOwner(html: string, sb: ReturnType<typeof admin>, ref: string) {
+ *  send so the sweep can still deliver it.
+ *
+ *  `kind` must be a member of the telegram_events check constraint
+ *  (20260814100000 added 'line_event') — a rejected insert loses the alert
+ *  with no trace, which is why lifecycle alerts share ONE kind with prefixed
+ *  refs instead of minting a new kind per event. */
+async function alertOwner(
+  html: string, sb: ReturnType<typeof admin>, ref: string, kind = "line_refund",
+) {
   try {
     const { data: claimed } = await sb.from("telegram_events")
-      .insert({ kind: "line_refund", ref }).select("ref").maybeSingle();
+      .insert({ kind, ref }).select("ref").maybeSingle();
     if (!claimed) return;
     const r = await sendMessage(html);
     if (!r.ok) {
       await sb.from("telegram_events")
-        .delete().eq("kind", "line_refund").eq("ref", ref);
+        .delete().eq("kind", kind).eq("ref", ref);
     }
   } catch { /* an alert must never fail the notification */ }
 }

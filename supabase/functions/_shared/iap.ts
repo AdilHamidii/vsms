@@ -450,6 +450,18 @@ export function isFreeTrial(tx: AppleTransactionPayload): boolean {
   return tx.offerType === 1 || tx.offerDiscountType === "FREE_TRIAL";
 }
 
+/** Ops label for a line subscription transaction: "monthly" / "yearly" from
+ *  the product id suffix (falls back to the raw id so an unexpected product is
+ *  visible rather than blank), plus a free-trial marker. Display only —
+ *  nothing may gate on it, per the isFreeTrial note above. */
+export function linePlanLabel(tx: AppleTransactionPayload): string {
+  const id = tx.productId ?? "";
+  const plan = id.endsWith(".line.monthly") ? "monthly"
+    : id.endsWith(".line.yearly") ? "yearly"
+    : id;
+  return isFreeTrial(tx) ? `${plan} · free trial` : plan;
+}
+
 /** `iap-verify` must call this BEFORE `creditsForProduct`. Its unmapped-product
  *  branch returns HTTP 400 `unknown_product` and fires a Telegram alert — so
  *  without this guard, every single renewal pages the owner and 400s a
