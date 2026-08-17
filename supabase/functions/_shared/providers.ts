@@ -122,15 +122,31 @@ export function providerOrder(c: RouteCodes): Provider[] {
   // be the one that buys it.
   if (c.owner === "5sim" && c.fiveProduct && c.fiveCountry) return ["5sim"];
   if (c.owner === "herosms" && c.heroService && c.heroCountry != null) return ["herosms"];
-  if (c.owner === "smspva" && c.smsService && c.smsCountry) return ["smspva"];
+
+  // 🔴 SMSPVA IS RETIRED FROM ROUTING (owner decision, 2026-08-17). It is no
+  // longer returned for ANY route, owned or otherwise.
+  //
+  // It was not a pricing or margin problem — it stopped filling orders at all.
+  // Measured over the 14 days to 2026-08-17: **7 orders, 0 numbers reserved,
+  // 0 codes**, against 5sim 91/91 and HeroSMS 5/5 in the same window. Every
+  // order routed here was a charge-and-refund, and it read to the user as
+  // `no_numbers_available` ("try another country") because the adapter never
+  // classified its failures — so the pager never fired either.
+  //
+  // Its 5,099 active routes were re-homed or hidden in the same commit
+  // (943 to HeroSMS, 4,156 hidden). Leaving the router able to select it would
+  // re-open the hole the moment any route was re-activated by an evidence
+  // refresh, which `refresh_route_observed_success` does un-conditionally.
+  //
+  // The ADAPTER and the account are deliberately NOT deleted — this is a
+  // routing change, so rollback is restoring these two lines plus re-activating
+  // the routes. Do not "clean up" `smspva.ts` on the strength of this.
 
   // No owner recorded (or its codes are missing): fall back to code presence,
-  // 5sim first — it is the SMS provider as of 2026-08-03. HeroSMS stays wired
-  // because it still serves the temp-EMAIL line on the same account, and SMSPVA
-  // stays as the rollback target; neither is deleted.
+  // 5sim first — it is the primary SMS provider. HeroSMS stays wired because it
+  // also serves the temp-EMAIL line on the same account.
   if (c.fiveProduct && c.fiveCountry) return ["5sim"];
   if (c.heroService && c.heroCountry != null) return ["herosms"];
-  if (c.smsService && c.smsCountry) return ["smspva"];
   return [];
 }
 
