@@ -28,7 +28,7 @@ import { handleCors, json } from "../_shared/cors.ts";
 import { admin } from "../_shared/supabaseAdmin.ts";
 import {
   verifyNotificationJWS, verifyTransactionJWS, verifyRenewalInfoJWS,
-  isSubscriptionProduct, linePlanLabel,
+  isSubscriptionProduct, linePlanLabel, creditsForProduct,
 } from "../_shared/iap.ts";
 import { findNumberId, releaseNumber, faultOf } from "../_shared/telnyx.ts";
 import { sendMessage, esc } from "../_shared/telegram.ts";
@@ -164,6 +164,69 @@ async function process(sb: ReturnType<typeof admin>, n: Awaited<ReturnType<typeo
       `<i>Credits already granted are NOT revoked automatically — see the ` +
       `known-open note. Apple decides the refund.</i>`,
       sb, tx.originalTransactionId);
+    return;
+  }
+
+  // 🔴 REFUND / REVOKE FOR A **CREDIT PACK** USED TO DIE ON THE NEXT LINE TOO,
+  // and that one costs real money. `iap_receipts` had no revocation column and
+  // nothing anywhere consumed `revocationDate`, so a user could buy a pack,
+  // spend the credits, get Apple to refund the purchase, and keep both. The
+  // three refund requests on record were all REFUND_DECLINED — the exposure is
+  // $0 realized and 100% of the next granted one.
+  //
+  // Consumables only: the subscription REFUND/REVOKE branch in the switch below
+  // releases a NUMBER and is a different transaction entirely.
+  if ((n.notificationType === "REFUND" || n.notificationType === "REVOKE") &&
+      creditsForProduct(tx.productId) != null) {
+    // Claim, ledger row and balance move happen inside ONE transaction under
+    // one advisory lock. Splitting them across two round-trips is the failure
+    // this repo has now fixed eight times: a worker killed in between leaves a
+    // receipt that looks handled with the credits still spendable, and nothing
+    // ever revisits a terminal row.
+    const { data, error } = await sb.rpc("revoke_iap_purchase", {
+      p_transaction_id: tx.transactionId,
+      p_revocation_date: tx.revocationDate
+        ? new Date(tx.revocationDate).toISOString() : null,
+      p_reason: tx.revocationReason != null
+        ? `${n.notificationType}:${tx.revocationReason}`
+        : n.notificationType,
+    });
+    // Destructured, never discarded — supabase-js RETURNS errors rather than
+    // throwing, so `if (error) throw` is the only thing standing between a
+    // failed clawback and a 200 that tells Apple we handled it. Throwing puts
+    // Apple's retry ladder to work, which is exactly what it is for.
+    if (error) throw new Error(`revoke_iap_purchase: ${error.message}`);
+
+    const status = String(data?.status ?? "unknown");
+    console.log(JSON.stringify({
+      iap_revocation: status, type: n.notificationType,
+      tx: tx.transactionId, product: tx.productId,
+      credits: data?.credits ?? null, shortfall: data?.shortfall ?? null,
+    }));
+
+    // Nothing moved and nothing was ever granted: a Sandbox receipt, a purchase
+    // whose grant failed, or a receipt that went with a deleted account. Real,
+    // expected, and not worth waking anyone for. `iap_grants` — which has no FK
+    // to auth.users — still refuses the replay in every one of those cases.
+    if (status === "not_found" || status === "nothing_granted") return;
+
+    const credits = Number(data?.credits ?? 0);
+    const clawed = Number(data?.clawed_back ?? 0);
+    const shortfall = Number(data?.shortfall ?? 0);
+    const balance = data?.balance_after ?? null;
+    await alertOwner(
+      `💸 <b>Credit pack refunded — credits revoked</b>\n` +
+      `${esc(tx.productId)} · tx ${esc(tx.transactionId)}\n` +
+      `user ${esc(String(data?.user_id ?? "?"))}\n` +
+      `granted ${credits} · clawed back ${clawed}` +
+      (balance != null ? ` · balance now ${balance}` : "") +
+      (status === "already_revoked" ? `\n<i>already revoked (Apple retry)</i>` : "") +
+      (status === "revoked_no_wallet" ? `\n<i>no wallet row — nothing debited</i>` : "") +
+      (shortfall > 0
+        ? `\n🔴 <b>${shortfall} credits NOT recovered</b> — already spent. ` +
+          `The balance floor is a schema invariant; this is a real loss.`
+        : ""),
+      sb, `revoke:${tx.transactionId}`);
     return;
   }
 
