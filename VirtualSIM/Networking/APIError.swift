@@ -40,6 +40,19 @@ enum APIError: Error, LocalizedError {
             // network failure.
             return String(localized: "Something went wrong on our side. Your last action may have gone through, so check before retrying.")
         case .http(let status, let body):
+            // 🔴 GoTrue FIRST, and it must stay first.
+            //
+            // Auth speaks a DIFFERENT envelope from our own backend —
+            // `{"code":400,"error_code":"invalid_credentials","msg":"…"}` —
+            // where `code` is the HTTP status, not a business code. Before
+            // this, none of it was parsed, so every wrong password fell
+            // through to the status ladder below and rendered "Not available
+            // right now." Worse, a bad confirmation code is a **403**, which
+            // that ladder answers with "Please sign in again" — advice that
+            // sends the user backwards out of a flow they are halfway through.
+            if let kind = parseGoTrueError(body), let message = goTrueMessage(kind) {
+                return message
+            }
             // Surface a known business-logic error from our own backend.
             if let kind = parseErrorType(body) {
                 switch kind {
@@ -227,6 +240,59 @@ enum APIError: Error, LocalizedError {
 }
 
 /// Extract the `error` field from a JSON-shaped response body if present.
+/// GoTrue's error code, or nil when this is not a GoTrue response.
+///
+/// Kept separate from `parseErrorType` on purpose. Our backend answers
+/// `{"error":"insufficient_credits"}` while GoTrue answers
+/// `{"code":400,"error_code":"…","msg":"…"}` — and some `/token` paths use the
+/// OAuth shape `{"error":"invalid_grant","error_description":"…"}`. Merging the
+/// two readers would let an OAuth `error` be looked up in our own table of
+/// business codes, which is how a wrong password could end up rendering
+/// somebody else's copy.
+private func parseGoTrueError(_ body: String?) -> String? {
+    guard let body, let data = body.data(using: .utf8) else { return nil }
+    guard let obj = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else { return nil }
+    if let code = obj["error_code"] as? String { return code }
+    // The OAuth envelope — only trust `error` here when `error_description`
+    // is alongside it, which is what distinguishes it from ours.
+    if obj["error_description"] != nil, let code = obj["error"] as? String { return code }
+    return nil
+}
+
+/// Copy for the GoTrue codes this app can actually provoke.
+private func goTrueMessage(_ code: String) -> String? {
+    switch code {
+    case "invalid_credentials", "invalid_grant":
+        return String(localized: "That email and password don't match. Check them and try again.")
+    case "email_not_confirmed":
+        return String(localized: "Confirm your email first — we sent you a code.")
+    case "email_exists", "user_already_exists":
+        return String(localized: "There's already an account with that email. Sign in instead, or reset your password.")
+    // ⚠️ NO NUMBER HERE. The threshold is a dashboard setting — probed
+    // 2026-08-18 and currently **6**, while the sign-up screen asks for 8 as
+    // our own stricter rule. Quoting either one in the SERVER's error means
+    // printing a figure that something else can change underneath us, which is
+    // the same trap as a hardcoded credit amount.
+    case "weak_password":
+        return String(localized: "That password is too short. Pick a longer one.")
+    // ⚠️ ONE MESSAGE FOR BOTH CASES, BECAUSE GoTrue CANNOT TELL THEM APART.
+    // A wrong code and an expired code both return 403 `otp_expired` with the
+    // same body, so copy naming only one of them would be wrong half the time.
+    case "otp_expired":
+        return String(localized: "That code isn't right, or it's expired. Ask for a new one.")
+    case "over_email_send_rate_limit", "over_request_rate_limit":
+        return String(localized: "Too many attempts. Wait a few minutes and try again.")
+    case "signup_disabled", "email_provider_disabled":
+        return String(localized: "New accounts are paused right now. Try signing in with Apple.")
+    case "email_address_invalid", "validation_failed":
+        return String(localized: "That doesn't look like a valid email address.")
+    case "same_password":
+        return String(localized: "That's already your password. Pick a different one.")
+    default:
+        return nil
+    }
+}
+
 private func parseErrorType(_ body: String?) -> String? {
     guard let body, let data = body.data(using: .utf8) else { return nil }
     guard let parsed = try? JSONSerialization.jsonObject(with: data),

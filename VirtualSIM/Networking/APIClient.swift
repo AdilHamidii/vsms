@@ -19,7 +19,10 @@ final class APIClient {
 
     func attach(_ store: Session) { self.sessionStore = store }
 
-    enum Method: String { case get = "GET", post = "POST", patch = "PATCH", delete = "DELETE" }
+    // `put` exists for exactly one caller: GoTrue routes `/auth/v1/user` on
+    // PUT and does not answer PATCH there, so a password change sent as PATCH
+    // fails with a routing error that looks nothing like a password problem.
+    enum Method: String { case get = "GET", post = "POST", patch = "PATCH", put = "PUT", delete = "DELETE" }
 
     struct Empty: Codable {}
 
@@ -29,9 +32,11 @@ final class APIClient {
         query: [URLQueryItem] = [],
         body: Encodable? = nil,
         authenticated: Bool = true,
+        overrideToken: String? = nil,
         as: Response.Type = Response.self
     ) async throws -> Response {
-        let data = try await rawRequest(method, path: path, query: query, body: body, authenticated: authenticated)
+        let data = try await rawRequest(method, path: path, query: query, body: body,
+                                        authenticated: authenticated, overrideToken: overrideToken)
         if Response.self == Empty.self {
             return Empty() as! Response
         }
@@ -49,7 +54,8 @@ final class APIClient {
         query: [URLQueryItem] = [],
         body: Encodable? = nil,
         authenticated: Bool = true,
-        allowRefresh: Bool = true
+        allowRefresh: Bool = true,
+        overrideToken: String? = nil
     ) async throws -> Data {
         var components = URLComponents(url: baseURL.appendingPathComponent(path), resolvingAgainstBaseURL: false)!
         if !query.isEmpty { components.queryItems = query }
@@ -60,7 +66,19 @@ final class APIClient {
         req.setValue(anonKey, forHTTPHeaderField: "apikey")
         req.setValue("application/json", forHTTPHeaderField: "Accept")
 
-        if authenticated {
+        if let overrideToken {
+            // 🔴 A SESSION WE HAVE DELIBERATELY NOT ADOPTED.
+            //
+            // `POST /auth/v1/verify` with `type: recovery` returns a REAL
+            // session. Adopting it would flip `Session.status` to `.signedIn`
+            // and drop the user into the app before they have set a password,
+            // so the reset flow holds that token locally and passes it here
+            // instead — adopting only once `PUT /auth/v1/user` has succeeded.
+            //
+            // Refresh is skipped below for the same reason: `Session` does not
+            // hold this token's refresh pair and cannot renew it.
+            req.setValue("Bearer \(overrideToken)", forHTTPHeaderField: "Authorization")
+        } else if authenticated {
             guard let token = sessionStore?.accessToken else {
                 throw APIError.notAuthenticated
             }
@@ -76,7 +94,8 @@ final class APIClient {
         let (data, response) = try await session.data(for: req)
         guard let http = response as? HTTPURLResponse else { throw APIError.badResponse }
 
-        if http.statusCode == 401, authenticated, allowRefresh, let store = sessionStore {
+        if http.statusCode == 401, authenticated, allowRefresh, overrideToken == nil,
+           let store = sessionStore {
             let refreshed = await store.refresh()
             if refreshed {
                 return try await rawRequest(method, path: path, query: query, body: body,

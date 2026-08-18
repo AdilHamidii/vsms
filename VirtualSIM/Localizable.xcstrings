@@ -3438,6 +3438,46 @@
         }
       }
     },
+    "An email and a\npassword. That's it.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Eine E-Mail und ein\nPasswort. Mehr nicht."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Un correo y una\ncontraseña. Nada más."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Un e-mail et un\nmot de passe. C'est tout."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Un'email e una\npassword. Tutto qui."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "メールアドレスと\nパスワードだけ。"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Um e-mail e uma\nsenha. Só isso."
+          }
+        }
+      }
+    },
     "Another country": {
       "localizations": {
         "de": {
@@ -3676,6 +3716,46 @@
           "stringUnit": {
             "state": "translated",
             "value": "Aparência"
+          }
+        }
+      }
+    },
+    "Apple didn't return an identity token.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Apple hat kein Identitäts-Token zurückgegeben."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Apple no devolvió un token de identidad."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Apple n'a pas renvoyé de jeton d'identité."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Apple non ha restituito un token di identità."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Appleからidentity tokenが返されませんでした。"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "A Apple não retornou um token de identidade."
           }
         }
       }
@@ -5374,6 +5454,46 @@
         }
       }
     },
+    "Change password": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Passwort ändern"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cambiar contraseña"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Changer le mot de passe"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cambia password"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "パスワードを変更"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Alterar senha"
+          }
+        }
+      }
+    },
     "Chat with us": {
       "localizations": {
         "de": {
@@ -5573,6 +5693,46 @@
           "stringUnit": {
             "state": "translated",
             "value": "Verifique sua conexão e tente novamente."
+          }
+        }
+      }
+    },
+    "Check your email": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "E-Mail prüfen"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Revisa tu correo"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vérifiez vos e-mails"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Controlla l'email"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "メールをご確認ください"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Verifique seu e-mail"
           }
         }
       }
@@ -6669,6 +6829,46 @@
         }
       }
     },
+    "Confirm your email first — we sent you a code.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bestätigen Sie zuerst Ihre E-Mail – wir haben Ihnen einen Code gesendet."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Confirma primero tu correo: te enviamos un código."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Confirmez d'abord votre e-mail : nous vous avons envoyé un code."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Conferma prima la tua email: ti abbiamo inviato un codice."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "先にメールアドレスの確認をお願いします。コードをお送りしました。"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Confirme seu e-mail primeiro — enviamos um código."
+          }
+        }
+      }
+    },
     "Confirming…": {
       "localizations": {
         "de": {
@@ -6867,6 +7067,46 @@
           "stringUnit": {
             "state": "translated",
             "value": "Continuar mesmo assim"
+          }
+        }
+      }
+    },
+    "Continue with email": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mit E-Mail fortfahren"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Continuar con email"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Continuer avec un e-mail"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Continua con l'email"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "メールで続ける"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Continuar com e-mail"
           }
         }
       }
@@ -7195,6 +7435,46 @@
         }
       }
     },
+    "Couldn't change your password. Try again.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Passwort konnte nicht geändert werden. Erneut versuchen."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No se pudo cambiar tu contraseña. Inténtalo de nuevo."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Impossible de changer votre mot de passe. Réessayez."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Non è stato possibile cambiare la password. Riprova."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "パスワードを変更できませんでした。もう一度お試しください。"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Não foi possível alterar sua senha. Tente de novo."
+          }
+        }
+      }
+    },
     "Couldn't check availability": {
       "localizations": {
         "de": {
@@ -7272,6 +7552,46 @@
           "stringUnit": {
             "state": "translated",
             "value": "Não foi possível verificar a disponibilidade. Tente novamente."
+          }
+        }
+      }
+    },
+    "Couldn't create your account. Please try again.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Konto konnte nicht erstellt werden. Bitte erneut versuchen."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No se pudo crear tu cuenta. Inténtalo de nuevo."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Impossible de créer votre compte. Veuillez réessayer."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Non è stato possibile creare l'account. Riprova."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "アカウントを作成できませんでした。もう一度お試しください。"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Não foi possível criar sua conta. Tente novamente."
           }
         }
       }
@@ -7556,6 +7876,126 @@
         }
       }
     },
+    "Couldn't reach the server. Check your connection.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Server nicht erreichbar. Prüfen Sie Ihre Verbindung."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No se pudo conectar con el servidor. Revisa tu conexión."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Serveur injoignable. Vérifiez votre connexion."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Server non raggiungibile. Controlla la connessione."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "サーバーに接続できませんでした。通信環境をご確認ください。"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Não foi possível acessar o servidor. Verifique sua conexão."
+          }
+        }
+      }
+    },
+    "Couldn't save your new password. Try again.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Neues Passwort konnte nicht gespeichert werden. Erneut versuchen."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No se pudo guardar tu nueva contraseña. Inténtalo de nuevo."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Impossible d'enregistrer votre nouveau mot de passe. Réessayez."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Non è stato possibile salvare la nuova password. Riprova."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "新しいパスワードを保存できませんでした。もう一度お試しください。"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Não foi possível salvar sua nova senha. Tente de novo."
+          }
+        }
+      }
+    },
+    "Couldn't send a new code. Try again shortly.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Neuer Code konnte nicht gesendet werden. Bitte gleich erneut versuchen."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No se pudo enviar un código nuevo. Inténtalo en breve."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Impossible d'envoyer un nouveau code. Réessayez dans un instant."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Non è stato possibile inviare un nuovo codice. Riprova tra poco."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "新しいコードを送信できませんでした。少し後にお試しください。"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Não foi possível enviar um novo código. Tente em instantes."
+          }
+        }
+      }
+    },
     "Couldn't send that message. Please try again.": {
       "localizations": {
         "de": {
@@ -7632,6 +8072,86 @@
           "stringUnit": {
             "state": "translated",
             "value": "Não foi possível enviar. Tente novamente."
+          }
+        }
+      }
+    },
+    "Couldn't sign in with Apple. Please try again.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Anmeldung mit Apple nicht möglich. Bitte erneut versuchen."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No se pudo iniciar sesión con Apple. Inténtalo de nuevo."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Connexion avec Apple impossible. Veuillez réessayer."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Accesso con Apple non riuscito. Riprova."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Appleでサインインできませんでした。もう一度お試しください。"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Não foi possível entrar com a Apple. Tente novamente."
+          }
+        }
+      }
+    },
+    "Couldn't sign in. Please try again.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Anmeldung nicht möglich. Bitte erneut versuchen."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No se pudo iniciar sesión. Inténtalo de nuevo."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Connexion impossible. Veuillez réessayer."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Accesso non riuscito. Riprova."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "サインインできませんでした。もう一度お試しください。"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Não foi possível entrar. Tente novamente."
           }
         }
       }
@@ -7792,6 +8312,46 @@
           "stringUnit": {
             "state": "translated",
             "value": "Cobre o que você precisa"
+          }
+        }
+      }
+    },
+    "Create an account": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Konto erstellen"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Crear una cuenta"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Créer un compte"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Crea un account"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "アカウントを作成"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Criar uma conta"
           }
         }
       }
@@ -8159,6 +8719,46 @@
           "stringUnit": {
             "state": "translated",
             "value": "Saldo atual"
+          }
+        }
+      }
+    },
+    "Current password": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aktuelles Passwort"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Contraseña actual"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mot de passe actuel"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Password attuale"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "現在のパスワード"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Senha atual"
           }
         }
       }
@@ -9026,6 +9626,46 @@
         }
       }
     },
+    "Didn't get it?": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nichts erhalten?"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "¿No te llegó?"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Rien reçu ?"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Non è arrivato?"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "届きませんか？"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Não chegou?"
+          }
+        }
+      }
+    },
     "Dismiss": {
       "localizations": {
         "de": {
@@ -9310,6 +9950,46 @@
         }
       }
     },
+    "Email": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "E-Mail"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Correo"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "E-mail"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Email"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "メールアドレス"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "E-mail"
+          }
+        }
+      }
+    },
     "Email addresses aren't available for this service yet.": {
       "extractionState": "stale",
       "localizations": {
@@ -9547,6 +10227,46 @@
           "stringUnit": {
             "state": "translated",
             "value": "Digite o endereço no site e volte. O código aparece aqui."
+          }
+        }
+      }
+    },
+    "Enter the code\nwe just sent.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Geben Sie den Code ein,\nden wir gesendet haben."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Introduce el código\nque acabamos de enviar."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Saisissez le code\nque nous venons d'envoyer."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Inserisci il codice\nche abbiamo appena inviato."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "送信したコードを\n入力してください。"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Digite o código\nque acabamos de enviar."
           }
         }
       }
@@ -9831,6 +10551,46 @@
           "stringUnit": {
             "state": "translated",
             "value": "Termine de criar sua conta"
+          }
+        }
+      }
+    },
+    "Forgot your password?": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Passwort vergessen?"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "¿Olvidaste tu contraseña?"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mot de passe oublié ?"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Password dimenticata?"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "パスワードをお忘れですか？"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Esqueceu sua senha?"
           }
         }
       }
@@ -11211,6 +11971,46 @@
           "stringUnit": {
             "state": "translated",
             "value": "Ocultar teclado"
+          }
+        }
+      }
+    },
+    "Hide password": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Passwort verbergen"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ocultar contraseña"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Masquer le mot de passe"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nascondi password"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "パスワードを非表示"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ocultar senha"
           }
         }
       }
@@ -13951,6 +14751,86 @@
         }
       }
     },
+    "New accounts are paused right now. Try signing in with Apple.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Neue Konten sind derzeit pausiert. Versuchen Sie die Anmeldung mit Apple."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Las cuentas nuevas están pausadas ahora mismo. Prueba a iniciar sesión con Apple."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Les nouveaux comptes sont suspendus pour le moment. Essayez de vous connecter avec Apple."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "La creazione di account è sospesa al momento. Prova ad accedere con Apple."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "現在、新規アカウントは停止中です。Appleでのサインインをお試しください。"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Novas contas estão pausadas no momento. Tente entrar com a Apple."
+          }
+        }
+      }
+    },
+    "New here? Create an account": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Neu hier? Konto erstellen"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "¿Eres nuevo? Crea una cuenta"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nouveau ici ? Créez un compte"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nuovo qui? Crea un account"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "はじめての方はアカウント作成"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Novo por aqui? Crie uma conta"
+          }
+        }
+      }
+    },
     "New message": {
       "localizations": {
         "de": {
@@ -13987,6 +14867,46 @@
           "stringUnit": {
             "state": "translated",
             "value": "Nova mensagem"
+          }
+        }
+      }
+    },
+    "New password": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Neues Passwort"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nueva contraseña"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nouveau mot de passe"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nuova password"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "新しいパスワード"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nova senha"
           }
         }
       }
@@ -15731,6 +16651,46 @@
         }
       }
     },
+    "Nothing arriving? You may already have an account with this address — go back and sign in, or reset your password.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kommt nichts an? Vielleicht haben Sie mit dieser Adresse bereits ein Konto – gehen Sie zurück und melden Sie sich an oder setzen Sie Ihr Passwort zurück."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "¿No llega nada? Puede que ya tengas una cuenta con esta dirección: vuelve e inicia sesión, o restablece tu contraseña."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Rien n'arrive ? Vous avez peut-être déjà un compte avec cette adresse : revenez en arrière et connectez-vous, ou réinitialisez votre mot de passe."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Non arriva nulla? Potresti già avere un account con questo indirizzo: torna indietro e accedi, oppure reimposta la password."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "何も届かない場合、このアドレスで既にアカウントをお持ちかもしれません。戻ってサインインするか、パスワードを再設定してください。"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nada chegando? Você já pode ter uma conta com este endereço — volte e entre, ou redefina sua senha."
+          }
+        }
+      }
+    },
     "Nothing here matches that name or dial code.": {
       "localizations": {
         "de": {
@@ -17316,6 +18276,86 @@
         }
       }
     },
+    "Password": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Passwort"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Contraseña"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mot de passe"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Password"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "パスワード"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Senha"
+          }
+        }
+      }
+    },
+    "Password changed. Use the new one next time you sign in.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Passwort geändert. Verwenden Sie beim nächsten Anmelden das neue."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Contraseña cambiada. Usa la nueva la próxima vez que inicies sesión."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mot de passe modifié. Utilisez le nouveau à votre prochaine connexion."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Password cambiata. Usa quella nuova al prossimo accesso."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "パスワードを変更しました。次回のサインインから新しいものをお使いください。"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Senha alterada. Use a nova no próximo acesso."
+          }
+        }
+      }
+    },
     "Past": {
       "localizations": {
         "de": {
@@ -17759,6 +18799,46 @@
           "stringUnit": {
             "state": "translated",
             "value": "Escolha um país com porcentagem alta. É com que frequência os códigos chegam lá em toda a rede nos últimos 30 dias. Não é o nosso próprio registro de entrega."
+          }
+        }
+      }
+    },
+    "Pick a new one.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Wählen Sie ein neues."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Elige una nueva."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Choisissez-en un nouveau."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Scegline una nuova."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "新しいものを設定してください。"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Escolha uma nova."
           }
         }
       }
@@ -19508,6 +20588,46 @@
         }
       }
     },
+    "Repeat it": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Wiederholen"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Repítela"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Répétez-le"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ripetila"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "もう一度入力"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Repita"
+          }
+        }
+      }
+    },
     "Report spam": {
       "localizations": {
         "de": {
@@ -19664,6 +20784,46 @@
           "stringUnit": {
             "state": "translated",
             "value": "Redefinir mapa"
+          }
+        }
+      }
+    },
+    "Reset password": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Passwort zurücksetzen"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Restablecer contraseña"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Réinitialiser le mot de passe"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Reimposta la password"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "パスワードを再設定"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Redefinir senha"
           }
         }
       }
@@ -19988,6 +21148,46 @@
         }
       }
     },
+    "Save": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Speichern"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Guardar"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Enregistrer"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Salva"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "保存"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Salvar"
+          }
+        }
+      }
+    },
     "Save %lld%%": {
       "localizations": {
         "de": {
@@ -20024,6 +21224,46 @@
           "stringUnit": {
             "state": "translated",
             "value": "Economize %lld%%"
+          }
+        }
+      }
+    },
+    "Save and sign in": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Speichern und anmelden"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Guardar e iniciar sesión"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Enregistrer et se connecter"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Salva e accedi"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "保存してサインイン"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Salvar e entrar"
           }
         }
       }
@@ -20469,6 +21709,46 @@
         }
       }
     },
+    "Send a new code": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Neuen Code senden"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Enviar un código nuevo"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Envoyer un nouveau code"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Invia un nuovo codice"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "新しいコードを送信"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Enviar novo código"
+          }
+        }
+      }
+    },
     "Send and receive texts in the app": {
       "localizations": {
         "de": {
@@ -20549,6 +21829,46 @@
         }
       }
     },
+    "Send me a code": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Code senden"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Envíame un código"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Envoyez-moi un code"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Inviami un codice"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "コードを送信"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Envie-me um código"
+          }
+        }
+      }
+    },
     "Send texts": {
       "localizations": {
         "de": {
@@ -20585,6 +21905,46 @@
           "stringUnit": {
             "state": "translated",
             "value": "Enviar mensagens"
+          }
+        }
+      }
+    },
+    "Sent. It can take a minute to arrive.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gesendet. Es kann eine Minute dauern."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Enviado. Puede tardar un minuto en llegar."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Envoyé. Cela peut prendre une minute."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Inviato. Può richiedere un minuto."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "送信しました。届くまで少しかかることがあります。"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Enviado. Pode levar um minuto para chegar."
           }
         }
       }
@@ -20946,6 +22306,46 @@
           "stringUnit": {
             "state": "translated",
             "value": "Mostrar outros números"
+          }
+        }
+      }
+    },
+    "Show password": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Passwort anzeigen"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mostrar contraseña"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Afficher le mot de passe"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mostra password"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "パスワードを表示"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mostrar senha"
           }
         }
       }
@@ -22802,6 +24202,86 @@
         }
       }
     },
+    "That code didn't work. Ask for a new one.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Der Code hat nicht funktioniert. Fordern Sie einen neuen an."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ese código no funcionó. Pide uno nuevo."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ce code n'a pas fonctionné. Demandez-en un nouveau."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Quel codice non ha funzionato. Chiedine uno nuovo."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "そのコードは使用できませんでした。新しいコードを取得してください。"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Esse código não funcionou. Peça um novo."
+          }
+        }
+      }
+    },
+    "That code isn't right, or it's expired. Ask for a new one.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Der Code stimmt nicht oder ist abgelaufen. Fordern Sie einen neuen an."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ese código no es correcto, o caducó. Pide uno nuevo."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ce code est incorrect ou expiré. Demandez-en un nouveau."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Il codice non è corretto o è scaduto. Chiedine uno nuovo."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "コードが正しくないか、有効期限が切れています。新しいコードを取得してください。"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Esse código não está certo, ou expirou. Peça um novo."
+          }
+        }
+      }
+    },
     "That code isn't valid.": {
       "localizations": {
         "de": {
@@ -22882,6 +24362,46 @@
         }
       }
     },
+    "That doesn't look like a valid email address.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Das sieht nicht nach einer gültigen E-Mail-Adresse aus."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Eso no parece una dirección de correo válida."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cela ne ressemble pas à une adresse e-mail valide."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Non sembra un indirizzo email valido."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "メールアドレスの形式が正しくないようです。"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Isso não parece um endereço de e-mail válido."
+          }
+        }
+      }
+    },
     "That doesn't look like a valid phone number. Check it and try again.": {
       "localizations": {
         "de": {
@@ -22918,6 +24438,46 @@
           "stringUnit": {
             "state": "translated",
             "value": "Esse não parece ser um número de telefone válido. Confira e tente novamente."
+          }
+        }
+      }
+    },
+    "That email and password don't match. Check them and try again.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "E-Mail und Passwort passen nicht zusammen. Bitte prüfen und erneut versuchen."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ese correo y esa contraseña no coinciden. Compruébalos e inténtalo de nuevo."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cet e-mail et ce mot de passe ne correspondent pas. Vérifiez-les et réessayez."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Email e password non corrispondono. Controlla e riprova."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "メールアドレスとパスワードが一致しません。確認してもう一度お試しください。"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Esse e-mail e senha não conferem. Verifique e tente de novo."
           }
         }
       }
@@ -22959,6 +24519,46 @@
           "stringUnit": {
             "state": "translated",
             "value": "Esse domínio de e-mail acabou. Tente outro."
+          }
+        }
+      }
+    },
+    "That password is too short. Pick a longer one.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Das Passwort ist zu kurz. Wählen Sie ein längeres."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Esa contraseña es muy corta. Elige una más larga."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ce mot de passe est trop court. Choisissez-en un plus long."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Quella password è troppo corta. Scegline una più lunga."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "パスワードが短すぎます。もっと長いものにしてください。"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Essa senha é curta demais. Escolha uma mais longa."
           }
         }
       }
@@ -23080,6 +24680,46 @@
           "stringUnit": {
             "state": "translated",
             "value": "Esse serviço não está mais disponível."
+          }
+        }
+      }
+    },
+    "That's already your password. Pick a different one.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Das ist bereits Ihr Passwort. Wählen Sie ein anderes."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Esa ya es tu contraseña. Elige otra."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "C'est déjà votre mot de passe. Choisissez-en un autre."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Quella è già la tua password. Scegline un'altra."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "それは現在のパスワードです。別のものを選んでください。"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Essa já é a sua senha. Escolha outra."
           }
         }
       }
@@ -23400,6 +25040,46 @@
           "stringUnit": {
             "state": "translated",
             "value": "Há um problema com seu pagamento. Atualize para manter seu número. Por enquanto tudo continua funcionando."
+          }
+        }
+      }
+    },
+    "There's already an account with that email. Sign in instead, or reset your password.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mit dieser E-Mail existiert bereits ein Konto. Melden Sie sich an oder setzen Sie Ihr Passwort zurück."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ya existe una cuenta con ese correo. Inicia sesión o restablece tu contraseña."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Un compte existe déjà avec cet e-mail. Connectez-vous ou réinitialisez votre mot de passe."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Esiste già un account con questa email. Accedi oppure reimposta la password."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "このメールアドレスのアカウントは既にあります。サインインするか、パスワードを再設定してください。"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Já existe uma conta com esse e-mail. Entre, ou redefina sua senha."
           }
         }
       }
@@ -24086,6 +25766,46 @@
         }
       }
     },
+    "Those don't match yet.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Die stimmen noch nicht überein."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Todavía no coinciden."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ils ne correspondent pas encore."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Non coincidono ancora."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "まだ一致していません。"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ainda não coincidem."
+          }
+        }
+      }
+    },
     "Time's up. Confirming with the network…": {
       "localizations": {
         "de": {
@@ -24162,6 +25882,46 @@
           "stringUnit": {
             "state": "translated",
             "value": "Para"
+          }
+        }
+      }
+    },
+    "Too many attempts. Wait a few minutes and try again.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Zu viele Versuche. Warten Sie ein paar Minuten und versuchen Sie es erneut."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Demasiados intentos. Espera unos minutos e inténtalo otra vez."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Trop de tentatives. Attendez quelques minutes et réessayez."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Troppi tentativi. Aspetta qualche minuto e riprova."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "試行回数が多すぎます。数分待ってからもう一度お試しください。"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Muitas tentativas. Aguarde alguns minutos e tente de novo."
           }
         }
       }
@@ -24940,6 +26700,46 @@
           "stringUnit": {
             "state": "translated",
             "value": "Use este endereço"
+          }
+        }
+      }
+    },
+    "Used vSMS before? Sign in the same way you did last time — your number, credits and history come back.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Schon einmal vSMS genutzt? Melden Sie sich wie beim letzten Mal an – Nummer, Credits und Verlauf kommen zurück."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "¿Ya usaste vSMS? Inicia sesión igual que la última vez: tu número, créditos e historial vuelven."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vous avez déjà utilisé vSMS ? Connectez-vous comme la dernière fois : votre numéro, vos crédits et votre historique reviennent."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hai già usato vSMS? Accedi come l'ultima volta: numero, crediti e cronologia tornano."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "vSMSのご利用経験がある方は、前回と同じ方法でサインインすると番号・クレジット・履歴が戻ります。"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Já usou o vSMS? Entre da mesma forma que da última vez — seu número, créditos e histórico voltam."
           }
         }
       }
@@ -26195,6 +27995,46 @@
         }
       }
     },
+    "We'll send you\na code.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Wir senden Ihnen\neinen Code."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Te enviaremos\nun código."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nous vous enverrons\nun code."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ti invieremo\nun codice."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "コードをお送りします。"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vamos enviar\num código."
+          }
+        }
+      }
+    },
     "We're sorry for the hassle. We're actively working on improving delivery rates.": {
       "extractionState": "manual",
       "localizations": {
@@ -26353,6 +28193,46 @@
           "stringUnit": {
             "state": "translated",
             "value": "Pausamos os novos números enquanto fazemos algumas melhorias. Volte em breve."
+          }
+        }
+      }
+    },
+    "Welcome back.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Willkommen zurück."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bienvenido de nuevo."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bon retour."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bentornato."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "おかえりなさい。"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bem-vindo de volta."
           }
         }
       }
@@ -26633,6 +28513,46 @@
           "stringUnit": {
             "state": "translated",
             "value": "Onde você quer?"
+          }
+        }
+      }
+    },
+    "With Apple, there's no password to make and your email can stay hidden": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mit Apple gibt es kein Passwort und Ihre E-Mail kann verborgen bleiben"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Con Apple no hay contraseña que crear y tu correo puede quedar oculto"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Avec Apple, aucun mot de passe à créer et votre e-mail peut rester masqué"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Con Apple non devi creare password e la tua email può restare nascosta"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Appleならパスワード作成は不要で、メールアドレスも非公開にできます"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Com a Apple, não há senha para criar e seu e-mail pode ficar oculto"
           }
         }
       }

@@ -54,7 +54,7 @@ struct AuthGate: View {
                 SplashScreen(state: .indeterminate)
             case .signedOut:
                 if onboardingComplete {
-                    SignInScreen()
+                    AuthFlowScreen()
                 } else {
                     OnboardingScreen(onDone: { onboardingComplete = true })
                 }
