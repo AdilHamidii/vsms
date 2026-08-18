@@ -180,4 +180,4 @@ transaction that rolls back, including the plus-tag farming case.
 - ⚠️ **Raising the signup grant is a separate decision, and it is 0 today.**
   With email signup live, the cost of a fresh identity is one mailbox rather
   than one Apple ID. Normalization and confirmation raise that floor; they do
-  not make it infinite. See `20260818130000_email_signup_normalized_tombstone.sql`.
+  not make it infinite. See `20260818160000_email_signup_normalized_tombstone.sql`.

@@ -153,8 +153,22 @@ begin
   if v_used <> 157 then raise exception '8a FAILED: expected 157, got %', v_used; end if;
   n := public.settle_stale_calls(360);
   select voice_used_seconds into v_used from public.phone_lines where id = v_line;
-  if v_used <> 37 then raise exception '8b FAILED: stale reservation not returned, got %', v_used; end if;
-  raise notice '8 OK  a call with no CDR gives its reservation back after 6h';
+  -- 🔴 THIS EXPECTATION WAS INVERTED ON 2026-08-18, and the test caught it.
+  --
+  -- It asserted the reservation is GIVEN BACK (157 → 37). The live function
+  -- now settles a no-CDR call at its FULL reservation and stays at 157, per
+  -- migration `20260818140000_stale_calls_never_trust_client_duration` —
+  -- `duration_seconds` is client-supplied, so refunding against it is the same
+  -- exploit as letting the client settle its own call (see CLAUDE.md, "The
+  -- client is never authoritative about money"). Charging the reservation when
+  -- the provider never reported the call is the conservative direction: the
+  -- user is billed for what they held, not for what they claim they used.
+  --
+  -- ⚠️ The cost is real and worth watching: a call that genuinely failed after
+  -- `begin-line-call` reserved for it now keeps the whole 120s unless a CDR
+  -- arrives to correct it.
+  if v_used <> 157 then raise exception '8b FAILED: stale call did not settle at its reservation, got %', v_used; end if;
+  raise notice '8 OK  a call with no CDR settles at its reservation, never at the client''s figure';
 
   -- ── 9. reclaim_lapsed_lines: the cancellation leak, and the lockout ───────
   insert into public.phone_lines (user_id, e164, country_code, number_type,

@@ -60,7 +60,7 @@ double_confirm_changes = true
 # Load-bearing for money, not just hygiene: `handle_new_user` no longer pays
 # the signup grant at INSERT for an unconfirmed address. Turning confirmations
 # OFF would hand every self-chosen address a grant with no proof the mailbox is
-# even reachable — see 20260818130000_email_signup_normalized_tombstone.sql.
+# even reachable — see 20260818160000_email_signup_normalized_tombstone.sql.
 enable_confirmations = true
 
 # ⚠️ SMTP LIVES IN THE DASHBOARD, NOT HERE. This file is not pushed to the
