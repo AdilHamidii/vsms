@@ -229,19 +229,11 @@ struct ThreadScreen: View {
 
     private var blockReason: LocalizedStringKey? {
         if thread?.blocked == true { return "You've blocked this number. Unblock it to send." }
-        guard let line = state.line else { return "Your number isn't ready yet." }
-        switch line.sendBlock {
-        case .allowanceExhausted:
-            return "You've used this month's texts. They reset when your subscription renews."
-        case .pastDue:
-            return "Renew your subscription to send messages again."
-        case .suspended:
-            return "Your number is on hold. Resubscribe to use it again."
-        case .notLive:
-            return "Your number isn't ready yet."
-        case nil:
-            return nil
-        }
+        // The four sentences live on `Line.SendBlock` so the compose screen
+        // says the same thing — it used to check only the allowance and let a
+        // suspended line through to a raw server refusal.
+        guard let line = state.line else { return Line.SendBlock.notLive.message }
+        return line.sendBlock?.message
     }
 
     private func send() {

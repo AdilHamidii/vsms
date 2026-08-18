@@ -46,7 +46,18 @@ struct ComposeScreen: View {
     }
 
     private var remaining: Int? { state.line?.smsRemaining }
-    private var exhausted: Bool { (remaining ?? 1) <= 0 }
+
+    /// 🔴 THIS SCREEN USED TO CHECK ONLY THE ALLOWANCE, and `ThreadScreen` —
+    /// the other place a message can be sent — checked all four states through
+    /// `Line.sendBlock`. So a past-due, suspended or not-yet-live line was
+    /// blocked when REPLYING and allowed when STARTING a conversation, where
+    /// the user typed a message, pressed send and got a raw server refusal
+    /// instead of the sentence explaining what to do about it.
+    ///
+    /// The old default was wrong in the same direction: `(remaining ?? 1) <= 0`
+    /// reported "not exhausted" when no line was loaded at all, where
+    /// `sendBlock` correctly says `.notLive`.
+    private var block: Line.SendBlock? { state.line?.sendBlock ?? .notLive }
 
     /// The carrier will not deliver this one, so say so before the user writes
     /// anything rather than spending a round trip to be refused.
@@ -57,9 +68,9 @@ struct ComposeScreen: View {
     }
 
     private var canSend: Bool {
-        recipient != nil && unreachable == nil
+        recipient != nil && unreachable == nil && block == nil
             && !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            && !exhausted && !sending
+            && !sending
     }
 
     var body: some View {
@@ -175,7 +186,7 @@ struct ComposeScreen: View {
     /// the button will do.
     private var note: LocalizedStringKey? {
         if isEmergency { return "This number can't text emergency services. Use your phone's own number." }
-        if exhausted { return "You've used all your texts this month. They reset when your plan renews." }
+        if let block { return block.message }
         if !to.isEmpty && recipient == nil { return "That doesn't look like a phone number yet." }
         if let remaining, remaining <= 10 { return "\(remaining) texts left this month." }
         return nil
@@ -184,7 +195,7 @@ struct ComposeScreen: View {
     private func notice(_ key: LocalizedStringKey) -> some View {
         Text(key)
             .font(RFont.text(12))
-            .foregroundStyle(isEmergency || exhausted ? theme.warn : theme.text2)
+            .foregroundStyle(isEmergency || block != nil ? theme.warn : theme.text2)
             .fixedSize(horizontal: false, vertical: true)
             .padding(.horizontal, 4)
     }

@@ -1,4 +1,7 @@
-import Foundation
+// SwiftUI, not just Foundation, for the one `LocalizedStringKey` on
+// `Line.SendBlock` — the copy for "why can't I send" belongs with the states
+// it describes rather than duplicated across the screens that render it.
+import SwiftUI
 
 // The fourth product line: a phone number the user RENTS and KEEPS, with
 // two-way SMS and voice. Unlike the other three it is billed by StoreKit
@@ -166,6 +169,28 @@ struct Line: Codable, Identifiable, Hashable {
         case pastDue
         case suspended
         case notLive
+
+        /// Why sending is blocked, in the user's terms.
+        ///
+        /// Lives HERE rather than at the call site because there is more than
+        /// one screen that can send: `ThreadScreen` owned the only copy of
+        /// these four sentences, and `ComposeScreen` hand-rolled a single
+        /// `smsRemaining <= 0` check instead — so a past-due, suspended or
+        /// not-yet-live line was blocked when replying and NOT blocked when
+        /// starting a new conversation, where the user got a raw server
+        /// refusal instead of an explanation.
+        var message: LocalizedStringKey {
+            switch self {
+            case .allowanceExhausted:
+                "You've used this month's texts. They reset when your subscription renews."
+            case .pastDue:
+                "Renew your subscription to send messages again."
+            case .suspended:
+                "Your number is on hold. Resubscribe to use it again."
+            case .notLive:
+                "Your number isn't ready yet."
+            }
+        }
     }
 
     var sendBlock: SendBlock? {
