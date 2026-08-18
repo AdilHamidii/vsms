@@ -74,6 +74,20 @@ Wait for Resend to show **Verified** (usually minutes, occasionally an hour).
 Do not continue before it does: Supabase accepts the SMTP settings regardless
 and every message silently bounces.
 
+✅ **DONE 2026-08-18.** All four records resolve, the domain reports
+`verified` on all three checks, and a send from
+`no-reply@mail.vsmsapp.com` reached `delivered@resend.dev` with
+`last_event: delivered`. Re-prove it any time without touching a real inbox —
+`delivered@resend.dev`, `bounced@resend.dev` and `complained@resend.dev` are
+Resend's own sinks:
+
+```bash
+curl -s -X POST https://api.resend.com/emails \
+  -H "Authorization: Bearer $RESEND_KEY" -H "Content-Type: application/json" \
+  -d '{"from":"vSMS <no-reply@mail.vsmsapp.com>","to":["delivered@resend.dev"],
+       "subject":"smoke test","text":"ok"}'
+```
+
 ## 3. Supabase — SMTP
 
 Dashboard → Authentication → Emails → SMTP Settings → Enable Custom SMTP:
