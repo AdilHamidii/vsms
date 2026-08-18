@@ -1069,6 +1069,18 @@ repo, so they are kept here — losing them costs a device-only debugging sessio
    ```bash
    plutil -p "$APP/Info.plist" | grep -A3 UIBackgroundModes   # must list audio + voip
    ```
+5. 🔴 **THE IN-CALL SCREEN IS A ROOT `.overlay`, AND A ROOT OVERLAY RENDERS
+   BELOW EVERY `fullScreenCover`.** The dialer IS a cover, so pressing call
+   left the keypad on screen with the live call underneath it — invisible, and
+   with no way to end it from inside the app. Reported from a real call to
+   France, 2026-08-18. `InCallOverlay` is now duplicated into the cover's
+   content (the shape `ErrorBanner` already had), the root copy is scoped to
+   `state.flow == nil` so exactly one instance ever renders, the dialer
+   dismisses itself once the call is committed, and any open sheet is
+   dismissed — sheets are detented, so a call screen hosted in one would draw
+   at sheet height. **In this app, "above everything" cannot be a root
+   overlay.**
+
 4. ⚠️ **`UUID.uuidString` is UPPERCASE and Telnyx's detail records are
    lowercase.** `sync-telnyx-cdr` matches with an exact-string lookup, so
    `providerSessionId` lowercases both ids. Uppercase would settle nothing and
@@ -2788,6 +2800,9 @@ Also this day, each verified against live DB state rather than a deploy log:
 Reasoning for each of these lives in the topic section above; this is only an
 index, so "why is it like this" has a date to search for.
 
+- **08-18** The dialer never got out of the way of the call it placed — a root
+  overlay cannot cover a `fullScreenCover`; see trap 5 under "Calling". Client
+  only, so it needs 2.1 to reach anyone.
 - **08-17** The second-number line met its first real customers and most of it
   did not work. **Voice was provisioned lazily** in `mint-line-token` while
   messaging was provisioned at rental, so five of six sold numbers had no Telnyx
@@ -3073,6 +3088,15 @@ chain including a modulus check that the cert and key are actually a pair.
   (`scripts/verify-line-lifecycle.sql`, 12 checks in a rolled-back
   transaction). What genuinely remains:
   - **Telnyx float** — the one hard blocker, and it is money, not code.
+  - ⚠️ **`CallController.phase` moves to `.dialing` only AFTER the call is
+    committed** — the server authorised it and CallKit accepted it. It used to
+    be set on the tap, so the in-call overlay went up for the whole
+    `begin-line-call` round trip and came back down on a refusal. Re-entrancy
+    over that window is `isStarting`, which is also the dialer's busy state:
+    without it a double-tap sends two gating requests and each reserves
+    credits. `isCommitted` (live, and not `.ending`) is what the dialer
+    dismisses on — a refused call passes through `.ending`, and dismissing
+    there would take its error message with it.
   - **Calling is WIRED but UNPROVEN.** `TelnyxRTC 4.1.2` was added and the
     dialer wired on 2026-08-06, so `NullVoiceClient` no longer stands in.
     **No real call has ever been placed**, the voice adapters were written
