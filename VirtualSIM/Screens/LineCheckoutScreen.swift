@@ -194,18 +194,18 @@ struct LineCheckoutScreen: View {
                 .fixedSize(horizontal: false, vertical: true)
                 .padding(.top, 8)
 
-            // ⚠️ This said "Send and receive texts right here", and outbound is
-            // 1 sent against 6 failed lifetime — every cross-border attempt
-            // rejected by the carrier for want of 10DLC registration. Four of
-            // five subscribers cancelled within ten minutes of paying, and the
-            // one we can trace bought at 00:25 and gave up at 00:35.
+            // ⚠️ This said "Send and receive texts right here", then "Sending
+            // texts works to Canadian numbers today". Outbound SMS is now
+            // DROPPED entirely (owner decision, 2026-08-18): it is the one
+            // capability that needs carrier approval (10DLC), lifetime outbound
+            // is 1 sent against 6 failed, and four of five subscribers
+            // cancelled within ten minutes of paying.
             //
             // Leads with RECEIVING because that is the half that demonstrably
-            // works (3 of 3 inbound) and is what people came for. The sending
-            // limit is stated in the same breath rather than discovered after
-            // payment — CLAUDE.md calls that "a refund-generating surprise
-            // rather than a limitation they will infer".
-            Text("Receive texts and calls from anywhere, and keep your real number private. Sending texts works to Canadian numbers today.")
+            // works (3 of 3 inbound) and is what people came for, then sells
+            // calling out — which is real, priced, and was invisible to anyone
+            // deciding whether to buy.
+            Text("Receive texts from US and Canadian numbers and services, take calls from anywhere, and call out from it. Your real number never leaves your phone.")
                 .font(RFont.text(15))
                 .foregroundStyle(theme.text2)
                 .lineSpacing(3)
@@ -309,23 +309,58 @@ struct LineCheckoutScreen: View {
 
             Card(elevation: .raised) {
                 VStack(spacing: 0) {
+                    // 🔴 A "200 texts a month, in and out" row lived here and is
+                    // GONE, not relabelled. A texts-per-month FIGURE is a
+                    // promise the buyer cannot spend: sending is dropped, and
+                    // inbound is never metered — so any number beside a text
+                    // icon either sells a capability that does not exist or
+                    // invents a cap on one that has none. `sms_allowance`
+                    // stays in the schema; it simply is not a selling point.
+                    //
                     // Figures come from `LineProduct`, the single client-side
                     // mirror of the schema defaults — never inline literals.
-                    // See the note there for why mirroring is safe for these
-                    // two and was not for the signup grant.
                     BenefitRow(icon: RIcon.message,
-                               figure: "\(LineProduct.smsAllowance)",
-                               label: "texts a month, in and out")
+                               label: "Receive texts and verification codes from US and Canadian senders")
                     RowRule()
+                    // "in and out" is still TRUE for calls, which is exactly
+                    // why the texts row could not simply borrow the wording.
                     BenefitRow(icon: RIcon.phone,
                                figure: "\(LineProduct.voiceAllowanceMinutes)",
                                label: "minutes of calls a month, in and out")
+                    RowRule()
+                    BenefitRow(icon: RIcon.globe,
+                               label: "Call 50+ countries, priced per minute before you dial")
                     RowRule()
                     BenefitRow(icon: "infinity",
                                label: "Keep this number for as long as you subscribe")
                     RowRule()
                     BenefitRow(icon: "lock.fill",
                                label: "Your own number never leaves your phone")
+
+                    // ── What it does NOT do, on the same ledger ─────────────
+                    //
+                    // This is the 3.1.2(a) disclosure screen — the one
+                    // immediately before the purchase. Owner decision
+                    // 2026-08-18: state the limitations plainly here, "for
+                    // now". A limitation named before the buy is a term the
+                    // user accepted; the same limitation discovered after is
+                    // a refund and, on this product, an Apple
+                    // CONSUMPTION_REQUEST. Muted tint + "Not yet" hint keeps
+                    // it a ledger line rather than an alarm; it MUST stay
+                    // adjacent to the benefits, never in a footnote a buyer
+                    // can skip. Mirrors LineStoreScreen.pitch.
+                    RowRule()
+                    BenefitRow(icon: RIcon.message,
+                               label: "Sending texts from this number",
+                               hint: "Not yet",
+                               tint: theme.text3)
+                        .opacity(0.72)
+                    RowRule()
+                    BenefitRow(icon: RIcon.globe,
+                               label: "Receiving texts from outside the US and Canada",
+                               hint: "Not yet",
+                               tint: theme.text3)
+                        .opacity(0.72)
                 }
                 .padding(.vertical, 4)
             }

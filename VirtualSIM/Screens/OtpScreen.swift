@@ -14,11 +14,14 @@ import StoreKit
 struct OtpScreen: View {
     @Environment(\.theme) private var theme
     @Environment(AppState.self) private var state
+    @Environment(APIClient.self) private var api
+    @Environment(IAPStore.self) private var iap
     @Environment(\.requestReview) private var requestReview
 
     let order: Order
     @State private var copied = false
     @State private var appeared = false
+    @State private var showCredits = false
 
     private var otpValue: String { order.otp ?? "" }
     private var otpDigits: [String] { otpValue.map { String($0) } }
@@ -32,6 +35,7 @@ struct OtpScreen: View {
                     serviceStrip
                     codeCard
                     messageBubble
+                    balanceCard
                     whatNext
                 }
                 .padding(.top, 6)
@@ -40,6 +44,25 @@ struct OtpScreen: View {
             .scrollIndicators(.hidden)
         }
         .onAppear(perform: arrive)
+        // Presented from HERE rather than routed through ContentView because
+        // this screen is a fullScreenCover, and a cover's content does not
+        // reliably inherit @Observable environment objects — the same reason
+        // ContentView wraps every cover. CreditsSheet reads exactly these four,
+        // so they are injected explicitly.
+        .sheet(isPresented: $showCredits) {
+            CreditsSheet(balance: state.balance, needed: shortfall) {
+                await state.refreshWallet(using: WalletAPI(client: api))
+                if let n = iap.lastGrantedCredits, n > 0 {
+                    state.creditPurchaseBanner = n
+                }
+            }
+            .environment(\.theme, theme)
+            .environment(state)
+            .environment(api)
+            .environment(iap)
+            .presentationDragIndicator(.visible)
+            .presentationBackground(theme.bg)
+        }
     }
 
     /// Everything that should happen the moment the digits are on screen.
@@ -186,6 +209,79 @@ struct OtpScreen: View {
             .padding(.vertical, 14)
         }
         .padding(.horizontal, 16)
+    }
+
+    // MARK: - What it costs to do this again
+
+    /// What another number on this exact route costs, live. nil when the route
+    /// has no price right now, in which case we say nothing about cost at all
+    /// rather than quoting a median as if it were this route's.
+    private var nextCost: Int? {
+        state.cost(for: order.service, country: order.country)
+    }
+
+    /// Credits still needed for another one. 0 when they can already afford it.
+    private var shortfall: Int {
+        guard let nextCost else { return 0 }
+        return max(0, nextCost - state.balance)
+    }
+
+    /// The only moment the product has PROVED itself, and until now the app
+    /// said nothing here about money.
+    ///
+    /// The measured shape of this business is that 27 of 28 buyers paid BEFORE
+    /// they had any evidence the thing works, and with the signup grant at 0
+    /// every new user reaches this screen holding a balance they have just
+    /// spent to zero. So the one place we can ask having actually delivered was
+    /// silent, and the only forward affordance was a 13pt grey link to a
+    /// checkout they could not afford.
+    ///
+    /// Rules it deliberately keeps:
+    ///  • It states the BALANCE, which is a fact, and the price of another
+    ///    number on THIS route, which is a live catalog price. No estimate, no
+    ///    "most people buy", no urgency.
+    ///  • It is a secondary control below Done, not a second primary. Done is
+    ///    still the action this screen is for; the code is what they came for.
+    ///  • It renders ONLY when they cannot already afford another number.
+    ///    Someone holding credits needs no top-up and gets no ask.
+    ///  • It never touches the review prompt (App Store 5.6.4): nothing here is
+    ///    conditioned on a review and the prompt fires from `arrive()` either
+    ///    way.
+    @ViewBuilder
+    private var balanceCard: some View {
+        if let nextCost, shortfall > 0 {
+            Card {
+                VStack(alignment: .leading, spacing: 12) {
+                    HStack(spacing: 10) {
+                        CoinIcon(size: 16, color: theme.text2)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("You have \(state.balance) credits left")
+                                .font(RFont.text(14, weight: .semibold))
+                                .foregroundStyle(theme.text)
+                            Text("Another \(order.service.name) number in \(order.country.name) costs \(nextCost) credits.")
+                                .font(RFont.text(12))
+                                .foregroundStyle(theme.text2)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                        Spacer(minLength: 0)
+                    }
+
+                    GhostButton(label: String(localized: "Top up credits"),
+                                icon: RIcon.plus) {
+                        RHaptic.select()
+                        // Declare the product before opening the sheet — the
+                        // sheet's context card and its preselected pack are
+                        // both sized from `intent`, and this screen can be
+                        // reached with an e-mail or eSIM intent still set.
+                        state.intent = .sms
+                        showCredits = true
+                    }
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 14)
+            }
+            .padding(.horizontal, 16)
+        }
     }
 
     /// Everything that is about the NEXT thing rather than this one, kept

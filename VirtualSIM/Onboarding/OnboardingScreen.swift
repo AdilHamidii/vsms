@@ -726,7 +726,14 @@ private struct LineDemo: View {
     private var allowance: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(alignment: .firstTextBaseline, spacing: 16) {
-                included(icon: RIcon.message, figure: "200", unit: "texts")
+                // 🔴 THE "200 TEXTS" FIGURE IS GONE, and the rule that removed
+                // it is the one that used to justify hiding the minutes: **a
+                // figure a buyer cannot spend is a promise, not a spec sheet.**
+                // It has simply reversed. Calling ships and is metered, so the
+                // minutes are a real inclusion. Sending does not ship, and
+                // INBOUND IS NEVER METERED — so there is no way for a buyer to
+                // spend a text allowance at all, and printing one sells a
+                // capability that does not exist.
                 included(icon: RIcon.phone, figure: "100", unit: "minutes")
                 Spacer(minLength: 0)
             }

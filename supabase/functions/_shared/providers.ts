@@ -224,7 +224,8 @@ export async function reserve(
       // fill is worth less than an honest stockout.
       if (last && !last.ok && !pinStrict && chain.length &&
           last.errorType === "OUT_OF_STOCK") {
-        last = await five.buyActivation(c.fiveCountry, "any", c.fiveProduct);
+        // The one place 5sim honours maxPrice (operator === "any").
+        last = await five.buyActivation(c.fiveCountry, "any", c.fiveProduct, maxPriceUsd);
       }
 
       if (!last || !last.ok) {

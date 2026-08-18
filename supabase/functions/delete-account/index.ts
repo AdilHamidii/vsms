@@ -76,6 +76,14 @@ Deno.serve(async (req) => {
     .eq("user_id", userId)
     .neq("status", "released");
 
+  // Every line must be CONFIRMED released before the tombstone below may go.
+  // Tracked explicitly, because every failure in this loop is logged and
+  // swallowed by design (the delete must not fail on a provider hiccup) —
+  // which meant, until 2026-08-18, the tombstone was dropped whether or not
+  // the number was actually released. See the note above the delete.
+  let allReleased = true;
+  const unreleased: { line: string; e164: string | null; number: string | null }[] = [];
+
   for (const l of lines ?? []) {
     if (l.provider_credential_id) {
       const c = await deleteTelephonyCredential(l.provider_credential_id as string);
@@ -99,6 +107,8 @@ Deno.serve(async (req) => {
         alert: "delete_account_line_number_unresolved",
         line: l.id, e164: l.e164,
       }));
+      allReleased = false;
+      unreleased.push({ line: l.id as string, e164: (l.e164 as string | null) ?? null, number: null });
       continue;
     }
     const r = await releaseNumber(numberId);
@@ -107,6 +117,8 @@ Deno.serve(async (req) => {
         alert: "delete_account_line_release_failed",
         line: l.id, number: numberId, detail: r.detail, type: r.type,
       }));
+      allReleased = false;
+      unreleased.push({ line: l.id as string, e164: (l.e164 as string | null) ?? null, number: numberId });
     }
   }
 
@@ -125,15 +137,50 @@ Deno.serve(async (req) => {
   // Now that the number above is genuinely released, the row has nothing left
   // to protect: re-renting costs us a fresh $1 DID, which is the honest price
   // of a fresh rental. Dropping it is also what "delete my account" should mean.
-  // ⚠️ This is only safe BECAUSE the release ran first — if you ever make the
-  // release conditional, this delete has to become conditional with it.
-  const { error: subErr } = await sb
-    .from("line_subscriptions").delete().eq("user_id", userId);
-  if (subErr) {
+  // ⚠️ This is only safe BECAUSE the release SUCCEEDED — and until 2026-08-18
+  // it ran unconditionally while every failure above was logged and
+  // swallowed. A Telnyx outage or an unresolvable number during a delete
+  // therefore left the DID live and billing AND deleted the one row that could
+  // stop a re-signup from provisioning a second number against the same
+  // original_transaction_id. That is precisely the "second number bills
+  // forever" bug the tombstone exists to prevent.
+  //
+  // Now: the tombstone goes ONLY when every line was confirmed released. When
+  // one was not, the tombstone STAYS (the owner-lockout it causes is the
+  // lesser cost, and it is recoverable by hand) and the unreleased number is
+  // written to app_config so a human can still NAME it after phone_lines has
+  // cascaded away — because after this function returns, nothing else in the
+  // database can.
+  if (allReleased) {
+    const { error: subErr } = await sb
+      .from("line_subscriptions").delete().eq("user_id", userId);
+    if (subErr) {
+      console.error(JSON.stringify({
+        alert: "delete_account_subscription_tombstone_failed",
+        user: userId, detail: subErr.message,
+      }));
+    }
+  } else {
     console.error(JSON.stringify({
-      alert: "delete_account_subscription_tombstone_failed",
-      user: userId, detail: subErr.message,
+      alert: "delete_account_lines_UNRELEASED_tombstone_kept",
+      user: userId, unreleased,
+      detail: "Telnyx number(s) still live after account deletion — release by hand and " +
+              "then delete the line_subscriptions row for this user.",
     }));
+    // Durable record: append to a list keyed in app_config so the watchdog /
+    // a human can find it after the cascade. Read-modify-write is fine here —
+    // this path is rare and never concurrent for one user.
+    const { data: prev } = await sb
+      .from("app_config").select("value").eq("key", "unreleased_line_numbers").maybeSingle();
+    const list = Array.isArray(prev?.value) ? (prev!.value as unknown[]) : [];
+    list.push({ user: userId, at: new Date().toISOString(), lines: unreleased });
+    const { error: cfgErr } = await sb.from("app_config")
+      .upsert({ key: "unreleased_line_numbers", value: list }, { onConflict: "key" });
+    if (cfgErr) {
+      console.error(JSON.stringify({
+        alert: "delete_account_unreleased_record_failed", user: userId, detail: cfgErr.message,
+      }));
+    }
   }
 
   // ── In-flight E-MAIL orders. Same cascade, far smaller stake. ──────────────

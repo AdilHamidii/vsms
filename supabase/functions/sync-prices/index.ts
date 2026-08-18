@@ -144,6 +144,33 @@ const HEALTH_FRESH_MS = 5 * 60 * 1000;
  *  while checkout refuses them, which is precisely the bug being fixed here. */
 const NET_USD_PER_CREDIT = 0.40;
 const SMSPVA_MIN_MARGIN = 8.0;      // MIN_MARGIN_BY_PROVIDER.smspva
+
+/** 🔴 SMSPVA IS RETIRED FROM ROUTING (owner decision, 2026-08-17) and this
+ *  sync MUST NOT put its routes back on the shelf.
+ *
+ *  `providerOrder()` no longer returns "smspva" for any route, so an
+ *  smspva-owned row that is `active` is a route the catalog advertises and
+ *  NOBODY CAN FILL — the router returns [] and the order dies.
+ *
+ *  That is not hypothetical, it happened the same day: migration
+ *  20260817100000 hid 4,156 of these routes at 10:36, and the 21:17 run of
+ *  THIS FUNCTION re-activated all 6,305 of them in one pass, because the
+ *  serviceability block below is deliberately non-sticky ("the upsert flips
+ *  status back to 'active' the moment the condition clears"). Measured
+ *  immediately after: 5,955 of 15,293 active routes — 39% of the visible
+ *  catalog — had no 5sim or HeroSMS fallback and were unfillable.
+ *
+ *  This is the exact hazard the provider-switch checklist warns about: the
+ *  retired provider's sync is still scheduled, and it silently outvotes the
+ *  migration every hour. The cron cannot simply be unscheduled — sync-prices
+ *  also carries the catalog maintenance list (evidence refreshes, arrival
+ *  timing, service visibility, ranking), which died once already when a
+ *  provider's sync was switched off.
+ *
+ *  Rollback is this one constant, together with restoring the two branches in
+ *  `providerOrder()`. Keep the two in lockstep: pricing a provider the router
+ *  cannot select is what created the hole. */
+const SMSPVA_RETIRED = true;
 const CEILING_SLACK_MULTIPLE = 3.0;
 const CEILING_HEADROOM_USD = 0.10;
 const MAX_REVENUE_FRACTION = 0.5;
@@ -412,8 +439,11 @@ Deno.serve(async (req) => {
       const unaffordable = balanceUsd != null && orderCeilingUsd(credits) > balanceUsd;
       if (unaffordable) hiddenUnaffordable++;
       if (reserveCollapsed) hiddenCollapsed++;
-      const hide = blocked.has(key) || cents > MAX_WHOLESALE_CENTS ||
-        reserveCollapsed || unaffordable;
+      // SMSPVA_RETIRED wins over every other condition, and it is FIRST so it
+      // cannot be reasoned around: a route the router will not select must not
+      // be sellable, whatever its price, stock or margin says.
+      const hide = SMSPVA_RETIRED || blocked.has(key) ||
+        cents > MAX_WHOLESALE_CENTS || reserveCollapsed || unaffordable;
 
       updates.push({
         service_id:         svcs[i].id,

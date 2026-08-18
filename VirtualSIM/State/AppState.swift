@@ -1,3 +1,4 @@
+import AdServices
 import SwiftUI
 
 /// ⚠️ THIS COMMENT DESCRIBED THE 2026-08-05 ORDER FOR TEN DAYS AFTER IT WAS
@@ -27,13 +28,12 @@ enum FlowStage: String, Hashable, Identifiable {
     /// a NavigationStack push would leave the floating tab bar sitting on top
     /// of the message composer.
     case lineCheckout, lineProvisioning, thread, dialer
-    /// Start a conversation with someone who has never texted us.
-    ///
-    /// Without this the Messages segment could only ever REPLY: threads are
-    /// created by an inbound message or by an outbound send, and every path to
-    /// `.thread` went through a row that already existed. Calls have had an
-    /// initiating affordance since the dialer landed; messages had none.
-    case compose
+    // `.compose` (start a new outbound conversation) was REMOVED 2026-08-18
+    // with the pivot to receive + call out. Outbound SMS is off the product
+    // — it is the one capability that needs carrier approval (10DLC), which
+    // the owner will not pursue — so an initiating affordance for it would
+    // advertise a feature the number does not have. Threads are now created
+    // by inbound messages only. Do not reintroduce without the send path.
     /// The number store, opened OVER a live line to rent an additional one.
     /// The tab itself only shows the store when there is no line at all, so
     /// without this a second number is unreachable — which made the whole
@@ -138,6 +138,13 @@ enum PrefKey {
 
     /// eSIM order ids whose install flow has been opened at least once.
     static let esimInstallsStarted = "esim.installsStarted"
+
+    /// Set once the AdServices attribution token has been accepted by
+    /// `record-attribution`. The token is per INSTALL, so one successful
+    /// submission is all there ever is to send — and re-sending on every cold
+    /// launch would be a round-trip that can only ever overwrite a row with
+    /// itself.
+    static let attributionSubmitted = "attribution.submitted"
 }
 
 @Observable
@@ -765,6 +772,47 @@ final class AppState {
         // existed and had no caller, so email activations never appeared in
         // history at all.
         await loadEmailOrders(using: EmailAPI(client: api))
+
+        // Also behind the reveal, and last: attribution is a MEASUREMENT, and
+        // no measurement may lengthen the boot critical path. It is also the
+        // only thing here that can tell us which Search Ads campaign produced
+        // a paying user — the app spends on ASA daily and, until this landed,
+        // installs and purchases were never joined at all.
+        await submitAttributionIfNeeded(api: api)
+    }
+
+    /// Hand Apple's AdServices attribution token to `record-attribution`, once
+    /// per install.
+    ///
+    /// Three properties, all deliberate:
+    /// - **It can never throw out or block anything.** Every failure path is
+    ///   swallowed. A campaign we cannot attribute is a reporting gap; a cold
+    ///   launch that fails because of one is an outage.
+    /// - **The pref is set only on SUCCESS**, so a launch with no network
+    ///   retries on the next one. The token stays valid for the install.
+    /// - **The simulator has no token** — `attributionToken()` throws there —
+    ///   which is ordinary, not an error worth surfacing.
+    func submitAttributionIfNeeded(api: APIClient) async {
+        let defaults = UserDefaults.standard
+        guard !defaults.bool(forKey: PrefKey.attributionSubmitted) else { return }
+
+        let token: String
+        do {
+            token = try AAAttribution.attributionToken()
+        } catch {
+            // Simulator, or a device that has no token to give. Not retried
+            // within this launch and not reported: there is nothing to send.
+            return
+        }
+        guard !token.isEmpty else { return }
+
+        do {
+            try await AttributionAPI(client: api).submit(token: token)
+            defaults.set(true, forKey: PrefKey.attributionSubmitted)
+        } catch {
+            // Left unset on purpose — the next cold launch tries again.
+            print("attribution submit failed: \(error)")
+        }
     }
 
     /// Leave a failed cold start without data rather than trapping the user.
@@ -2186,6 +2234,68 @@ final class AppState {
         Date() >= order.expiresAt.addingTimeInterval(grace)
     }
 
+    // MARK: - The minimum hold
+
+    /// Seconds a paid order must be held before it can be destroyed, PER
+    /// PROVIDER. Mirrors `MIN_HOLD_BY_PROVIDER` in `cancel-order`.
+    ///
+    /// ⚠️ **These must equal the server's values, and this table may only ever
+    /// be RAISED AHEAD of the server, never lowered behind it.** A client that
+    /// offers cancel before the server allows it collects a 429 on a button the
+    /// user has already tapped; a client that holds longer than the server
+    /// merely waits. That asymmetry is why the sequencing is: client first,
+    /// server second.
+    ///
+    /// 5sim's measured p90 arrival is 155s, so its server-side hold is intended
+    /// to go to 155 — deliberately NOT yet, because a shipped client rendering
+    /// a 90s countdown against a 155s server hold produces exactly the broken
+    /// button above (measured 2026-08-18: 13 of the last 29 5sim cancels landed
+    /// in that 85–158s gap). Raise the 5sim row here first, ship it, and only
+    /// then raise `MIN_HOLD_BY_PROVIDER["5sim"]` to 155.
+    static let minHoldByProvider: [String: Int] = [
+        "5sim":    90,   // → 155 once this client is in the field, see above
+        "herosms": 90,   // max arrival ever observed is 86s
+        "smspva":  90,   // retired from routing; kept so an in-flight row resolves
+    ]
+
+    /// Used for an unrecorded or unknown provider. Matches the server's
+    /// `MIN_HOLD_FALLBACK`, so an order whose provider we cannot read behaves
+    /// exactly as it did before this table existed.
+    static let minHoldFallback = 90
+
+    static func minHoldSeconds(forProvider provider: String?) -> Int {
+        guard let provider, let hold = minHoldByProvider[provider] else {
+            return minHoldFallback
+        }
+        return hold
+    }
+
+    /// When the SERVER last said the hold on an order expires.
+    ///
+    /// The table above is our mirror of the server's constants and can be stale
+    /// by a release; `cancel-order`'s 429 carries `retry_after_seconds`, which
+    /// is the server's own arithmetic on its own clock and therefore always
+    /// right. Recording it re-locks the button for exactly that long instead of
+    /// leaving a live control that fails every time it is pressed.
+    ///
+    /// Keyed by order id and never pruned: it holds at most a handful of
+    /// entries per session, each a `Date`.
+    private(set) var serverHoldUntil: [String: Date] = [:]
+
+    /// Seconds still to run on the server-declared hold, or nil if we have
+    /// never been told or it has passed.
+    func serverHoldRemaining(forOrder id: String) -> Int? {
+        guard let until = serverHoldUntil[id] else { return nil }
+        let left = Int(until.timeIntervalSinceNow.rounded(.up))
+        return left > 0 ? left : nil
+    }
+
+    /// Record `retry_after_seconds` off a refused cancel/reroll.
+    private func noteServerHold(from error: APIError, orderId: String) {
+        guard let secs = error.retryAfterSeconds, secs > 0 else { return }
+        serverHoldUntil[orderId] = Date().addingTimeInterval(TimeInterval(secs))
+    }
+
     /// `@MainActor` for the same reason `confirmGetNumber` carries it: AppState
     /// is `@Observable` but not otherwise actor-isolated, so without it the
     /// `!isPlacingOrder` guard below is a racy check-then-set and two taps can
@@ -2238,6 +2348,11 @@ final class AppState {
             // from every screen and the code reachable only by push. The 180s
             // minimum hold made that reachable ON PURPOSE: every early ✕ tap
             // returns 429 `cancel_too_early`.
+            //
+            // Take the server's own countdown when it sent one: our mirror of
+            // its constants can be a release behind, and re-locking the control
+            // is what stops the user tapping a button that cannot work yet.
+            noteServerHold(from: apiErr, orderId: order.id)
             lastError = apiErr.userMessage
         } catch {
             lastError = "Couldn't cancel that order. Please try again."
@@ -2342,6 +2457,9 @@ final class AppState {
                 return
             }
         } catch let apiErr as APIError {
+            // A reroll releases the number exactly like a cancel, so it hits
+            // the same hold and carries the same `retry_after_seconds`.
+            noteServerHold(from: apiErr, orderId: order.id)
             lastError = apiErr.userMessage
             return
         } catch {
@@ -2408,9 +2526,20 @@ final class AppState {
     /// retry steering makes the new attempt draw a fresh number on a rotated
     /// carrier. Steers to the measured-best country when one exists, else the
     /// same route.
-    func retryFromRecovery() {
+    /// - Parameter country: the country the CARD OFFERED, when it offered one.
+    ///
+    /// ⚠️ This parameter is the fix for a silent contradiction, not a
+    /// convenience. The recovery card has two suggestion sources: our own
+    /// measured record (`bestMeasuredCountry`) and, when we have measured
+    /// nothing, the vendor's network-wide ranking (`bestRankedCountry`). This
+    /// function only ever consulted the FIRST — and the ranked branch exists
+    /// precisely when the measured one returns nil, so on that branch
+    /// `suggested` collapsed to `r.failedCountry`: the button said "Try Poland"
+    /// and re-ordered the country that had just failed. The caller now passes
+    /// what it rendered, so the label and the order cannot disagree.
+    func retryFromRecovery(country: Country? = nil) {
         guard let r = recovery else { return }
-        let suggested = bestMeasuredCountry(for: r.service)?.country ?? r.failedCountry
+        let suggested = country ?? bestMeasuredCountry(for: r.service)?.country ?? r.failedCountry
         recovery = nil
         startCheckout(service: r.service, country: suggested)
     }

@@ -125,9 +125,15 @@ struct CreditsSheet: View {
     /// The pack the sheet opened on when there is a shortfall — the smallest
     /// one that unblocks them. Labelled on the row; a filled radio button was
     /// the only signal that a recommendation had been made at all.
+    /// Only ever a pack that can actually be bought: recommending one StoreKit
+    /// did not return puts "Covers what you need" on a row whose own CTA reads
+    /// "Unavailable", and leaves the label on a different row from the
+    /// selection once `snapToAvailable()` moves it.
     private var recommendedId: String? {
         guard needed > 0 else { return nil }
-        return visiblePacks.first { $0.credits >= needed }?.id ?? visiblePacks.last?.id
+        let buyable = visiblePacks.filter { !isMissing($0) }
+        guard !buyable.isEmpty else { return nil }
+        return buyable.first { $0.credits >= needed }?.id ?? buyable.last?.id
     }
 
     /// True once StoreKit has answered with at least one product. Until then a
@@ -204,6 +210,11 @@ struct CreditsSheet: View {
             deriveUnit()
             withAnimation(RMotion.content) { appeared = true }
             await iap.loadProducts()
+            // Also here, not only in `onChange(of: productsLoaded)`: products
+            // are often already loaded when the sheet opens (Home fetches them
+            // for its "about $x" line), so that change never fires and a
+            // missing selected pack would keep its disabled CTA.
+            snapToAvailable()
         }
         // An `optional` pack can be selected while the ladder is still loading
         // and then drop out when StoreKit answers without it. Snap back, or the
@@ -211,6 +222,26 @@ struct CreditsSheet: View {
         .onChange(of: visiblePacks.map(\.id)) { _, ids in
             guard !ids.contains(selected) else { return }
             selected = Self.defaultPackId
+            snapToAvailable()
+        }
+        // 🔴 A PARTIAL StoreKit answer used to be a dead end with no error and
+        // no retry.
+        //
+        // `IAPStore.loadProducts` sets `lastError` only when the fetch THROWS or
+        // comes back completely empty. If StoreKit returns five of six and the
+        // missing one happens to be the selected pack — the recommended pack,
+        // i.e. the one the shortfall preselected — the row rendered
+        // "Unavailable", the CTA read "Unavailable" and was disabled, and
+        // `errorCard` never appeared because there was no error. The paywall's
+        // only visible state was a greyed-out button, on the screen every credit
+        // this app has ever earned came through.
+        //
+        // Moving the selection is the right repair rather than surfacing an
+        // error: the other packs are genuinely purchasable, so the sheet should
+        // sell one instead of reporting a fault the user cannot act on.
+        .onChange(of: productsLoaded) { _, loaded in
+            guard loaded else { return }
+            snapToAvailable()
         }
         .onDisappear { restoreTask?.cancel() }
     }
@@ -619,6 +650,28 @@ struct CreditsSheet: View {
     /// Preselect the smallest pack that clears the current shortfall so the
     /// user isn't left reasoning about pack sizes mid-checkout. `visiblePacks`
     /// is ascending by credits, so the first covering pack is the cheapest one.
+    /// Move off a pack StoreKit did not return, onto the nearest one it did.
+    ///
+    /// "Nearest" is deliberately not "the default pack": with a shortfall, the
+    /// smallest pack that still clears it is the only correct answer, and
+    /// falling back to MOST POPULAR would either undershoot (leaving the user
+    /// short after paying) or overshoot. Without a shortfall it takes the
+    /// closest size by credits, so the sheet stays near what the user picked.
+    ///
+    /// If NOTHING is purchasable it changes nothing — `loadProducts` has
+    /// already set `lastError` for the empty case, and `errorCard` with its
+    /// "Reload packs" retry is then the honest surface.
+    private func snapToAvailable() {
+        let available = visiblePacks.filter { iap.has($0) }
+        guard !available.isEmpty else { return }
+        guard !available.contains(where: { $0.id == selected }) else { return }
+        let wanted = visiblePacks.first { $0.id == selected }?.credits ?? 0
+        let replacement = available.first { $0.credits >= max(needed, wanted) }
+            ?? available.last
+        guard let replacement else { return }
+        withAnimation(RMotion.select) { selected = replacement.id }
+    }
+
     private func preselectForNeed() {
         guard !didPreselect else { return }
         didPreselect = true

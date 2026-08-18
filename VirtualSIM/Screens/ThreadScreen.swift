@@ -1,21 +1,28 @@
 import SwiftUI
 
-/// One conversation on the rented line.
+/// One conversation on the rented line — READ ONLY since 2026-08-18.
 ///
 /// A cover rather than a navigation push, and that is forced by the layout:
 /// `TabBar` is a ZStack overlay pinned to the bottom of `ContentView` on every
 /// tab, so a push would leave the floating tab bar sitting on top of the
-/// composer.
+/// content.
+///
+/// 🔴 **THE COMPOSER IS GONE, along with its allowance counter and its
+/// past-due "renew to send again" prompt** (owner decision: outbound SMS is
+/// dropped, not delayed — it is the only capability needing carrier approval
+/// and lifetime outbound is 1 sent against 6 failed). A text field that
+/// accepts input and then fails at the carrier is worse than no text field:
+/// the user types, waits, and gets a red "Not sent" they cannot act on.
+///
+/// This screen now does what the product does — it shows what arrived, and
+/// offers one tap to copy a verification code out of it.
 struct ThreadScreen: View {
     @Environment(\.theme) private var theme
     @Environment(AppState.self) private var state
     @Environment(APIClient.self) private var api
 
-    @State private var draft = ""
-    @State private var isSending = false
     @State private var showActions = false
     @State private var reported = false
-    @FocusState private var composerFocused: Bool
 
     private var thread: LineThread? {
         state.lineThreads.first { $0.id == state.openThreadId }
@@ -31,7 +38,6 @@ struct ThreadScreen: View {
                 header
                 Divider().overlay(theme.sep)
                 transcript
-                composer
             }
         }
         .task {
@@ -140,116 +146,13 @@ struct ThreadScreen: View {
         }
     }
 
-    // MARK: - Composer
-
-    /// Disabled WITH ITS REASON showing, never failing on send.
-    ///
-    /// Two different blocks that must not be collapsed: "you have used your
-    /// texts" and "your payment failed" send the user to two different places,
-    /// and telling a past-due user to wait for a reset that is not coming is
-    /// the worse of the two mistakes.
-    private var composer: some View {
-        VStack(spacing: 6) {
-            // Below `blockReason` in precedence: a suspended line is the more
-            // actionable problem, and stacking two warnings answers neither.
-            if let unreachable, blockReason == nil {
-                HStack(spacing: 7) {
-                    Image(systemName: "exclamationmark.circle")
-                        .font(.system(size: 11, weight: .semibold))
-                    Text(verbatim: SmsReach.explanation(unreachable))
-                        .font(RFont.text(12))
-                        .fixedSize(horizontal: false, vertical: true)
-                    Spacer(minLength: 0)
-                }
-                .foregroundStyle(theme.warn)
-                .padding(.horizontal, 4)
-            }
-
-            if let reason = blockReason {
-                HStack(spacing: 7) {
-                    Image(systemName: "exclamationmark.circle")
-                        .font(.system(size: 11, weight: .semibold))
-                    Text(reason)
-                        .font(RFont.text(12))
-                        .fixedSize(horizontal: false, vertical: true)
-                    Spacer(minLength: 0)
-                }
-                .foregroundStyle(theme.warn)
-                .padding(.horizontal, 4)
-            }
-
-            HStack(alignment: .bottom, spacing: 10) {
-                TextField("Message", text: $draft, axis: .vertical)
-                    .font(RFont.text(15))
-                    .foregroundStyle(theme.text)
-                    .lineLimit(1...5)
-                    .focused($composerFocused)
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 10)
-                    .background(theme.elev, in: .rect(cornerRadius: 18))
-                    .disabled(blockReason != nil || unreachable != nil)
-
-                Button(action: send) {
-                    Image(systemName: RIcon.send)
-                        .font(.system(size: 15, weight: .bold))
-                        .foregroundStyle(canSend ? theme.onInk : theme.text3)
-                        .frame(width: 38, height: 38)
-                        .background(canSend ? theme.ink : theme.chipBg, in: .circle)
-                }
-                .buttonStyle(.plain)
-                .disabled(!canSend)
-            }
-
-            if blockReason == nil, unreachable == nil, let left = state.line?.smsRemaining {
-                Text("\(left) texts left this month")
-                    .font(RFont.text(11))
-                    .foregroundStyle(theme.text3)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, 4)
-            }
-        }
-        .padding(.horizontal, 16)
-        .padding(.top, 8)
-        .padding(.bottom, 12)
-        .background(theme.bg)
-    }
-
-    private var canSend: Bool {
-        !isSending && blockReason == nil && unreachable == nil
-            && !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-    }
-
-    /// The carrier will refuse this thread's peer. Common rather than exotic:
-    /// inbound works from anywhere and outbound does not, so a conversation we
-    /// cannot reply to is a state the product produces on its own.
-    private var unreachable: SmsReach.Refusal? {
-        guard let peer = thread?.peerE164 else { return nil }
-        return SmsReach.refusal(from: state.line?.countryCode, to: peer)
-    }
-
-    private var blockReason: LocalizedStringKey? {
-        if thread?.blocked == true { return "You've blocked this number. Unblock it to send." }
-        // The four sentences live on `Line.SendBlock` so the compose screen
-        // says the same thing — it used to check only the allowance and let a
-        // suspended line through to a raw server refusal.
-        guard let line = state.line else { return Line.SendBlock.notLive.message }
-        return line.sendBlock?.message
-    }
-
-    private func send() {
-        guard let peer = thread?.peerE164 else { return }
-        let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty else { return }
-        Task {
-            isSending = true
-            defer { isSending = false }
-            let ok = await state.sendLineMessage(using: LineAPI(client: api), to: peer, text: text)
-            // Cleared only on success, so a refused send does not lose what the
-            // user typed — retyping a message the app threw away is a worse
-            // failure than the send itself.
-            if ok { draft = "" }
-        }
-    }
+    // The composer — text field, send button, `blockReason`, the "N texts left
+    // this month" counter and `send()` — was DELETED on 2026-08-18. Its
+    // `blockReason` ladder is worth remembering rather than resurrecting: it
+    // distinguished "you have used your texts" from "your payment failed",
+    // which was the right distinction while sending existed. It does not
+    // exist now, and a disabled composer with an explanation would still be a
+    // text field on screen advertising a capability that is never coming.
 }
 
 /// One message. Inbound sits left on `elev`; outbound sits right on `ink`, the

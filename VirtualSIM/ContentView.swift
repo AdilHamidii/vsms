@@ -470,8 +470,6 @@ struct ContentView: View {
             LineProvisioningScreen()
         case .thread:
             ThreadScreen()
-        case .compose:
-            ComposeScreen()
         case .orders:
             // Was a tab until 2026-08-06. As a cover it needs its own way out,
             // which a tab never did — the tab bar WAS the way out.
@@ -637,12 +635,6 @@ extension ContentView {
             state.lineMessages = ["t1": ScreenshotMode.sampleMessages]
             state.openThreadId = "t1"
             state.flow = .thread
-
-        case .compose:
-            state.tab = .line
-            state.lines = [ScreenshotMode.sampleLine]
-            state.lineThreads = ScreenshotMode.sampleThreads
-            state.flow = .compose
 
         case .home:
             state.tab = .home

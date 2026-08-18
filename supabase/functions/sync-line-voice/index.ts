@@ -31,7 +31,7 @@
 
 import { handleCors, json } from "../_shared/cors.ts";
 import { admin } from "../_shared/supabaseAdmin.ts";
-import { updateOutboundVoiceProfile, faultOf } from "../_shared/telnyx.ts";
+import { updateOutboundVoiceProfile, attachOutboundProfile, faultOf } from "../_shared/telnyx.ts";
 import { provisionLineVoice, type LineVoiceRow } from "../_shared/lineVoice.ts";
 
 /** Bounded for the ~150s edge kill. One PATCH per profile; hourly, so a backlog
@@ -114,7 +114,7 @@ Deno.serve(async (req) => {
 
   const { data: lines, error: lineErr } = await sb
     .from("phone_lines")
-    .select("id, e164, status, provider_voice_profile_id")
+    .select("id, e164, status, provider_voice_profile_id, provider_connection_id")
     .not("provider_voice_profile_id", "is", null)
     .limit(MAX_PATCH);
   if (lineErr) {
@@ -126,7 +126,9 @@ Deno.serve(async (req) => {
   }
 
   let patched = 0;
+  let attachedVerified = 0;
   const patchFaults: unknown[] = [];
+  const attachFaults: unknown[] = [];
   for (const line of lines ?? []) {
     const profileId = String(line.provider_voice_profile_id);
     const r = await updateOutboundVoiceProfile(profileId, destinations);
@@ -137,6 +139,25 @@ Deno.serve(async (req) => {
       continue;
     }
     patched++;
+
+    // ── 2b. Is the profile actually ON the connection? ────────────────────
+    //
+    // 🔴 The repair pass above selects by OUR columns, and every sold line
+    // said "provisioned" while Telnyx held no profile at all — because
+    // `attachOutboundProfile` sent the field at the wrong nesting level and
+    // got a 200 for it (see that function). So the repair pass could never
+    // reach those lines, and no call ever connected. This runs on every
+    // line with a profile, every hour: `attachOutboundProfile` now PATCHes
+    // the documented shape and READS BACK, returning true only when Telnyx
+    // genuinely holds the profile. Idempotent; two requests per line.
+    if (line.provider_connection_id) {
+      const a = await attachOutboundProfile(String(line.provider_connection_id), profileId);
+      if (faultOf(a)) {
+        attachFaults.push({ line: line.id, e164: line.e164, fault: a });
+      } else {
+        attachedVerified++;
+      }
+    }
   }
 
   // Still unprovisioned AFTER the repair pass — the number that says whether
@@ -154,20 +175,22 @@ Deno.serve(async (req) => {
         "provider_credential_id.is.null,provider_voice_attached.is.null," +
         "provider_voice_attached.is.false");
 
-  const ok = repairFaults.length === 0 && patchFaults.length === 0;
+  const ok = repairFaults.length === 0 && patchFaults.length === 0 && attachFaults.length === 0;
   await sb.from("app_config").upsert({
     key: "line_voice_sync",
     value: {
-      at, ok, repaired, patched, destinations: destinations.length,
+      at, ok, repaired, patched, attached_verified: attachedVerified,
+      destinations: destinations.length,
       unprovisioned: unprovisioned ?? 0,
       repair_faults: repairFaults.length ? repairFaults.slice(0, 5) : undefined,
       patch_faults: patchFaults.length ? patchFaults.slice(0, 5) : undefined,
+      attach_faults: attachFaults.length ? attachFaults.slice(0, 5) : undefined,
     },
   });
 
   return json({
-    ok, repaired, patched, destinations,
+    ok, repaired, patched, attached_verified: attachedVerified, destinations,
     unprovisioned: unprovisioned ?? 0,
-    repair_faults: repairFaults, patch_faults: patchFaults,
+    repair_faults: repairFaults, patch_faults: patchFaults, attach_faults: attachFaults,
   });
 });
