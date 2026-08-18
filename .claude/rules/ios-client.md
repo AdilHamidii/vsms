@@ -369,8 +369,13 @@ The invariant now, in `AppState` (2026-07-25):
   plus the refund. This is the authority. Anything asking "did it end?" uses it.
 - **`pollActiveOrder`** falls back to that read after 2 consecutive check
   failures, or immediately once past `expiresAt` + grace.
-- **`checkNow`** (the "Check now" button) ALWAYS falls back — an explicit tap
-  must never dead-end on a swallowed error.
+- ~~**`checkNow`** (the "Check now" button)~~ — **both are GONE as of
+  2026-08-18.** The button was removed from `WaitingScreen` deliberately (it
+  "did nothing the 4-second poll wasn't already doing" and competed with Copy
+  for visual weight), which left `AppState.checkNow` with no caller, and it has
+  now been deleted too. The invariant it carried still matters if an explicit
+  "check" control ever comes back: a user-initiated check must fall through to
+  the authoritative row read rather than dead-ending on a swallowed 502.
 - **`WaitingScreen`** independently reconciles every 3s once past expiry, and
   renders "Closing…" instead of a stopped `00:00`. Never show a dead countdown
   as a live one.

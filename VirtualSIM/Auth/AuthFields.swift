@@ -45,11 +45,6 @@ struct AuthTextField: View {
             )
             .animation(RMotion.select, value: focused)
     }
-
-    /// Lets a parent drive focus without owning the styling.
-    func focusBinding(_ binding: FocusState<Bool>.Binding) -> some View {
-        self.focused(binding)
-    }
 }
 
 /// Password entry, with a reveal toggle.

@@ -64,6 +64,12 @@ extension DeliveryRecord {
 /// those bands (>60 / >=30) by hand. Migrating it is a one-line change and a
 /// separate decision, not an oversight.
 enum DeliveryBand {
+    // The three `of` factories are `nonisolated` because they are pure
+    // arithmetic over their arguments and touch no state. Without it they
+    // inherit main-actor isolation and `DeliveryRecord.band` — an ordinary
+    // computed property — cannot call them, which is a warning today and an
+    // error under the Swift 6 language mode.
+
     /// Delivers more often than not.
     case strong
     /// Real, but a coin flip at best.
@@ -71,7 +77,7 @@ enum DeliveryBand {
     /// Measured, and it mostly fails.
     case weak
 
-    static func of(ratio: Double) -> DeliveryBand {
+    nonisolated static func of(ratio: Double) -> DeliveryBand {
         if ratio >= 0.50 { return .strong }
         if ratio >= 0.20 { return .mixed }
         return .weak
@@ -80,12 +86,12 @@ enum DeliveryBand {
     /// nil when there is no sample. `0 of 0` is not a weak route, it is an
     /// unknown one, and collapsing the two is the mistake this whole file is
     /// about.
-    static func of(codes: Int, attempts: Int) -> DeliveryBand? {
+    nonisolated static func of(codes: Int, attempts: Int) -> DeliveryBand? {
         guard attempts > 0 else { return nil }
         return of(ratio: Double(codes) / Double(attempts))
     }
 
-    static func of(percent: Int) -> DeliveryBand {
+    nonisolated static func of(percent: Int) -> DeliveryBand {
         of(ratio: Double(percent) / 100)
     }
 }

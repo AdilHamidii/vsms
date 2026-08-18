@@ -599,6 +599,16 @@ extension CallController: PKPushRegistryDelegate {
         // report so the closure does not reach back into the payload.
         let metadata = info["metadata"] as? [String: Any]
 
+        // `assumeIsolated`, not a `Task` and not `nonisolated(unsafe)`. The
+        // registry is created with `PKPushRegistry(queue: .main)`, so this
+        // callback genuinely runs on the main queue — Swift simply cannot see
+        // that through a `nonisolated` delegate method. Hopping via `Task`
+        // would put an await in front of `reportNewIncomingCall`, which is the
+        // one thing iOS does not allow here (see the doc comment above), and
+        // `nonisolated(unsafe)` would assert thread-safety CXProvider does not
+        // document. This asserts only what the queue already guarantees, and
+        // it is a hard error under the Swift 6 language mode otherwise.
+        MainActor.assumeIsolated {
         provider.reportNewIncomingCall(with: uuid, update: update) { [weak self] error in
             // Only AFTER the obligation is met do we touch our own state, or
             // hand anything to the SDK. Attaching first would put a network
@@ -617,6 +627,7 @@ extension CallController: PKPushRegistryDelegate {
                 // keeps VoIP push delivery alive for this app.
                 await self.registerInboundCall(peer: from)
             }
+        }
         }
     }
 

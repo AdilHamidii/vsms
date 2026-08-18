@@ -3505,9 +3505,17 @@ refused.
   no commit (verified), but rotate it.
 - ⚠️ **Removable code — most of it is now gone.** `virtualsms.ts`,
   `sync-virtualsms/`, `sync-smspool/`, `smspool-catalog/` and `smspool.ts`'s SMS
-  surface were all deleted 2026-07-30. Still outstanding: `AppState.routes`
-  (written once, never read, ~3 MB of observation-tracked memory) and the
-  constants duplicated across files above.
+  surface were all deleted 2026-07-30. A second sweep on 2026-08-18 removed
+  `NumberGenerator` (a whole unreferenced file), `FlagBox` and `StockPill` (two
+  components with no call site), and `AppState.checkNow` — orphaned when the
+  "Check now" button was deliberately taken off `WaitingScreen`.
+  ❌ **`AppState.routes` was listed here as "written once, never read" and that
+  was FALSE.** It is read at `Sheets/CreditsSheet.swift:655`
+  (`for r in state.routes where r.status == "active"`), which is how the credit
+  packs know what a balance can actually reach. Deleting it on the strength of
+  this line would have broken that. The memory cost is real; the claim that
+  nothing reads it was not. Still outstanding: the constants duplicated across
+  files above.
 - ⚠️ **Supabase project is on the FREE plan (no backups).** Owner action.
 
 **A snake_case property name is a decode FAILURE, not a no-op.**

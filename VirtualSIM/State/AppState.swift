@@ -2114,22 +2114,6 @@ final class AppState {
         }
     }
 
-    /// The "Check now" button. Unlike the background poll it must NEVER
-    /// dead-end: if the provider-dependent check fails for any reason, fall
-    /// straight through to the authoritative row read. A user who taps this is
-    /// explicitly asking "what is actually going on?" and deserves an answer,
-    /// not a silently swallowed 502.
-    func checkNow(using orders: OrdersAPI, wallet: WalletAPI) async {
-        guard let current = activeOrder, !isPlacingOrder else { return }
-        do {
-            let server = try await orders.check(orderId: current.id)
-            pollFailureStreak = 0
-            await apply(server: server, for: current, wallet: wallet)
-        } catch {
-            await reconcileActiveOrder(using: orders, wallet: wallet)
-        }
-    }
-
     /// Resolve the active order against the ORDER ROW, not the provider.
     ///
     /// This is the recovery path for every way the provider-dependent poll can

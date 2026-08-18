@@ -32,8 +32,15 @@ function estimateSegments(text: string): number {
 }
 
 /** Blocked outright, client-side AND here. E911 is disabled on these numbers
- *  and a text to an emergency short code must never look like it worked. */
-const EMERGENCY = new Set(["911", "112", "999", "000", "110", "119"]);
+ *  and a text to an emergency short code must never look like it worked.
+ *
+ *  🔴 `988` WAS MISSING FROM THIS SET UNTIL 2026-08-18, while `begin-line-call`
+ *  (whose comment claims "same set as send-line-message"), `DialerScreen` and
+ *  `ComposeScreen` all carried it. So a CALL to the US crisis line was refused
+ *  on every path and a TEXT to it was accepted here — the one direction where
+ *  a message that silently goes nowhere does the most harm. Four copies of a
+ *  safety list is three too many; if a fifth is ever needed, share it. */
+const EMERGENCY = new Set(["911", "112", "999", "000", "110", "119", "988"]);
 
 const MAX_BODY = 1600;
 

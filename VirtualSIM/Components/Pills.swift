@@ -1,33 +1,5 @@
 import SwiftUI
 
-struct StockPill: View {
-    @Environment(\.theme) private var theme
-    let level: StockLevel
-
-    private var color: Color {
-        switch level { case .high: theme.live; case .medium: theme.warn; case .low: theme.fail }
-    }
-    private var soft: Color {
-        switch level { case .high: theme.liveSoft; case .medium: theme.warnSoft; case .low: theme.failSoft }
-    }
-    private var label: String {
-        switch level { case .high: "High stock"; case .medium: "Med. stock"; case .low: "Low stock" }
-    }
-
-    var body: some View {
-        HStack(spacing: 6) {
-            Circle().fill(color).frame(width: 5, height: 5)
-            Text(LocalizedStringKey(label))
-                .font(RFont.text(12, weight: .medium))
-                .tracking(-0.1)
-                .foregroundStyle(color)
-        }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 3)
-        .background(soft, in: .capsule)
-    }
-}
-
 enum OrderStatus: String, Hashable, Codable {
     case waiting, received, expired, refunded, canceled
 }
