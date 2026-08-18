@@ -150,6 +150,21 @@ struct ThreadScreen: View {
     /// the worse of the two mistakes.
     private var composer: some View {
         VStack(spacing: 6) {
+            // Below `blockReason` in precedence: a suspended line is the more
+            // actionable problem, and stacking two warnings answers neither.
+            if let unreachable, blockReason == nil {
+                HStack(spacing: 7) {
+                    Image(systemName: "exclamationmark.circle")
+                        .font(.system(size: 11, weight: .semibold))
+                    Text(verbatim: SmsReach.explanation(unreachable))
+                        .font(RFont.text(12))
+                        .fixedSize(horizontal: false, vertical: true)
+                    Spacer(minLength: 0)
+                }
+                .foregroundStyle(theme.warn)
+                .padding(.horizontal, 4)
+            }
+
             if let reason = blockReason {
                 HStack(spacing: 7) {
                     Image(systemName: "exclamationmark.circle")
@@ -172,7 +187,7 @@ struct ThreadScreen: View {
                     .padding(.horizontal, 14)
                     .padding(.vertical, 10)
                     .background(theme.elev, in: .rect(cornerRadius: 18))
-                    .disabled(blockReason != nil)
+                    .disabled(blockReason != nil || unreachable != nil)
 
                 Button(action: send) {
                     Image(systemName: RIcon.send)
@@ -185,7 +200,7 @@ struct ThreadScreen: View {
                 .disabled(!canSend)
             }
 
-            if blockReason == nil, let left = state.line?.smsRemaining {
+            if blockReason == nil, unreachable == nil, let left = state.line?.smsRemaining {
                 Text("\(left) texts left this month")
                     .font(RFont.text(11))
                     .foregroundStyle(theme.text3)
@@ -200,8 +215,16 @@ struct ThreadScreen: View {
     }
 
     private var canSend: Bool {
-        !isSending && blockReason == nil
+        !isSending && blockReason == nil && unreachable == nil
             && !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    /// The carrier will refuse this thread's peer. Common rather than exotic:
+    /// inbound works from anywhere and outbound does not, so a conversation we
+    /// cannot reply to is a state the product produces on its own.
+    private var unreachable: SmsReach.Refusal? {
+        guard let peer = thread?.peerE164 else { return nil }
+        return SmsReach.refusal(from: state.line?.countryCode, to: peer)
     }
 
     private var blockReason: LocalizedStringKey? {

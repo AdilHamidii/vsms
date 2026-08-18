@@ -48,8 +48,17 @@ struct ComposeScreen: View {
     private var remaining: Int? { state.line?.smsRemaining }
     private var exhausted: Bool { (remaining ?? 1) <= 0 }
 
+    /// The carrier will not deliver this one, so say so before the user writes
+    /// anything rather than spending a round trip to be refused.
+    /// `send-line-message` enforces it either way; this is only the hint.
+    private var unreachable: SmsReach.Refusal? {
+        guard let recipient else { return nil }
+        return SmsReach.refusal(from: state.line?.countryCode, to: recipient)
+    }
+
     private var canSend: Bool {
-        recipient != nil && !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        recipient != nil && unreachable == nil
+            && !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             && !exhausted && !sending
     }
 
@@ -62,7 +71,18 @@ struct ComposeScreen: View {
                     VStack(alignment: .leading, spacing: 12) {
                         toField
                         bodyField
-                        if let note { notice(note) }
+                        // Ahead of the general notes: an undeliverable
+                        // recipient makes "N texts left this month" beside the
+                        // point.
+                        if let unreachable {
+                            Text(verbatim: SmsReach.explanation(unreachable))
+                                .font(RFont.text(12))
+                                .foregroundStyle(theme.warn)
+                                .fixedSize(horizontal: false, vertical: true)
+                                .padding(.horizontal, 4)
+                        } else if let note {
+                            notice(note)
+                        }
                     }
                     .padding(.horizontal, 20)
                     .padding(.top, 8)
