@@ -37,25 +37,38 @@ appends `.vsmsapp.com` itself and shows it beside the box. Paste
 `send.mail.vsmsapp.com.vsmsapp.com`, which resolves to nothing and fails
 verification with no clue why. `@` means the apex.
 
-So for a Resend sending domain of `mail.vsmsapp.com`:
+Helpfully, **Resend states its record names relative to the root domain**
+already (`send.mail`, not `send.mail.vsmsapp.com`), which is precisely the form
+IONOS's Host name field wants. Copy them across verbatim.
+
+The live values for this account, read from the Resend API on 2026-08-18
+(domain `2ba3c474-0163-43ed-9f62-dd356e0220c1`, region `eu-west-1`). All three
+are public DNS records — nothing here is a secret:
 
 | IONOS type | IONOS **Host name** | value |
 |---|---|---|
-| `MX` | `send.mail` | Resend's bounce host, e.g. `feedback-smtp.eu-west-1.amazonses.com` (priority `10`) |
+| `TXT` | `resend._domainkey.mail` | `p=MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQC9QuLXZ48Ixz1khXPi8FzyGQBslLBeXbqzSgIY/Vl9ATvP85ozmDQot2qfLQKvHfbKLQtw9sjNlu32CdQsQldE29qkttmvEtZuNC+Bxa7pLwg0zJjYUkjEMlONsJIuxYFwXatDltEkiw7LYj3DzYV0y2Jufp1yxGIRQyJ607vMTwIDAQAB` |
+| `MX` | `send.mail` | `feedback-smtp.eu-west-1.amazonses.com`, priority `10` |
 | `TXT` | `send.mail` | `v=spf1 include:amazonses.com ~all` |
-| `TXT` | `resend._domainkey.mail` | the long `p=…` DKIM key from Resend |
-| `TXT` | `_dmarc` | `v=DMARC1; p=none; rua=mailto:dmarc@vsmsapp.com` |
+| `TXT` | `_dmarc` | `v=DMARC1; p=none;` |
 
 Notes that cost time if missed:
 
-- **Copy the MX and DKIM values from Resend's own screen**, not from here —
-  the bounce host is region-specific and the DKIM key is generated per domain.
+- **Re-read them from the API if the domain is ever recreated** — the DKIM key
+  is generated per domain and the bounce host is region-specific:
+  `curl -H "Authorization: Bearer $RESEND_KEY" https://api.resend.com/domains/<id>`
 - The **MX record needs a Priority**; `10` is fine, it is the only one.
+- **Paste the DKIM value as ONE line**, no spaces or breaks. It is ~220
+  characters, comfortably inside the 255-char limit for a single TXT string, so
+  it does not need splitting.
 - **Do not wrap TXT values in quotes.** IONOS adds them.
-- The DMARC record is the one Resend does *not* generate, because it is policy
-  rather than plumbing. `p=none` monitors without rejecting anything — correct
-  on day one. Tighten to `p=quarantine` only once the reports show your own
-  mail passing.
+- ⚠️ **The DMARC record carries NO `rua=` reporting address, deliberately.**
+  There is no mailbox on this domain to receive reports, and pointing `rua` at
+  an address on a *different* domain (a Gmail, say) silently does nothing
+  unless that domain publishes an authorisation record
+  (`vsmsapp.com._report._dmarc.<that domain>`). A bare `p=none;` is valid, is
+  what Gmail and Yahoo look for, and promises nothing we have not set up.
+  Tighten to `p=quarantine` only once you are actually reading reports.
 
 Wait for Resend to show **Verified** (usually minutes, occasionally an hour).
 Do not continue before it does: Supabase accepts the SMTP settings regardless
