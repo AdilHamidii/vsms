@@ -130,6 +130,23 @@ Authentication → Providers → Email:
 - Minimum password length: **8**, matching what the sign-up screen asks for.
   Probed 2026-08-18: the live value was **6**.
 
+🔴 **Email OTP Length — the first real confirmation mail carried EIGHT digits.**
+`CodeEntryScreen` hardcoded six: it truncated the paste and auto-submitted, so
+a user typing the correct code was told it was wrong with no way forward. The
+client now accepts 4–10 and lets the server judge, so either length works — but
+set this to **6** anyway. It is what people expect to type, and it is the
+difference between reading a code out of the mail and having to copy it.
+
+⚠️ **Also check the two SUBJECT lines.** The first live send went out as
+*"Confirm signup — subject: Your vSMS confirmation code"* — the instruction
+text had been pasted into the field along with the subject. The box wants only
+the subject: `Your vSMS confirmation code`.
+
+⚠️ **And check the body is not pasted twice.** That same message contained the
+whole template twice over, once at two-space indentation and once at four. The
+send log is how to catch both:
+`curl -H "Authorization: Bearer $RESEND_KEY" "https://api.resend.com/emails?limit=5"`.
+
 ## 6. Verify, from the outside
 
 ```bash
