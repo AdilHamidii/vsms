@@ -70,6 +70,7 @@ declare
   v_runway   numeric;
   v_lines    int;
   v_prov     text;
+  v_unreleased int;
 begin
   -- (1) Provider runway, per provider that still serves orders. Gross burn is
   -- summed from actual_cost_cents on every order that reserved a number in
@@ -132,6 +133,18 @@ begin
     fails := fails || jsonb_build_object('check', 'apple-line-lapse',
       'detail', v_lines || ' Apple-billed line(s) still active >12h past period end — ' ||
                 'no EXPIRED notification arrived and the reclaim backstop did not fire');
+  end if;
+
+  -- (4) Numbers that delete-account could NOT release (added 2026-08-18,
+  -- same day). After the account cascades, phone_lines can no longer name
+  -- them; app_config.unreleased_line_numbers is the only record. Pages until
+  -- a human releases them at Telnyx and clears the key.
+  select coalesce(jsonb_array_length(value), 0) into v_unreleased
+    from app_config where key = 'unreleased_line_numbers';
+  if coalesce(v_unreleased, 0) > 0 then
+    fails := fails || jsonb_build_object('check', 'unreleased-line-numbers',
+      'detail', v_unreleased || ' deleted account(s) left Telnyx number(s) unreleased — ' ||
+                'see app_config.unreleased_line_numbers, release by hand, then clear the key');
   end if;
 
   return fails;

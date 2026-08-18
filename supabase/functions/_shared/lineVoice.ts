@@ -148,6 +148,22 @@ export async function provisionLineVoice(
       const at = await attachOutboundProfile(out.connectionId, prof.id);
       if (faultOf(at)) out.faults.push({ step: "attach_voice_profile", fault: at });
     }
+  } else {
+    // ── 2b. The profile EXISTS — but is it actually on the connection? ────
+    //
+    // 🔴 Until 2026-08-18 `attachOutboundProfile` sent the field at the wrong
+    // nesting level, Telnyx returned 200 and attached NOTHING, and this branch
+    // did not exist — so every line whose profile id was already persisted
+    // (all six sold) was skipped forever, with our DB saying "provisioned"
+    // and Telnyx holding no profile. That is why no call ever connected.
+    //
+    // `attachOutboundProfile` now reads the connection back and only returns
+    // true if the profile is genuinely held, so calling it here on every run
+    // is a cheap verify-and-repair, idempotent, and it is what turns the
+    // hourly sweep into something that can heal the lines already sold rather
+    // than only ones created after the fix.
+    const at = await attachOutboundProfile(out.connectionId, out.voiceProfileId);
+    if (faultOf(at)) out.faults.push({ step: "verify_voice_profile", fault: at });
   }
 
   // ── 3. Point the NUMBER's voice at the connection — this is INBOUND ──────
