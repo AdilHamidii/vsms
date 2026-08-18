@@ -215,6 +215,30 @@ struct LineStoreScreen: View {
                 BenefitRow(icon: RIcon.shield,
                            label: "Keep your own number private",
                            tint: theme.live)
+
+                // ── What it does NOT do, stated on the same ledger ──────────
+                //
+                // Owner decision 2026-08-18: say plainly what the number can
+                // and cannot do "for now". Every affordance for sending is
+                // gone from the app, so a user who wants to text back finds
+                // out by hunting for a button that is not there — which is
+                // the refund moment. Naming it here, in the same row style as
+                // the benefits, turns a surprise into a known limitation the
+                // buyer accepted. Muted tint + a "Not yet" hint so it reads
+                // as a ledger line, not an alarm. Same on the checkout screen,
+                // which is the 3.1.2(a) disclosure surface.
+                RowRule()
+                BenefitRow(icon: RIcon.message,
+                           label: "Sending texts from this number",
+                           hint: "Not yet",
+                           tint: theme.text3)
+                    .opacity(0.72)
+                RowRule()
+                BenefitRow(icon: RIcon.globe,
+                           label: "Receiving texts from outside the US and Canada",
+                           hint: "Not yet",
+                           tint: theme.text3)
+                    .opacity(0.72)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }

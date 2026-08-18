@@ -336,6 +336,31 @@ struct LineCheckoutScreen: View {
                     RowRule()
                     BenefitRow(icon: "lock.fill",
                                label: "Your own number never leaves your phone")
+
+                    // ── What it does NOT do, on the same ledger ─────────────
+                    //
+                    // This is the 3.1.2(a) disclosure screen — the one
+                    // immediately before the purchase. Owner decision
+                    // 2026-08-18: state the limitations plainly here, "for
+                    // now". A limitation named before the buy is a term the
+                    // user accepted; the same limitation discovered after is
+                    // a refund and, on this product, an Apple
+                    // CONSUMPTION_REQUEST. Muted tint + "Not yet" hint keeps
+                    // it a ledger line rather than an alarm; it MUST stay
+                    // adjacent to the benefits, never in a footnote a buyer
+                    // can skip. Mirrors LineStoreScreen.pitch.
+                    RowRule()
+                    BenefitRow(icon: RIcon.message,
+                               label: "Sending texts from this number",
+                               hint: "Not yet",
+                               tint: theme.text3)
+                        .opacity(0.72)
+                    RowRule()
+                    BenefitRow(icon: RIcon.globe,
+                               label: "Receiving texts from outside the US and Canada",
+                               hint: "Not yet",
+                               tint: theme.text3)
+                        .opacity(0.72)
                 }
                 .padding(.vertical, 4)
             }
