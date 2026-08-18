@@ -2636,6 +2636,46 @@
         }
       }
     },
+    "A Canadian number that receives texts from US and Canadian phones": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Eine kanadische Nummer, die SMS von US- und kanadischen Handys empfängt"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Un número canadiense que recibe SMS de teléfonos de EE. UU. y Canadá"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Un numéro canadien qui reçoit les SMS des téléphones américains et canadiens"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Un numero canadese che riceve SMS da telefoni statunitensi e canadesi"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "米国・カナダの電話からSMSを受信できるカナダの番号"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Um número canadense que recebe SMS de telefones dos EUA e do Canadá"
+          }
+        }
+      }
+    },
     "A monthly subscription, cancel anytime": {
       "localizations": {
         "de": {
@@ -4485,6 +4525,46 @@
           "stringUnit": {
             "state": "translated",
             "value": "CÓDIGO RECEBIDO"
+          }
+        }
+      }
+    },
+    "Call out to the US, Canada and dozens more countries": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Anrufe in die USA, nach Kanada und in Dutzende weitere Länder"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Llama a EE. UU., Canadá y decenas de países más"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Appelez les États-Unis, le Canada et des dizaines d'autres pays"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Chiama Stati Uniti, Canada e decine di altri paesi"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "米国・カナダなど数十カ国へ発信可能"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ligue para EUA, Canadá e dezenas de outros países"
           }
         }
       }
@@ -7716,6 +7796,46 @@
         }
       }
     },
+    "Create my account": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Konto erstellen"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Crear mi cuenta"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Créer mon compte"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Crea il mio account"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "アカウントを作成"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Criar minha conta"
+          }
+        }
+      }
+    },
     "Credit packs are temporarily unavailable. Please try again in a moment.": {
       "localizations": {
         "de": {
@@ -7752,6 +7872,46 @@
           "stringUnit": {
             "state": "translated",
             "value": "Os pacotes de créditos estão temporariamente indisponíveis. Tente novamente em instantes."
+          }
+        }
+      }
+    },
+    "Credits come back when no code arrives": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Credits kommen zurück, wenn kein Code ankommt"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Los créditos vuelven si no llega el código"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Les crédits reviennent si aucun code n'arrive"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "I crediti tornano se il codice non arriva"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "コードが届かなければクレジットは返却"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Os créditos voltam quando o código não chega"
           }
         }
       }
@@ -8575,6 +8735,46 @@
         }
       }
     },
+    "Delete your account, and everything in it, from the app": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Löschen Sie Ihr Konto samt Inhalt direkt in der App"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Elimina tu cuenta, y todo lo que contiene, desde la app"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Supprimez votre compte, et tout ce qu'il contient, depuis l'app"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Elimina il tuo account, e tutto ciò che contiene, dall'app"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "アカウントとその中身は、アプリから削除できます"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Exclua sua conta, e tudo nela, pelo app"
+          }
+        }
+      }
+    },
     "Delete your account?": {
       "comment": "A confirmation dialog title.",
       "isCommentAutoGenerated": true,
@@ -9351,6 +9551,46 @@
         }
       }
     },
+    "Enter this code to confirm: %@": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Zum Bestätigen diesen Code eingeben: %@"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Introduce este código para confirmar: %@"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Saisissez ce code pour confirmer : %@"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Inserisci questo codice per confermare: %@"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "確認コードを入力してください: %@"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Digite este código para confirmar: %@"
+          }
+        }
+      }
+    },
     "Expired": {
       "localizations": {
         "de": {
@@ -9551,6 +9791,46 @@
           "stringUnit": {
             "state": "translated",
             "value": "Buscando o código…"
+          }
+        }
+      }
+    },
+    "Finish creating your account": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Schließen Sie die Kontoerstellung ab"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Termina de crear tu cuenta"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Terminez la création de votre compte"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Completa la creazione dell'account"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "アカウント作成を完了してください"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Termine de criar sua conta"
           }
         }
       }
@@ -12701,6 +12981,46 @@
         }
       }
     },
+    "Marketplace listings. Dating apps. A side business. Keep one number for all of it, read what arrives, and call them back from it.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kleinanzeigen. Dating-Apps. Ein Nebengewerbe. Eine Nummer für alles: Lesen Sie, was ankommt, und rufen Sie darüber zurück."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Anuncios de segunda mano. Apps de citas. Un negocio paralelo. Un solo número para todo: lee lo que llega y devuelve la llamada desde él."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Petites annonces. Applis de rencontre. Une activité en parallèle. Un seul numéro pour tout : lisez ce qui arrive et rappelez depuis celui-ci."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Annunci online. App di incontri. Un'attività secondaria. Un solo numero per tutto: leggi ciò che arriva e richiama da lì."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "フリマの出品。マッチングアプリ。副業。すべてを一つの番号で。届いたメッセージを読み、そこから折り返せます。"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Anúncios de vendas. Apps de namoro. Um negócio paralelo. Um número para tudo: leia o que chega e ligue de volta por ele."
+          }
+        }
+      }
+    },
     "Marketplace listings. Dating apps. A side business. The buyer who wants to message you about the sofa. None of them need the number your family uses.": {
       "localizations": {
         "de": {
@@ -14231,6 +14551,46 @@
           "stringUnit": {
             "state": "translated",
             "value": "Nenhum código neste"
+          }
+        }
+      }
+    },
+    "No code,\nno charge.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kein Code,\nkeine Kosten."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sin código,\nsin cargo."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pas de code,\npas de frais."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nessun codice,\nnessun addebito."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "コードが届かなければ、\n料金はかかりません。"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sem código,\nsem cobrança."
           }
         }
       }
@@ -15940,6 +16300,46 @@
         }
       }
     },
+    "Numbers and addresses are paid for with credits you buy in the app. A number that never receives its code costs you nothing — the credits go back to your balance on their own.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nummern und Adressen bezahlen Sie mit Credits, die Sie in der App kaufen. Eine Nummer, die nie einen Code erhält, kostet Sie nichts – die Credits gehen von selbst auf Ihr Guthaben zurück."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Los números y las direcciones se pagan con créditos que compras en la app. Un número que nunca recibe su código no te cuesta nada: los créditos vuelven solos a tu saldo."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Les numéros et les adresses se paient avec des crédits achetés dans l'app. Un numéro qui ne reçoit jamais son code ne vous coûte rien : les crédits reviennent tout seuls sur votre solde."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Numeri e indirizzi si pagano con i crediti che acquisti nell'app. Un numero che non riceve mai il codice non ti costa nulla: i crediti tornano da soli sul tuo saldo."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "番号とアドレスは、アプリ内で購入するクレジットでお支払いいただきます。コードが届かなかった番号に料金はかからず、クレジットは自動で残高に戻ります。"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Números e endereços são pagos com créditos que você compra no app. Um número que nunca recebe o código não custa nada — os créditos voltam sozinhos para o seu saldo."
+          }
+        }
+      }
+    },
     "Numbers and email addresses you buy show up here, with the code and with the refund if one never arrived.": {
       "localizations": {
         "de": {
@@ -16023,6 +16423,46 @@
           "stringUnit": {
             "state": "translated",
             "value": "Os números são comprados com créditos. Se nenhum código chegar, seus créditos voltam na hora para o seu saldo, sempre."
+          }
+        }
+      }
+    },
+    "Numbers in dozens of countries, for hundreds of services": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nummern in Dutzenden Ländern, für Hunderte Dienste"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Números en decenas de países, para cientos de servicios"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Des numéros dans des dizaines de pays, pour des centaines de services"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Numeri in decine di paesi, per centinaia di servizi"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "数十カ国の番号で、数百のサービスに対応"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Números em dezenas de países, para centenas de serviços"
           }
         }
       }
@@ -16188,6 +16628,46 @@
         }
       }
     },
+    "One tap with Apple next. No email list, and your real number never comes into it.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Als Nächstes ein Tipp mit Apple. Kein Newsletter, und Ihre echte Nummer bleibt außen vor."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ahora, un toque con Apple. Sin listas de correo, y tu número real nunca entra en juego."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ensuite, une seule touche avec Apple. Pas de liste d'e-mails, et votre vrai numéro n'entre jamais en jeu."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ora un tocco con Apple. Nessuna mailing list e il tuo numero vero non c'entra mai."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "次はAppleでワンタップ。メール配信はなく、あなたの本当の番号は使いません。"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Agora, um toque com a Apple. Sem lista de e-mails, e seu número real nunca entra nisso."
+          }
+        }
+      }
+    },
     "One tap with Apple next. No password to make, no email list, and your real number never comes into it.": {
       "localizations": {
         "de": {
@@ -16264,6 +16744,46 @@
           "stringUnit": {
             "state": "translated",
             "value": "Um toque com a Apple, sem criar senha"
+          }
+        }
+      }
+    },
+    "One-time address": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Einweg-Adresse"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dirección de un solo uso"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Adresse à usage unique"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Indirizzo usa e getta"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "使い捨てアドレス"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Endereço descartável"
           }
         }
       }
@@ -16425,6 +16945,46 @@
           "stringUnit": {
             "state": "translated",
             "value": "Opções"
+          }
+        }
+      }
+    },
+    "Or skip the phone\nnumber entirely.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Oder ganz ohne\nTelefonnummer."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "O prescinde del\nnúmero por completo."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ou passez-vous\ndu numéro."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "O salta del tutto\nil numero."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "電話番号なしでも\n大丈夫。"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ou dispense o\nnúmero de vez."
           }
         }
       }
@@ -16712,6 +17272,46 @@
           "stringUnit": {
             "state": "translated",
             "value": "Efetuada"
+          }
+        }
+      }
+    },
+    "Outgoing call · 4 min": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ausgehender Anruf · 4 Min."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Llamada saliente · 4 min"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Appel sortant · 4 min"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Chiamata in uscita · 4 min"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "発信通話・4分"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Chamada efetuada · 4 min"
           }
         }
       }
@@ -17402,6 +18002,46 @@
           "stringUnit": {
             "state": "translated",
             "value": "Rosa"
+          }
+        }
+      }
+    },
+    "Plenty of sign-ups only want an e-mail address. Take a throwaway one, catch the confirmation, and keep your real inbox out of it.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Viele Anmeldungen wollen nur eine E-Mail-Adresse. Nehmen Sie eine Wegwerfadresse, fangen Sie die Bestätigung ab und lassen Sie Ihr echtes Postfach außen vor."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Muchos registros solo piden un correo. Usa uno desechable, recibe la confirmación y deja tu bandeja real fuera de esto."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Beaucoup d'inscriptions ne demandent qu'une adresse e-mail. Prenez-en une jetable, récupérez la confirmation et gardez votre vraie boîte à l'écart."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Molte iscrizioni vogliono solo un indirizzo e-mail. Usane uno usa e getta, ricevi la conferma e tieni fuori la tua casella vera."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "登録にメールアドレスだけを求めるサービスは少なくありません。使い捨てのアドレスで確認メールを受け取り、本当の受信箱は使わずに済ませましょう。"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Muitos cadastros só querem um e-mail. Use um descartável, receba a confirmação e mantenha sua caixa real fora disso."
           }
         }
       }
@@ -18260,6 +18900,46 @@
           "stringUnit": {
             "state": "translated",
             "value": "Número de operadora real"
+          }
+        }
+      }
+    },
+    "Real consumer domains, not a forwarding trick": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Echte Verbraucher-Domains, kein Weiterleitungstrick"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dominios reales de consumo, no un truco de reenvío"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "De vrais domaines grand public, pas une redirection déguisée"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Domini reali di uso comune, non un trucco di inoltro"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "転送のごまかしではなく、実在の一般ドメイン"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Domínios reais de consumo, sem truque de encaminhamento"
           }
         }
       }
@@ -20634,6 +21314,46 @@
         }
       }
     },
+    "Some domains cost nothing at all": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Manche Domains kosten gar nichts"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Algunos dominios no cuestan nada"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Certains domaines ne coûtent rien"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Alcuni domini non costano nulla"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "一部のドメインは無料"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Alguns domínios não custam nada"
+          }
+        }
+      }
+    },
     "Some services block temporary numbers, so a code may never come through. If that happens you're not charged — and trying another number is free, as many times as you like.": {
       "extractionState": "manual",
       "localizations": {
@@ -21595,6 +22315,46 @@
           "stringUnit": {
             "state": "translated",
             "value": "Temporariamente indisponível"
+          }
+        }
+      }
+    },
+    "Temporary address": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Temporäre Adresse"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dirección temporal"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Adresse temporaire"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Indirizzo temporaneo"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "一時アドレス"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Endereço temporário"
           }
         }
       }
@@ -25717,6 +26477,46 @@
         }
       }
     },
+    "What we promise": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Was wir zusichern"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Lo que prometemos"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ce que nous promettons"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cosa promettiamo"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "私たちの約束"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "O que prometemos"
+          }
+        }
+      }
+    },
     "What you get": {
       "localizations": {
         "de": {
@@ -25753,6 +26553,46 @@
           "stringUnit": {
             "state": "translated",
             "value": "O que você recebe"
+          }
+        }
+      }
+    },
+    "What you pay": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Was Sie zahlen"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Lo que pagas"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ce que vous payez"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Quanto paghi"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "料金について"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "O que você paga"
           }
         }
       }

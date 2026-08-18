@@ -29,9 +29,12 @@ when nobody has the relevant file open.
 **vSMS** (App Store display name; formerly "vSIM OTP" — the Xcode target/scheme is still `VirtualSIM`) — iOS app selling three products, all paid with in-app **credits**: (1) **temporary phone numbers** for SMS verification codes, (2) **temporary e-mail addresses**, and (3) **eSIM data plans** priced at 4× wholesale (line currently PAUSED). A
 **fourth** line — rentable second numbers with two-way SMS and voice, billed by
 **StoreKit subscription rather than credits** — is LIVE ON THE APP STORE in 2.0
-and is the app's first tab. **Six numbers rented, five subscriptions, and all
-five cancelled auto-renew — median 3.9 minutes after paying.** Neither half of
-the product half works: **calling connected for the first time on 2026-08-18**
+and is the app's SECOND tab — it led for three days from 2026-08-05 and the
+launch tab went back to Home (temp SMS) on 08-08; `AppState.tab` is `.home` and
+`TabBar` reads Home · Number · eSIM · Account. **Six numbers rented, five
+subscriptions, and all five cancelled auto-renew — median 3.9 minutes after
+paying.** Half the product works: **calling connected for the first time on
+2026-08-18**
 (3 completed calls to France, after 7 earlier attempts that never reached the
 provider), while **outbound SMS is 1 sent against 6 failed** (`40010`, 10DLC).
 Inbound SMS works, 3 of 3. See "Rentable second numbers". iOS frontend in SwiftUI + Supabase backend (Postgres + Auth + Edge Functions + pg_cron).
