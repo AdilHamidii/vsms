@@ -264,7 +264,17 @@ struct CodeEntryScreen: View {
     @State private var appeared = false
     @FocusState private var focused: Bool
 
-    private static let length = 6
+    // 🔴 THE CODE LENGTH IS A SERVER SETTING, NOT A CONSTANT. This was `6`, and
+    // the first real confirmation email arrived carrying **eight** digits
+    // (Supabase → Authentication → Emails → "Email OTP Length"). The screen
+    // truncated the paste to 6 and auto-submitted it, so the user typed the
+    // right code and was told it was wrong — with no way to get further.
+    //
+    // Same class as never printing a credit amount: a figure the dashboard can
+    // change without a release must not be hardcoded. Accept the whole range
+    // GoTrue allows, submit on the button, and let the server judge the code.
+    private static let minLength = 4
+    private static let maxLength = 10
 
     var body: some View {
         ZStack {
@@ -324,7 +334,7 @@ struct CodeEntryScreen: View {
 
                 BottomBar {
                     PrimaryButton(label: String(localized: "Confirm"),
-                                  disabled: busy || code.count < Self.length,
+                                  disabled: busy || code.count < Self.minLength,
                                   action: submit)
                 }
             }
@@ -341,7 +351,9 @@ struct CodeEntryScreen: View {
         // the user never leaves the app to read it. On a product that sells
         // verification codes, making people copy ours by hand would be a poor
         // joke.
-        TextField("000000", text: $code)
+        // Placeholder does NOT show a fixed number of zeros: the length is a
+        // server setting and "000000" would promise six.
+        TextField("Enter code", text: $code)
             .font(RFont.mono(26, weight: .semibold))
             .foregroundStyle(theme.text)
             .keyboardType(.numberPad)
@@ -357,9 +369,8 @@ struct CodeEntryScreen: View {
             )
             .animation(RMotion.select, value: focused)
             .onChange(of: code) { _, value in
-                let digits = String(value.filter(\.isNumber).prefix(Self.length))
+                let digits = String(value.filter(\.isNumber).prefix(Self.maxLength))
                 if digits != value { code = digits }
-                if digits.count == Self.length, !busy { submit() }
             }
     }
 
@@ -383,7 +394,7 @@ struct CodeEntryScreen: View {
     }
 
     private func submit() {
-        guard code.count == Self.length, !busy else { return }
+        guard code.count >= Self.minLength, !busy else { return }
         busy = true
         error = nil
         notice = nil
