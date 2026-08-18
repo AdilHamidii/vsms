@@ -76,6 +76,27 @@ turns "buy from the best pool" and "show the user that pool's number" from
 guesswork into arithmetic. It is the first time we can steer on delivery before
 placing an order rather than after failing one.
 
+**Two 5sim behaviours settled by PAID PROBE on 2026-08-18 (`probe-5sim`,
+balance read before/after every step — do not re-run, the answers are
+arithmetic, not opinion):**
+- **Cancel REFUNDS, fully.** `3.6239 → 3.6109 → 3.6239` on a $0.013 buy.
+  Second confirmation (the first was $0.008 on 08-03). `cancel-order`'s core
+  assumption holds; with ~60% of numbered orders cancelled, this is the one
+  that would bleed float on every order if it were ever false.
+- **`user/reuse/{product}/{number}` after a CANCEL returns 400 `"reuse not
+  possible"`**, balance untouched, even when the order was bought with
+  `?reuse=1`. So reuse CANNOT rescue the "cancelled just before the code" case
+  — cancelling releases reuse eligibility with the number. Do not build on it
+  for retries. (It may still work after a COMPLETED order, i.e. re-verifying
+  the same service on the same number — a much smaller case, not pursued.)
+- Incidental: both fresh buys read `status: RECEIVED` with `sms: null` at
+  t=0. RECEIVED means "number received", never "code received" — live proof
+  that `sms[].code` must stay the only authority. `?reuse=1` is accepted
+  silently; nothing in the response says whether it took.
+- Also from the docs re-read the same day: **`maxPrice` EXISTS but only when
+  `operator=any`** — now passed on the unpinned fallback buy. Pinned pools
+  still take no cap.
+
 ⚠️ **"Ownership is per SERVICE, never per route" WAS the design rule and the
 live catalog does NOT satisfy it.** Measured 2026-08-04: **109 of 254 visible
 services have active routes on two providers**, carrying ~80% of all active
