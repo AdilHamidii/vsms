@@ -41,6 +41,12 @@ final class CallController: NSObject {
     /// `begin-line-call` reserves the allowance and can refuse independently.
     var remainingSeconds: Int?
 
+    /// A call is being placed but is not committed yet — `begin-line-call` can
+    /// still refuse it. Re-entrancy guard AND the dialer's busy state: without
+    /// it a double-tap sends two gating requests, and each one reserves
+    /// credits.
+    private(set) var isStarting = false
+
     private let provider: CXProvider
     private let callControl = CXCallController()
     private var voice: VoiceClient
@@ -147,6 +153,18 @@ final class CallController: NSObject {
 
     var isLive: Bool { phase != .idle }
 
+    /// The call owns the screen: the server authorised it, CallKit accepted
+    /// it, and it is not already tearing down.
+    ///
+    /// Distinct from `isLive` on both ends, and both distinctions are
+    /// load-bearing for the dialer, which dismisses itself on this:
+    ///  - a call is NOT committed while `begin-line-call` can still refuse it,
+    ///    because that refusal is rendered on the keypad and dismissing would
+    ///    take it with it;
+    ///  - `.ending` is excluded for the same reason — a call CallKit rejects
+    ///    passes straight through it on its way back to idle.
+    var isCommitted: Bool { phase != .idle && phase != .ending }
+
     // MARK: - Outbound
 
     /// Gate, then dial.
@@ -156,11 +174,19 @@ final class CallController: NSObject {
     /// would let a suspended or exhausted line place a call we then have to pay
     /// for and cannot bill.
     func placeCall(to number: String, from lineNumber: String) async {
-        guard phase == .idle, let api = apiClient else { return }
+        guard phase == .idle, !isStarting, let api = apiClient else { return }
         lastError = nil
         peer = number
         isOutbound = true
-        phase = .dialing
+        // 🔴 `phase = .dialing` USED TO BE SET HERE, i.e. before the server had
+        // agreed to the call — and `isLive` drives the in-call overlay, so the
+        // overlay went up for the length of the gating round-trip and came
+        // back down on a refusal. `isStarting` is what guards re-entrancy over
+        // that window now; the phase moves only once the call is real. It is
+        // its own flag rather than a phase because a phase is a state of a
+        // CALL, and until the gate answers there may not be one.
+        isStarting = true
+        defer { isStarting = false }
 
         // 🔴 THE NUMBER WE DIAL MUST BE THE NUMBER THE SERVER AUTHORISED.
         // `DialerScreen` hands us the raw keypad string, so a US number arrived
@@ -184,12 +210,10 @@ final class CallController: NSObject {
             dialled = begun.to
             peer = begun.to
         } catch let err as APIError {
-            phase = .idle
             lastError = err.userMessage
             RHaptic.warn()
             return
         } catch {
-            phase = .idle
             lastError = String(localized: "Couldn't start the call. Please try again.")
             RHaptic.warn()
             return
@@ -209,6 +233,11 @@ final class CallController: NSObject {
             await failCall(String(localized: "iOS wouldn't start the call."))
             return
         }
+
+        // Committed: authorised, billed against the allowance, and owned by
+        // CallKit. From here the in-call UI is what the user should be looking
+        // at, and the dialer dismisses itself.
+        phase = .dialing
 
         do {
             // The socket is normally already up from `prepareVoice()` on the

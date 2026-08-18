@@ -56,6 +56,9 @@ struct DialerScreen: View {
     }
 
     private var canDial: Bool {
+        // A tap that is already being answered must not be tappable again —
+        // each one reserves credits server-side.
+        guard !calls.isStarting else { return false }
         guard digits.filter(\.isNumber).count >= 7, !isEmergency else { return false }
         if digits.hasPrefix("+") {
             // International: the wallet pays, so plan minutes are irrelevant —
@@ -99,6 +102,18 @@ struct DialerScreen: View {
         // DECLARE the intent and the amount, never let `creditsShortfall`
         // infer them. This is the pattern `PurchaseIntent` exists to enforce,
         // and both are cleared in `clearLineDraft()` on leaving the tab.
+        // 🔴 THE CALL SCREEN CANNOT BE SEEN FROM HERE. `InCallOverlay` is an
+        // overlay on the ROOT view and the dialer is a `fullScreenCover`, which
+        // always renders above it — so pressing call left the keypad on screen
+        // with the live call invisible behind it. Reported from a real call to
+        // France, 2026-08-18.
+        //
+        // It watches `isCommitted`, NOT `isLive`: a call the server refuses
+        // (no price for the country, not enough credits) must leave the keypad
+        // up, because that is where the refusal is explained.
+        .onChange(of: calls.isCommitted) { _, committed in
+            if committed { state.flow = nil }
+        }
         .onChange(of: creditsNeeded) { _, need in
             if let need {
                 state.intent = .call
@@ -242,12 +257,18 @@ struct DialerScreen: View {
                 guard let line = state.line else { return }
                 Task { await calls.placeCall(to: digits, from: line.e164) }
             } label: {
-                Image(systemName: RIcon.phone)
-                    .font(.system(size: 25, weight: .semibold))
-                    .foregroundStyle(canDial ? theme.onInk : theme.text3)
+                Group {
+                    if calls.isStarting {
+                        ProgressView().tint(theme.onInk)
+                    } else {
+                        Image(systemName: RIcon.phone)
+                            .font(.system(size: 25, weight: .semibold))
+                            .foregroundStyle(canDial ? theme.onInk : theme.text3)
+                    }
+                }
                     .frame(width: 68, height: 68)
-                    .background(canDial ? theme.live : theme.chipBg, in: .circle)
-                    .shadow(color: canDial ? theme.live.opacity(0.35) : .clear,
+                    .background(canDial || calls.isStarting ? theme.live : theme.chipBg, in: .circle)
+                    .shadow(color: canDial || calls.isStarting ? theme.live.opacity(0.35) : .clear,
                             radius: 16, y: 7)
                     .contentShape(.circle)
             }
