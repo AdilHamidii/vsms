@@ -2861,8 +2861,14 @@ index, so "why is it like this" has a date to search for.
   existed after a delivered code, the paywall dead-ended on a partial
   StoreKit answer, per-provider hold + `retry_after_seconds` in the client.
   **A regression I introduced and reverted the same day**: raising the 5sim
-  hold to 155 while shipped 2.0 hardcodes 90 — see the hold section. 2.1 is
-  build 40, built and plist-asserted, **submission HELD** by owner decision.
+  hold to 155 while shipped 2.0 hardcodes 90 — see the hold section. **2.1
+  (build 40) SUBMITTED 2026-08-18 07:29Z — `WAITING_FOR_REVIEW`**, version
+  `2a703399-…`, submission `7fa935aa-…`, build uploaded via `altool` with
+  `BuildMachineOSBuild` patched to 25F84 (verified inside the IPA), release
+  notes patched on all 13 locales. Its last commit before archive added the
+  "Not yet" ledger rows (sending texts / receiving from outside US+CA) to the
+  store pitch AND the checkout screen, screenshot-verified on both. Read ASC
+  for the review state, not this line.
 - **08-17** The second-number line met its first real customers and most of it
   did not work. **Voice was provisioned lazily** in `mint-line-token` while
   messaging was provisioned at rental, so five of six sold numbers had no Telnyx
