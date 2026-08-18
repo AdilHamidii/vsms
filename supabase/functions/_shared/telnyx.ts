@@ -601,6 +601,26 @@ export async function createOutboundVoiceProfile(opts: {
   return { id: String(r.id) };
 }
 
+/**
+ * Re-point an EXISTING profile at a new destination list.
+ *
+ * Needed because `whitelisted_destinations` is fixed at creation, so widening
+ * the catalog does nothing for lines already provisioned — the customer who
+ * subscribed yesterday would keep yesterday's permissions forever, with no
+ * error anywhere. `sync-voice-destinations` calls this for every profile we
+ * know about, on a schedule, so the answer to "did the widening reach live
+ * lines?" is a query rather than a hope.
+ */
+export async function updateOutboundVoiceProfile(
+  profileId: string, destinations: string[],
+): Promise<true | TelnyxFault> {
+  const r = await call<Record<string, unknown>>(
+    "PATCH", `/outbound_voice_profiles/${profileId}`,
+    { whitelisted_destinations: destinations });
+  if (faultOf(r)) return r;
+  return true;
+}
+
 /** Point a credential connection at its outbound profile. Without this the
  *  connection can register and receive, but every outbound call is rejected. */
 export async function attachOutboundProfile(

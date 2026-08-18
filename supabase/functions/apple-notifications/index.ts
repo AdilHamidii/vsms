@@ -145,6 +145,28 @@ async function process(sb: ReturnType<typeof admin>, n: Awaited<ReturnType<typeo
   // Both inner payloads are JWS in their own right and are verified, never
   // decoded. A notification is exactly as trustworthy as its signatures.
   const tx = await verifyTransactionJWS(txJws);
+
+  // 🔴 REFUND TRAFFIC FOR **CREDIT PACKS** REACHES THIS FUNCTION AND USED TO
+  // DIE ON THE NEXT LINE. Live `line_notifications` holds 15 CONSUMPTION_REQUEST
+  // rows and 3 REFUND_DECLINED, every one with a null original_transaction_id —
+  // i.e. every one returned before the switch below. So the handler added
+  // earlier today has never once fired, and the product that actually generates
+  // refund requests was the one it could not see.
+  //
+  // Handled BEFORE the subscription filter, and deliberately only for the two
+  // types where a human has to act inside a deadline. Everything else about a
+  // consumable still belongs to `iap-verify`, not here.
+  if (n.notificationType === "CONSUMPTION_REQUEST" && !isSubscriptionProduct(tx.productId)) {
+    await alertOwner(
+      `⏳ <b>Refund requested — 12h to respond</b>\n` +
+      `credit pack: ${esc(tx.productId)}\n` +
+      `tx ${esc(tx.originalTransactionId)}\n` +
+      `<i>Credits already granted are NOT revoked automatically — see the ` +
+      `known-open note. Apple decides the refund.</i>`,
+      sb, tx.originalTransactionId);
+    return;
+  }
+
   if (!isSubscriptionProduct(tx.productId)) return;   // not our line
 
   const ri = riJws ? await verifyRenewalInfoJWS(riJws).catch(() => null) : null;
@@ -337,6 +359,33 @@ async function process(sb: ReturnType<typeof admin>, n: Awaited<ReturnType<typeo
       return;
     }
 
+    case "CONSUMPTION_REQUEST": {
+      // A customer has asked Apple for a REFUND, and Apple is inviting us to
+      // send usage data that informs its decision — within TWELVE HOURS, after
+      // which the window simply closes.
+      //
+      // This used to fall into `default`, which records and logs. Nothing paged,
+      // so every one of these expired unanswered while refunds were the thing
+      // costing us subscribers.
+      //
+      // ⚠️ IT DELIBERATELY DOES NOT AUTO-RESPOND. Apple's consumption endpoint
+      // takes `customerConsented`, and asserting consent we have not actually
+      // obtained is a claim about the customer, not a technical default — the
+      // same category of thing as presenting seed data as measured fact. So
+      // this pages a human with the facts already assembled, and answering is
+      // an owner decision until consent is genuinely collected.
+      const facts = await consumptionFacts(sb, originalTx);
+      await alertOwner(
+        `⏳ <b>Refund requested — 12h to respond</b>\n` +
+        `${esc(originalTx)}\n` +
+        `line: ${esc(facts.e164 ?? "none")} · status ${esc(facts.status ?? "?")}\n` +
+        `held ${facts.daysHeld ?? "?"}d · ${facts.smsUsed ?? 0} SMS · ` +
+        `${Math.round((facts.voiceUsedSeconds ?? 0) / 60)} min used\n` +
+        `<i>Apple decides the refund. Reply only if you have consent to share usage.</i>`,
+        sb, originalTx);
+      return;
+    }
+
     default:
       // Unknown types are RECORDED and ignored, never guessed at. Apple adds
       // notification types; encoding a guess is what broke eSIM refunds.
@@ -475,4 +524,35 @@ async function alertOwner(
         .delete().eq("kind", kind).eq("ref", ref);
     }
   } catch { /* an alert must never fail the notification */ }
+}
+
+/** What the line actually delivered, for a refund conversation.
+ *
+ *  Read rather than inferred: "how much did they use" is the only question a
+ *  refund decision turns on, and guessing it would be worse than saying
+ *  nothing. Every field is optional because a refund can arrive for a line that
+ *  never provisioned — which is itself the most useful thing the alert can say.
+ */
+async function consumptionFacts(
+  sb: ReturnType<typeof admin>, originalTx: string,
+): Promise<{
+  e164?: string | null; status?: string | null; daysHeld?: number | null;
+  smsUsed?: number | null; voiceUsedSeconds?: number | null;
+}> {
+  const { data } = await sb
+    .from("phone_lines")
+    .select("e164, status, created_at, sms_used, voice_used_seconds")
+    .eq("original_transaction_id", originalTx)
+    .maybeSingle();
+  if (!data) return {};
+  const created = data.created_at ? new Date(String(data.created_at)) : null;
+  return {
+    e164: data.e164 as string | null,
+    status: data.status as string | null,
+    daysHeld: created
+      ? Math.max(0, Math.floor((Date.now() - created.getTime()) / 86_400_000))
+      : null,
+    smsUsed: data.sms_used as number | null,
+    voiceUsedSeconds: data.voice_used_seconds as number | null,
+  };
 }

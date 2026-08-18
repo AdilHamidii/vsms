@@ -31,6 +31,7 @@ import {
   orderNumber, getOrder, findNumberId, attachMessagingProfile,
   releaseNumber, searchNumbers, faultOf,
 } from "../_shared/telnyx.ts";
+import { provisionLineVoice } from "../_shared/lineVoice.ts";
 import { sendMessage, esc } from "../_shared/telegram.ts";
 
 /** Telnyx number orders are asynchronous: `pending` → `success`, measured under
@@ -236,13 +237,32 @@ Deno.serve(async (req) => {
     }
   }
 
+  // 🔴 VOICE IS PROVISIONED HERE, not lazily on first dialer open — see
+  // `_shared/lineVoice.ts`. Attaching the number's voice to a connection is
+  // what makes it RING, and it lived only in `mint-line-token`, so a
+  // subscription bought a number that could not receive a call until its owner
+  // opened the Number tab. Best-effort: Apple has already taken the money, so a
+  // voice fault must not fail the purchase, and the lazy path still repairs it.
+  const voice = await provisionLineVoice(
+    sb,
+    { id: lineId, provider_number_id: typeof numberId === "string" ? numberId : null },
+    { persistIds: false },
+  );
+  if (voice.faults.length) {
+    console.error(JSON.stringify({
+      alert: "line_voice_provision_failed", line: lineId,
+      steps: voice.faults.map((f) => f.step),
+      detail: voice.faults.map((f) => f.fault.detail).join("; "),
+    }));
+  }
+
   const { data: activated, error: actErr } = await sb.rpc("activate_line_claim", {
     p_line: lineId,
     p_number_id: typeof numberId === "string" ? numberId : null,
-    p_connection: null,
+    p_connection: voice.connectionId,
     p_msg_profile: msgProfile,
-    p_voice_profile: null,
-    p_credential: null,
+    p_voice_profile: voice.voiceProfileId,
+    p_credential: voice.credentialId,
     p_period_end: periodEnd,
     // ⚠️ RE-QUOTED SERVER-SIDE, never taken from the request. Nothing reports
     // this again — the order response returns `cost_information: null` and the
@@ -270,10 +290,16 @@ Deno.serve(async (req) => {
     return json({ error: "provision_failed" }, { status: 500 });
   }
 
+  // `activate_line_claim` has no `p_attached`, so the one fact that decides
+  // whether the phone RINGS is recorded separately, after the line is live.
+  if (voice.attached) {
+    await sb.rpc("record_line_voice_binding", { p_line: lineId, p_attached: true });
+  }
+
   await alertNewLine(sb, e164, tx.originalTransactionId, tx.environment,
     linePlanLabel(tx));
 
-  return json({ ok: true, line_id: lineId, e164 });
+  return json({ ok: true, line_id: lineId, e164, inbound_ready: voice.attached });
 });
 
 async function failLine(
