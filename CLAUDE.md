@@ -31,8 +31,9 @@ when nobody has the relevant file open.
 **StoreKit subscription rather than credits** — is LIVE ON THE APP STORE in 2.0
 and is the app's first tab. **Six numbers rented, five subscriptions, and all
 five cancelled auto-renew — median 3.9 minutes after paying.** Neither half of
-the product works yet: **no call has ever connected** (7 attempts, none reaching
-the provider) and **outbound SMS is 1 sent against 6 failed** (`40010`, 10DLC).
+the product half works: **calling connected for the first time on 2026-08-18**
+(3 completed calls to France, after 7 earlier attempts that never reached the
+provider), while **outbound SMS is 1 sent against 6 failed** (`40010`, 10DLC).
 Inbound SMS works, 3 of 3. See "Rentable second numbers". iOS frontend in SwiftUI + Supabase backend (Postgres + Auth + Edge Functions + pg_cron).
 
 **Provider split as of 2026-08-10 — 5sim is the PRIMARY SMS provider; HeroSMS
@@ -998,20 +999,35 @@ Number tab's Calls segment), **call history**, the **allowance gate**
 (`begin-line-call`), **session reporting** (`report-line-call`) and **CDR
 settlement** (`sync-telnyx-cdr`, on cron).
 
-🔴 **CALLS HAVE BEEN ATTEMPTED AND NOT ONE HAS EVER CONNECTED (2026-08-17).**
-Seven attempts across two users; every row carries `provider_call_session_id =
-NULL`, so the call never reached Telnyx at all.
+✅ **CALLING WORKS — FIRST CONNECTED CALLS 2026-08-18.** Three to France
+(`+33`, 6s / 2s / 23s) and one attempt to Poland, every row carrying a
+`provider_call_session_id`, i.e. the leg reached Telnyx and media flowed. The
+provisioning fix below is what changed; nothing on the device did.
 
-The probe finally ran, and it cleared the server:
+⚠️ **Nothing settles them from provider evidence yet.** `sync-telnyx-cdr`
+returns `{records: 0, pending: 4, unmatched: 4}` — it runs, Telnyx reports no
+detail records for these calls, and the 6-hour `settle_stale_calls` backstop
+picks them up on the CLIENT's reported duration instead. That is the designed
+fallback, not the designed path: minutes are being settled on the device's
+word. The detail-records query has already been wrong twice (see the CDR
+section); assume a third cause before assuming provider lag.
+
+*Kept because it is how this was diagnosed — the state until 2026-08-17:* seven
+attempts across two users, every row `provider_call_session_id = NULL`, so no
+call reached Telnyx at all.
+
+The probe cleared the server:
 
 - `mint-line-token` **succeeded** — no new entry in `app_config.telnyx_voice_faults`
 - the destination priced correctly (France, `iso=FR`, 0.75 cr/min, 2 credits reserved)
 - `allowance_settled = false`, i.e. the settle fix is holding
 
-**So the failure is on the DEVICE, after the token is issued.** The reported
-symptom is the diagnostic: *music ducks for a few seconds and comes back* —
-CallKit activated the audio session, the SDK failed to establish, the session
-was released. It gets as far as trying and no further.
+**That pointed at the DEVICE, and it was wrong** — the symptom (*music ducks
+for a few seconds and comes back*) was real, but the cause was the missing
+provider-side provisioning described immediately below. Once every line had a
+connection, a credential and an outbound voice profile, calls connected with no
+client change. Recorded because the reasoning was sound and the conclusion was
+not: a device-shaped symptom is not evidence of a device-side cause.
 
 ⚠️ **Provisioning was a REAL and separate bug, now fixed — do not confuse the
 two.** Until 08-17 five of six lines had no Telnyx connection, credential or
