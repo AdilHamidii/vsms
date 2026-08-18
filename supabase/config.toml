@@ -63,14 +63,33 @@ double_confirm_changes = true
 # even reachable — see 20260818130000_email_signup_normalized_tombstone.sql.
 enable_confirmations = true
 
-# ⚠️ SMTP IS NOT CONFIGURED, AND EMAIL AUTH CANNOT SHIP WITHOUT IT. Supabase's
-# built-in mailer allows a couple of messages an hour and sends from their
-# domain. Set custom SMTP (Resend) in the dashboard — host smtp.resend.com,
-# port 465, username `resend`, password = an API key with sending access — and
-# edit the "Confirm signup" and "Reset password" templates to contain
-# `{{ .Token }}` and NO link: the client verifies a 6-digit code via
-# POST /auth/v1/verify and nothing in the app handles the `relay://auth` scheme
-# declared above.
+# ⚠️ SMTP LIVES IN THE DASHBOARD, NOT HERE. This file is not pushed to the
+# hosted project, so the block below only affects `supabase start` locally.
+# Production settings (Authentication → Emails → SMTP Settings):
+#
+#   host      smtp.resend.com
+#   port      465                 (implicit TLS; 587 also works)
+#   username  resend
+#   password  a Resend API key with SENDING access only
+#   sender    no-reply@mail.vsmsapp.com     ← domain bought 2026-08-18
+#   name      vSMS
+#
+# ⚠️ SEND FROM THE `mail.` SUBDOMAIN, NOT THE APEX. A bounce or complaint
+# problem then damages the reputation of the sending subdomain only, and not of
+# the domain the Terms and Privacy pages live on — which is the same domain the
+# App Store listing points at.
+#
+# Also raise Authentication → Rate Limits → "Emails per hour" off the built-in
+# default (a couple per hour). That default is the single likeliest cause of a
+# "the code never arrived" report on launch day.
+
+[auth.email.template.confirmation]
+subject = "Your vSMS confirmation code"
+content_path = "./supabase/templates/confirmation.html"
+
+[auth.email.template.recovery]
+subject = "Your vSMS password reset code"
+content_path = "./supabase/templates/recovery.html"
 
 [auth.external.apple]
 # For native iOS Sign in with Apple we exchange an Apple-signed ID token via
