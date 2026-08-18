@@ -23,11 +23,20 @@
 //    (200 can be a failure, 400 covers six unrelated causes). Classify on the
 //    body.
 //
-// 4. There is NO maxPrice parameter. HeroSMS enforces our cap provider-side; 5sim
-//    cannot. The buy response does carry `price`, so create-order's post-fill
-//    `actual_cost_over_ceiling` release is the ONLY price guard on this provider
-//    — which is why its pre-flight bound must be the tight `maxCostUsd`, not the
-//    loose MAX_REVENUE_FRACTION one that is only safe for a capped provider.
+// 4. `maxPrice` EXISTS — but ONLY when `operator` is "any". Docs, verbatim
+//    (5sim.net/docs, re-read 2026-08-18): "Max price specified in the Purchase
+//    method parameters shall have priority over the settings adjusted in the
+//    Max purchase price section and shall work only if the operator value is
+//    set as 'any'." This comment said "there is NO maxPrice parameter" from
+//    2026-08-03 to 2026-08-18, and the unpinned fallback buy went out uncapped.
+//    So: on a PINNED pool the buy response's `price` + create-order's post-fill
+//    `actual_cost_over_ceiling` release is still the only guard (which is why
+//    the pre-flight bound must be the tight `maxCostUsd`); on the "any"
+//    fallback we now pass `maxPrice` and let 5sim refuse server-side instead
+//    of buy-then-release. What 5sim returns when maxPrice blocks a buy is NOT
+//    documented — most likely it reads as "no free phones" and folds into
+//    OUT_OF_STOCK, which is the desired behaviour (a price-blocked pool is a
+//    dry pool for our purposes). Watch `fetch_faults` after the first refusal.
 
 import type { ProviderErrorType } from "./providers.ts";
 
@@ -252,9 +261,15 @@ export async function buyActivation(
   country: string,
   operator: string,
   product: string,
+  /** Honoured by 5sim ONLY when `operator === "any"` (see header note 4).
+   *  Sent as the documented `maxPrice` query param; ignored otherwise. */
+  maxPriceUsd?: number,
 ): Promise<FiveBuyResult> {
+  const qs = operator === "any" && typeof maxPriceUsd === "number" && maxPriceUsd > 0
+    ? `?maxPrice=${encodeURIComponent(maxPriceUsd.toFixed(4))}`
+    : "";
   const w = await call(
-    `user/buy/activation/${encodeURIComponent(country)}/${encodeURIComponent(operator)}/${encodeURIComponent(product)}`,
+    `user/buy/activation/${encodeURIComponent(country)}/${encodeURIComponent(operator)}/${encodeURIComponent(product)}${qs}`,
     BUY_TIMEOUT_MS,
   );
   if (w.kind !== "json") return { ok: false, ...faultOf(w) };
