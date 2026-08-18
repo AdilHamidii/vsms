@@ -157,7 +157,7 @@ supabase functions deploy poll-active-orders sync-prices sync-5sim sync-herosms 
   sync-esim-plans sync-smspva-operators sync-smspva-conversions winback \
   telegram-notify telegram-webhook daily-credit telegram-setup goodwill-credit \
   broadcast-push telnyx-webhook apple-notifications release-lines sync-telnyx-cdr \
-  sync-line-voice \
+  sync-line-voice probe-telnyx-connection \
   --no-verify-jwt
 # ✅ The two lists above are now EXHAUSTIVE, and `supabase/config.toml` carries
 # a `[functions.<name>] verify_jwt = false` entry for every member of the second
@@ -175,7 +175,7 @@ supabase functions deploy poll-active-orders sync-prices sync-5sim sync-herosms 
 # owns 560 active SMS routes AND the e-mail line's balance.
 # DELETED 2026-07-30: sync-virtualsms/, sync-smspool/, smspool-catalog/ — all
 # three are gone from disk AND undeployed.
-# ✅ Re-asserted 2026-08-18: the two lists are exhaustive — 23 + 19 = **42**,
+# ✅ Re-asserted 2026-08-18: the two lists are exhaustive — 23 + 20 = **43** (probe-telnyx-connection added the same day),
 # against `ls supabase/functions | grep -v _shared | wc -l`. record-attribution
 # (Apple Search Ads) joined the JWT group that day.
 # ✅ As of 2026-08-06 the two lists ARE exhaustive — 21 + 18 = **39**, asserted
@@ -1020,21 +1020,57 @@ The probe finally ran, and it cleared the server:
 - the destination priced correctly (France, `iso=FR`, 0.75 cr/min, 2 credits reserved)
 - `allowance_settled = false`, i.e. the settle fix is holding
 
-**So the failure is on the DEVICE, after the token is issued.** The reported
-symptom is the diagnostic: *music ducks for a few seconds and comes back* —
-CallKit activated the audio session, the SDK failed to establish, the session
-was released. It gets as far as trying and no further.
+~~**So the failure is on the DEVICE, after the token is issued.**~~ 🔴 **NO.
+THIS WAS WRONG FOR TWELVE DAYS. THE FAILURE WAS ON THE SERVER, AND IT IS FIXED
+(2026-08-18).**
 
-⚠️ **Provisioning was a REAL and separate bug, now fixed — do not confuse the
-two.** Until 08-17 five of six lines had no Telnyx connection, credential or
-outbound profile at all, because voice was provisioned lazily in
-`mint-line-token` while messaging was provisioned at rental. That is fixed
-(`_shared/lineVoice.ts`, provisioned at rental + repaired hourly by
-`sync-line-voice`), and all 6 lines now report `provider_voice_attached = true`.
-**It did not make calling work.** Necessary, not sufficient.
+`attachOutboundProfile` in `_shared/telnyx.ts` PATCHed
+`outbound_voice_profile_id` at the TOP LEVEL of the credential connection. The
+docs put it under `outbound: {}`. Telnyx returned **200 and attached nothing**
+— its documented silent-no-op on a misplaced field, the THIRD time this
+adapter has hit that pattern (after `messaging_profile_id` and
+`features.sms.international_inbound`). So every connection was recorded
+`provider_voice_attached = true` in OUR database while Telnyx held **no
+profile at all**, and — as the comment two lines above the function said —
+"Telnyx requires a profile on the connection to place an outbound call." Every
+INVITE was refused before a session existed. That IS "music ducks then
+returns": CallKit activated audio, the dial was rejected, the session tore
+down. It read exactly like an SDK failure from the phone.
 
-**Next step is a device log**, not another database query. The server has said
-everything it knows.
+**Found by a Sonnet agent re-reading the Telnyx docs, then VERIFIED, not
+inferred**: `probe-telnyx-connection` (new, cron-gated, read-only — the API key
+never leaves the platform) read connection `3028594732042290885` back and
+`outbound.outbound_voice_profile_id` was **`null`** on a line we had marked
+attached. After the fix + one `sync-line-voice` run: **`3028594742351890119`**
+— the exact profile id our row holds — and `attached_verified: 6`.
+
+Three things changed:
+- `attachOutboundProfile` sends the nested shape **and reads the connection
+  back**, returning a fault unless the profile is genuinely held. A 200 is not
+  evidence on this API; the read-back is.
+- `lineVoice.ts` step 2b: a line whose profile id is already persisted is
+  verified-and-repaired on every run, not skipped.
+- `sync-line-voice` runs that verify on every line with a profile, hourly,
+  and reports `attached_verified` / `attach_faults`.
+
+**The lesson is the one this file already states and this bug then broke:
+"the first real use IS the probe" — but only if you READ BACK. Our own
+`provider_voice_attached = true` was a record of a 200, and a 200 here means
+nothing.** Anything that PATCHes Telnyx must read the field back before
+recording success. `providers.md`'s standing rule ("read the value back; do
+not trust the 200") applied to this function and was not followed.
+
+⚠️ **The four inbound-calling client bugs in Known-open are still real and
+still unfixed** — inbound has never been tried, and they are device-side. But
+outbound was never a device bug. **The next step is a real outbound call from
+a device with the 2.1 build** — the server half is now, for the first time,
+actually able to place one.
+
+⚠️ *Historical, kept because it was half-right:* provisioning WAS a separate
+bug (five of six lines had no connection at all until 08-17, provisioned
+lazily in `mint-line-token`). Fixing that was necessary. It could not have
+been sufficient, because the thing it provisioned was then attached to
+nothing.
 
 **`isVoiceAvailable` still gates `case .dialer`**, and the "Make a call" button
 is *hidden* rather than disabled when no client is attached. Keep that: a
