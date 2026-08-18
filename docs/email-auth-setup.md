@@ -13,35 +13,53 @@ and the code never arrives, which is indistinguishable from a broken app.
 
 Resend → Domains → **Add domain** → `mail.vsmsapp.com`.
 
+Pick the **EU (Ireland, `eu-west-1`)** region when it asks. The owner and most
+buyers are in Europe, and it keeps the mail path inside the EU — which is the
+easier answer for GDPR than explaining a US hop. The region is baked into the
+MX value it then gives you, so it cannot be changed by editing DNS later.
+
 ⚠️ **A SUBDOMAIN, NOT THE APEX.** Sending reputation is tracked per domain. If
 a bounce storm or a spam-trap hit damages `mail.vsmsapp.com`, the apex — where
 the Terms and Privacy pages the App Store listing points at will live — is
 untouched. Using the apex to send couples the two together permanently.
 
-## 2. DNS — at the registrar
+## 2. DNS — at IONOS
 
-Resend generates three records. Two of them (SPF, DKIM) carry values only it
-can produce, so copy them verbatim from its screen:
+The domain is on IONOS nameservers (`ns10xx.ui-dns.*`), so records go in the
+IONOS control panel:
 
-| type | host | value |
+> **Menu → Domains & SSL → the gear icon under _Actions_ for `vsmsapp.com` →
+> DNS → Add record**
+
+🔴 **THE HOST NAME FIELD TAKES THE PREFIX ONLY, NEVER THE FULL DOMAIN.** IONOS
+appends `.vsmsapp.com` itself and shows it beside the box. Paste
+`send.mail.vsmsapp.com` in there and you create
+`send.mail.vsmsapp.com.vsmsapp.com`, which resolves to nothing and fails
+verification with no clue why. `@` means the apex.
+
+So for a Resend sending domain of `mail.vsmsapp.com`:
+
+| IONOS type | IONOS **Host name** | value |
 |---|---|---|
-| `MX` | `send.mail.vsmsapp.com` | (from Resend — its bounce host) |
-| `TXT` | `send.mail.vsmsapp.com` | `v=spf1 include:amazonses.com ~all` |
-| `TXT` | `resend._domainkey.mail.vsmsapp.com` | (from Resend — the DKIM public key) |
+| `MX` | `send.mail` | Resend's bounce host, e.g. `feedback-smtp.eu-west-1.amazonses.com` (priority `10`) |
+| `TXT` | `send.mail` | `v=spf1 include:amazonses.com ~all` |
+| `TXT` | `resend._domainkey.mail` | the long `p=…` DKIM key from Resend |
+| `TXT` | `_dmarc` | `v=DMARC1; p=none; rua=mailto:dmarc@vsmsapp.com` |
 
-Add one more that Resend does **not** generate, because it is policy rather
-than plumbing:
+Notes that cost time if missed:
 
-| type | host | value |
-|---|---|---|
-| `TXT` | `_dmarc.vsmsapp.com` | `v=DMARC1; p=none; rua=mailto:dmarc@vsmsapp.com` |
+- **Copy the MX and DKIM values from Resend's own screen**, not from here —
+  the bounce host is region-specific and the DKIM key is generated per domain.
+- The **MX record needs a Priority**; `10` is fine, it is the only one.
+- **Do not wrap TXT values in quotes.** IONOS adds them.
+- The DMARC record is the one Resend does *not* generate, because it is policy
+  rather than plumbing. `p=none` monitors without rejecting anything — correct
+  on day one. Tighten to `p=quarantine` only once the reports show your own
+  mail passing.
 
-`p=none` monitors without rejecting anything — the right setting on day one.
-Tighten to `p=quarantine` only after the reports show your own mail passing.
-
-Wait for Resend to show **Verified**. It usually takes minutes; DNS can take an
-hour. Do not continue before it does — Supabase will accept the SMTP settings
-regardless and every message will bounce.
+Wait for Resend to show **Verified** (usually minutes, occasionally an hour).
+Do not continue before it does: Supabase accepts the SMTP settings regardless
+and every message silently bounces.
 
 ## 3. Supabase — SMTP
 
