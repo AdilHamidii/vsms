@@ -155,6 +155,59 @@
           "type": "RecurringSubscription"
         }
       ]
+    },
+    {
+      "id": "22289429",
+      "localizations": [],
+      "name": "vSMS Mail",
+      "subscriptions": [
+        {
+          "adHocOffers": [],
+          "codeOffers": [],
+          "displayPrice": "2.99",
+          "familyShareable": false,
+          "groupNumber": 1,
+          "internalID": "6798879001",
+          "introductoryOffer": null,
+          "localizations": [
+            {
+              "description": "Unlimited temporary addresses on Outlook and Hotmail.",
+              "displayName": "vSMS Mail Monthly",
+              "locale": "en_US"
+            }
+          ],
+          "productID": "com.anthersystems.VirtualSIM.mail.monthly",
+          "recurringSubscriptionPeriod": "P1M",
+          "referenceName": "vSMS Mail Monthly",
+          "subscriptionGroupID": "22289429",
+          "type": "RecurringSubscription"
+        },
+        {
+          "adHocOffers": [],
+          "codeOffers": [],
+          "displayPrice": "29.99",
+          "familyShareable": false,
+          "groupNumber": 1,
+          "internalID": "6798879002",
+          "introductoryOffer": {
+            "internalID": "trial-3d",
+            "paymentMode": "free",
+            "subscriptionPeriod": "P3D"
+          },
+          "localizations": [
+            {
+              "description": "Unlimited temporary addresses on Outlook and Hotmail. 3 days free.",
+              "displayName": "vSMS Mail Yearly",
+              "locale": "en_US"
+            }
+          ],
+          "productID": "com.anthersystems.VirtualSIM.mail.yearly",
+          "recurringSubscriptionPeriod": "P1Y",
+          "referenceName": "vSMS Mail Yearly",
+          "subscriptionGroupID": "22289429",
+          "type": "RecurringSubscription"
+        }
+      ]
     }
   ],
   "version": {
