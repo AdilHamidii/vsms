@@ -29,6 +29,7 @@ import { admin } from "../_shared/supabaseAdmin.ts";
 import {
   verifyNotificationJWS, verifyTransactionJWS, verifyRenewalInfoJWS,
   isSubscriptionProduct, linePlanLabel, creditsForProduct,
+  subscriptionFamily, mailPlanLabel,
 } from "../_shared/iap.ts";
 import { findNumberId, releaseNumber, faultOf } from "../_shared/telnyx.ts";
 import { sendMessage, esc } from "../_shared/telegram.ts";
@@ -230,11 +231,22 @@ async function process(sb: ReturnType<typeof admin>, n: Awaited<ReturnType<typeo
     return;
   }
 
-  if (!isSubscriptionProduct(tx.productId)) return;   // not our line
+  const periodEnd = tx.expiresDate ? new Date(tx.expiresDate).toISOString() : null;
+
+  // 🔴 This guard used to be `isSubscriptionProduct`, which answers a DIFFERENT
+  // question. Everything below drives the phone-number lapse machine, so a mail
+  // product reaching it would suspend and release a rented number when someone
+  // cancelled a $2.99 e-mail plan.
+  const family = subscriptionFamily(tx.productId);
+  if (family === null) return;                        // a credit pack
+  if (family === "mail") {
+    await handleMailNotification(sb, n, tx, txJws, periodEnd);
+    return;
+  }
+  // family === "line" — everything below is unchanged.
 
   const ri = riJws ? await verifyRenewalInfoJWS(riJws).catch(() => null) : null;
   const originalTx = tx.originalTransactionId;
-  const periodEnd = tx.expiresDate ? new Date(tx.expiresDate).toISOString() : null;
 
   // Now that the inner JWS is verified, join the forensic row to the
   // subscription it describes. Not fatal — the notification still processes if
@@ -511,6 +523,132 @@ async function ensureSubscriptionRow(
       detail: error?.message ?? data?.reason,
     }));
   }
+}
+
+/** Apple notifications for the MAIL subscription group.
+ *
+ * Deliberately much smaller than the line handler. A mail subscription has no
+ * allowance to reset, no number to suspend and no provider to call — the row
+ * IS the entitlement, so every notification is a state write.
+ *
+ * ⚠️ Every branch is an UPDATE, and an UPDATE matching nothing is not an error.
+ * `ensureMailSubscriptionRow` runs first for the same reason the line handler
+ * ensures its row: a notification can beat our own purchase call, and without
+ * it the whole state machine would run against a row that never existed —
+ * silently, forever.
+ */
+async function handleMailNotification(
+  sb: ReturnType<typeof admin>,
+  n: { notificationType: string; subtype?: string | null; notificationUUID: string },
+  tx: Awaited<ReturnType<typeof verifyTransactionJWS>>,
+  txJws: string,
+  periodEnd: string | null,
+) {
+  const originalTx = tx.originalTransactionId;
+  await ensureMailSubscriptionRow(sb, originalTx, tx, periodEnd, txJws);
+
+  const type = n.notificationType;
+  const sub = n.subtype ?? "";
+
+  // The state Apple's notification implies. Mapped in one place so a new
+  // notification type cannot silently fall through to "still entitled".
+  let state: string | null = null;
+  switch (type) {
+    case "SUBSCRIBED":
+    case "DID_RENEW":
+      state = "active"; break;
+    case "DID_FAIL_TO_RENEW":
+      state = sub === "GRACE_PERIOD" ? "grace" : "billing_retry"; break;
+    case "EXPIRED":
+      state = "expired"; break;
+    case "REFUND":
+    case "REVOKE":
+      state = "revoked"; break;
+    case "DID_CHANGE_RENEWAL_STATUS":
+      // Auto-renew off is NOT a loss of entitlement — they keep it to the end
+      // of the paid period. Only the flag moves.
+      state = null; break;
+    default:
+      // Unknown type: record it and change nothing. Guessing a state here is
+      // how an entitlement gets revoked by a notification nobody understood.
+      console.log(JSON.stringify({ mail_assn_unhandled: type, subtype: sub }));
+      return;
+  }
+
+  const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
+  if (state) patch.state = state;
+  if (periodEnd) patch.expires_at = periodEnd;
+  if (type === "DID_CHANGE_RENEWAL_STATUS") patch.auto_renew = sub === "AUTO_RENEW_ENABLED";
+  if (type === "DID_FAIL_TO_RENEW" && sub === "GRACE_PERIOD" && periodEnd) {
+    patch.grace_expires_at = periodEnd;
+  }
+  if (type === "REFUND" || type === "REVOKE") {
+    patch.revocation_date = tx.revocationDate
+      ? new Date(tx.revocationDate).toISOString() : new Date().toISOString();
+    patch.revocation_reason = tx.revocationReason ?? null;
+  }
+
+  const { error } = await sb.from("email_subscriptions")
+    .update(patch).eq("original_transaction_id", originalTx);
+  if (error) throw new Error(`mail_subscription_update: ${error.message}`);
+
+  // 🔴 A mail REFUND/REVOKE revokes the ENTITLEMENT and nothing else. It must
+  // never touch phone_lines, wallets or credits — those belong to other
+  // products, and the whole reason this handler exists is that they used to
+  // share one code path.
+  const sandbox = tx.environment !== "Production"
+    ? `\n<i>${esc(tx.environment ?? "?")}</i>` : "";
+  if (type === "SUBSCRIBED") {
+    await alertOwner(
+      `📬 <b>New e-mail subscription</b>\n${esc(mailPlanLabel(tx))}${sandbox}`,
+      sb, originalTx, "mail_sub");
+  } else if (type === "REFUND" || type === "REVOKE") {
+    await alertOwner(
+      `↩️ <b>E-mail subscription refunded</b>\n${esc(mailPlanLabel(tx))}${sandbox}\n` +
+      `<i>Entitlement revoked. No credits or numbers are affected.</i>`,
+      sb, `mailrevoke:${tx.transactionId}`, "mail_sub_event");
+  }
+}
+
+/** Create the row if this notification arrived before our own purchase call.
+ *  Attribution comes from an EXISTING row only — there is no mail equivalent of
+ *  `phone_lines` to look a user up from, so an unattributable notification is
+ *  logged and dropped rather than bound to a guessed account.
+ *
+ *  The throw below is deliberate, not a bug: Apple's retry ladder (1h / 12h /
+ *  24h / 48h / 72h) is finite, and `verify-email-subscription` — the client's
+ *  own purchase call — is the PRIMARY writer of this row. This handler is only
+ *  the backstop for the race where Apple's notification beats that call; by
+ *  the next retry the row almost always exists, and if it never does the
+ *  ladder simply ends rather than looping forever. */
+async function ensureMailSubscriptionRow(
+  sb: ReturnType<typeof admin>,
+  originalTx: string,
+  tx: Awaited<ReturnType<typeof verifyTransactionJWS>>,
+  periodEnd: string | null,
+  txJws: string,
+) {
+  const { data: existing, error: readErr } = await sb.from("email_subscriptions")
+    .select("original_transaction_id, user_id")
+    .eq("original_transaction_id", originalTx).maybeSingle();
+  if (readErr) {
+    console.error(JSON.stringify({
+      alert: "mail_assn_lookup_failed", detail: readErr.message,
+    }));
+    return;
+  }
+  if (existing) return;
+
+  // Unattributable: the purchase call has not landed yet. Apple retries on a
+  // ladder, so throwing gets this notification redelivered after the client
+  // call completes — which is the outcome we want, and is what the line
+  // handler's equivalent could not do because it had a second attribution
+  // source.
+  console.error(JSON.stringify({
+    alert: "mail_assn_unattributable", tx: originalTx,
+    detail: "no email_subscriptions row yet; asking Apple to retry",
+  }));
+  throw new Error(`mail_assn_unattributable: ${originalTx}`);
 }
 
 /** Give the number back so we stop paying for it. */
