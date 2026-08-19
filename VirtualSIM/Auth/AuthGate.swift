@@ -10,6 +10,22 @@ struct AuthGate: View {
     /// deliberately does NOT open its own `Transaction.updates` listener; see
     /// `SubscriptionStore`.
     @State private var subs = SubscriptionStore()
+    /// The e-mail subscription's store.
+    ///
+    /// 🔴 OWNED HERE, NOT IN `ContentView`, AND THAT IS THE WHOLE FIX.
+    /// `iap.attach(api:)` starts the unfinished-transaction sweep, and
+    /// `ContentView`'s task registered `onMailSubscription` only AFTER
+    /// `await state.coldStart(api:)` — six sequential fetches, ~3 seconds. So
+    /// on every launch the sweep reached `IAPStore.handle`, found the handler
+    /// nil, and dropped the transaction forever. `MailSubscriptionStore.submit`
+    /// deliberately leaves a transaction UNFINISHED when the server call fails,
+    /// expecting exactly that sweep to recover it — so a failed mail
+    /// subscription was only ever recoverable through the paywall's manual
+    /// Restore, which most users never open. `SubscriptionStore` was registered
+    /// synchronously before the sweep and was fine; this one was the odd one
+    /// out. Anything else that handles a transaction must be registered here,
+    /// before `iap.attach`'s sweep can run.
+    @State private var mailStore = MailSubscriptionStore()
     /// Owns CallKit and PushKit for the rented line.
     ///
     /// Constructed here rather than in `ContentView` because it registers a
@@ -80,12 +96,29 @@ struct AuthGate: View {
         .environment(push)
         .environment(iap)
         .environment(subs)
+        .environment(mailStore)
         .environment(calls)
         .task {
             push.attach(api: api, session: session)
+            // Registered BEFORE the sweep. `iap.attach` starts
+            // `restorePurchases()` in a Task, so it cannot observe a handler
+            // assigned in a LATER task — which is how the mail subscription's
+            // recovery path was silently dead. Both stores register here,
+            // synchronously, in the same task that starts the sweep.
+            mailStore.attach(api: api)
+            // One shared `Transaction.updates` listener lives on `IAPStore`
+            // (see `SubscriptionStore`'s note on why) — this registers the
+            // e-mail subscription's handler on it rather than opening a second
+            // one, which would split the stream and mean at most one listener
+            // sees any given renewal.
+            iap.onMailSubscription = { [weak mailStore] result in
+                await mailStore?.submit(result) ?? false
+            }
             iap.attach(api: api)
             // AFTER iap.attach, because this registers the subscription handler
             // on the single shared transaction listener that IAPStore owns.
+            // Safe despite the sweep: `attach` only SCHEDULES it, so every
+            // synchronous statement in this task runs first.
             subs.attach(api: api, iap: iap)
             // The real WebRTC client, which is what sets `isVoiceAvailable` and
             // makes the dialer reachable. Constructing it only opens a socket

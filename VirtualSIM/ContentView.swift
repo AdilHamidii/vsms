@@ -32,13 +32,16 @@ struct ContentView: View {
     @Environment(IAPStore.self) private var iap
     @Environment(SubscriptionStore.self) private var subs
     @Environment(CallController.self) private var calls
-    /// The e-mail subscription's store. Owned here rather than in `AuthGate`
-    /// alongside `SubscriptionStore` because it is only ever consumed inside
-    /// this view tree (the paywall and the domain sheet) — but it still needs
-    /// its own `.environment` injection at this level and in `EnvBundle`,
-    /// because `state` gets the same treatment for the same reason: a value
-    /// this view owns does not reach sheet/cover content by inheritance alone.
-    @State private var mailStore = MailSubscriptionStore()
+    /// The e-mail subscription's store, owned by `AuthGate` alongside
+    /// `SubscriptionStore`.
+    ///
+    /// It used to be `@State` here, attached and registered in this view's task
+    /// — i.e. after `coldStart`, and therefore after `IAPStore`'s
+    /// unfinished-transaction sweep had already run and dropped anything it
+    /// found. See the comment on `AuthGate.mailStore`. It still needs its own
+    /// `EnvBundle` injection, because sheet/cover content does not inherit
+    /// `@Observable` environment objects reliably.
+    @Environment(MailSubscriptionStore.self) private var mailStore
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.requestReview) private var requestReview
 
@@ -223,15 +226,9 @@ struct ContentView: View {
             // before the splash lifts. See AppState.coldStart.
             await state.coldStart(api: api)
 
-            mailStore.attach(api: api)
-            // One shared `Transaction.updates` listener lives on `IAPStore`
-            // (see `SubscriptionStore`'s note on why) — this registers the
-            // e-mail subscription's handler on it rather than opening a
-            // second one, which would split the stream and mean at most one
-            // listener sees any given renewal.
-            iap.onMailSubscription = { [weak mailStore] result in
-                await mailStore?.submit(result) ?? false
-            }
+            // `mailStore` is attached and its transaction handler registered in
+            // `AuthGate`, before the restore sweep — doing it here meant the
+            // sweep had already dropped the transaction. Do not move it back.
 
             // StoreKit prices, BEHIND the reveal — nothing on Home waits for
             // them, but Home cannot render its money line without them.
