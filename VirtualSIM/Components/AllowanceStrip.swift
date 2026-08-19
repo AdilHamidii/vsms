@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Texts and minutes left on a rented line, with the reset date.
+/// Call minutes left on a rented line, with the reset date.
 ///
 /// Reports what is **left**, never what is used — the same choice `DataRing`
 /// makes and for the same reason: the server hands us "used", but the question
@@ -27,12 +27,21 @@ struct AllowanceStrip: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .top, spacing: 16) {
-                gauge(
-                    icon: RIcon.message,
-                    value: "\(line.smsRemaining)",
-                    unit: "texts left",
-                    fraction: line.smsFraction
-                )
+                // 🔴 THERE IS NO "texts left" GAUGE HERE, AND ADDING ONE BACK IN
+                // ANY FORM IS A REGRESSION. Outbound SMS was dropped from this
+                // product on 2026-08-18 — the composer is gone, `ThreadScreen`
+                // is read-only, `send-line-message` refuses every send with
+                // `outbound_sms_retired`, and both the store pitch and the
+                // checkout ledger say "Sending texts — Not yet". So
+                // `line.sms_used` is frozen at whatever it was and the gauge
+                // rendered a permanently full bar reading "200 texts left":
+                // a metered promise of a capability the product cannot honour,
+                // on the one screen a paying subscriber opens daily.
+                // `NumberDetailView` deleted its own copy of this row for the
+                // same reason, and its comment there also forbids re-purposing
+                // it as an INBOUND counter — inbound is unmetered, so a bar
+                // that only ever falls would misrepresent that too.
+                //
                 // Restored in the commit that shipped the dialer. It was held
                 // back while `flow = .dialer` was assigned nowhere, because a
                 // meter reading "78 minutes left" promises 78 spendable
