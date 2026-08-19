@@ -44,6 +44,24 @@ struct EmailAPI {
         return env.order
     }
 
+    /// Grants the e-mail subscription entitlement server-side.
+    ///
+    /// Decodes `Ack` rather than a rich response deliberately: a
+    /// fire-and-forget endpoint with no client-side contract cannot break on a
+    /// field rename. A struct declaring `thread_id` where the server sends
+    /// `threadId` once reported "couldn't reach the server" to the user for a
+    /// request that had fully succeeded — `JSONDecoder.relay` uses
+    /// `.convertFromSnakeCase`, so a snake_case property name is a decode
+    /// FAILURE, not a no-op.
+    func verifyMailSubscription(signedTransaction: String) async throws {
+        struct Body: Encodable { let signed_transaction: String }
+        struct Ack: Decodable { let ok: Bool? }
+        let _: Ack = try await client.request(
+            .post, path: "functions/v1/verify-email-subscription",
+            body: Body(signed_transaction: signedTransaction)
+        )
+    }
+
     /// History, straight from PostgREST. RLS scopes it to the caller.
     func list() async throws -> [ServerEmailOrder] {
         try await client.request(

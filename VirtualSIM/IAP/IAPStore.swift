@@ -193,6 +193,11 @@ final class IAPStore {
     /// this; nothing else may open a listener.
     var onSubscription: ((VerificationResult<Transaction>) async -> Bool)?
 
+    /// Mail-subscription transactions are forwarded here for the same reason:
+    /// `MailSubscriptionStore.attach` sets this, and nothing else may open a
+    /// second `Transaction.updates` listener.
+    var onMailSubscription: ((VerificationResult<Transaction>) async -> Bool)?
+
     /// Server-verify the signed transaction. Returns true if accepted.
     private func handle(_ result: VerificationResult<Transaction>) async -> Bool {
         guard let api = apiClient else { return false }
@@ -203,6 +208,10 @@ final class IAPStore {
         // renewal forever and 400 a legitimate transaction.
         if case .verified(let tx) = result, LineProduct.allIds.contains(tx.productID) {
             return await onSubscription?(result) ?? false
+        }
+
+        if case .verified(let tx) = result, MailProduct.allIds.contains(tx.productID) {
+            return await onMailSubscription?(result) ?? false
         }
 
         switch result {
