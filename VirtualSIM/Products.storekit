@@ -171,7 +171,7 @@
           "introductoryOffer": null,
           "localizations": [
             {
-              "description": "Unlimited temporary addresses on Outlook and Hotmail.",
+              "description": "Up to 25 temporary addresses a day on Outlook and Hotmail.",
               "displayName": "vSMS Mail Monthly",
               "locale": "en_US"
             }
@@ -196,7 +196,7 @@
           },
           "localizations": [
             {
-              "description": "Unlimited temporary addresses on Outlook and Hotmail. 3 days free.",
+              "description": "Up to 25 temporary addresses a day on Outlook and Hotmail. 3 days free.",
               "displayName": "vSMS Mail Yearly",
               "locale": "en_US"
             }

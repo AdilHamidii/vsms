@@ -358,7 +358,9 @@ struct CreditsSheet: View {
         // pack they are about to buy covers the country they dialled.
         case .call:  state.callDestinationLabel ?? String(localized: "International call")
         // Unreachable — see `contextIcon`.
-        case .mailSubscription: String(localized: "Unlimited e-mail addresses")
+        // No figure here deliberately — the cap is a server value and only
+        // the paywall quotes it. See `MailProduct.dailyAddressCap`.
+        case .mailSubscription: String(localized: "E-mail subscription")
         }
     }
 

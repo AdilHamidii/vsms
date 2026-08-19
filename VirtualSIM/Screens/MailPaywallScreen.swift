@@ -23,10 +23,15 @@ import SwiftUI
 ///
 /// ── Honesty rules, each one a bug this repo has already shipped ────────
 ///
-/// - Names the two free domains and states gmail's price plainly. Never a
-///   bare "unlimited e-mails" — gmail is not included, and free-domain stock
-///   genuinely runs dry (hotmail.com has shown as few as 2 in stock for a
-///   busy service).
+/// - Names the two free domains, states gmail's price plainly, and states the
+///   DAILY LIMIT. Never a bare "unlimited e-mails"/"unlimited addresses":
+///   gmail is not included, `app_config.email_sub_daily_cap` refuses a
+///   subscriber at `MailProduct.dailyAddressCap` a day with
+///   `daily_cap_reached` (a message `APIError` already ships, so the app
+///   contradicted itself), and free-domain stock genuinely runs dry
+///   independently (hotmail.com has shown as few as 2 in stock for a busy
+///   service). Promising more than the server delivers is App Store 2.3.1,
+///   and this copy becomes the App Store Connect description.
 /// - Never names the supplier (owner decision, 2026-07-31 — see CLAUDE.md).
 /// - The yearly saving is computed from the LIVE `Product.price` values,
 ///   never hardcoded — the credit-pack ladder drifted to $4.99-vs-€5.99 on
@@ -51,7 +56,7 @@ struct MailPaywallScreen: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            SheetHeader(title: "Unlimited addresses")
+            SheetHeader(title: "E-mail subscription")
 
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
@@ -94,16 +99,19 @@ struct MailPaywallScreen: View {
 
     // MARK: - What this buys
 
-    /// Names the two free domains and states gmail's price. Never a bare
-    /// "unlimited e-mails" — see the file header.
+    /// Names the two free domains, states the daily limit, and states gmail's
+    /// price. Never a bare "unlimited e-mails" — see the file header.
+    ///
+    /// This is the ONE place the cap figure is quoted, so a server-side change
+    /// to `email_sub_daily_cap` falsifies one sentence rather than five.
     private var intro: some View {
         VStack(alignment: .leading, spacing: 8) {
             MicroLabel("Temporary e-mail")
-            Text("outlook.com and hotmail.com, without limit.")
+            Text("Up to \(MailProduct.dailyAddressCap) addresses a day.")
                 .displayType(26)
                 .foregroundStyle(theme.text)
                 .fixedSize(horizontal: false, vertical: true)
-            Text("Create as many addresses as you need on those two domains. Gmail stays a 1-credit purchase either way — it isn't part of the subscription.")
+            Text("On outlook.com and hotmail.com, subject to availability. Your allowance resets at midnight UTC. Gmail stays a 1-credit purchase either way — it isn't part of the subscription.")
                 .font(RFont.text(15))
                 .foregroundStyle(theme.text2)
                 .lineSpacing(3)

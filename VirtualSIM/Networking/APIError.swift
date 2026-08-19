@@ -145,7 +145,11 @@ enum APIError: Error, LocalizedError {
                 case "free_limit_reached":
                     return String(localized: "You've used today's free addresses. Try again tomorrow, or pick Gmail.")
                 case "subscription_required":
-                    return String(localized: "You've used your free address. Subscribe for unlimited addresses on Outlook and Hotmail.")
+                    // "unlimited" was a promise the server does not keep —
+                    // subscribers are capped daily and refused with
+                    // `daily_cap_reached`, whose copy sits three lines below
+                    // this one. The app contradicted itself.
+                    return String(localized: "You've used your free address. Subscribe for more addresses each day on Outlook and Hotmail.")
                 case "daily_cap_reached":
                     return String(localized: "You've hit today's limit on addresses. It resets at midnight UTC.")
                 case "unknown_service":
