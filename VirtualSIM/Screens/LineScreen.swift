@@ -481,7 +481,13 @@ private struct NumberDetailView: View {
                     // An existing subscriber never passes through the store or
                     // the paywall, so nothing else would have loaded the
                     // product and the price would read as its fallback forever.
-                    .task { await subs.loadProduct() }
+                    .task {
+                        await subs.loadProduct()
+                        // Which plan they HOLD, not which the paywall has
+                        // selected. Without this the price row cannot be shown
+                        // at all — see `ownedPlan`.
+                        await subs.refreshOwnedPlan()
+                    }
                 Card {
                     VStack(spacing: 0) {
                         row(label: "Number", value: PhoneFormat.national(line.e164))
@@ -492,10 +498,23 @@ private struct NumberDetailView: View {
                         // and "$9.99 / month" on the plan screen for the same
                         // subscription. Exactly the drift that put $4.99
                         // against €5.99 on the credit ladder's top product.
-                        row(label: "Price",
-                            value: subs.displayPrice.map { "\($0) / month" }
-                                ?? String(localized: "Monthly"))
-                        divider
+                        //
+                        // 🔴 AND NEVER `subs.displayPrice`, which follows the
+                        // PAYWALL's `selectedPlan`. It defaults to monthly, so
+                        // every yearly subscriber — three of the first five —
+                        // read "$9.99 / month" for a $99.99/year plan; and
+                        // after a visit to "Rent another number" → Yearly it
+                        // read "$99.99 / month", wrong by a factor of twelve.
+                        // The period now comes from the entitlement the Apple
+                        // ID actually holds, and when that is unknown the row
+                        // is OMITTED. A missing row is honest.
+                        if let price = subs.ownedPlanPrice, let plan = subs.ownedPlan {
+                            row(label: "Price",
+                                value: plan == .yearly
+                                    ? String(localized: "\(price) / year")
+                                    : String(localized: "\(price) / month"))
+                            divider
+                        }
                         row(label: renewLabel, value: renewValue)
                         divider
                         // 🔴 A "Texts left · N of 200" row lived here and is

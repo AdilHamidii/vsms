@@ -187,6 +187,51 @@ final class SubscriptionStore {
         return selectedProduct?.displayPrice
     }
 
+    /// The plan this Apple ID actually HOLDS, read from StoreKit's entitlements.
+    ///
+    /// 🔴 NEVER answer "which plan is this subscriber on?" from `selectedPlan`.
+    /// That is the PAYWALL's picker: it defaults to `.monthly` and moves only
+    /// when someone taps a row. `Line` carries no product id, so the plan screen
+    /// used to label whatever `displayPrice` returned as "/ month" — three of
+    /// the five subscriptions ever sold were YEARLY, so those subscribers were
+    /// shown "$9.99 / month" for a $99.99/year plan. Worse, opening "Rent
+    /// another number" → paywall → tapping Yearly → closing left the existing
+    /// line's plan screen reading "$99.99 / month": a 12× period misstatement
+    /// driven by a picker on a different screen.
+    ///
+    /// nil means "we do not know" — no entitlement has been read yet, or the
+    /// id is not one of ours. The plan screen renders NO price row in that
+    /// case. A missing row is honest; a price that can be wrong by 12× is not.
+    private(set) var ownedPlan: LinePlan?
+
+    /// Read the held plan from StoreKit. Cheap, local, and safe to call on
+    /// every appearance of the plan screen — `currentEntitlements` is served
+    /// from the on-device receipt, not the network.
+    func refreshOwnedPlan() async {
+        var found: LinePlan?
+        for await result in Transaction.currentEntitlements {
+            // `.verified` only: an unverified entitlement is not evidence of
+            // anything, and this figure is shown as fact.
+            guard case .verified(let tx) = result else { continue }
+            switch tx.productID {
+            case LineProduct.yearlyId:  found = .yearly
+            case LineProduct.monthlyId: found = .monthly
+            default:                    continue
+            }
+        }
+        ownedPlan = found
+    }
+
+    /// StoreKit's localized price for the plan the user actually holds — or nil
+    /// when we cannot substantiate one. Pairs with `ownedPlan` for the period.
+    var ownedPlanPrice: String? {
+        switch ownedPlan {
+        case .monthly: monthlyPriceDisplay
+        case .yearly:  yearlyPriceDisplay
+        case nil:      nil
+        }
+    }
+
     // MARK: - What the paywall may ask
     //
     // The paywall used to read `product` / `yearlyProduct` directly, i.e. it
