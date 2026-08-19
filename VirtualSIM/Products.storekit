@@ -157,7 +157,7 @@
       ]
     },
     {
-      "id": "22289429",
+      "id": "99999999",
       "localizations": [],
       "name": "vSMS Mail",
       "subscriptions": [
@@ -167,7 +167,7 @@
           "displayPrice": "2.99",
           "familyShareable": false,
           "groupNumber": 1,
-          "internalID": "6798879001",
+          "internalID": "9999999991",
           "introductoryOffer": null,
           "localizations": [
             {
@@ -179,7 +179,7 @@
           "productID": "com.anthersystems.VirtualSIM.mail.monthly",
           "recurringSubscriptionPeriod": "P1M",
           "referenceName": "vSMS Mail Monthly",
-          "subscriptionGroupID": "22289429",
+          "subscriptionGroupID": "99999999",
           "type": "RecurringSubscription"
         },
         {
@@ -188,7 +188,7 @@
           "displayPrice": "29.99",
           "familyShareable": false,
           "groupNumber": 1,
-          "internalID": "6798879002",
+          "internalID": "9999999992",
           "introductoryOffer": {
             "internalID": "trial-3d",
             "paymentMode": "free",
@@ -204,7 +204,7 @@
           "productID": "com.anthersystems.VirtualSIM.mail.yearly",
           "recurringSubscriptionPeriod": "P1Y",
           "referenceName": "vSMS Mail Yearly",
-          "subscriptionGroupID": "22289429",
+          "subscriptionGroupID": "99999999",
           "type": "RecurringSubscription"
         }
       ]
