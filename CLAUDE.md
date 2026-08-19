@@ -970,11 +970,23 @@ stays false until 2.2 is live and adopted — flipping it while 2.1 is the
 shipped client would refuse the app's highest-volume surface with an error
 that build cannot render and no way to subscribe.
 
-Two Apple products, in a **SECOND, SEPARATE subscription group from the line**
-(`99999999` in `Products.storekit` — a placeholder; the real App Store
-Connect group and products do not exist yet, same deferral as their creation
-below): `com.anthersystems.VirtualSIM.mail.monthly` ($2.99/mo, no trial) and
-`com.anthersystems.VirtualSIM.mail.yearly` ($29.99/yr, 3-day free trial). **A
+Two Apple products, in a **SECOND, SEPARATE subscription group from the line**.
+**They EXIST in App Store Connect as of 2026-08-19** (`Products.storekit` still
+carries the deliberately-fake `99999999` group id — that file is local test
+config and its ids are placeholders on purpose, so do not "correct" them to
+these):
+
+| | id | price | trial |
+|---|---|---|---|
+| group | **22320947** "vSMS Mail" | — | — |
+| `com.anthersystems.VirtualSIM.mail.monthly` | **6803258564** | $2.99/mo | none |
+| `com.anthersystems.VirtualSIM.mail.yearly` | **6803258736** | $29.99/yr | 3 days |
+
+Both are available in the same **175 territories** the line sells in, priced in
+all of them, with en-US localizations and the trial on yearly only. Created by
+`scripts/asc-create-mail-subscriptions.py` then
+`scripts/asc-mail-territories-and-prices.py`; both are idempotent and support
+`--dry`. **A**
 second group is mandatory, not a preference** — Apple allows one active
 subscription per group with no quantity on iOS, so a mail product living in
 the LINE group would make a $2.99 mail purchase REPLACE a subscriber's $9.99
@@ -1435,7 +1447,7 @@ API, headlessly):**
 | product | **`6798378879`** `com.anthersystems.VirtualSIM.line.monthly` |
 | period | `ONE_MONTH`, not family-shareable |
 | price | **$9.99 USD → proceeds $8.49** (base territory **USA**) |
-| availability | 32 territories, `availableInNewTerritories: true` |
+| availability | 175 territories, `availableInNewTerritories: true` (re-measured 2026-08-19; this said 32 for two weeks) |
 | grace period | **16 days, ALL_RENEWALS, sandboxOptIn ON** |
 | state | `MISSING_METADATA` |
 
@@ -1469,6 +1481,45 @@ POST /v1/subscriptionPrices   { subscription, subscriptionPricePoint }
 ```
 
 Script: `scripts/asc-equalize-subscription-prices.py` (supports `--dry`).
+
+🔴 **A SUBSCRIPTION'S TERRITORY SET IS IMMUTABLE — THE ONLY WAY TO WIDEN IT IS
+TO POST A WHOLE NEW `subscriptionAvailability`.** Learned the hard way
+2026-08-19 while creating the mail products. `subscriptionAvailabilities`
+allows **only CREATE and GET_INSTANCE** ("The resource
+'subscriptionAvailabilities' does not allow 'UPDATE'"), and the
+`availableTerritories` relationship allows only GET ("does not allow 'CREATE'.
+Allowed operations are: GET_RELATED, GET_RELATIONSHIP"). So there is no PATCH,
+no DELETE and no add-a-territory call. A fresh `POST /v1/subscriptionAvailabilities`
+carrying the FULL list silently **replaces** the old record — verified by
+reading the count back, 1 → 175.
+
+The consequence for any new product: creating availability with the base
+territory only, as `asc-create-mail-subscriptions.py` does so that a price can
+exist at all, leaves the product sellable in ONE country until you re-POST the
+full set. Always read the territory count back; the failure is silent.
+
+⚠️ **When re-POSTing, guard against an empty list.** ASC read calls fail
+intermittently under load, and a POST built from an empty read returns a bare
+500 `UNEXPECTED_ERROR`. `scripts/asc-mail-territories-and-prices.py` refuses to
+proceed when the target list looks wrong for exactly that reason — it fired on
+the first real run.
+
+🔴 **EQUALIZATION IS APPLE'S FX CONVERSION, NOT "the same price elsewhere", AND
+IT BREAKS LADDERS.** Measured 2026-08-19 on the mail products: a $29.99 yearly
+equalized to **€34.99** against a monthly that equalized to €2.99 — so the
+Eurozone yearly saved **2.5%** against 12× monthly where the USD pair saves
+16%. Nobody would ever choose it. Same class as the credit ladder drifting to
+$4.99-vs-€5.99.
+
+The fix generalises the repo's "manual USD and EUR, same numeral" rule without
+hardcoding which territories use EUR: a price point id is base64 of
+`{"s": subscription, "t": territory, "p": tier}`, and the SAME TIER INDEX
+carries the same numeral in every currency that can express it. So build the
+same-tier point id per territory, read it back, and use it **only if
+`customerPrice` equals the base numeral exactly**; a currency that cannot
+express it (JPY has no 29.99) fails the check and keeps Apple's equalized
+price. Live result: 135 of 174 territories took the same numeral, JPY stayed
+¥5000.
 
 ⚠️ **ASC's IAP `state` RECOMPUTES LAZILY — but not THAT lazily.** A 20-minute
 poll after the screenshot landed, and a further 9 minutes after the 31 prices
