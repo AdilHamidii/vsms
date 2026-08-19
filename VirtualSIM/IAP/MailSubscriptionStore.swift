@@ -17,6 +17,21 @@ enum MailProduct {
     /// `MAIL_SUBSCRIPTION_PRODUCT_IDS` is the mirror of this list; they must
     /// move together.
     static let allIds = [monthlyId, yearlyId]
+
+    /// How many addresses a subscriber may take per UTC day.
+    ///
+    /// 🔴 MIRRORS `app_config.email_sub_daily_cap` (seeded 25 in
+    /// `20260818160001_email_subscriptions.sql`). The two must move together:
+    /// this number is rendered on the paywall as a promise, and the server is
+    /// what actually refuses with `daily_cap_reached`. A client that promises
+    /// more than the server allows is App Store 2.3.1 (accurate metadata) —
+    /// which is exactly why the paywall no longer says "unlimited".
+    ///
+    /// It is quoted in EXACTLY ONE user-facing string (`MailPaywallScreen`'s
+    /// intro). Every other surface states that a daily limit exists without
+    /// naming a figure, so a server-side change to the cap falsifies one
+    /// sentence rather than five.
+    static let dailyAddressCap = 25
 }
 
 /// Which plan the paywall is offering.
@@ -32,7 +47,7 @@ enum MailPlan: String, CaseIterable, Identifiable {
     var id: String { rawValue }
 }
 
-/// The e-mail subscription: unlimited addresses on the free domains.
+/// The e-mail subscription: addresses on the free domains, up to a daily cap.
 ///
 /// ── Server state is the authority ────────────────────────────────────────
 ///
@@ -137,9 +152,39 @@ final class MailSubscriptionStore {
         return nil
     }
 
+    /// Restore on a reinstall, a new account, or a second device.
+    ///
+    /// 🔴 THE THING BEING RESTORED IS THE SERVER ROW, NOT THE LOCAL
+    /// ENTITLEMENT. This used to `AppStore.sync()`, read
+    /// `currentEntitlements` and report success — a true statement about the
+    /// DEVICE that says nothing about our database. On a reinstall or a new
+    /// account the paywall dismissed triumphantly while the server had no row
+    /// at all, so ordering kept being refused with `subscription_required`
+    /// and raising this same paywall: an unrecoverable loop the moment
+    /// enforcement is on, on the one screen that exists to escape it.
+    ///
+    /// It now resubmits the verified transaction's JWS through `submit` — the
+    /// exact path a fresh purchase takes, so there is ONE definition of "the
+    /// server knows about this subscription" rather than two that can
+    /// disagree — and reports success only when the server acknowledges.
+    ///
+    /// `submit` calls `finish()`, which is a documented no-op on a
+    /// transaction that is already finished, as everything in
+    /// `currentEntitlements` will be.
     func restore() async -> Bool {
         try? await AppStore.sync()
-        await refreshEntitlement()
-        return isEntitled
+        lastError = nil
+        for await result in Transaction.currentEntitlements {
+            guard case .verified(let tx) = result,
+                  MailProduct.allIds.contains(tx.productID) else { continue }
+            // `submit` owns the success path: it sets `isEntitled` and
+            // surfaces its own error copy when the server refuses.
+            return await submit(result)
+        }
+        // Genuinely nothing to restore. The hint must follow the finding —
+        // a stale `true` from an earlier session would leave the UI claiming
+        // a subscription that neither Apple nor the server can see.
+        isEntitled = false
+        return false
     }
 }
