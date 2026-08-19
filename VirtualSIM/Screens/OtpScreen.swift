@@ -1,5 +1,4 @@
 import SwiftUI
-import StoreKit
 
 /// The code arrived. The whole job of this screen is to get those digits into
 /// the other app and then get out of the way.
@@ -16,7 +15,6 @@ struct OtpScreen: View {
     @Environment(AppState.self) private var state
     @Environment(APIClient.self) private var api
     @Environment(IAPStore.self) private var iap
-    @Environment(\.requestReview) private var requestReview
 
     let order: Order
     @State private var copied = false
@@ -88,18 +86,6 @@ struct OtpScreen: View {
             // than sitting on a stale "Copied" for the life of the screen.
             try? await Task.sleep(nanoseconds: 2_400_000_000)
             withAnimation(RMotion.content) { copied = false }
-        }
-        maybeAskForReview()
-    }
-
-    /// The user's happiest moment. If the gate allows, let the digit-reveal
-    /// animation finish, then show Apple's native review sheet. Never tied to
-    /// any reward (App Store 5.6.4).
-    private func maybeAskForReview() {
-        guard state.shouldRequestReview(forOrderId: order.id) else { return }
-        Task {
-            try? await Task.sleep(nanoseconds: 1_400_000_000)
-            requestReview()
         }
     }
 

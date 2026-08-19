@@ -9988,6 +9988,46 @@
         }
       }
     },
+    "E-mail subscription": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "E-Mail-Abo"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Suscripción de correo"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Abonnement e-mail"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Abbonamento e-mail"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "メールのサブスクリプション"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Assinatura de e-mail"
+          }
+        }
+      }
+    },
     "ELAPSED": {
       "extractionState": "manual",
       "localizations": {
@@ -12493,6 +12533,46 @@
           "stringUnit": {
             "state": "translated",
             "value": "Importante"
+          }
+        }
+      }
+    },
+    "Included": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Inklusive"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Incluido"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Inclus"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Incluso"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "含まれています"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Incluído"
           }
         }
       }
@@ -17704,6 +17784,46 @@
           "stringUnit": {
             "state": "translated",
             "value": "Revelação do OTP"
+          }
+        }
+      }
+    },
+    "On outlook.com and hotmail.com, subject to availability. Your allowance resets at midnight UTC. Gmail stays a 1-credit purchase either way — it isn't part of the subscription.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Auf outlook.com und hotmail.com, solange verfügbar. Dein Kontingent wird um Mitternacht UTC zurückgesetzt. Gmail kostet weiterhin 1 Credit und gehört nicht zum Abo."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "En outlook.com y hotmail.com, según disponibilidad. Tu cupo se restablece a medianoche UTC. Gmail sigue costando 1 crédito y no está incluido en la suscripción."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sur outlook.com et hotmail.com, selon les disponibilités. Votre quota est réinitialisé à minuit UTC. Gmail reste à 1 crédit et n’est pas inclus dans l’abonnement."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Su outlook.com e hotmail.com, salvo disponibilità. Il tuo limite si azzera a mezzanotte UTC. Gmail resta a 1 credito e non è incluso nell’abbonamento."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "outlook.comとhotmail.comで、在庫がある場合に限ります。利用枠はUTCの午前0時にリセットされます。Gmailは引き続き1クレジットで、サブスクリプションには含まれません。"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Em outlook.com e hotmail.com, sujeito à disponibilidade. Sua cota é redefinida à meia-noite UTC. O Gmail continua custando 1 crédito e não faz parte da assinatura."
           }
         }
       }
@@ -23797,6 +23917,46 @@
         }
       }
     },
+    "Start %@ free": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ kostenlos starten"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Empezar %@ gratis"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Commencer %@ offerts"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Inizia %@ gratis"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ 無料で始める"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Começar %@ grátis"
+          }
+        }
+      }
+    },
     "Still confirming": {
       "localizations": {
         "de": {
@@ -23993,6 +24153,86 @@
           "stringUnit": {
             "state": "translated",
             "value": "Assinar"
+          }
+        }
+      }
+    },
+    "Subscribe — %@": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Abonnieren — %@"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Suscribirse — %@"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "S'abonner — %@"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Abbonati — %@"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "登録する — %@"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Assinar — %@"
+          }
+        }
+      }
+    },
+    "Subscription": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Abo"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Suscripción"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Abonnement"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Abbonamento"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "サブスクリプション"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Assinatura"
           }
         }
       }
@@ -25123,6 +25363,86 @@
         }
       }
     },
+    "That purchase didn't go through.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Der Kauf ist nicht durchgegangen."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Esa compra no se completó."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cet achat n’a pas abouti."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "L’acquisto non è andato a buon fine."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "購入は完了しませんでした。"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Essa compra não foi concluída."
+          }
+        }
+      }
+    },
+    "That purchase is waiting for approval.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dieser Kauf wartet auf eine Freigabe."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Esa compra está pendiente de aprobación."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cet achat est en attente d’approbation."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Questo acquisto è in attesa di approvazione."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "この購入は承認待ちです。"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Essa compra está aguardando aprovação."
+          }
+        }
+      }
+    },
     "That purchase was made in a test environment, so no credits were added.": {
       "localizations": {
         "de": {
@@ -25320,6 +25640,46 @@
           "stringUnit": {
             "state": "translated",
             "value": "A App Store não está oferecendo esta assinatura agora. Tente novamente em instantes."
+          }
+        }
+      }
+    },
+    "The App Store isn't reachable right now.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Der App Store ist gerade nicht erreichbar."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No podemos conectar con la App Store ahora mismo."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "L’App Store est injoignable pour le moment."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "L’App Store non è raggiungibile in questo momento."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "現在App Storeに接続できません。"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "A App Store está indisponível no momento."
           }
         }
       }
@@ -27220,6 +27580,46 @@
           "stringUnit": {
             "state": "translated",
             "value": "Abaixo de 30%"
+          }
+        }
+      }
+    },
+    "Up to %lld addresses a day.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bis zu %lld Adressen pro Tag."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hasta %lld direcciones al día."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Jusqu’à %lld adresses par jour."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Fino a %lld indirizzi al giorno."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "1日あたり最大%lld件のアドレス。"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Até %lld endereços por dia."
           }
         }
       }
@@ -29868,6 +30268,46 @@
         }
       }
     },
+    "You've hit today's limit on addresses. It resets at midnight UTC.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Du hast dein heutiges Adresslimit erreicht. Es wird um Mitternacht UTC zurückgesetzt."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Alcanzaste el límite de direcciones de hoy. Se restablece a medianoche UTC."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vous avez atteint votre limite d’adresses pour aujourd’hui. Elle est réinitialisée à minuit UTC."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hai raggiunto il limite di indirizzi di oggi. Si azzera a mezzanotte UTC."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "本日のアドレス上限に達しました。UTCの午前0時にリセットされます。"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Você atingiu o limite de endereços de hoje. Ele é redefinido à meia-noite UTC."
+          }
+        }
+      }
+    },
     "You've used all your texts this month. They reset when your plan renews.": {
       "localizations": {
         "de": {
@@ -30025,6 +30465,46 @@
           "stringUnit": {
             "state": "translated",
             "value": "Você usou os endereços grátis de hoje. Tente amanhã ou escolha Gmail ou iCloud."
+          }
+        }
+      }
+    },
+    "You've used your free address. Subscribe for more addresses each day on Outlook and Hotmail.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Du hast deine kostenlose Adresse verbraucht. Mit einem Abo bekommst du jeden Tag mehr Adressen auf Outlook und Hotmail."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ya usaste tu dirección gratuita. Suscríbete para tener más direcciones cada día en Outlook y Hotmail."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vous avez utilisé votre adresse gratuite. Abonnez-vous pour obtenir plus d’adresses chaque jour sur Outlook et Hotmail."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hai già usato il tuo indirizzo gratuito. Abbonati per avere più indirizzi ogni giorno su Outlook e Hotmail."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "無料のアドレスは使用済みです。サブスクリプションに登録すると、OutlookとHotmailで毎日もっとアドレスを作成できます。"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Você já usou seu endereço gratuito. Assine para ter mais endereços por dia no Outlook e no Hotmail."
           }
         }
       }
@@ -31354,6 +31834,46 @@
           "stringUnit": {
             "state": "translated",
             "value": "Sua assinatura foi concluída, mas não conseguimos configurar o número. Vamos tentar de novo automaticamente."
+          }
+        }
+      }
+    },
+    "Your subscription went through but we couldn't switch it on. It'll retry automatically.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dein Abo wurde abgeschlossen, konnte aber noch nicht aktiviert werden. Wir versuchen es automatisch erneut."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tu suscripción se completó, pero no pudimos activarla. Lo intentaremos de nuevo automáticamente."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Votre abonnement est bien passé, mais nous n’avons pas pu l’activer. Nous réessaierons automatiquement."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "L’abbonamento è andato a buon fine, ma non siamo riusciti ad attivarlo. Riproveremo automaticamente."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "サブスクリプションは完了しましたが、有効化できませんでした。自動的に再試行します。"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sua assinatura foi concluída, mas não conseguimos ativá-la. Tentaremos de novo automaticamente."
           }
         }
       }

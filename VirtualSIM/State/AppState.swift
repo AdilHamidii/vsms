@@ -80,6 +80,12 @@ enum FlowStage: String, Hashable, Identifiable {
 /// path this whole enum exists to discipline.
 enum PurchaseIntent: String, Hashable {
     case sms, esim, email, line, call
+    // 🔴 The FOURTH product line, and the first three each shipped this bug:
+    // the checkout draft, `checkoutEsimPlan`, and `emailMode`. An intent set at
+    // `flow == nil` is never cleared by `flow`'s didSet, so it answers "how
+    // many credits does this user need?" for the wrong product for the rest of
+    // the session. The clear ships in the same commit as the intent.
+    case mailSubscription
 }
 
 /// What the post-failure recovery card needs to know. Stored on AppState
@@ -305,6 +311,11 @@ final class AppState {
                 // nothing. A draft that only one side of the app knows about is
                 // worse than no draft: it looks like the clearing rule is
                 // covered when it is not.
+                //
+                // This unconditional overwrite also clears a stray
+                // `.mailSubscription` intent whenever a flow ends — but the
+                // paywall itself is reached and left at `flow == nil`, so the
+                // real clear for it lives on `showMailPaywall`'s own didSet.
                 intent = tab == .line ? .line : .sms
             }
             guard flow != .checkout else { return }
@@ -325,6 +336,31 @@ final class AppState {
     /// without a code, cleared by retry/dismiss.
     var recovery: RecoveryContext?
 
+    /// Raised when `create-email-order` refuses with `subscription_required`.
+    /// Not a `FlowStage`: the paywall can be reached at `flow == nil` (from the
+    /// domain sheet) and making it a stage would destroy an in-progress draft.
+    /// It is ALSO left at `flow == nil` on a plain dismiss, so `flow`'s didSet
+    /// never fires for it — same shape as `emailMode`, which is why this gets
+    /// its own clear rather than relying on that one.
+    var showMailPaywall = false {
+        didSet {
+            if showMailPaywall {
+                suppressReviewThisSession = true
+            }
+            if !showMailPaywall, intent == .mailSubscription {
+                intent = emailMode ? .email : .sms
+            }
+        }
+    }
+
+    /// A review prompt and the subscription paywall must never appear in the
+    /// same session. Both are interruptions asking for something; stacking them
+    /// spends Apple's ~3-prompts-per-year quota on a user who was just told
+    /// they have to pay, which is the worst possible moment to ask for five
+    /// stars. Whichever fires first suppresses the other until the next cold
+    /// launch. Deliberately NOT persisted — "session" means this launch.
+    var suppressReviewThisSession = false
+
     // eSIM product line
     // ── Temporary email ──────────────────────────────────────────────────
     /// Home's Numbers / E-mails segmented selection. Purely a view mode; the
@@ -339,6 +375,15 @@ final class AppState {
     var emailDomain: EmailDomainOption?
     var activeEmailOrder: ServerEmailOrder?
     var isBuyingEmail = false
+    /// A UI hint only, mirroring `begin_email_order`'s own predicate
+    /// (`cost_credits = 0 and status <> 'failed'`) over the orders this device
+    /// has loaded. The server is the actual authority — `emailOrders` may be
+    /// stale or incomplete on a fresh install — but it is enough to tell
+    /// `EmailDomainSheet` whether to say "Free" or "Subscription" without a
+    /// dedicated round trip.
+    var hasUsedFreeEmail: Bool {
+        emailOrders.contains { $0.costCredits == 0 && $0.status != .failed }
+    }
 
     // ── Rented second number (the fourth product line) ───────────────────
     /// The caller's line, from the `my_line` VIEW. nil = they have never had
@@ -681,16 +726,18 @@ final class AppState {
         d.set(Date().timeIntervalSince1970, forKey: PrefKey.lastDeliveredAt)
     }
 
-    /// Whether THIS foreground should surface the native review prompt for a
-    /// user who never opened `OtpScreen`/`EmailCodeScreen` at all — the
-    /// designed flow for anyone who reads the code straight off a lock-screen
-    /// push and pastes it into the other app without reopening vSMS. Bounded
+    /// Whether THIS foreground should surface the native review prompt after a
+    /// code the user may never have opened the app to read — the designed flow
+    /// for anyone who takes it straight off a lock-screen push and pastes it
+    /// into the other app without reopening vSMS. Fed by BOTH delivery
+    /// surfaces: `loadOrders` (SMS) and `loadEmailOrders`. Bounded
     /// to 30 minutes so a delivery discovered long after the fact (e.g. an
     /// unrelated cold launch days later) doesn't retroactively read as a fresh
     /// happy moment. Every other gate — once per app version,
     /// per-order dedupe — still lives in `shouldRequestReview`, which this
     /// calls rather than duplicates.
     func reviewableRecentDelivery() -> Bool {
+        guard !suppressReviewThisSession else { return false }
         let d = UserDefaults.standard
         guard let orderId = d.string(forKey: PrefKey.lastDeliveredOrderId) else { return false }
         let deliveredAt = d.double(forKey: PrefKey.lastDeliveredAt)
@@ -1169,12 +1216,12 @@ final class AppState {
             // rather than a spurious "buy credits" nudge.
             guard let c = emailDomain?.credits, c > 0 else { return 0 }
             return max(0, c - balance)
-        case .line:
-            // RENTING the line is paid entirely through a StoreKit subscription
-            // and never spends credits, so there is no shortfall it could
-            // create. Returning 0 rather than falling through is what stops it
-            // answering with whatever SMS route was last configured — the exact
-            // failure this enum exists to prevent.
+        case .line, .mailSubscription:
+            // Both are paid entirely through a StoreKit subscription and never
+            // spend credits, so there is no shortfall either could create.
+            // Returning 0 rather than falling through is what stops this
+            // answering with whatever SMS route was last configured — the
+            // exact failure this enum exists to prevent.
             return 0
         case .call:
             // ⚠️ An INTERNATIONAL call is the one thing on this line that does
@@ -1658,7 +1705,33 @@ final class AppState {
         // RLS-filtered and would succeed with an EMPTY list, silently wiping
         // the sample — which is how the thread frame came back black.
         if ScreenshotMode.isActive { return }
-        do { emailOrders = try await api.list() } catch { /* keep what we have */ }
+        // The SAME newly-appeared-code diff `loadOrders` runs, feeding the SAME
+        // gate, because e-mail deliveries are deliveries too. The subscription
+        // branch removed `EmailCodeScreen`'s own `requestReview` call and moved
+        // every prompt to the foreground path in `ContentView` — but only the
+        // SMS half recorded anything for it, so the prompt silently stopped
+        // covering the app's highest-volume surface.
+        //
+        // `hadPriorState` skips the first population of a session for the same
+        // reason it does there: an empty prior list cannot tell "just arrived"
+        // from "arrived last week", and every cold launch starts empty.
+        //
+        // No gate is duplicated here. `recordCodeDelivered` only stamps the
+        // id and the time; once-per-version, the 30-minute bound and the
+        // per-order dedupe all stay in `shouldRequestReview` /
+        // `reviewableRecentDelivery`. Both tables key on UUIDs, so sharing
+        // `lastDeliveredOrderId` across the two surfaces cannot collide.
+        let hadPriorState = !emailOrders.isEmpty
+        let previouslyDelivered = Set(emailOrders.compactMap { $0.hasCode ? $0.id : nil })
+        do {
+            let rows = try await api.list()
+            emailOrders = rows
+            if hadPriorState {
+                for order in rows where order.hasCode && !previouslyDelivered.contains(order.id) {
+                    recordCodeDelivered(orderId: order.id)
+                }
+            }
+        } catch { /* keep what we have */ }
     }
 
     // MARK: - Rented second number
@@ -1927,9 +2000,19 @@ final class AppState {
             intent = .email
             flow = .emailWaiting
             await refreshWallet(using: wallet)
+        } catch let err as APIError {
+            // The paywall, not an error banner — and ONLY for this code.
+            // `daily_cap_reached` is a SUBSCRIBER who hit their own daily
+            // limit; they are already paying and do not need to be sold
+            // anything, so it falls through to the ordinary `userMessage`.
+            if case .http(_, let body) = err, Self.errorCode(in: body) == "subscription_required" {
+                intent = .mailSubscription
+                showMailPaywall = true
+                return
+            }
+            lastError = err.userMessage
         } catch {
-            lastError = (error as? APIError)?.userMessage
-                ?? String(localized: "Couldn't get an address. Please try again.")
+            lastError = String(localized: "Couldn't get an address. Please try again.")
         }
     }
 

@@ -335,6 +335,12 @@ struct CreditsSheet: View {
             ReceiptIconBox(symbol: RIcon.phone)
         case .call:
             ReceiptIconBox(symbol: RIcon.phone)
+        // Unreachable in practice — `creditsShortfall` returns 0 for this
+        // intent (it is billed by StoreKit subscription, same as `.line`),
+        // so nothing ever opens this sheet while it is set. Covered only
+        // because the switch must be exhaustive.
+        case .mailSubscription:
+            ReceiptIconBox(symbol: "envelope")
         }
     }
 
@@ -351,6 +357,10 @@ struct CreditsSheet: View {
         // A generic "International call" would leave them checking whether the
         // pack they are about to buy covers the country they dialled.
         case .call:  state.callDestinationLabel ?? String(localized: "International call")
+        // Unreachable — see `contextIcon`.
+        // No figure here deliberately — the cap is a server value and only
+        // the paywall quotes it. See `MailProduct.dailyAddressCap`.
+        case .mailSubscription: String(localized: "E-mail subscription")
         }
     }
 
@@ -368,6 +378,9 @@ struct CreditsSheet: View {
             return nil
         case .call:
             return String(localized: "International call")
+        // Unreachable — see `contextIcon`.
+        case .mailSubscription:
+            return nil
         }
     }
 
@@ -380,6 +393,8 @@ struct CreditsSheet: View {
         // What the CALL costs to start, not the wallet's shortfall — the sheet
         // renders cost and balance separately.
         case .call:  state.callCreditsNeeded
+        // Unreachable — see `contextIcon`.
+        case .mailSubscription: nil
         }
     }
 

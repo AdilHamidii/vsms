@@ -435,6 +435,56 @@ export const LINE_SUBSCRIPTION_PRODUCT_IDS: readonly string[] = [
   "com.anthersystems.VirtualSIM.line.yearly",
 ];
 
+/** EVERY product in the MAIL subscription group.
+ *
+ * A SEPARATE App Store subscription group from the line, and that is not an
+ * implementation detail: Apple allows one active subscription per group with
+ * no quantity on iOS, so a mail product inside the line group would make a
+ * $2.99 mail purchase REPLACE a subscriber's $9.99 phone number.
+ *
+ * Because the groups are separate, a user may legitimately hold a line AND a
+ * mail subscription at once. Nothing may assume otherwise.
+ */
+export const MAIL_SUBSCRIPTION_PRODUCT_IDS: readonly string[] = [
+  "com.anthersystems.VirtualSIM.mail.monthly",
+  "com.anthersystems.VirtualSIM.mail.yearly",
+];
+
+/** Which product family a subscription belongs to, or null for anything that
+ *  is not one of our subscriptions (a credit pack, or an id we do not know).
+ *
+ * 🔴 THIS EXISTS BECAUSE `isSubscriptionProduct` MEANT TWO OPPOSITE THINGS.
+ *
+ *  - `iap-verify` asks "is this NOT a credit pack?" so it does not 400 a real
+ *    purchase and page the owner. Mail products must be INCLUDED there.
+ *  - `apple-notifications` asked the same function "is this a line?" and every
+ *    branch after that guard UPDATEs `line_subscriptions` and drives the
+ *    phone-number lapse machine. Mail products must be EXCLUDED there, or a
+ *    cancelled $2.99 mail plan suspends and releases somebody's rented number.
+ *
+ *  Callers that act on a subscription must dispatch on the FAMILY. Callers that
+ *  only need "is this a subscription at all" keep using
+ *  `isSubscriptionProduct`.
+ */
+export type SubscriptionFamily = "line" | "mail";
+
+export function subscriptionFamily(productId: string): SubscriptionFamily | null {
+  if (LINE_SUBSCRIPTION_PRODUCT_IDS.includes(productId)) return "line";
+  if (MAIL_SUBSCRIPTION_PRODUCT_IDS.includes(productId)) return "mail";
+  return null;
+}
+
+/** Ops label for a mail subscription transaction. Display only — nothing may
+ *  gate on it, for the same reason `linePlanLabel` may not: a trial subscriber
+ *  is entitled to the product they are trialling. */
+export function mailPlanLabel(tx: AppleTransactionPayload): string {
+  const id = tx.productId ?? "";
+  const plan = id.endsWith(".mail.monthly") ? "monthly"
+    : id.endsWith(".mail.yearly") ? "yearly"
+    : id;
+  return isFreeTrial(tx) ? `${plan} · free trial` : plan;
+}
+
 /** True when this transaction is being served by an introductory offer — for
  *  us, the 3-day free trial on the yearly plan.
  *
@@ -467,5 +517,5 @@ export function linePlanLabel(tx: AppleTransactionPayload): string {
  *  without this guard, every single renewal pages the owner and 400s a
  *  perfectly legitimate transaction. */
 export function isSubscriptionProduct(productId: string): boolean {
-  return LINE_SUBSCRIPTION_PRODUCT_IDS.includes(productId);
+  return subscriptionFamily(productId) !== null;
 }

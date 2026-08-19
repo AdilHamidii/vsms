@@ -34,6 +34,7 @@ struct EmailDomainSheet: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(AppState.self) private var state
     @Environment(APIClient.self) private var api
+    @Environment(MailSubscriptionStore.self) private var mailStore
     var onPick: (EmailDomainOption) -> Void
 
     @State private var appeared = false
@@ -52,7 +53,13 @@ struct EmailDomainSheet: View {
         }
         .background(theme.bg)
         .presentationDetents([.medium, .large])
-        .task { withAnimation(RMotion.content) { appeared = true } }
+        .task {
+            withAnimation(RMotion.content) { appeared = true }
+            // A UI hint, not an authority — `mailStore.isEntitled` only
+            // decides which LABEL a free row wears here. `begin_email_order`
+            // is still the one place that decides whether the tap succeeds.
+            await mailStore.refreshEntitlement()
+        }
     }
 
     // MARK: - States
@@ -165,10 +172,26 @@ struct EmailDomainSheet: View {
         .disabled(!option.inStock)
     }
 
+    /// A bare "Free" implied a daily allowance that no longer exists — one
+    /// free address per account for LIFE, then a subscription. This says which
+    /// of the three states actually applies: already subscribed, the one free
+    /// address still unused, or spent and now behind the paywall. Gmail is
+    /// untouched — it was never part of either the old allowance or the new
+    /// subscription.
+    /// Takes no argument on purpose: it is only ever rendered for a FREE
+    /// domain (`priceTag` calls it inside `if option.isFree`), and what it
+    /// says depends solely on the account — whether the user is subscribed
+    /// and whether they have spent their one free address. It used to accept
+    /// an `EmailDomainOption` and ignore it, which read as a per-domain label.
+    private var entitlementLabel: LocalizedStringKey {
+        if mailStore.isEntitled { return "Included" }
+        return state.hasUsedFreeEmail ? "Subscription" : "Free"
+    }
+
     @ViewBuilder
     private func priceTag(_ option: EmailDomainOption) -> some View {
         if option.isFree {
-            Text("Free")
+            Text(entitlementLabel)
                 .font(RFont.display(15, weight: .semibold))
                 .foregroundStyle(option.inStock ? theme.text : theme.text3)
         } else {
