@@ -726,10 +726,11 @@ final class AppState {
         d.set(Date().timeIntervalSince1970, forKey: PrefKey.lastDeliveredAt)
     }
 
-    /// Whether THIS foreground should surface the native review prompt for a
-    /// user who never opened `OtpScreen`/`EmailCodeScreen` at all — the
-    /// designed flow for anyone who reads the code straight off a lock-screen
-    /// push and pastes it into the other app without reopening vSMS. Bounded
+    /// Whether THIS foreground should surface the native review prompt after a
+    /// code the user may never have opened the app to read — the designed flow
+    /// for anyone who takes it straight off a lock-screen push and pastes it
+    /// into the other app without reopening vSMS. Fed by BOTH delivery
+    /// surfaces: `loadOrders` (SMS) and `loadEmailOrders`. Bounded
     /// to 30 minutes so a delivery discovered long after the fact (e.g. an
     /// unrelated cold launch days later) doesn't retroactively read as a fresh
     /// happy moment. Every other gate — once per app version,
@@ -1704,7 +1705,33 @@ final class AppState {
         // RLS-filtered and would succeed with an EMPTY list, silently wiping
         // the sample — which is how the thread frame came back black.
         if ScreenshotMode.isActive { return }
-        do { emailOrders = try await api.list() } catch { /* keep what we have */ }
+        // The SAME newly-appeared-code diff `loadOrders` runs, feeding the SAME
+        // gate, because e-mail deliveries are deliveries too. The subscription
+        // branch removed `EmailCodeScreen`'s own `requestReview` call and moved
+        // every prompt to the foreground path in `ContentView` — but only the
+        // SMS half recorded anything for it, so the prompt silently stopped
+        // covering the app's highest-volume surface.
+        //
+        // `hadPriorState` skips the first population of a session for the same
+        // reason it does there: an empty prior list cannot tell "just arrived"
+        // from "arrived last week", and every cold launch starts empty.
+        //
+        // No gate is duplicated here. `recordCodeDelivered` only stamps the
+        // id and the time; once-per-version, the 30-minute bound and the
+        // per-order dedupe all stay in `shouldRequestReview` /
+        // `reviewableRecentDelivery`. Both tables key on UUIDs, so sharing
+        // `lastDeliveredOrderId` across the two surfaces cannot collide.
+        let hadPriorState = !emailOrders.isEmpty
+        let previouslyDelivered = Set(emailOrders.compactMap { $0.hasCode ? $0.id : nil })
+        do {
+            let rows = try await api.list()
+            emailOrders = rows
+            if hadPriorState {
+                for order in rows where order.hasCode && !previouslyDelivered.contains(order.id) {
+                    recordCodeDelivered(orderId: order.id)
+                }
+            }
+        } catch { /* keep what we have */ }
     }
 
     // MARK: - Rented second number
