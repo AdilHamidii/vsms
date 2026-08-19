@@ -1170,13 +1170,45 @@ on every outbound call, until 2026-08-19. Durations of 6s / 2s / 23s are what
 "connected but silent" looks like. Nobody has reported hearing audio; treat
 that as untested, not working.
 
-⚠️ **Nothing settles them from provider evidence yet.** `sync-telnyx-cdr`
-returns `{records: 0, pending: 4, unmatched: 4}` — it runs, Telnyx reports no
-detail records for these calls, and the 6-hour `settle_stale_calls` backstop
-picks them up on the CLIENT's reported duration instead. That is the designed
-fallback, not the designed path: minutes are being settled on the device's
-word. The detail-records query has already been wrong twice (see the CDR
-section); assume a third cause before assuming provider lag.
+🔴 **NOTHING HAS EVER BEEN SETTLED FROM PROVIDER EVIDENCE — NOT ONCE.**
+`app_config.telnyx_cdr_heartbeat` reads `{records: 0, settled: 0}` after
+walking 4 pages (re-checked 2026-08-19), and every historical `line_calls` row
+closed `hangup_cause = 'no_cdr'`. `sync-telnyx-cdr` runs; it has never matched
+a single detail record. The detail-records query has already been wrong twice
+(see the CDR section); **assume a third cause before assuming provider lag.**
+
+⚠️ **This is the open defect underneath the call-billing rules — treat the
+6-hour `settle_stale_calls` backstop as the ONLY settlement path, because it
+is.** `20260818140000` argued its full-reservation bill was safe on the premise
+that the backstop is rare. It is not rare; it is universal, so that rule
+silently became the billing rule for 100% of calls. **When you change anything
+about call billing, check that heartbeat first** — the premise you are reasoning
+from is probably about a path that never runs.
+
+**Billing for a call with no CDR (`20260820110000`), and the reasoning is not
+derivable from the code:**
+- **No `provider_call_session_id` AND no `provider_call_leg_id` ⇒ the leg never
+  reached Telnyx ⇒ bill NOTHING** (`hangup_cause = 'no_cdr_unreached'`). Before
+  this, a never-connected international call was charged its entire credit
+  block, and a 17-second domestic call ate 120 s of a 6,000 s allowance.
+- **Either id present ⇒ bill the FULL reservation** (`no_cdr_full`). Knowingly
+  over-bills a short connected call; the only other number available is the
+  device's, and that must never decide money.
+- 🔴 **THE GATE IS DELIBERATELY NOT ON `status`, AND MUST NOT BE MOVED THERE.**
+  A `p_status in ('missed','busy','failed','canceled')` guard inside
+  `settle_call_claim` looks like the obvious fix and even makes that function's
+  own comment true — but `status` is written straight from `report-line-call`'s
+  request body, so that guard **is** the exploit `20260818140000` closed: set
+  one string, talk for an hour, pay nothing. `settle_call_claim` is left
+  byte-identical so nobody "restores" it. The gate is an on/off test only, never
+  an input to the amount.
+- The exploit's real bound is Telnyx's per-line `daily_spend_limit`, not our
+  settlement. The full-reservation bill was ~2 credits (~$0.80) against ~$36 of
+  wholesale on a 10-minute premium call — a rounding error on the attack, and a
+  certain recurring over-charge on every honest missed call.
+- Behavioural checks: `scripts/verify-call-settlement.sql` (3 assertions in a
+  rolled-back transaction, including that a client-reported `canceled` on a
+  reached call still bills the full block).
 
 *Kept because it is how this was diagnosed — the state until 2026-08-17:* seven
 attempts across two users, every row `provider_call_session_id = NULL`, so no
@@ -2658,6 +2690,7 @@ for essentially every hidden route.
   apply and would hide most of the catalog.
 - **`tint_hex`, not `tint`** — Service column is `tint_hex` (snake) → `tintHex` (Swift). Same casing rule for every Service/Country/Route field. Don't reintroduce shorter names.
 - **Cron-secret auth reads from `Deno.env.get("CRON_SECRET")`**, not from `vault.decrypted_secrets`. The vault schema isn't reachable through PostgREST — the function would silently fail. Both `poll-active-orders` and `sync-prices` rely on the env var being mirrored to the vault entry. **CRON_SECRET therefore lives in TWO stores** (edge secrets + vault `cron_secret`, read by `private_cron_secret()`); rotating one without the other 401s every relayed function at once — including telegram-notify, i.e. the alert channel. The watchdog's `relay-http` check catches the 401s within ~25 min, but rotate both together.
+- 🔴 **A GUARD READING A CONFIG KEY NOBODY WRITES FAILS OPEN AND SILENT — AND IT PINNED THE WATCHDOG RED FOR THREE DAYS.** `run_watchdog_core` skips its two SMSPVA freshness checks when `app_config.smspva_retired` says `retired`. `20260817100000_retire_smspva.sql` retired the provider and unscheduled both cron jobs but **never inserted the key**, so both checks kept measuring cursors that can never move again. Nothing reports "this key does not exist"; the `coalesce` even reads as deliberate defensive style. Two consequences, both worse than the noise: the genuine `5sim-float` page arrived buried among two permanent false positives, and **the "✅ recovered" transition can never fire while `failing` cannot return to empty** — retiring the one signal that says an outage ENDED. It also structurally suppressed a winback cohort (`claimSafe = balUsd >= 7.5 && failing === 0 && wdFresh` in `winback/index.ts:151`), the **sixth** time `stranded_credit_candidates` has been closed by an invisible gate. Written in `20260820100000`. **When you retire a subsystem, write its flag in the SAME migration that unschedules its jobs**, and after writing any guard that reads a key, `select` the key.
 - **The watchdog is plain SQL — keep it that way.** `run_watchdog()` (pg_cron `*/10`, migration `20260722050000`) checks job freshness (poller heartbeat, `routes`/`esim_plans.last_checked_at`, digest stamp, sync cursors via `app_config.updated_at` — maintained by the `app_config_touch` trigger, so cursor upserts don't need to set it) plus any non-2xx row in `net._http_response`, and writes its verdict to `app_config.'watchdog'`. `telegram-notify` (minutely) turns that into pages (6h re-alert, ✅ on recovery); `/balance` shows the verdict too. It deliberately uses **no edge function, no CRON_SECRET, no HTTP** so it still evaluates when the whole edge/secret layer is broken. If you add a scheduled job, give it a freshness signal and a check here. Residual blind spot: telegram-notify's own death = digest silence >7h (documented in `docs/autopilot-runbook.md`).
 - **IAP environment check constraint must allow `'Xcode'`** for local StoreKit testing alongside `'Sandbox'`/`'Production'`. See migration `..._iap_allow_xcode_env.sql`.
 - **A status string written from TS is NOT checked against the enum — and the error is discarded.** `create-esim-order`'s failure path wrote `status: "canceled"`, which is a member of `order_status` but **not** of `esim_status` (`provisioning, installed, active, depleted, expired, refunded, failed`). PostgREST rejected the UPDATE with 22P02, the code did `const { data: claimed } = await ...` without destructuring `error`, so `claimed` came back empty and the function **returned without refunding**. Every failed eSIM purchase charged the user and silently kept the money. When you write a status literal from an edge function, check it against `pg_enum` — the two enums share several names and differ in exactly the ones that matter.
