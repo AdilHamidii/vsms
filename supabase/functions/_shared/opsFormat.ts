@@ -942,6 +942,11 @@ export function formatSubs(raw: Record<string, unknown>): string {
     }[];
     telnyx?: BalanceReading;
     dev_hidden?: { lines?: number; subs?: number };
+    mail?: {
+      total?: number; active?: number;
+      by_state?: { state?: string; n?: number }[];
+      auto_renew_on?: number;
+    };
   };
 
   const active = s.subs_active ?? 0;
@@ -992,6 +997,46 @@ export function formatSubs(raw: Record<string, unknown>): string {
     if (bill) lines.push(`   billed: ${bill} <i>(only 'apple' earns the MRR below)</i>`);
     const rent = (s.monthly_cost_cents ?? 0) / 100;
     if (rent > 0) lines.push(`   💸 provider rent: <b>$${esc(rent.toFixed(2))}</b>/mo`);
+  }
+
+  // ── Temp-e-mail subscription (Task 9, 2026-08-19) ──────────────────────────
+  //
+  // Built dark: `app_config.email_subscription_enforced` is false, so this
+  // renders `total: 0` until a real subscriber exists — see CLAUDE.md's
+  // "Temp-e-mail subscription" section for why it stays off. Mirrors the line
+  // block above (state totals, then a disagreement warning) rather than
+  // inventing a new shape, for the same reason the line block exists: a
+  // divergence should be called out, not left for someone to notice by hand.
+  const mail = s.mail ?? {};
+  lines.push("");
+  lines.push("📧 <b>Temp-mail subscription</b>");
+  if ((mail.total ?? 0) === 0) {
+    lines.push("<i>No subscribers yet — enforcement is OFF " +
+               "(app_config.email_subscription_enforced = false).</i>");
+  } else {
+    const mstates = (mail.by_state ?? [])
+      .map((r) => `${esc(r.state ?? "?")} ${r.n ?? 0}`).join(" · ");
+    lines.push(`📜 Subscriptions: <b>${mail.total}</b> — ${mstates}`);
+    lines.push(`   entitled now: <b>${mail.active ?? 0}</b> · ` +
+               `auto-renew on: <b>${mail.auto_renew_on ?? 0}</b>`);
+    // "entitled" (state in active/grace AND not yet past its expiry/grace
+    // timestamp — has_email_subscription()'s own predicate) vs the RAW
+    // active/grace state count from by_state, with no expiry filter. The two
+    // read the SAME table, so they should always match; a gap means a
+    // subscription is sitting in 'active'/'grace' state past the moment its
+    // own expiry says it should have lapsed — an ASSN notification (EXPIRED /
+    // grace-period-ended) that has not landed or has not been processed yet.
+    const stateActive = (mail.by_state ?? [])
+      .filter((r) => r.state === "active" || r.state === "grace")
+      .reduce((a, r) => a + (r.n ?? 0), 0);
+    const entitled = mail.active ?? 0;
+    if (entitled !== stateActive) {
+      lines.push(`⚠️ <b>${entitled} entitled vs ${stateActive} in an ` +
+                 `active/grace state</b> — these should match. A row stuck in ` +
+                 `'active'/'grace' past its own expiry means an ASSN ` +
+                 `notification for this subscription has not landed or has not ` +
+                 `been processed yet.`);
+    }
   }
 
   // Est. net MRR. The commission rate is PRINTED next to it, exactly as

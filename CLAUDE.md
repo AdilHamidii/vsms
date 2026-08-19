@@ -955,6 +955,77 @@ picker rather than failing at checkout.
 **First real activation delivered 2026-07-30**: leboncoin, free tier,
 `status = received`.
 
+### Temp-e-mail subscription (2026-08-19)
+
+🔴 **BUILT AND SHIPPED DARK.** Every piece is in the repo and the migration
+(`20260818160001_email_subscriptions.sql`) is applied, but
+`app_config.email_subscription_enforced` is **false**, so `begin_email_order`
+still applies the OLD per-UTC-day free rule and no user can see a paywall. It
+stays false until 2.2 is live and adopted — flipping it while 2.1 is the
+shipped client would refuse the app's highest-volume surface with an error
+that build cannot render and no way to subscribe.
+
+Two Apple products, in a **SECOND, SEPARATE subscription group from the line**
+(`99999999` in `Products.storekit` — a placeholder; the real App Store
+Connect group and products do not exist yet, same deferral as their creation
+below): `com.anthersystems.VirtualSIM.mail.monthly` ($2.99/mo, no trial) and
+`com.anthersystems.VirtualSIM.mail.yearly` ($29.99/yr, 3-day free trial). **A
+second group is mandatory, not a preference** — Apple allows one active
+subscription per group with no quantity on iOS, so a mail product living in
+the LINE group would make a $2.99 mail purchase REPLACE a subscriber's $9.99
+phone number. Because the groups are separate, a user may legitimately hold a
+line AND a mail subscription at once, and nothing in the codebase may assume
+otherwise.
+
+**The free rule changes shape entirely once enforced — from a per-day
+allowance to a lifetime-and-retroactive one.** Today (shipped, 2.1): N free
+addresses per UTC day (`app_config.email_free_daily_cap`). Once
+`email_subscription_enforced` flips true, `begin_email_order` in
+`20260818160001` switches every non-subscriber to **`app_config.
+email_free_lifetime_grants`** (default **1**) counted over ALL history,
+retroactively — an account that has already used its one free address before
+the flip is immediately walled, with no grace period. A subscriber instead
+gets unlimited free-domain addresses under a SHARED-inventory daily cap,
+`app_config.email_sub_daily_cap` (default **25**) — a stated hard stop, not a
+throttle, because the free-domain pool is scarce and shared and one looping
+subscriber could drain it for every user. **`gmail.com` is excluded from all
+of this** — it is the 1-credit paid tier for everyone, subscriber or not,
+unconditionally and unchanged either way.
+
+`has_email_subscription(uuid)` is the entitlement check: `state in ('active',
+'grace') and greatest(expires_at, grace_expires_at) > now()` — `greatest`, not
+`coalesce`, so a stale `grace_expires_at` from a past grace period can never
+shadow a later renewal's `expires_at` (see the migration's own comment; this
+is the same shape as the line's ASSN state machine, one table earlier).
+`email_subscriptions` has **no foreign key to `auth.users`**, by design and
+for the same reason as the three credit-grant tombstones and
+`line_subscriptions`: delete-account → re-signin must not silently re-grant an
+Apple entitlement that already exists, and `record_email_subscription`'s
+`subscription_bound` refusal is the replay catch.
+
+`verify-email-subscription` (JWT-verified, no `config.toml` entry, in the
+JWT deploy list) is the only client-reachable writer, and it deliberately
+**accepts Sandbox** — unlike `iap-verify`, which gates credits on
+`Production` because a Sandbox receipt is genuinely Apple-signed and costs $0.
+There is no equivalent exposure here: the entitlement grants addresses on
+domains that cost nothing, and it is still bounded by the subscriber daily
+cap. Refusing Sandbox would mean the App Store reviewer subscribes, gets
+nothing, and rejects the build.
+
+**`subscriptionFamily` is the SAME function line and mail must resolve
+oppositely through — see the gotcha below.** `apple-notifications` dispatches
+a mail-family notification away from the line lapse machine entirely; a bug
+there would suspend or release a rented phone number over a cancelled $2.99
+mail plan.
+
+**`ops_subs()` gained a `mail` key, migration `20260818160002`** (Task 9): `total`,
+`active` (mirrors `has_email_subscription`'s own predicate), `by_state`,
+`auto_renew_on`. Rendered in `/subs` (Telegram) with a disagreement warning —
+entitled count vs raw active/grace state count — the same shape as the line
+block's subs-vs-lines warning, catching a subscription stuck in an
+active/grace state past its own expiry (an ASSN notification not yet landed
+or processed).
+
 ### Rentable second numbers — the FOURTH product line (IN PROGRESS, 2026-08-05)
 
 🔴 **SOLD, AND EVERY SINGLE SUBSCRIBER HAS CANCELLED (2026-08-17).** This
@@ -2397,6 +2468,7 @@ for essentially every hidden route.
 - **Never write a status transition without an atomic claim.** Every `orders` status write is `.eq("status","waiting")` + row-count check. `check-order`'s `received` branch was the one exception and could overwrite a terminal state the expiry cron had already set — handing a user a working code they'd *already been refunded for*.
 - **A status claim and its refund must be ONE transaction, never two round-trips.** Where they are split, a worker killed in between leaves a TERMINAL row with the charge never returned — and the expiry sweeps only select `status='waiting'`, so nothing ever revisits it. No timeout value fixes this; a TypeScript rollback cannot either, because the process is gone. Seven paths had it wrong and were fixed one at a time across 2026-07-31 and 08-02 (`expire_order_claim`, `expire_order_early_claim`, `fail_esim_order_claim`, `close_email_order_claim`). ⚠️ **This entry then said "if you add an eighth close path, it goes through a claim function" while TWO existing paths still did not** — `cancel-order` and `create-order`'s `failOrder`, i.e. the busiest close path in the product (`margin_too_low`, stockouts, provider faults and `order_persist_failed` all land there). Both carried the TypeScript rollback this very rule says cannot work. Closed 2026-08-06 with **`cancel_order_claim(p_order, p_late_watch_until)`** (`20260806140000`); it had never fired — a query for terminal charged orders with no matching refund returns zero — but the window is real and the failure is silent and permanent. **The lesson is about the rule, not the bug: a written invariant is not an enforced one. Grep for violators when you write one down.**
 - 🔴 **`on conflict (version) do nothing` WILL SILENTLY SWALLOW YOUR MIGRATION RECORD when two sessions pick the same timestamp.** Hit for real on 2026-08-18: a migration was applied with `db query --file`, then recorded with the documented `insert … on conflict (version) do nothing` — and `20260818130000` was ALREADY TAKEN by `iap_refund_revocation` from a parallel session. The insert did nothing, the SQL stayed applied, and `schema_migrations` had no trace of it. Two different migrations then claimed one version, one of them only on disk. **After recording a migration, SELECT it back by name**, not by assuming the insert landed — and pick a version by reading `select max(version) from supabase_migrations.schema_migrations` rather than from the clock, because more than one session works on this repo per day.
+- 🔴 **`subscriptionFamily(productId)` must resolve to `"line"` or `"mail"`, never treated as a single yes/no.** `iap-verify` asks it "is this NOT a credit pack?" so a subscription renewal doesn't 400 and page the owner as `unknown_product` — mail products MUST be included in that check (`isSubscriptionProduct`). `apple-notifications` asks the SAME shape of question but means the opposite thing by it: every branch after its guard `UPDATE`s `line_subscriptions` and drives the phone-number lapse machine, so a mail product MUST be excluded there, dispatched instead to the mail-only path — or a cancelled $2.99 mail plan would suspend and release somebody's rented $9.99 phone number. A future subscription product (a third family) that is added to `isSubscriptionProduct`'s allowlist but not to `subscriptionFamily`'s dispatch is a family neither branch recognises correctly. Add a new product to `LINE_SUBSCRIPTION_PRODUCT_IDS` or `MAIL_SUBSCRIPTION_PRODUCT_IDS` in `_shared/iap.ts` — never treat `isSubscriptionProduct` as sufficient on its own for anything that acts on the subscription rather than merely refusing to 400 it.
 
 - **`apply_migration` (MCP) mints its own version number and does NOT write a repo file.** Three migrations performing an entire provider cutover existed only in the live DB; a fresh `supabase db push` would have come up SMSPool-primary with the wrong crons scheduled. After any `apply_migration`, immediately write `supabase/migrations/<live-version>_<name>.sql` with the same SQL. Recover forgotten ones from `supabase_migrations.schema_migrations.statements`.
 - **An unqualified `UPDATE` inside a SECURITY DEFINER function fails when called
@@ -3157,6 +3229,50 @@ payoff and is queryable by hand; the bot surface needs a formatter in
 `_shared/opsFormat.ts` and is worth doing once there is data in the table.
 
 ### Known-open
+
+⚠️ **The e-mail subscription's retroactive lifetime wall would end the app's
+highest-volume surface, and shipping it or parking it is an owner decision
+still outstanding (2026-08-19).** Measured 2026-08-19 over the trailing 14
+days: **178 orders / 54 users / 159 free**
+(`select count(*), count(distinct user_id), count(*) filter (where
+cost_credits = 0) from public.email_orders where created_at >= now() -
+interval '14 days';` — re-run before quoting, this moves daily). Once
+`email_subscription_enforced` flips true, every non-subscriber who has
+already used their one lifetime free address (`email_free_lifetime_grants`)
+is walled immediately, with no grace period — this is not a future cohort, it
+is most of the existing one. Two
+independent reversal levers exist and are worth keeping straight: the wall's
+**size** (`email_free_lifetime_grants`) is live config, reversible with one
+UPDATE and no deploy; the **per-day-vs-lifetime rule itself** is a migration
+(`20260818160001`), reversible only by shipping another one. The owner has
+been advised the line is worth roughly **$1–15/month net** on current volume
+(measured: ~56 users/month would hit the wall — i.e. exhaust their one
+lifetime free address and see `subscription_required` — which is the pool any
+conversion has to come from, not a conversion count itself; the app's own
+subscription history elsewhere in this product is 7 sold / 5 cancelled within
+minutes — see "Rentable second numbers" — which is the base rate any
+mail-subscription conversion estimate should be discounted against). Recorded
+as a measurement with its date, not as a recommendation.
+
+⚠️ **A subscriber's "unlimited" free addresses still depend on free-domain
+stock that runs dry, and it is undecided whether subscribers get a gmail
+fallback when it does.** The free tier (`outlook.com`/`hotmail.com`) is the
+scarcest inventory in the catalog — measured as low as **two available** for
+a domain in one sweep (see "There is no catalog to sync" above) — and that is
+unrelated to and unfixed by paying $2.99/month. A subscriber who hits a dry
+free domain today gets exactly the same `domain_unavailable` refusal a
+non-subscriber gets; whether that should instead fall back to the 1-credit
+gmail tier for subscribers only, and how that would be priced against the
+subscription itself, has not been decided.
+
+⚠️ **`revenue_snapshot` counts credit packs only, and now omits TWO
+subscription revenue streams, not one.** This is pre-existing for the line
+(see the "🔴 `/revenue` AND `/profit` REPORT $0 FOR THIS PRODUCT" comment
+above `formatLinesMoney` in `_shared/opsFormat.ts`) and this task does not fix
+either — recorded here so it is not silently inherited as new scope.
+`/revenue` and `/profit` understate by every subscription dollar, mail
+included, until both read `line_subscriptions` and `email_subscriptions`
+alongside `iap_receipts`.
 
 🔴 **OUTBOUND SMS DOES NOT WORK, AND IT IS THE PRODUCT (2026-08-17).**
 Lifetime: **1 sent / 6 failed** (the one "sent" never got a delivery receipt).
