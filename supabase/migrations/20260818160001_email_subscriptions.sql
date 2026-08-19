@@ -1,8 +1,16 @@
 -- The temp-e-mail line becomes a subscription product.
 --
 -- One free address per account for LIFE (retroactive over existing rows), then
--- an auto-renewable subscription grants unlimited addresses on the FREE
--- domains. gmail.com stays a 1-credit purchase for everyone.
+-- an auto-renewable subscription grants addresses on the FREE domains, bounded
+-- by `app_config.email_sub_daily_cap` (25/day). gmail.com stays a 1-credit
+-- purchase for everyone.
+--
+-- ⚠️ This header said "unlimited addresses" until 2026-08-19. It was never
+-- true: the subscriber branch below has always enforced a daily cap, because
+-- free-domain stock is scarce and SHARED, so one looping subscriber would
+-- drain it for every user. The word also reached the paywall copy, where it
+-- was an App Store 2.3.1 accurate-metadata risk. Do not reintroduce it — say
+-- what the cap is.
 --
 -- The table mirrors line_subscriptions rather than generalising it: that table
 -- carries live paying subscribers and a lapse backstop, and restructuring live

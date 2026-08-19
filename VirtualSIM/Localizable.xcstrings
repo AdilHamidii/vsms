@@ -25524,6 +25524,86 @@
         }
       }
     },
+    "That subscription has ended. Subscribe again whenever you'd like more addresses.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dieses Abo ist beendet. Du kannst es jederzeit erneut abschließen, wenn du weitere Adressen möchtest."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Esa suscripción terminó. Puedes volver a suscribirte cuando quieras más direcciones."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cet abonnement est terminé. Vous pouvez vous réabonner dès que vous souhaitez d’autres adresses."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Questo abbonamento è terminato. Puoi riattivarlo quando vuoi altri indirizzi."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "このサブスクリプションは終了しました。アドレスが必要になったら、いつでも再登録できます。"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Essa assinatura terminou. Você pode assinar de novo quando quiser mais endereços."
+          }
+        }
+      }
+    },
+    "That subscription was refunded, so it's no longer active. Subscribe again whenever you'd like more addresses.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dieses Abo wurde erstattet und ist nicht mehr aktiv. Du kannst es jederzeit erneut abschließen, wenn du weitere Adressen möchtest."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Se reembolsó esa suscripción, así que ya no está activa. Puedes volver a suscribirte cuando quieras más direcciones."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cet abonnement a été remboursé, il n’est donc plus actif. Vous pouvez vous réabonner dès que vous souhaitez d’autres adresses."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Questo abbonamento è stato rimborsato, quindi non è più attivo. Puoi riattivarlo quando vuoi altri indirizzi."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "このサブスクリプションは返金されたため、現在は有効ではありません。アドレスが必要になったら、いつでも再登録できます。"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Essa assinatura foi reembolsada, então não está mais ativa. Você pode assinar de novo quando quiser mais endereços."
+          }
+        }
+      }
+    },
     "That's already your password. Pick a different one.": {
       "localizations": {
         "de": {

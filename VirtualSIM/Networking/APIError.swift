@@ -152,6 +152,19 @@ enum APIError: Error, LocalizedError {
                     return String(localized: "You've used your free address. Subscribe for more addresses each day on Outlook and Hotmail.")
                 case "daily_cap_reached":
                     return String(localized: "You've hit today's limit on addresses. It resets at midnight UTC.")
+                // Both are 409s from `record_email_subscription`, and both are
+                // reached almost exclusively from RESTORE — the device still
+                // holds a signed transaction the server has since marked dead.
+                //
+                // 🔴 Without these two cases they fell to the generic 409 copy,
+                // "Not available right now. Try a different option.", which
+                // tells someone whose subscription was REFUNDED to go and buy
+                // something else. That is the worst possible reading: it invites
+                // a second purchase to fix a refund they asked for.
+                case "subscription_revoked":
+                    return String(localized: "That subscription was refunded, so it's no longer active. Subscribe again whenever you'd like more addresses.")
+                case "subscription_expired":
+                    return String(localized: "That subscription has ended. Subscribe again whenever you'd like more addresses.")
                 case "unknown_service":
                     return String(localized: "That service isn't available anymore.")
                 case "order_persist_failed":
