@@ -982,11 +982,22 @@ these):
 | `com.anthersystems.VirtualSIM.mail.monthly` | **6803258564** | $2.99/mo | none |
 | `com.anthersystems.VirtualSIM.mail.yearly` | **6803258736** | $29.99/yr | 3 days |
 
-Both are available in the same **175 territories** the line sells in, priced in
-all of them, with en-US localizations and the trial on yearly only. Created by
-`scripts/asc-create-mail-subscriptions.py` then
-`scripts/asc-mail-territories-and-prices.py`; both are idempotent and support
-`--dry`. **A**
+Both are available in the same **175 territories** the line sells in and priced
+in all 175 (verified 2026-08-19: USA/FRA/DEU/GBR $2.99·€2.99·£2.99 monthly and
+$29.99·€29.99·£29.99 yearly, JPY ¥500/¥5000), with en-US localizations and the
+trial on yearly only. Created by `scripts/asc-create-mail-subscriptions.py`
+then `scripts/asc-mail-territories-and-prices.py`; both are idempotent and
+support `--dry`.
+
+⚠️ **Both sit at `MISSING_METADATA`, and that is the correct state for now.**
+The only missing piece is the App Store review screenshot, which cannot be
+taken until a build renders the paywall — and the paywall is unreachable while
+`email_subscription_enforced` is false. Submit these products with the release
+that actually switches the feature on, not before. Remember a
+`MISSING_METADATA` product is **not returned by StoreKit even in Sandbox**, so
+until the screenshot lands, `Product.products(for:)` returns an empty array for
+them and the paywall renders its store-unavailable state — that is expected,
+not a client bug. **A**
 second group is mandatory, not a preference** — Apple allows one active
 subscription per group with no quantity on iOS, so a mail product living in
 the LINE group would make a $2.99 mail purchase REPLACE a subscriber's $9.99
