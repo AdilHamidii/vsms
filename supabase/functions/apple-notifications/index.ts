@@ -114,15 +114,44 @@ Deno.serve(async (req) => {
 
   try {
     await process(sb, n);
-    await sb.from("line_notifications")
+    const { error: markErr } = await sb.from("line_notifications")
       .update({ processed_at: new Date().toISOString(), process_error: null })
       .eq("notification_uuid", n.notificationUUID);
+    // 🔴 THIS WRITE IS THE FLAG THE DUPLICATE BRANCH ABOVE READS. supabase-js
+    // RETURNS errors, so leaving it unchecked answered Apple **200** while the
+    // row stayed unprocessed — which defeats the entire point of the flag:
+    // every one of Apple's retries (1h/12h/24h/48h/72h) re-runs `process()`
+    // from the top, silently, and the notification is never marked done.
+    //
+    // Mostly survivable — renewals are tombstoned in `line_renewals` and every
+    // claim function is status-gated — but this endpoint carries every
+    // subscription lapse, refund and credit-pack clawback, so "mostly" is not
+    // the standard. Fail non-2xx instead: the work is done and idempotent, so
+    // a retry that lands the flag costs one extra reprocess and ends the loop,
+    // where a 200 leaves it running for the row's lifetime with no signal.
+    if (markErr) {
+      console.error(JSON.stringify({
+        alert: "assn_mark_processed_failed",
+        uuid: n.notificationUUID, type: n.notificationType, detail: markErr.message,
+      }));
+      return json({ error: "process_failed" }, { status: 500 });
+    }
   } catch (e) {
     // The row survives with the error recorded, so a failure is inspectable
     // rather than merely absent.
-    await sb.from("line_notifications")
+    const { error: noteErr } = await sb.from("line_notifications")
       .update({ process_error: String(e) })
       .eq("notification_uuid", n.notificationUUID);
+    // Same class, lower stakes: losing this write only costs the diagnosis,
+    // not the retry — the non-2xx below still brings Apple back. Log it so a
+    // blank `process_error` beside a failing notification is not read as
+    // "it succeeded once".
+    if (noteErr) {
+      console.error(JSON.stringify({
+        alert: "assn_record_error_failed",
+        uuid: n.notificationUUID, detail: noteErr.message,
+      }));
+    }
     console.error(JSON.stringify({
       alert: "assn_process_failed", type: n.notificationType, detail: String(e),
     }));
