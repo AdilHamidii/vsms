@@ -339,15 +339,18 @@ struct ContentView: View {
                     await state.loadOrders(using: OrdersAPI(client: api))
                     await state.loadEmailOrders(using: EmailAPI(client: api))
 
-                    // The same "happiest moment" prompt `OtpScreen` fires on
-                    // `.onAppear`, for the user who never opens that screen at
-                    // all — reads the code off the lock-screen push, pastes it
-                    // into the other app, and comes back to vSMS later for
-                    // something else entirely. `loadOrders` just recorded any
-                    // code it noticed for the first time; `shouldRequestReview`
-                    // (via `reviewableRecentDelivery`) still owns every gate —
-                    // once per version, per-order dedupe — so this
-                    // is additive, never a second prompt for the same order.
+                    // The ONLY review-prompt call site in the app. It used to
+                    // fire ~0.9s after a code rendered on `OtpScreen`/
+                    // `EmailCodeScreen` — exactly when the user is rushing to
+                    // paste it elsewhere, guaranteeing a reflex dismissal and
+                    // burning one of Apple's ~3 prompts/year. Now it fires only
+                    // here, on the user's next return to the app, whether they
+                    // reopened the code screen or read it off a lock-screen
+                    // push. `loadOrders` just recorded any code it noticed for
+                    // the first time; `shouldRequestReview` (via
+                    // `reviewableRecentDelivery`) owns every gate — once per
+                    // version, per-order dedupe, session-level paywall
+                    // suppression.
                     if state.reviewableRecentDelivery() {
                         try? await Task.sleep(for: .seconds(1))
                         requestReview()

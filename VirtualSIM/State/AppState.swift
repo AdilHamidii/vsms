@@ -344,11 +344,22 @@ final class AppState {
     /// its own clear rather than relying on that one.
     var showMailPaywall = false {
         didSet {
+            if showMailPaywall {
+                suppressReviewThisSession = true
+            }
             if !showMailPaywall, intent == .mailSubscription {
                 intent = emailMode ? .email : .sms
             }
         }
     }
+
+    /// A review prompt and the subscription paywall must never appear in the
+    /// same session. Both are interruptions asking for something; stacking them
+    /// spends Apple's ~3-prompts-per-year quota on a user who was just told
+    /// they have to pay, which is the worst possible moment to ask for five
+    /// stars. Whichever fires first suppresses the other until the next cold
+    /// launch. Deliberately NOT persisted — "session" means this launch.
+    var suppressReviewThisSession = false
 
     // eSIM product line
     // ── Temporary email ──────────────────────────────────────────────────
@@ -725,6 +736,7 @@ final class AppState {
     /// per-order dedupe — still lives in `shouldRequestReview`, which this
     /// calls rather than duplicates.
     func reviewableRecentDelivery() -> Bool {
+        guard !suppressReviewThisSession else { return false }
         let d = UserDefaults.standard
         guard let orderId = d.string(forKey: PrefKey.lastDeliveredOrderId) else { return false }
         let deliveredAt = d.double(forKey: PrefKey.lastDeliveredAt)

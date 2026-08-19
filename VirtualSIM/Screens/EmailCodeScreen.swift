@@ -1,11 +1,9 @@
-import StoreKit   // \.requestReview lives here — see OtpScreen
 import SwiftUI
 
 /// The code arrived at a temporary address.
 ///
-/// Mirrors `OtpScreen`'s job for the email line, including the review prompt —
-/// which stays on Apple's native API, fires only from the 2nd successful code
-/// onward, and is never tied to a reward (App Store 5.6.4).
+/// Mirrors `OtpScreen`'s job for the email line. The review prompt no longer
+/// fires from here — see `ContentView`'s foreground handler.
 ///
 /// Its old failure state was `Text(code.isEmpty ? "—" : code)` in 34pt bold
 /// with the card `.disabled` and nothing anywhere saying why. An em dash where
@@ -16,7 +14,6 @@ import SwiftUI
 struct EmailCodeScreen: View {
     @Environment(\.theme) private var theme
     @Environment(AppState.self) private var state
-    @Environment(\.requestReview) private var requestReview
 
     @State private var copied = false
     @State private var appeared = false
@@ -79,11 +76,6 @@ struct EmailCodeScreen: View {
                 withAnimation(RMotion.content) { copied = false }
             }
         }
-        guard let id = order?.id, state.shouldRequestReview(forOrderId: id) else { return }
-        // A beat, so the prompt lands after the user has seen the code
-        // rather than on top of it.
-        try? await Task.sleep(nanoseconds: 900_000_000)
-        requestReview()
     }
 
     private var badge: some View {
