@@ -240,7 +240,12 @@ struct WaitingScreen: View {
         HStack {
             Color.clear.frame(width: 36, height: 36)
             Spacer()
-            Text("Active rental")
+            // ⚠️ NOT "Active rental". "Rental" is this app's word for the
+            // $9.99/MONTH second-number subscription, and this screen is a
+            // single already-paid SMS verification. Implying recurring billing
+            // on the screen with the highest cancel pressure in the product is
+            // a trust hit at the worst possible moment.
+            Text("Verification in progress")
                 .font(RFont.display(16, weight: .semibold))
                 .tracking(-0.3)
                 .foregroundStyle(theme.text)
