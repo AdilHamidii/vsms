@@ -85,6 +85,46 @@
         }
       }
     },
+    "Your new password is saved, but we couldn't sign you in just now. Try again with it.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dein neues Passwort ist gespeichert, aber die Anmeldung hat gerade nicht geklappt. Versuch es damit noch einmal."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tu nueva contraseña está guardada, pero no hemos podido iniciar sesión ahora mismo. Inténtalo de nuevo con ella."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Votre nouveau mot de passe est enregistré, mais la connexion n'a pas abouti. Réessayez avec celui-ci."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "La nuova password è salvata, ma non siamo riusciti ad accedere ora. Riprova con questa."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "新しいパスワードは保存されましたが、今はサインインできませんでした。新しいパスワードでもう一度お試しください。"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sua nova senha foi salva, mas não conseguimos entrar agora. Tente de novo com ela."
+          }
+        }
+      }
+    },
     "%@ / month": {
       "localizations": {
         "de": {

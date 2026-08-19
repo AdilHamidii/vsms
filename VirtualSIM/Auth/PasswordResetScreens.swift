@@ -116,6 +116,9 @@ struct SetNewPasswordScreen: View {
     @State private var error: String?
     @State private var appeared = false
     @FocusState private var focus: Field?
+    /// The password the server has ALREADY accepted, if it has. Non-nil means
+    /// the change landed and only the sign-in is outstanding — see `submit()`.
+    @State private var changedPassword: String?
 
     private enum Field { case password, confirm }
     private static let minPassword = 8
@@ -168,7 +171,10 @@ struct SetNewPasswordScreen: View {
                 .scrollBounceBehavior(.basedOnSize)
 
                 BottomBar {
-                    PrimaryButton(label: String(localized: "Save and sign in"),
+                    // Stops promising a save that has already happened.
+                    PrimaryButton(label: changedPassword == nil
+                                  ? String(localized: "Save and sign in")
+                                  : String(localized: "Sign in"),
                                   disabled: !canSubmit, action: submit)
                 }
             }
@@ -179,23 +185,52 @@ struct SetNewPasswordScreen: View {
         }
     }
 
+    /// 🔴 TWO SERVER CALLS, TWO OUTCOMES, TWO MESSAGES — never one `do`.
+    ///
+    /// This used to run `updatePassword` and `signIn` inside a single `do` with
+    /// one catch reading "Couldn't save your new password. Try again." So a
+    /// transient failure on the SECOND call reported the FIRST as failed while
+    /// the password had in fact been changed: the user then retried with their
+    /// old password, which no longer worked, or left believing nothing had
+    /// happened and could not sign in with either one.
+    ///
+    /// `changedPassword` records the one the server accepted, so a retry signs
+    /// in with THAT rather than re-sending a recovery token that may already be
+    /// spent, and the CTA stops claiming it will save anything.
     private func submit() {
         guard canSubmit else { return }
         busy = true
         error = nil
         Task {
+            let api = AuthAPI(client: self.api)
+
+            // Step 1 — change the password. Skipped once it has succeeded.
+            if changedPassword == nil {
+                do {
+                    try await api.updatePassword(newPassword: password,
+                                                 overrideToken: recoveryToken)
+                    changedPassword = password
+                } catch {
+                    RHaptic.warn()
+                    self.error = (error as? APIError)?.userMessage
+                        ?? String(localized: "Couldn't save your new password. Try again.")
+                    busy = false
+                    return
+                }
+            }
+
+            // Step 2 — only NOW is the recovery session worth adopting: the
+            // password it was issued to change has actually been changed.
             do {
-                let api = AuthAPI(client: self.api)
-                try await api.updatePassword(newPassword: password, overrideToken: recoveryToken)
-                // Only NOW is the recovery session worth adopting: the password
-                // it was issued to change has actually been changed.
-                let supa = try await api.signIn(email: email, password: password)
+                let supa = try await api.signIn(email: email,
+                                                password: changedPassword ?? password)
                 RHaptic.success()
                 session.adopt(supa)
             } catch {
                 RHaptic.warn()
-                self.error = (error as? APIError)?.userMessage
-                    ?? String(localized: "Couldn't save your new password. Try again.")
+                // States the part that is already true. Whatever happens next,
+                // the new password is the one that works.
+                self.error = String(localized: "Your new password is saved, but we couldn't sign you in just now. Try again with it.")
                 busy = false
             }
         }
