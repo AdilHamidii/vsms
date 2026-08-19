@@ -1,9 +1,4 @@
 import SwiftUI
-// `approxMoney` reads `Product.price` / `priceFormatStyle` off IAPStore. The
-// type is never named here, but a missing StoreKit import has already
-// type-checked clean in this repo and then failed the real build — see the
-// gotcha in CLAUDE.md.
-import StoreKit
 
 /// The screen 78% of users die on.
 ///
@@ -42,7 +37,6 @@ struct HomeScreen: View {
     @Environment(\.theme) private var theme
     @Environment(AppState.self) private var state
     @Environment(APIClient.self) private var api
-    @Environment(IAPStore.self) private var iap
 
     var openServices: () -> Void = {}
     var openCountries: () -> Void = {}
@@ -268,32 +262,19 @@ struct HomeScreen: View {
     }
 
     // MARK: - Money in plain words
-
-    /// What a credit price is worth in the user's own currency.
-    ///
-    /// "cr" is never defined anywhere on this screen, and it is the unit of the
-    /// only price shown. This is arithmetic on OUR OWN retail price — the live
-    /// StoreKit price of the pack most people buy, divided by its credits — so
-    /// it is not a provider figure and not a guess.
-    ///
-    /// Returns nil until StoreKit answers, and renders nothing in that case. A
-    /// hard-coded dollar fallback would be wrong in every non-USD storefront,
-    /// and this app already shipped a USD/EUR ladder that silently disagreed
-    /// with itself for weeks.
-    private func approxMoney(_ credits: Int) -> String? {
-        guard credits > 0,
-              // The reference is the 12-credit pack: it carries MOST POPULAR,
-              // it is the middle of the ladder, and per-credit prices differ by
-              // pack, so quoting the cheapest would understate and the dearest
-              // overstate. "about" carries the rest.
-              let pack = CreditPack.all.first(where: { $0.credits == 12 })
-                  ?? CreditPack.all.first,
-              pack.credits > 0,
-              let product = iap.products[pack.productId]
-        else { return nil }
-        let total = product.price / Decimal(pack.credits) * Decimal(credits)
-        return total.formatted(product.priceFormatStyle)
-    }
+    //
+    // 🔴 THERE IS DELIBERATELY NO FIAT APPROXIMATION HERE ANY MORE.
+    //
+    // `approxMoney` used to render "about €2,29" under the credit cost. It was
+    // accurate — arithmetic on our own live StoreKit price — and it was the
+    // wrong thing to show. The user is deciding whether to spend CREDITS they
+    // already hold; printing the cash value re-frames a one-tap decision as a
+    // purchase decision and invites the comparison "is this code worth €2.29
+    // to me", which is exactly the thought that stops the tap.
+    //
+    // Credits exist so the spend feels like a token, not a payment. Money
+    // belongs on the paywall, where the user really is buying, and nowhere
+    // else. Do not reintroduce it on a cost row.
 
     // MARK: - Hero
 
@@ -425,11 +406,6 @@ struct HomeScreen: View {
                     Text("cr")
                         .font(RFont.text(13, weight: .medium))
                         .foregroundStyle(theme.text2)
-                }
-                if let money = approxMoney(routeCost) {
-                    Text("about \(money)")
-                        .font(RFont.text(12))
-                        .foregroundStyle(theme.text3)
                 }
             }
         } else {
@@ -694,11 +670,6 @@ struct HomeScreen: View {
                         Text("cr")
                             .font(RFont.text(13, weight: .medium))
                             .foregroundStyle(theme.text2)
-                    }
-                    if let money = approxMoney(dom.credits) {
-                        Text("about \(money)")
-                            .font(RFont.text(12))
-                            .foregroundStyle(theme.text3)
                     }
                 }
             }
