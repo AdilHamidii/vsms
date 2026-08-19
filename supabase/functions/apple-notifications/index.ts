@@ -240,7 +240,7 @@ async function process(sb: ReturnType<typeof admin>, n: Awaited<ReturnType<typeo
   const family = subscriptionFamily(tx.productId);
   if (family === null) return;                        // a credit pack
   if (family === "mail") {
-    await handleMailNotification(sb, n, tx, txJws, periodEnd);
+    await handleMailNotification(sb, n, tx, txJws, riJws, periodEnd);
     return;
   }
   // family === "line" — everything below is unchanged.
@@ -542,10 +542,11 @@ async function handleMailNotification(
   n: { notificationType: string; subtype?: string | null; notificationUUID: string },
   tx: Awaited<ReturnType<typeof verifyTransactionJWS>>,
   txJws: string,
+  riJws: string | undefined,
   periodEnd: string | null,
 ) {
   const originalTx = tx.originalTransactionId;
-  await ensureMailSubscriptionRow(sb, originalTx, tx, periodEnd, txJws);
+  await ensureMailSubscriptionRow(sb, originalTx);
 
   const type = n.notificationType;
   const sub = n.subtype ?? "";
@@ -575,12 +576,33 @@ async function handleMailNotification(
       return;
   }
 
-  const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
+  const patch: Record<string, unknown> = {
+    updated_at: new Date().toISOString(),
+    // The migration promises this table is kept current "from ASSN payloads"
+    // — without this, revenue decoding stays pinned to the purchase-time JWS
+    // forever and every renewal/refund/grace event this handler writes would
+    // be invisible to anything that reads the signed transaction later.
+    last_transaction_id: tx.transactionId,
+    latest_signed_transaction: txJws,
+  };
   if (state) patch.state = state;
   if (periodEnd) patch.expires_at = periodEnd;
   if (type === "DID_CHANGE_RENEWAL_STATUS") patch.auto_renew = sub === "AUTO_RENEW_ENABLED";
-  if (type === "DID_FAIL_TO_RENEW" && sub === "GRACE_PERIOD" && periodEnd) {
-    patch.grace_expires_at = periodEnd;
+  if (type === "DID_FAIL_TO_RENEW" && sub === "GRACE_PERIOD") {
+    // 🔴 `periodEnd` (== tx.expiresDate) is the period that JUST FAILED to
+    // renew — already in the past. Writing it here would set BOTH
+    // `expires_at` and `grace_expires_at` to a past timestamp, and the
+    // entitlement predicate is `greatest(expires_at, grace_expires_at) >
+    // now()` — so the subscriber would lose access the instant grace begins,
+    // exactly the opposite of what a grace period is for. The correct value
+    // is the renewal-info JWS's own `gracePeriodExpiresDate`, the same field
+    // the line handler reads at index.ts:347-348. If it is absent, write NO
+    // `grace_expires_at` at all — a past timestamp is worse than a missing
+    // one, since `greatest()` ignores nulls but not stale dates.
+    const ri = riJws ? await verifyRenewalInfoJWS(riJws).catch(() => null) : null;
+    if (ri?.gracePeriodExpiresDate) {
+      patch.grace_expires_at = new Date(ri.gracePeriodExpiresDate).toISOString();
+    }
   }
   if (type === "REFUND" || type === "REVOKE") {
     patch.revocation_date = tx.revocationDate
@@ -610,26 +632,24 @@ async function handleMailNotification(
   }
 }
 
-/** Create the row if this notification arrived before our own purchase call.
- *  Attribution comes from an EXISTING row only — there is no mail equivalent of
- *  `phone_lines` to look a user up from, so an unattributable notification is
- *  logged and dropped rather than bound to a guessed account.
+/** Refuse to guess: if this notification arrived before our own purchase call
+ *  landed, there is no mail equivalent of `phone_lines` to attribute it to, so
+ *  there is nothing here yet to write a state transition against — a row
+ *  created with a guessed `user_id` would bind an Apple entitlement to the
+ *  wrong account. Instead of dropping the notification, THROW.
  *
- *  The throw below is deliberate, not a bug: Apple's retry ladder (1h / 12h /
- *  24h / 48h / 72h) is finite, and `verify-email-subscription` — the client's
- *  own purchase call — is the PRIMARY writer of this row. This handler is only
- *  the backstop for the race where Apple's notification beats that call; by
- *  the next retry the row almost always exists, and if it never does the
- *  ladder simply ends rather than looping forever. */
+ *  Apple's retry ladder (1h / 12h / 24h / 48h / 72h) is finite, and
+ *  `verify-email-subscription` — the client's own purchase call — is the
+ *  PRIMARY writer of this row. This handler is only the backstop for the race
+ *  where Apple's notification beats that call; by the next retry the row
+ *  almost always exists, and if it never does the ladder simply ends rather
+ *  than looping forever. */
 async function ensureMailSubscriptionRow(
   sb: ReturnType<typeof admin>,
   originalTx: string,
-  tx: Awaited<ReturnType<typeof verifyTransactionJWS>>,
-  periodEnd: string | null,
-  txJws: string,
 ) {
   const { data: existing, error: readErr } = await sb.from("email_subscriptions")
-    .select("original_transaction_id, user_id")
+    .select("original_transaction_id")
     .eq("original_transaction_id", originalTx).maybeSingle();
   if (readErr) {
     console.error(JSON.stringify({
