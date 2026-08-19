@@ -99,7 +99,7 @@ struct MailPaywallScreen: View {
     private var intro: some View {
         VStack(alignment: .leading, spacing: 8) {
             MicroLabel("Temporary e-mail")
-            Text(verbatim: "outlook.com and hotmail.com, without limit.")
+            Text("outlook.com and hotmail.com, without limit.")
                 .displayType(26)
                 .foregroundStyle(theme.text)
                 .fixedSize(horizontal: false, vertical: true)
@@ -115,12 +115,12 @@ struct MailPaywallScreen: View {
     /// Connect. Neither is a reason to render a disabled-but-live-looking row.
     private var unavailable: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text("The App Store isn't offering this subscription right now.")
+            // The exact copy `SubscriptionStore`'s paywall already ships, so
+            // this reuses its catalog key and all six translations rather
+            // than adding a near-duplicate.
+            Text("The App Store isn't offering this subscription right now. Please try again in a moment.")
                 .font(RFont.text(14, weight: .medium))
                 .foregroundStyle(theme.text2)
-            Text("Please try again in a moment.")
-                .font(RFont.text(13))
-                .foregroundStyle(theme.text3)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(16)
@@ -215,9 +215,13 @@ struct MailPaywallScreen: View {
                     }
                     // 3.1.2(a): the actual billing period and renewal terms,
                     // and — when a trial applies — what happens when it ends.
+                    // The trial sentence matches `LineCheckoutScreen`'s exact
+                    // interpolation shape (trial, then price, THEN the renewal
+                    // sentence) so it reuses that key's catalog entry and all
+                    // six translations rather than adding a near-duplicate.
                     Group {
                         if store.selectedPlan == .yearly, let trial = yearlyTrialLabel {
-                            Text("\(trial) free, then \(product.displayPrice)/year. Renews every year until you cancel. Cancel any time in your Apple ID settings.")
+                            Text("\(trial) free, then \(product.displayPrice).  Renews every year until you cancel. Cancel any time in your Apple ID settings.")
                         } else if store.selectedPlan == .yearly {
                             Text("Renews every year until you cancel. Cancel any time in your Apple ID settings.")
                         } else {
@@ -276,8 +280,16 @@ struct MailPaywallScreen: View {
         guard let product = store.product(for: store.selectedPlan) else {
             return String(localized: "Subscribe")
         }
+        // Single-argument interpolations only, deliberately — `priceBlock`
+        // just above already states the exact price, period and renewal
+        // terms (the 3.1.2(a) disclosure), so the button does not need to
+        // repeat them, and a two-argument interpolated sentence risks a
+        // hand-seeded catalog key that does not match what Xcode's own
+        // extractor would generate (this file's multi-argument keys are
+        // NOT consistently positional — verified against the catalog rather
+        // than assumed).
         if store.selectedPlan == .yearly, let trial = yearlyTrialLabel {
-            return String(localized: "Start \(trial) free, then \(product.displayPrice)/year")
+            return String(localized: "Start \(trial) free")
         }
         return String(localized: "Subscribe — \(product.displayPrice)")
     }
@@ -304,7 +316,7 @@ struct MailPaywallScreen: View {
                     RHaptic.success()
                     dismiss()
                 } else if store.lastError == nil {
-                    store.lastError = String(localized: "Nothing to restore on this Apple ID.")
+                    store.lastError = String(localized: "Nothing left to restore.")
                 }
             }
         } label: {

@@ -8476,6 +8476,46 @@
         }
       }
     },
+    "Create as many addresses as you need on those two domains. Gmail stays a 1-credit purchase either way — it isn't part of the subscription.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Erstelle so viele Adressen, wie du auf diesen beiden Domains brauchst. Gmail bleibt in jedem Fall ein Kauf für 1 Guthaben — es gehört nicht zum Abo."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Crea tantas direcciones como necesites en esos dos dominios. Gmail sigue costando 1 crédito de todos modos: no forma parte de la suscripción."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Créez autant d'adresses que nécessaire sur ces deux domaines. Gmail reste un achat à 1 crédit dans tous les cas — il ne fait pas partie de l'abonnement."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Crea tutti gli indirizzi che ti servono su questi due domini. Gmail resta comunque un acquisto da 1 credito: non fa parte dell'abbonamento."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "この2つのドメインでは、必要なだけアドレスを作成できます。Gmailはどちらの場合も1クレジットでの購入のままです — サブスクリプションには含まれません。"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Crie quantos endereços precisar nesses dois domínios. O Gmail continua custando 1 crédito de qualquer forma — ele não faz parte da assinatura."
+          }
+        }
+      }
+    },
     "Create my account": {
       "localizations": {
         "de": {
@@ -12493,6 +12533,46 @@
           "stringUnit": {
             "state": "translated",
             "value": "Importante"
+          }
+        }
+      }
+    },
+    "Included": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Inklusive"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Incluido"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Inclus"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Incluso"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "含まれています"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Incluído"
           }
         }
       }
@@ -23797,6 +23877,46 @@
         }
       }
     },
+    "Start %@ free": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ kostenlos starten"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Empezar %@ gratis"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Commencer %@ offerts"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Inizia %@ gratis"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ 無料で始める"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Começar %@ grátis"
+          }
+        }
+      }
+    },
     "Still confirming": {
       "localizations": {
         "de": {
@@ -23993,6 +24113,86 @@
           "stringUnit": {
             "state": "translated",
             "value": "Assinar"
+          }
+        }
+      }
+    },
+    "Subscribe — %@": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Abonnieren — %@"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Suscribirse — %@"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "S'abonner — %@"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Abbonati — %@"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "登録する — %@"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Assinar — %@"
+          }
+        }
+      }
+    },
+    "Subscription": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Abo"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Suscripción"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Abonnement"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Abbonamento"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "サブスクリプション"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Assinatura"
           }
         }
       }
@@ -27220,6 +27420,86 @@
           "stringUnit": {
             "state": "translated",
             "value": "Abaixo de 30%"
+          }
+        }
+      }
+    },
+    "Unlimited addresses": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Unbegrenzte Adressen"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Direcciones ilimitadas"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Adresses illimitées"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Indirizzi illimitati"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "無制限のアドレス"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Endereços ilimitados"
+          }
+        }
+      }
+    },
+    "Unlimited e-mail addresses": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Unbegrenzte E-Mail-Adressen"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Direcciones de correo ilimitadas"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Adresses e-mail illimitées"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Indirizzi e-mail illimitati"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "無制限のメールアドレス"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Endereços de e-mail ilimitados"
           }
         }
       }
@@ -32377,6 +32657,46 @@
           "stringUnit": {
             "state": "translated",
             "value": "agora"
+          }
+        }
+      }
+    },
+    "outlook.com and hotmail.com, without limit.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "outlook.com und hotmail.com, ohne Limit."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "outlook.com y hotmail.com, sin límite."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "outlook.com et hotmail.com, sans limite."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "outlook.com e hotmail.com, senza limiti."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "outlook.comとhotmail.comを、上限なしで。"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "outlook.com e hotmail.com, sem limite."
           }
         }
       }
