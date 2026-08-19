@@ -191,7 +191,11 @@ struct CreditsSheet: View {
                         .padding(.top, 10)
                         .riseIn(appeared, index: 3)
 
-                    if iap.lastError != nil {
+                    // ⚠️ ONLY a LOAD failure belongs here. A load failure has
+                    // no pack list above it, so this IS the content. A PURCHASE
+                    // failure is rendered in the bottom bar instead — see
+                    // `ctaBlock`.
+                    if iap.lastError != nil, !productsLoaded {
                         errorCard
                             .padding(.top, 14)
                     }
@@ -602,6 +606,19 @@ struct CreditsSheet: View {
 
     private var ctaBlock: some View {
         VStack(spacing: 12) {
+            // 🔴 A FAILED PURCHASE WAS INVISIBLE. `buy()` only buzzed
+            // (`RHaptic.warn()`) and the message lived at the very bottom of
+            // the ScrollView, below the assurances, the ladder header and the
+            // whole pack list — so at the sheet's resting scroll position the
+            // user saw nothing at all. This is the single paywall every dollar
+            // of revenue passes through, tapped by first-time buyers who have
+            // no proof yet that the product works, so "nothing happened" is the
+            // worst possible answer. Pinned under the button, where the thumb
+            // and the eyes already are.
+            if iap.lastError != nil, productsLoaded {
+                errorCard
+            }
+
             PrimaryButton(
                 label: buttonLabel,
                 sub: iap.has(pack) ? iap.displayPrice(pack) : nil,
@@ -733,7 +750,12 @@ struct CreditsSheet: View {
         defer { purchasing = false }
         let success = await iap.purchase(pack)
         guard success else {
-            RHaptic.warn()
+            // Only buzz on a real failure. `.userCancelled` also returns false
+            // and sets no error — warning-buzzing someone for dismissing
+            // Apple's own sheet reads as "something went wrong" when nothing
+            // did. The message itself is now pinned under the button by
+            // `ctaBlock`, which is the half that was missing entirely.
+            if iap.lastError != nil { RHaptic.warn() }
             return
         }
         RHaptic.success()
