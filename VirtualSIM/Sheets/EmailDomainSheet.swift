@@ -184,8 +184,8 @@ struct EmailDomainSheet: View {
     /// and whether they have spent their one free address. It used to accept
     /// an `EmailDomainOption` and ignore it, which read as a per-domain label.
     private var entitlementLabel: LocalizedStringKey {
-        if mailStore.isEntitled { return "Included" }
-        return state.hasUsedFreeEmail ? "Subscription" : "Free"
+        FreeEmailAccess.resolve(isEntitled: mailStore.isEntitled,
+                                hasUsedFree: state.hasUsedFreeEmail).label
     }
 
     @ViewBuilder

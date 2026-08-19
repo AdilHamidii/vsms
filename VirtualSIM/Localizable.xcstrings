@@ -3158,6 +3158,46 @@
         }
       }
     },
+    "Addresses are included with your subscription.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Adressen sind in Ihrem Abo enthalten."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Las direcciones están incluidas en su suscripción."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Les adresses sont incluses dans votre abonnement."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gli indirizzi sono inclusi nel suo abbonamento."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "アドレスはサブスクリプションに含まれています。"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Os endereços estão incluídos na sua assinatura."
+          }
+        }
+      }
+    },
     "Affordable": {
       "localizations": {
         "de": {
@@ -30545,6 +30585,46 @@
           "stringUnit": {
             "state": "translated",
             "value": "Você usou os endereços grátis de hoje. Tente amanhã ou escolha Gmail ou iCloud."
+          }
+        }
+      }
+    },
+    "You've used your free address. More come with a subscription.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sie haben Ihre kostenlose Adresse verbraucht. Weitere gibt es mit einem Abo."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ya ha usado su dirección gratuita. Consiga más con una suscripción."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vous avez utilisé votre adresse gratuite. D'autres sont disponibles avec un abonnement."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ha già usato il suo indirizzo gratuito. Altri sono disponibili con un abbonamento."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "無料アドレスは使用済みです。サブスクリプションでさらに利用できます。"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Você já usou seu endereço grátis. Assine para receber mais."
           }
         }
       }

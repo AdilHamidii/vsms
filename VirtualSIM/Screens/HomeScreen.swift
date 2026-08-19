@@ -37,6 +37,10 @@ struct HomeScreen: View {
     @Environment(\.theme) private var theme
     @Environment(AppState.self) private var state
     @Environment(APIClient.self) private var api
+    // Home renders the e-mail price, so it needs the same entitlement input the
+    // domain sheet uses. Without it Home said "Free" to a user whose one free
+    // address was already spent, and the tap was refused into a paywall.
+    @Environment(MailSubscriptionStore.self) private var mailStore
 
     var openServices: () -> Void = {}
     var openCountries: () -> Void = {}
@@ -374,7 +378,17 @@ struct HomeScreen: View {
             return String(localized: "No code in 8 minutes → refunded automatically.")
         }
         if state.emailDomain?.isFree == true {
-            return String(localized: "Free addresses cost you nothing if no code arrives.")
+            // ⚠️ NOT unconditionally "free". The one free address is per
+            // account for life, so this promised no cost to a user who had
+            // already spent theirs and would be refused into the paywall.
+            switch freeEmailAccess {
+            case .free:
+                return String(localized: "Free addresses cost you nothing if no code arrives.")
+            case .included:
+                return String(localized: "Addresses are included with your subscription.")
+            case .subscription:
+                return String(localized: "You've used your free address. More come with a subscription.")
+            }
         }
         return String(localized: "No code in 20 minutes → refunded automatically.")
     }
@@ -649,16 +663,25 @@ struct HomeScreen: View {
         )
     }
 
+    /// What a free domain costs THIS account, from the one shared definition
+    /// the domain sheet also reads. Home used to hardcode "Free" for every
+    /// `isFree` domain and so contradicted the sheet the user had just left.
+    private var freeEmailAccess: FreeEmailAccess {
+        FreeEmailAccess.resolve(isEntitled: mailStore.isEntitled,
+                                hasUsedFree: state.hasUsedFreeEmail)
+    }
+
     /// Price in the e-mail hero. "Free" is a word, not a 0 — rendering "0 cr"
-    /// reads as a broken price rather than a gift.
+    /// reads as a broken price rather than a gift. But it is only "Free" when
+    /// the account actually still has its one free address.
     @ViewBuilder
     private var emailHeroPrice: some View {
         if let dom = state.emailDomain {
             if dom.isFree {
-                Text("Free")
+                Text(freeEmailAccess.label)
                     .font(RFont.display(19, weight: .bold))
                     .tracking(-0.4)
-                    .foregroundStyle(theme.live)
+                    .foregroundStyle(freeEmailAccess.readsAsFree ? theme.live : theme.text)
             } else {
                 VStack(alignment: .trailing, spacing: 1) {
                     HStack(alignment: .firstTextBaseline, spacing: 3) {
@@ -709,7 +732,11 @@ struct HomeScreen: View {
             } else {
                 PrimaryButton(
                     label: "Get email address",
-                    sub: dom.isFree ? String(localized: "Free") : "\(dom.credits) cr",
+                    // Same three states the domain sheet renders, from the
+                    // same definition. It said "Free" unconditionally, so a
+                    // user whose one free address was spent was invited in and
+                    // then refused with `subscription_required`.
+                    sub: dom.isFree ? freeEmailAccess.subtitle : "\(dom.credits) cr",
                     icon: RIcon.bolt,
                     disabled: state.isBuyingEmail,
                     action: { RHaptic.select(); onStartEmail() }
