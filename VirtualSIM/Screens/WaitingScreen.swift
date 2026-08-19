@@ -99,7 +99,26 @@ struct WaitingScreen: View {
             }
             .scrollIndicators(.hidden)
         }
-        .task {
+        // ⚠️ `id: order.id` IS THE FIX, not decoration.
+        //
+        // A reroll replaces `state.activeOrder` while leaving `flow == .waiting`,
+        // so this view's IDENTITY survives — and a plain `.task` is bound to the
+        // view's identity, never to the value it closed over. The running
+        // closure therefore kept the ORIGINAL `order` for the whole life of the
+        // fresh one: `elapsed` went on counting the previous order (so
+        // `holdRemaining` was already nil and "Cancel & refund" plus both reroll
+        // buttons were live at t=0 on a seconds-old number, every tap returning
+        // 429 cancel_too_early), the ring ran past 1, and the header could read
+        // the impossible "ELAPSED 05:30 / EXPIRES IN 07:58".
+        //
+        // Keyed on the order id, the task is torn down and restarted against the
+        // new value, and every derived quantity — elapsed, holdRemaining, phase,
+        // progress, isFinalizing — falls out of it correctly.
+        .task(id: order.id) {
+            // A fresh order means a fresh number, so the previous one's "Copied"
+            // confirmation is a claim about a string no longer on screen.
+            copied = false
+
             // Tick once per second, measured from the ORDER, not from when this
             // view appeared.
             //
@@ -131,6 +150,9 @@ struct WaitingScreen: View {
             try? await Task.sleep(nanoseconds: 1_200_000_000)
             await push.requestAuthorizationAndRegister()
         }
+        // Deliberately NOT keyed on the order: it closes over nothing but the
+        // flow, and `pollActiveOrder` always reads whichever order is active
+        // now. Restarting it on a reroll would only reset the 4s cadence.
         .task {
             // Poll the server for the SMS every 4s while we're on this screen.
             let ordersAPI = OrdersAPI(client: api)
@@ -140,7 +162,11 @@ struct WaitingScreen: View {
                 await state.pollActiveOrder(using: ordersAPI, wallet: walletAPI)
             }
         }
-        .task {
+        // Keyed for the same reason as the tick above: it closes over `order`,
+        // and after a reroll the stale value made `isPastExpiry(order)` true for
+        // the whole of the NEW order's window — reconciling a live order from
+        // its first second.
+        .task(id: order.id) {
             // Reconcile-on-timeout. Once the window has closed, the provider
             // poll is no longer the authority on whether this order is over —
             // the order row is, and the cron writes the terminal status +
