@@ -109,19 +109,3 @@ struct CoinIconBox: View {
     }
 }
 
-/// Compatibility shim — call-sites that have a Country use FlagImage directly.
-/// This wrapper exists so an emoji string can still be passed in places that
-/// don't have a full Country reference (none right now, kept for safety).
-struct FlagBox: View {
-    @Environment(\.theme) private var theme
-    let flag: String
-    var size: CGFloat = 32
-    var radius: CGFloat = 9
-
-    var body: some View {
-        Text(flag)
-            .font(.system(size: size * 0.56))
-            .frame(width: size, height: size)
-            .background(theme.chipBg, in: .rect(cornerRadius: radius))
-    }
-}

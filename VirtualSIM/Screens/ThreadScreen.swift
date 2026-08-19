@@ -1,21 +1,28 @@
 import SwiftUI
 
-/// One conversation on the rented line.
+/// One conversation on the rented line — READ ONLY since 2026-08-18.
 ///
 /// A cover rather than a navigation push, and that is forced by the layout:
 /// `TabBar` is a ZStack overlay pinned to the bottom of `ContentView` on every
 /// tab, so a push would leave the floating tab bar sitting on top of the
-/// composer.
+/// content.
+///
+/// 🔴 **THE COMPOSER IS GONE, along with its allowance counter and its
+/// past-due "renew to send again" prompt** (owner decision: outbound SMS is
+/// dropped, not delayed — it is the only capability needing carrier approval
+/// and lifetime outbound is 1 sent against 6 failed). A text field that
+/// accepts input and then fails at the carrier is worse than no text field:
+/// the user types, waits, and gets a red "Not sent" they cannot act on.
+///
+/// This screen now does what the product does — it shows what arrived, and
+/// offers one tap to copy a verification code out of it.
 struct ThreadScreen: View {
     @Environment(\.theme) private var theme
     @Environment(AppState.self) private var state
     @Environment(APIClient.self) private var api
 
-    @State private var draft = ""
-    @State private var isSending = false
     @State private var showActions = false
     @State private var reported = false
-    @FocusState private var composerFocused: Bool
 
     private var thread: LineThread? {
         state.lineThreads.first { $0.id == state.openThreadId }
@@ -31,7 +38,6 @@ struct ThreadScreen: View {
                 header
                 Divider().overlay(theme.sep)
                 transcript
-                composer
             }
         }
         .task {
@@ -140,101 +146,13 @@ struct ThreadScreen: View {
         }
     }
 
-    // MARK: - Composer
-
-    /// Disabled WITH ITS REASON showing, never failing on send.
-    ///
-    /// Two different blocks that must not be collapsed: "you have used your
-    /// texts" and "your payment failed" send the user to two different places,
-    /// and telling a past-due user to wait for a reset that is not coming is
-    /// the worse of the two mistakes.
-    private var composer: some View {
-        VStack(spacing: 6) {
-            if let reason = blockReason {
-                HStack(spacing: 7) {
-                    Image(systemName: "exclamationmark.circle")
-                        .font(.system(size: 11, weight: .semibold))
-                    Text(reason)
-                        .font(RFont.text(12))
-                        .fixedSize(horizontal: false, vertical: true)
-                    Spacer(minLength: 0)
-                }
-                .foregroundStyle(theme.warn)
-                .padding(.horizontal, 4)
-            }
-
-            HStack(alignment: .bottom, spacing: 10) {
-                TextField("Message", text: $draft, axis: .vertical)
-                    .font(RFont.text(15))
-                    .foregroundStyle(theme.text)
-                    .lineLimit(1...5)
-                    .focused($composerFocused)
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 10)
-                    .background(theme.elev, in: .rect(cornerRadius: 18))
-                    .disabled(blockReason != nil)
-
-                Button(action: send) {
-                    Image(systemName: RIcon.send)
-                        .font(.system(size: 15, weight: .bold))
-                        .foregroundStyle(canSend ? theme.onInk : theme.text3)
-                        .frame(width: 38, height: 38)
-                        .background(canSend ? theme.ink : theme.chipBg, in: .circle)
-                }
-                .buttonStyle(.plain)
-                .disabled(!canSend)
-            }
-
-            if blockReason == nil, let left = state.line?.smsRemaining {
-                Text("\(left) texts left this month")
-                    .font(RFont.text(11))
-                    .foregroundStyle(theme.text3)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, 4)
-            }
-        }
-        .padding(.horizontal, 16)
-        .padding(.top, 8)
-        .padding(.bottom, 12)
-        .background(theme.bg)
-    }
-
-    private var canSend: Bool {
-        !isSending && blockReason == nil
-            && !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-    }
-
-    private var blockReason: LocalizedStringKey? {
-        if thread?.blocked == true { return "You've blocked this number. Unblock it to send." }
-        guard let line = state.line else { return "Your number isn't ready yet." }
-        switch line.sendBlock {
-        case .allowanceExhausted:
-            return "You've used this month's texts. They reset when your subscription renews."
-        case .pastDue:
-            return "Renew your subscription to send messages again."
-        case .suspended:
-            return "Your number is on hold. Resubscribe to use it again."
-        case .notLive:
-            return "Your number isn't ready yet."
-        case nil:
-            return nil
-        }
-    }
-
-    private func send() {
-        guard let peer = thread?.peerE164 else { return }
-        let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty else { return }
-        Task {
-            isSending = true
-            defer { isSending = false }
-            let ok = await state.sendLineMessage(using: LineAPI(client: api), to: peer, text: text)
-            // Cleared only on success, so a refused send does not lose what the
-            // user typed — retyping a message the app threw away is a worse
-            // failure than the send itself.
-            if ok { draft = "" }
-        }
-    }
+    // The composer — text field, send button, `blockReason`, the "N texts left
+    // this month" counter and `send()` — was DELETED on 2026-08-18. Its
+    // `blockReason` ladder is worth remembering rather than resurrecting: it
+    // distinguished "you have used your texts" from "your payment failed",
+    // which was the right distinction while sending existed. It does not
+    // exist now, and a disabled composer with an explanation would still be a
+    // text field on screen advertising a capability that is never coming.
 }
 
 /// One message. Inbound sits left on `elev`; outbound sits right on `ink`, the
@@ -242,6 +160,7 @@ struct ThreadScreen: View {
 struct MessageBubble: View {
     @Environment(\.theme) private var theme
     let message: LineMessage
+    @State private var copiedCode = false
 
     var body: some View {
         HStack {
@@ -256,6 +175,38 @@ struct MessageBubble: View {
                         message.isOutbound ? theme.ink : theme.elev,
                         in: .rect(cornerRadius: 17))
                     .fixedSize(horizontal: false, vertical: true)
+
+                // Receiving a verification code is most of why this line
+                // exists, and until now the code was raw text to select by
+                // hand — while both other product lines extract it and offer
+                // one tap. Inbound only: a code we SENT is not a code to copy.
+                if !message.isOutbound,
+                   let code = VerificationCode.detect(in: message.body) {
+                    Button {
+                        UIPasteboard.general.string = code
+                        withAnimation(RMotion.select) { copiedCode = true }
+                        RHaptic.select()
+                        Task {
+                            try? await Task.sleep(for: .seconds(1.6))
+                            withAnimation(RMotion.select) { copiedCode = false }
+                        }
+                    } label: {
+                        HStack(spacing: 5) {
+                            Image(systemName: copiedCode ? RIcon.check : "doc.on.doc")
+                                .font(.system(size: 10, weight: .semibold))
+                            Text(copiedCode ? "Copied" : "Copy \(code)")
+                                .font(RFont.text(11, weight: .semibold))
+                        }
+                        .foregroundStyle(copiedCode ? theme.live : theme.ink)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                        .background(
+                            (copiedCode ? theme.live : theme.ink).opacity(0.12),
+                            in: .rect(cornerRadius: 10))
+                    }
+                    .buttonStyle(.plain)
+                    .padding(.horizontal, 4)
+                }
 
                 HStack(spacing: 4) {
                     Text(message.timestamp, format: .dateTime.hour().minute())

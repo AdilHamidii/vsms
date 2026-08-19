@@ -106,7 +106,14 @@ struct EsimCheckoutScreen: View {
             VStack {
                 if let cost {
                     if insufficient {
-                        PrimaryButton(label: "Buy credits", sub: "Need \(cost - state.balance) more",
+                        // `String(localized:)` is NOT optional here, and this
+                        // one call site was missing it. `PrimaryButton` renders
+                        // `sub` as `Text(LocalizedStringKey(sub))`, so a string
+                        // built at runtime — "Need 3 more" — matches no catalog
+                        // key and ships English to all six locales. The three
+                        // other copies of this button localize correctly.
+                        PrimaryButton(label: "Buy credits",
+                                      sub: String(localized: "Need \(cost - state.balance) more"),
                                       icon: RIcon.plus, action: openCredits)
                     } else {
                         PrimaryButton(label: state.isBuyingEsim ? "Getting eSIM…" : "Get eSIM",

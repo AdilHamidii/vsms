@@ -489,17 +489,73 @@ carrier rules — including 10DLC — apply to them exactly as to any US number.
 Listing them as "4 countries" would be marketing fiction; it is one market with
 four flag icons.
 
-✅ **CANADA NEEDS NO 10DLC — MEASURED, AND IT IS THE LAUNCH PATH.** Tested
-2026-08-05 with a real purchase: `+1 343 513 1580` (Ottawa) went **`active`
-immediately** with no requirement pending, and sending from it to our US number
-with **no TCR brand and no campaign registered** was **`delivered`** at
-$0.0040. `/v2/10dlc/brand` reports `totalRecords: 0` — nothing is registered
-and it worked anyway.
+🔴 **"CANADA NEEDS NO 10DLC" IS FALSE IN PRODUCTION — RETRACTED 2026-08-17, AND
+IT WAS THE PREMISE THE WHOLE LINE LAUNCH RESTED ON.**
 
-**So the zero-paperwork launch is: sell CANADIAN numbers.** No TCR brand, no
-campaign, no toll-free verification, no waiting on an external approval that
-can be rejected. A +1 number is equally credible to a US recipient, and CA
-costs the same $1.00/month as US.
+Every cross-border send is rejected:
+
+```
+40010: The sending number is not 10DLC-registered
+       but is required to be by the carrier.
+```
+
+Lifetime outbound SMS on this product is **1 sent against 6 failed** (and the
+one "sent" never received a delivery receipt). Inbound is 3 of 3 — receiving has
+always worked. Probed the account the same day on `+1 437 782-2870`:
+
+| field | value |
+|---|---|
+| `country_code` | CA |
+| `type` | longcode |
+| `features.sms.domestic_two_way` | **true** |
+| `features.sms.international_outbound` | **false** |
+| `eligible_messaging_products` | **`["A2P"]`** — P2P not even offered |
+| `/v2/10dlc/brand` | `totalRecords: 0` |
+
+**Two independent locks.** From a Canadian number a US number is a foreign
+destination and `international_outbound` is false; separately the US carrier
+demands 10DLC. Note also that a Canadian longcode does not list P2P at all,
+where the US number did — so that escape hatch is shut twice over.
+
+*What the retracted claim said, kept because it is the evidence of how this
+happened:* tested 2026-08-05 with a real purchase, `+1 343 513 1580` (Ottawa)
+went `active` immediately and a send from it to our US number, with no TCR brand
+and no campaign, came back **`delivered`** at $0.0040. That single observation
+became "the zero-paperwork launch is: sell CANADIAN numbers", and the product
+was built and sold on it.
+
+**It does not reproduce.** Either carriers tightened enforcement in the twelve
+days between, or that one message slipped through ahead of it. Both readings
+lead to the same place: **one delivery is not a delivery rate**, and a
+registration regime is exactly the kind of thing that is enforced probabilistically
+before it is enforced absolutely. This file's own standing rule — treat presence
+as the only signal, re-measure before quoting — was not applied to it.
+
+⚠️ **`_shared/nanp.ts` now REFUSES a cross-border or international send before
+spending the user's allowance**, because attempting one buys a guaranteed
+failure. It carries the Canadian NPA table, since +1 alone cannot tell Canada
+from the United States. **It is temporary: DELETE it when a registration path
+clears, rather than adding exceptions to it.**
+
+**The two paths that remain, both requiring an approval that can be refused:**
+
+- **Toll-free + verification.** Probed 2026-08-17: toll-free is **$1.00 upfront
+  + $1.00/month, identical to local**, and the verification API is live on the
+  account (`/v2/messaging_tollfree/verification/requests` returns a parameter
+  error, not a 404). Product cost: `833/844/855/866/877/888` does not read as a
+  personal second number.
+- **10DLC brand + campaign.** Fees, vetting, weeks.
+
+🔴 **Both require declaring a USE CASE and SAMPLE MESSAGES, and "we rent numbers
+and users send whatever they like" is not approvable** — it is the precise thing
+these programmes exist to police. See this file's own warning that fanning many
+end users through one Standard 10DLC campaign is what carriers watch for.
+Approval-then-misuse risks the account, not just the campaign.
+
+**Untested and decisive: CA → CA.** `domestic_two_way: true` says a Canadian
+number texting a Canadian number should work today with no registration.
+Nothing has ever tried it. One message settles whether this product has a
+working market right now or is receive-only until an approval lands.
 
 ⚠️ **US numbers still need 10DLC to SEND.** The purchased US number carries
 `messaging_campaign_id: null` and is unregistered. Do not assume the Canadian
@@ -584,8 +640,10 @@ P-384 incident demands: that failure passed locally and threw
 10DLC brand+campaign (weeks, can fail outright — fanning many end users through
 one Standard 10DLC campaign is what carriers police; note the purchased local
 number has `messaging_campaign_id: null` and cannot send US A2P until
-registered). ⚠️ **US only** — Canada needs none of it, which is why the launch
-is Canadian; see "CANADA NEEDS NO 10DLC".
+registered). 🔴 **NOT "US only" — this said Canada needed none of it, and that
+is RETRACTED.** A Canadian longcode is refused with the same 40010 on every send
+to a US number, so registration blocks outbound SMS for the whole catalogue, not
+just the US half. See the retraction above.
 
 ✅ **The App Store Server API key EXISTS and is WIRED (2026-08-05).**
 `SubscriptionKey_BTPZRH3GW3.p8` (Users and Access → Integrations → **In-App

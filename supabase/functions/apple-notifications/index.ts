@@ -28,7 +28,7 @@ import { handleCors, json } from "../_shared/cors.ts";
 import { admin } from "../_shared/supabaseAdmin.ts";
 import {
   verifyNotificationJWS, verifyTransactionJWS, verifyRenewalInfoJWS,
-  isSubscriptionProduct, linePlanLabel,
+  isSubscriptionProduct, linePlanLabel, creditsForProduct,
 } from "../_shared/iap.ts";
 import { findNumberId, releaseNumber, faultOf } from "../_shared/telnyx.ts";
 import { sendMessage, esc } from "../_shared/telegram.ts";
@@ -145,6 +145,91 @@ async function process(sb: ReturnType<typeof admin>, n: Awaited<ReturnType<typeo
   // Both inner payloads are JWS in their own right and are verified, never
   // decoded. A notification is exactly as trustworthy as its signatures.
   const tx = await verifyTransactionJWS(txJws);
+
+  // 🔴 REFUND TRAFFIC FOR **CREDIT PACKS** REACHES THIS FUNCTION AND USED TO
+  // DIE ON THE NEXT LINE. Live `line_notifications` holds 15 CONSUMPTION_REQUEST
+  // rows and 3 REFUND_DECLINED, every one with a null original_transaction_id —
+  // i.e. every one returned before the switch below. So the handler added
+  // earlier today has never once fired, and the product that actually generates
+  // refund requests was the one it could not see.
+  //
+  // Handled BEFORE the subscription filter, and deliberately only for the two
+  // types where a human has to act inside a deadline. Everything else about a
+  // consumable still belongs to `iap-verify`, not here.
+  if (n.notificationType === "CONSUMPTION_REQUEST" && !isSubscriptionProduct(tx.productId)) {
+    await alertOwner(
+      `⏳ <b>Refund requested — 12h to respond</b>\n` +
+      `credit pack: ${esc(tx.productId)}\n` +
+      `tx ${esc(tx.originalTransactionId)}\n` +
+      `<i>Credits already granted are NOT revoked automatically — see the ` +
+      `known-open note. Apple decides the refund.</i>`,
+      sb, tx.originalTransactionId);
+    return;
+  }
+
+  // 🔴 REFUND / REVOKE FOR A **CREDIT PACK** USED TO DIE ON THE NEXT LINE TOO,
+  // and that one costs real money. `iap_receipts` had no revocation column and
+  // nothing anywhere consumed `revocationDate`, so a user could buy a pack,
+  // spend the credits, get Apple to refund the purchase, and keep both. The
+  // three refund requests on record were all REFUND_DECLINED — the exposure is
+  // $0 realized and 100% of the next granted one.
+  //
+  // Consumables only: the subscription REFUND/REVOKE branch in the switch below
+  // releases a NUMBER and is a different transaction entirely.
+  if ((n.notificationType === "REFUND" || n.notificationType === "REVOKE") &&
+      creditsForProduct(tx.productId) != null) {
+    // Claim, ledger row and balance move happen inside ONE transaction under
+    // one advisory lock. Splitting them across two round-trips is the failure
+    // this repo has now fixed eight times: a worker killed in between leaves a
+    // receipt that looks handled with the credits still spendable, and nothing
+    // ever revisits a terminal row.
+    const { data, error } = await sb.rpc("revoke_iap_purchase", {
+      p_transaction_id: tx.transactionId,
+      p_revocation_date: tx.revocationDate
+        ? new Date(tx.revocationDate).toISOString() : null,
+      p_reason: tx.revocationReason != null
+        ? `${n.notificationType}:${tx.revocationReason}`
+        : n.notificationType,
+    });
+    // Destructured, never discarded — supabase-js RETURNS errors rather than
+    // throwing, so `if (error) throw` is the only thing standing between a
+    // failed clawback and a 200 that tells Apple we handled it. Throwing puts
+    // Apple's retry ladder to work, which is exactly what it is for.
+    if (error) throw new Error(`revoke_iap_purchase: ${error.message}`);
+
+    const status = String(data?.status ?? "unknown");
+    console.log(JSON.stringify({
+      iap_revocation: status, type: n.notificationType,
+      tx: tx.transactionId, product: tx.productId,
+      credits: data?.credits ?? null, shortfall: data?.shortfall ?? null,
+    }));
+
+    // Nothing moved and nothing was ever granted: a Sandbox receipt, a purchase
+    // whose grant failed, or a receipt that went with a deleted account. Real,
+    // expected, and not worth waking anyone for. `iap_grants` — which has no FK
+    // to auth.users — still refuses the replay in every one of those cases.
+    if (status === "not_found" || status === "nothing_granted") return;
+
+    const credits = Number(data?.credits ?? 0);
+    const clawed = Number(data?.clawed_back ?? 0);
+    const shortfall = Number(data?.shortfall ?? 0);
+    const balance = data?.balance_after ?? null;
+    await alertOwner(
+      `💸 <b>Credit pack refunded — credits revoked</b>\n` +
+      `${esc(tx.productId)} · tx ${esc(tx.transactionId)}\n` +
+      `user ${esc(String(data?.user_id ?? "?"))}\n` +
+      `granted ${credits} · clawed back ${clawed}` +
+      (balance != null ? ` · balance now ${balance}` : "") +
+      (status === "already_revoked" ? `\n<i>already revoked (Apple retry)</i>` : "") +
+      (status === "revoked_no_wallet" ? `\n<i>no wallet row — nothing debited</i>` : "") +
+      (shortfall > 0
+        ? `\n🔴 <b>${shortfall} credits NOT recovered</b> — already spent. ` +
+          `The balance floor is a schema invariant; this is a real loss.`
+        : ""),
+      sb, `revoke:${tx.transactionId}`);
+    return;
+  }
+
   if (!isSubscriptionProduct(tx.productId)) return;   // not our line
 
   const ri = riJws ? await verifyRenewalInfoJWS(riJws).catch(() => null) : null;
@@ -337,6 +422,33 @@ async function process(sb: ReturnType<typeof admin>, n: Awaited<ReturnType<typeo
       return;
     }
 
+    case "CONSUMPTION_REQUEST": {
+      // A customer has asked Apple for a REFUND, and Apple is inviting us to
+      // send usage data that informs its decision — within TWELVE HOURS, after
+      // which the window simply closes.
+      //
+      // This used to fall into `default`, which records and logs. Nothing paged,
+      // so every one of these expired unanswered while refunds were the thing
+      // costing us subscribers.
+      //
+      // ⚠️ IT DELIBERATELY DOES NOT AUTO-RESPOND. Apple's consumption endpoint
+      // takes `customerConsented`, and asserting consent we have not actually
+      // obtained is a claim about the customer, not a technical default — the
+      // same category of thing as presenting seed data as measured fact. So
+      // this pages a human with the facts already assembled, and answering is
+      // an owner decision until consent is genuinely collected.
+      const facts = await consumptionFacts(sb, originalTx);
+      await alertOwner(
+        `⏳ <b>Refund requested — 12h to respond</b>\n` +
+        `${esc(originalTx)}\n` +
+        `line: ${esc(facts.e164 ?? "none")} · status ${esc(facts.status ?? "?")}\n` +
+        `held ${facts.daysHeld ?? "?"}d · ${facts.smsUsed ?? 0} SMS · ` +
+        `${Math.round((facts.voiceUsedSeconds ?? 0) / 60)} min used\n` +
+        `<i>Apple decides the refund. Reply only if you have consent to share usage.</i>`,
+        sb, originalTx);
+      return;
+    }
+
     default:
       // Unknown types are RECORDED and ignored, never guessed at. Apple adds
       // notification types; encoding a guess is what broke eSIM refunds.
@@ -475,4 +587,35 @@ async function alertOwner(
         .delete().eq("kind", kind).eq("ref", ref);
     }
   } catch { /* an alert must never fail the notification */ }
+}
+
+/** What the line actually delivered, for a refund conversation.
+ *
+ *  Read rather than inferred: "how much did they use" is the only question a
+ *  refund decision turns on, and guessing it would be worse than saying
+ *  nothing. Every field is optional because a refund can arrive for a line that
+ *  never provisioned — which is itself the most useful thing the alert can say.
+ */
+async function consumptionFacts(
+  sb: ReturnType<typeof admin>, originalTx: string,
+): Promise<{
+  e164?: string | null; status?: string | null; daysHeld?: number | null;
+  smsUsed?: number | null; voiceUsedSeconds?: number | null;
+}> {
+  const { data } = await sb
+    .from("phone_lines")
+    .select("e164, status, created_at, sms_used, voice_used_seconds")
+    .eq("original_transaction_id", originalTx)
+    .maybeSingle();
+  if (!data) return {};
+  const created = data.created_at ? new Date(String(data.created_at)) : null;
+  return {
+    e164: data.e164 as string | null,
+    status: data.status as string | null,
+    daysHeld: created
+      ? Math.max(0, Math.floor((Date.now() - created.getTime()) / 86_400_000))
+      : null,
+    smsUsed: data.sms_used as number | null,
+    voiceUsedSeconds: data.voice_used_seconds as number | null,
+  };
 }

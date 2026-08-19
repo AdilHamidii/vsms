@@ -15,6 +15,7 @@ import { admin, callerUserId } from "../_shared/supabaseAdmin.ts";
 import { sendMessage, faultOf } from "../_shared/telnyx.ts";
 import { resolveCallerLine } from "../_shared/lines.ts";
 import { toE164, assumesNanp } from "../_shared/phone.ts";
+import { canSendTo } from "../_shared/nanp.ts";
 
 /** GSM-7 fits 160 chars in one segment, 153 when concatenated; any non-GSM
  *  character forces UCS-2 at 70/67. Estimated locally ONLY to charge the
@@ -31,10 +32,32 @@ function estimateSegments(text: string): number {
 }
 
 /** Blocked outright, client-side AND here. E911 is disabled on these numbers
- *  and a text to an emergency short code must never look like it worked. */
-const EMERGENCY = new Set(["911", "112", "999", "000", "110", "119"]);
+ *  and a text to an emergency short code must never look like it worked.
+ *
+ *  🔴 `988` WAS MISSING FROM THIS SET UNTIL 2026-08-18, while `begin-line-call`
+ *  (whose comment claims "same set as send-line-message"), `DialerScreen` and
+ *  `ComposeScreen` all carried it. So a CALL to the US crisis line was refused
+ *  on every path and a TEXT to it was accepted here — the one direction where
+ *  a message that silently goes nowhere does the most harm. Four copies of a
+ *  safety list is three too many; if a fifth is ever needed, share it. */
+const EMERGENCY = new Set(["911", "112", "999", "000", "110", "119", "988"]);
 
 const MAX_BODY = 1600;
+
+/** 🔴 OUTBOUND SMS IS RETIRED (owner decision, 2026-08-18).
+ *
+ *  Sending is the one capability on this line needing carrier approval — 10DLC
+ *  brand + campaign, or toll-free verification — and both require declaring a
+ *  use case that "we rent numbers and users send whatever they like" cannot
+ *  satisfy. The owner is not pursuing either. Lifetime outbound is 1 sent
+ *  against 6 failed (`40010`); inbound is 3 of 3.
+ *
+ *  ⚠️ Typed `boolean`, NOT inferred as the literal `true`, and that is
+ *  load-bearing rather than styling: with a literal, TypeScript folds the whole
+ *  send path below into unreachable code, loses every narrowing across it, and
+ *  `deno check` fails with 14 errors on code that is correct. The annotation
+ *  keeps the path type-checked so it stays maintainable while switched off. */
+const OUTBOUND_SMS_RETIRED: boolean = true;
 
 Deno.serve(async (req) => {
   const pre = handleCors(req);
@@ -44,7 +67,11 @@ Deno.serve(async (req) => {
   const userId = await callerUserId(req);
   if (!userId) return json({ error: "unauthorized" }, { status: 401 });
 
-  let body: { to?: string; text?: string } = {};
+  // `line_id` was MISSING from this type while line 81 read it — the client has
+  // always sent it (`LineAPI.swift`), so multi-number sending worked in
+  // production purely because deploy does not type-check. `deno check` rejects
+  // it, which is the only reason it was ever visible.
+  let body: { to?: string; text?: string; line_id?: string } = {};
   try { body = await req.json(); } catch { /* guarded below */ }
 
   const to = (body.to ?? "").trim();
@@ -55,6 +82,21 @@ Deno.serve(async (req) => {
   const digits = to.replace(/\D/g, "");
   if (EMERGENCY.has(digits)) {
     return json({ error: "emergency_blocked" }, { status: 400 });
+  }
+
+  // Refused HERE, above everything, rather than by deleting the endpoint:
+  // shipped 2.0 still renders a composer, so this is the surface those clients
+  // hit. They render the generic 409 copy (`outbound_sms_retired` reaches
+  // `APIError` only in 2.1), which is still strictly better than spending a
+  // segment of the allowance to buy a carrier rejection the user cannot act on.
+  //
+  // Everything below is left INTACT on purpose: if a registration path ever
+  // clears, flipping the flag restores a send path known to have worked rather
+  // than asking someone to rebuild it. Delete both together, never the flag
+  // alone — the `canSendTo` guard further down is still the right refusal for a
+  // cross-border send and must survive this being switched back on.
+  if (OUTBOUND_SMS_RETIRED) {
+    return json({ error: "outbound_sms_retired" }, { status: 409 });
   }
 
   // 🔴 THIS ENDPOINT HAD NO NUMBER VALIDATION AT ALL — only the emergency check
@@ -90,6 +132,28 @@ Deno.serve(async (req) => {
       detail: "non-NANP line addressed a number with no country code",
     }));
     return json({ error: "bad_number" }, { status: 400 });
+  }
+
+  // 🔴 REFUSE A SEND WE KNOW THE CARRIER WILL REJECT.
+  //
+  // Every cross-border attempt has come back `40010: The sending number is not
+  // 10DLC-registered but is required to be by the carrier` — 6 of 7 lifetime
+  // outbound messages. Attempting it anyway reserves a segment, calls the
+  // provider, fails, and refunds: a round trip whose only product is a red
+  // "Not sent" under the user's message. Refusing up front costs them nothing
+  // and can say WHY, which the provider's failure could not.
+  //
+  // This is the same shape as `create-order`'s pre-charge provider-balance
+  // guard: when we already know the answer, do not spend the user's allowance
+  // to hear it from someone else.
+  const reach = canSendTo(cc, recipient);
+  if (!reach.ok) {
+    return json({
+      error: reach.reason === "international"
+        ? "international_sms" : "cross_border_sms",
+      from_country: reach.from,
+      to_country: reach.to,
+    }, { status: 409 });
   }
 
   const segments = estimateSegments(text);

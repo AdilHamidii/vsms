@@ -41,6 +41,12 @@ final class CallController: NSObject {
     /// `begin-line-call` reserves the allowance and can refuse independently.
     var remainingSeconds: Int?
 
+    /// A call is being placed but is not committed yet — `begin-line-call` can
+    /// still refuse it. Re-entrancy guard AND the dialer's busy state: without
+    /// it a double-tap sends two gating requests, and each one reserves
+    /// credits.
+    private(set) var isStarting = false
+
     private let provider: CXProvider
     private let callControl = CXCallController()
     private var voice: VoiceClient
@@ -92,6 +98,26 @@ final class CallController: NSObject {
         }
     }
 
+    /// How much of calling actually works right now.
+    ///
+    /// 🔴 THIS USED TO BE INVISIBLE, and it cost subscribers. `prepareVoice`
+    /// ended in `catch { return false }` and `inboundReady` was decoded, stored
+    /// and read by NO view — so when provisioning failed (which it did for
+    /// every line sold before 2026-08-17) the user saw a dialer that silently
+    /// did nothing and had no reason to suspect anything but the app. One of
+    /// them mailed in; the rest just refunded.
+    enum Readiness: Equatable {
+        case unknown
+        /// Registered, and the number will ring.
+        case ready
+        /// Outbound works; the number will NOT ring. Worth saying out loud —
+        /// the user may have already given the number out.
+        case outboundOnly
+        /// Could not register at all. Carries the reason, never a bare bool.
+        case unavailable(String)
+    }
+    private(set) var readiness: Readiness = .unknown
+
     /// Mint a credential and open the WebRTC session.
     ///
     /// Idempotent — `connect` returns immediately when the client is already
@@ -101,14 +127,47 @@ final class CallController: NSObject {
     /// is the difference between a call that rings and one that pauses first.
     @discardableResult
     func prepareVoice() async -> Bool {
-        guard isVoiceAvailable, let api = apiClient else { return false }
+        // Screenshot frames are marketing assets and must never render a fault.
+        // `loadLine` already returns early for the same reason.
+        if ScreenshotMode.isActive { readiness = .ready; return false }
+        guard isVoiceAvailable, let api = apiClient else {
+            // `.unknown`, not `.unavailable`: no voice client attached means the
+            // SDK is not linked, and every entry point to calling is already
+            // gated on `isVoiceAvailable` — so the dialer is HIDDEN rather than
+            // failing, and a banner would warn about a button that is not there.
+            readiness = .unknown
+            return false
+        }
         do {
             let grant = try await LineAPI(client: api).mintVoiceToken(lineId: activeLineId)
             lineE164 = grant.e164
             try await voice.connect(token: grant.token)
             inboundReady = grant.inboundReady
+            readiness = grant.inboundReady ? .ready : .outboundOnly
             return true
         } catch {
+            // ⚠️ ONLY A SERVER REFUSAL BECOMES A VISIBLE FAULT.
+            //
+            // The first version reported every failure as `.unavailable`, and a
+            // screenshot of the frame showed the result: a red banner reading
+            // "Please sign in again to continue." across the top of the main
+            // tab, because an unauthenticated call maps to `.notAuthenticated`.
+            // A dropped connection or an expired session is not "your number
+            // cannot make calls" — it is a blip that the next visit to this tab
+            // retries — and blaming the user's sign-in for a voice-token
+            // failure is the same error as `APIError.decoding` once rendering
+            // as a connectivity message.
+            //
+            // `.http` means the SERVER answered and refused, which is the only
+            // case worth alarming someone about. Everything else stays
+            // `.unknown`, which renders nothing.
+            if case .http = error as? APIError {
+                readiness = .unavailable(
+                    (error as? APIError)?.userMessage
+                    ?? String(localized: "We couldn't set your number up for calls."))
+            } else {
+                readiness = .unknown
+            }
             return false
         }
     }
@@ -147,6 +206,18 @@ final class CallController: NSObject {
 
     var isLive: Bool { phase != .idle }
 
+    /// The call owns the screen: the server authorised it, CallKit accepted
+    /// it, and it is not already tearing down.
+    ///
+    /// Distinct from `isLive` on both ends, and both distinctions are
+    /// load-bearing for the dialer, which dismisses itself on this:
+    ///  - a call is NOT committed while `begin-line-call` can still refuse it,
+    ///    because that refusal is rendered on the keypad and dismissing would
+    ///    take it with it;
+    ///  - `.ending` is excluded for the same reason — a call CallKit rejects
+    ///    passes straight through it on its way back to idle.
+    var isCommitted: Bool { phase != .idle && phase != .ending }
+
     // MARK: - Outbound
 
     /// Gate, then dial.
@@ -156,11 +227,19 @@ final class CallController: NSObject {
     /// would let a suspended or exhausted line place a call we then have to pay
     /// for and cannot bill.
     func placeCall(to number: String, from lineNumber: String) async {
-        guard phase == .idle, let api = apiClient else { return }
+        guard phase == .idle, !isStarting, let api = apiClient else { return }
         lastError = nil
         peer = number
         isOutbound = true
-        phase = .dialing
+        // 🔴 `phase = .dialing` USED TO BE SET HERE, i.e. before the server had
+        // agreed to the call — and `isLive` drives the in-call overlay, so the
+        // overlay went up for the length of the gating round-trip and came
+        // back down on a refusal. `isStarting` is what guards re-entrancy over
+        // that window now; the phase moves only once the call is real. It is
+        // its own flag rather than a phase because a phase is a state of a
+        // CALL, and until the gate answers there may not be one.
+        isStarting = true
+        defer { isStarting = false }
 
         // 🔴 THE NUMBER WE DIAL MUST BE THE NUMBER THE SERVER AUTHORISED.
         // `DialerScreen` hands us the raw keypad string, so a US number arrived
@@ -184,12 +263,10 @@ final class CallController: NSObject {
             dialled = begun.to
             peer = begun.to
         } catch let err as APIError {
-            phase = .idle
             lastError = err.userMessage
             RHaptic.warn()
             return
         } catch {
-            phase = .idle
             lastError = String(localized: "Couldn't start the call. Please try again.")
             RHaptic.warn()
             return
@@ -209,6 +286,11 @@ final class CallController: NSObject {
             await failCall(String(localized: "iOS wouldn't start the call."))
             return
         }
+
+        // Committed: authorised, billed against the allowance, and owned by
+        // CallKit. From here the in-call UI is what the user should be looking
+        // at, and the dialer dismisses itself.
+        phase = .dialing
 
         do {
             // The socket is normally already up from `prepareVoice()` on the
@@ -517,6 +599,16 @@ extension CallController: PKPushRegistryDelegate {
         // report so the closure does not reach back into the payload.
         let metadata = info["metadata"] as? [String: Any]
 
+        // `assumeIsolated`, not a `Task` and not `nonisolated(unsafe)`. The
+        // registry is created with `PKPushRegistry(queue: .main)`, so this
+        // callback genuinely runs on the main queue — Swift simply cannot see
+        // that through a `nonisolated` delegate method. Hopping via `Task`
+        // would put an await in front of `reportNewIncomingCall`, which is the
+        // one thing iOS does not allow here (see the doc comment above), and
+        // `nonisolated(unsafe)` would assert thread-safety CXProvider does not
+        // document. This asserts only what the queue already guarantees, and
+        // it is a hard error under the Swift 6 language mode otherwise.
+        MainActor.assumeIsolated {
         provider.reportNewIncomingCall(with: uuid, update: update) { [weak self] error in
             // Only AFTER the obligation is met do we touch our own state, or
             // hand anything to the SDK. Attaching first would put a network
@@ -535,6 +627,7 @@ extension CallController: PKPushRegistryDelegate {
                 // keeps VoIP push delivery alive for this app.
                 await self.registerInboundCall(peer: from)
             }
+        }
         }
     }
 

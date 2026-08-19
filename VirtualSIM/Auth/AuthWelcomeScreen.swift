@@ -1,23 +1,25 @@
 import AuthenticationServices
 import SwiftUI
 
-/// The one screen between onboarding and the product.
+/// The first screen after onboarding: pick how you get in.
 ///
-/// Its argument is unusual and worth keeping: most sign-in screens ask for
-/// trust, and this one earns it by listing what it is NOT taking. The headline
-/// and the list are the same claim from two directions, which is why the list
-/// is a real card of `BenefitRow`s and not fine print.
+/// Was `SignInScreen`, which offered exactly one way — Sign in with Apple —
+/// and whose copy was written around that being the only door. Its argument is
+/// worth keeping: most sign-in screens ask for trust, and this one earns it by
+/// listing what it is NOT taking.
 ///
-/// ⚠️ `DealRow` — a tinted check circle plus a primary-ink label — used to live
-/// here as a private struct, and it was the best row pattern in the app while
-/// every selling screen elsewhere used `Bullet` (a 4pt grey dot at 13pt
-/// `text2`, i.e. the app's fine-print device). That pattern is now the shared
-/// `BenefitRow`, so this file uses it rather than keeping a private twin that
-/// would drift the moment either was restyled.
-struct SignInScreen: View {
+/// ⚠️ APPLE STAYS VISUALLY PRIMARY. It is one tap, it is what every existing
+/// account uses (298 of 528 identities are Apple private-relay addresses), and
+/// it needs no mail to be delivered to work. Email exists for people who
+/// cannot or will not use an Apple ID — it is the alternative, not the
+/// replacement, and the layout should keep saying so.
+struct AuthWelcomeScreen: View {
     @Environment(\.theme) private var theme
     @Environment(Session.self) private var session
     @Environment(APIClient.self) private var api
+
+    var onEmailSignIn: () -> Void
+    var onCreateAccount: () -> Void
 
     @State private var currentNonce: String?
     @State private var inProgress = false
@@ -28,9 +30,7 @@ struct SignInScreen: View {
         ZStack {
             theme.bg.ignoresSafeArea()
             VStack(spacing: 0) {
-                lockup
-                    .padding(.horizontal, 20)
-                    .padding(.top, 20)
+                AuthHeader()
 
                 ScrollView {
                     VStack(alignment: .leading, spacing: 0) {
@@ -44,7 +44,7 @@ struct SignInScreen: View {
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.horizontal, 20)
-                    .padding(.top, 22)
+                    .padding(.top, 12)
                     .padding(.bottom, 8)
                 }
                 .scrollIndicators(.hidden)
@@ -57,13 +57,6 @@ struct SignInScreen: View {
             }
         }
         .task { withAnimation(RMotion.content) { appeared = true } }
-    }
-
-    private var lockup: some View {
-        HStack(spacing: 8) {
-            BrandWordmark(size: 22)
-            Spacer()
-        }
     }
 
     private var headline: some View {
@@ -85,6 +78,13 @@ struct SignInScreen: View {
         .riseIn(appeared, index: 1)
     }
 
+    /// ⚠️ TWO OF THESE ROWS USED TO BE UNCONDITIONAL AND ARE NOW SCOPED TO
+    /// APPLE. "One tap with Apple, no password to make" and "Your email stays
+    /// hidden if you want it to" were true when Apple was the only door; with
+    /// an email option on the same screen the first is contradicted by the
+    /// button below it and the second describes a feature only Apple provides.
+    /// A trust list that the screen itself disproves is worse than a shorter
+    /// one.
     private var dealCard: some View {
         Card(elevation: .raised) {
             VStack(alignment: .leading, spacing: 0) {
@@ -93,11 +93,7 @@ struct SignInScreen: View {
                     .padding(.top, 18)
                     .padding(.bottom, 8)
                 BenefitRow(icon: RIcon.check,
-                           label: "One tap with Apple, no password to make",
-                           tint: theme.live)
-                RowRule()
-                BenefitRow(icon: RIcon.check,
-                           label: "Your email stays hidden if you want it to",
+                           label: "With Apple, there's no password to make and your email can stay hidden",
                            tint: theme.live)
                 RowRule()
                 BenefitRow(icon: RIcon.check,
@@ -112,20 +108,23 @@ struct SignInScreen: View {
         }
     }
 
-    /// The returning-user half of the deal, and the honest form of "Restore".
+    /// The Restore path, stated as what actually restores things.
     ///
     /// Everything a user has paid for hangs off the account, not the device: a
     /// rented line is read back from `my_line`, and credits live in `wallets`.
-    /// So the restore action IS signing in with the same Apple ID, and saying
-    /// that is more useful than a Restore button whose only possible outcome
-    /// before authentication is "sign in first".
+    /// So the restore action IS signing in again, and saying that is more
+    /// useful than a Restore button whose only possible outcome before
+    /// authentication is "sign in first".
     private var returningNote: some View {
         HStack(alignment: .top, spacing: 10) {
             Image(systemName: "arrow.counterclockwise")
                 .font(.system(size: 12, weight: .semibold))
                 .foregroundStyle(theme.accent2)
                 .padding(.top, 1)
-            Text("Used vSMS before? Sign in with the same Apple ID and your number, credits and history come back. None of it is stored on this phone.")
+            // ⚠️ Kept SHORT because this screen now carries three controls
+            // instead of one, and the note is the first thing the taller stack
+            // pushes under the fold.
+            Text("Used vSMS before? Sign in the same way you did last time — your number, credits and history come back.")
                 .font(RFont.text(13))
                 .lineSpacing(2)
                 .foregroundStyle(theme.text2)
@@ -153,37 +152,47 @@ struct SignInScreen: View {
             .disabled(inProgress)
             .opacity(inProgress ? 0.6 : 1)
 
-            if let error {
-                Text(error)
-                    .font(RFont.text(13))
-                    .foregroundStyle(theme.fail)
-                    .multilineTextAlignment(.center)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .transition(.opacity)
-            }
+            GhostButton(label: String(localized: "Continue with email"), action: onEmailSignIn)
+                .disabled(inProgress)
 
-            VStack(spacing: 4) {
-                Text("By signing in you agree to our")
-                    .font(RFont.text(11))
-                    .foregroundStyle(theme.text3)
-                HStack(spacing: 4) {
-                    Link("Terms of Use", destination: LegalLinks.terms)
-                        .font(RFont.text(11, weight: .medium))
-                        .foregroundStyle(theme.text2)
-                    Text("and")
-                        .font(RFont.text(11))
-                        .foregroundStyle(theme.text3)
-                    Link("Privacy Policy", destination: LegalLinks.privacy)
-                        .font(RFont.text(11, weight: .medium))
-                        .foregroundStyle(theme.text2)
-                    Text(verbatim: ".")
-                        .font(RFont.text(11))
-                        .foregroundStyle(theme.text3)
-                }
+            Button(action: onCreateAccount) {
+                Text("New here? Create an account")
+                    .font(RFont.text(13, weight: .medium))
+                    .foregroundStyle(theme.accent2)
+                    .padding(.vertical, 4)
+                    .contentShape(.rect)
             }
-            .multilineTextAlignment(.center)
+            .buttonStyle(.plain)
+            .disabled(inProgress)
+
+            AuthErrorLine(message: error)
+
+            legal
         }
         .animation(RMotion.content, value: error)
+    }
+
+    private var legal: some View {
+        VStack(spacing: 4) {
+            Text("By signing in you agree to our")
+                .font(RFont.text(11))
+                .foregroundStyle(theme.text3)
+            HStack(spacing: 4) {
+                Link("Terms of Use", destination: LegalLinks.terms)
+                    .font(RFont.text(11, weight: .medium))
+                    .foregroundStyle(theme.text2)
+                Text("and")
+                    .font(RFont.text(11))
+                    .foregroundStyle(theme.text3)
+                Link("Privacy Policy", destination: LegalLinks.privacy)
+                    .font(RFont.text(11, weight: .medium))
+                    .foregroundStyle(theme.text2)
+                Text(verbatim: ".")
+                    .font(RFont.text(11))
+                    .foregroundStyle(theme.text3)
+            }
+        }
+        .multilineTextAlignment(.center)
     }
 
     private func handleCompletion(_ result: Result<ASAuthorization, Error>) {
@@ -191,7 +200,7 @@ struct SignInScreen: View {
         case .failure(let err):
             if let asError = err as? ASAuthorizationError, asError.code == .canceled { return }
             RHaptic.warn()
-            error = "Couldn't sign in with Apple. Please try again."
+            error = String(localized: "Couldn't sign in with Apple. Please try again.")
         case .success(let auth):
             guard
                 let credential = auth.credential as? ASAuthorizationAppleIDCredential,
@@ -200,22 +209,23 @@ struct SignInScreen: View {
                 let nonce      = currentNonce
             else {
                 RHaptic.warn()
-                error = "Apple didn't return an identity token."
+                error = String(localized: "Apple didn't return an identity token.")
                 return
             }
             inProgress = true
             error = nil
             Task {
                 do {
-                    let auth = AuthAPI(client: api)
-                    let supaSession = try await auth.signInWithApple(idToken: idToken, nonce: nonce)
+                    let authApi = AuthAPI(client: api)
+                    let supaSession = try await authApi.signInWithApple(idToken: idToken, nonce: nonce)
                     // The screen is about to be replaced by the app, so this is
                     // the only confirmation the tap ever gets.
                     RHaptic.success()
                     session.adopt(supaSession)
                 } catch {
                     RHaptic.warn()
-                    self.error = (error as? APIError)?.userMessage ?? "Couldn't sign in. Please try again."
+                    self.error = (error as? APIError)?.userMessage
+                        ?? String(localized: "Couldn't sign in. Please try again.")
                 }
                 inProgress = false
             }

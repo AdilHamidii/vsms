@@ -1,0 +1,32 @@
+<!--
+  "Confirm signup" — paste into Supabase → Authentication → Emails → Templates.
+
+  🔴 THERE IS NO LINK IN HERE, AND THAT IS THE WHOLE DESIGN. The client
+  verifies a 6-digit code via POST /auth/v1/verify. Nothing in the app handles
+  the `relay://auth` scheme that `config.toml` declares, so a
+  `{{ .ConfirmationURL }}` would send the user somewhere the app cannot catch —
+  and corporate mail scanners pre-fetch links, burning a single-use token
+  before the recipient ever taps it.
+
+  ⚠️ NO EXPIRY TIME IS STATED. It is a dashboard setting (Authentication →
+  Emails → "Email OTP Expiration") that changes without a release, and this
+  repo's standing rule is not to print a figure something else can change
+  underneath you. If you fix that setting, say the real number here.
+-->
+<div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;max-width:480px;margin:0 auto;padding:32px 24px;color:#1a1a1a;">
+  <p style="font-size:15px;line-height:1.5;margin:0 0 20px;">
+    Here's your vSMS confirmation code.
+  </p>
+
+  <p style="font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:32px;font-weight:700;letter-spacing:6px;margin:0 0 20px;color:#279400;">
+    {{ .Token }}
+  </p>
+
+  <p style="font-size:15px;line-height:1.5;margin:0 0 20px;">
+    Enter it in the app to finish creating your account.
+  </p>
+
+  <p style="font-size:13px;line-height:1.5;color:#6b6b6b;margin:0;">
+    If you didn't ask for this, you can ignore this email — nothing was created.
+  </p>
+</div>

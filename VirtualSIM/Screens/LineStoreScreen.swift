@@ -163,6 +163,15 @@ struct LineStoreScreen: View {
     /// long as `flow = .dialer` was assigned nowhere, and was restored in the
     /// same commit that linked the SDK and wired the dialer. Keep that
     /// ordering for anything added here.
+    ///
+    /// 🔴 **OUTBOUND SMS WAS DROPPED ENTIRELY (owner decision, 2026-08-18) and
+    /// every promise of it came off this card in the same change.** Lifetime
+    /// outbound is 1 sent against 6 failed — every cross-border attempt refused
+    /// by the carrier for want of 10DLC registration, which the owner is not
+    /// pursuing. Inbound is 3 of 3. So the card now leads with the half that
+    /// demonstrably works and sells the half that was invisible: international
+    /// calling existed only inside the dialer and was never mentioned to anyone
+    /// deciding whether to buy.
     private var pitch: some View {
         Card(elevation: .raised) {
             VStack(alignment: .leading, spacing: 0) {
@@ -173,14 +182,32 @@ struct LineStoreScreen: View {
                     .fixedSize(horizontal: false, vertical: true)
                     .padding(.horizontal, 16)
                     .padding(.top, 18)
+                    .padding(.bottom, 8)
+
+                // The situations, not the medium. Every one of these is
+                // somebody sending a code TO the number.
+                Text("Give it to marketplaces, dating apps, a side business or a bank. Your verification codes and texts land here, with one tap to copy the code.")
+                    .font(RFont.text(13))
+                    .lineSpacing(2)
+                    .foregroundStyle(theme.text2)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.horizontal, 16)
                     .padding(.bottom, 14)
 
                 RowRule()
                 BenefitRow(icon: RIcon.message,
-                           label: "Send and receive texts in the app")
+                           label: "Receive texts and codes in the app")
                 RowRule()
                 BenefitRow(icon: RIcon.phone,
                            label: "Make and take calls in the app")
+                RowRule()
+                // Sold here for the first time. The rates, the credit cost and
+                // the per-minute price all existed and were reachable ONLY from
+                // inside the dialer — i.e. only after paying — so nobody
+                // deciding whether to subscribe ever knew the number could call
+                // abroad at all.
+                BenefitRow(icon: RIcon.globe,
+                           label: "Call 50+ countries, priced per minute before you dial")
                 RowRule()
                 // The actual reason to buy, and it used to be the last clause
                 // of a paragraph. It is the only line here that names a
@@ -188,6 +215,30 @@ struct LineStoreScreen: View {
                 BenefitRow(icon: RIcon.shield,
                            label: "Keep your own number private",
                            tint: theme.live)
+
+                // ── What it does NOT do, stated on the same ledger ──────────
+                //
+                // Owner decision 2026-08-18: say plainly what the number can
+                // and cannot do "for now". Every affordance for sending is
+                // gone from the app, so a user who wants to text back finds
+                // out by hunting for a button that is not there — which is
+                // the refund moment. Naming it here, in the same row style as
+                // the benefits, turns a surprise into a known limitation the
+                // buyer accepted. Muted tint + a "Not yet" hint so it reads
+                // as a ledger line, not an alarm. Same on the checkout screen,
+                // which is the 3.1.2(a) disclosure surface.
+                RowRule()
+                BenefitRow(icon: RIcon.message,
+                           label: "Sending texts from this number",
+                           hint: "Not yet",
+                           tint: theme.text3)
+                    .opacity(0.72)
+                RowRule()
+                BenefitRow(icon: RIcon.globe,
+                           label: "Receiving texts from outside the US and Canada",
+                           hint: "Not yet",
+                           tint: theme.text3)
+                    .opacity(0.72)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }
@@ -478,7 +529,20 @@ struct LineStoreScreen: View {
                 .font(.system(size: 12, weight: .semibold))
                 .foregroundStyle(theme.text2)
                 .padding(.top, 2)
-            Text("US numbers are coming soon. A Canadian number works with US and Canadian phones today.")
+            // ⚠️ NO SENDING PROMISE OF ANY KIND, and the "US sending is coming"
+            // half is gone rather than softened — outbound SMS is dropped, not
+            // delayed, so a roadmap sentence would be a promise nobody intends
+            // to keep. What replaces it is the calling reach, which is the
+            // thing this product can actually do outward.
+            // "US and Canadian" is deliberate, not a hedge: the numbers carry
+            // `international_inbound: false` and Telnyx silently ignores the
+            // PATCH to change it — a European phone texting this number
+            // produces NOTHING, no failure, no webhook. Verification codes come
+            // from services, which send from NANP, so the useful claim is true
+            // and the broader one would be the next refund. Calling OUT is
+            // genuinely worldwide. See providers.md "US NUMBERS ARE
+            // DOMESTIC-ONLY FOR SMS".
+            Text("Receives texts from US and Canadian numbers and services, and calls from anywhere. Call out to Canada, the US and 50 countries.")
                 .font(RFont.text(12))
                 .foregroundStyle(theme.text2)
                 .lineSpacing(2)

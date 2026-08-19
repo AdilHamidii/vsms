@@ -1,0 +1,30 @@
+<!--
+  "Reset password" — paste into Supabase → Authentication → Emails → Templates.
+
+  🔴 CODE, NOT LINK — same reasoning as confirmation.html. The client verifies
+  with POST /auth/v1/verify `type: recovery`, which returns a session it
+  deliberately does NOT adopt until the new password has actually been set.
+
+  ⚠️ This mail is sent for EVERY reset request, including for addresses that
+  have no account — `/auth/v1/recover` answers 200 either way so it cannot be
+  used to discover who is registered. The last line matters: someone who did
+  not ask for this must be told plainly that nothing has changed.
+-->
+<div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;max-width:480px;margin:0 auto;padding:32px 24px;color:#1a1a1a;">
+  <p style="font-size:15px;line-height:1.5;margin:0 0 20px;">
+    Here's your vSMS password reset code.
+  </p>
+
+  <p style="font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:32px;font-weight:700;letter-spacing:6px;margin:0 0 20px;color:#279400;">
+    {{ .Token }}
+  </p>
+
+  <p style="font-size:15px;line-height:1.5;margin:0 0 20px;">
+    Enter it in the app to choose a new password.
+  </p>
+
+  <p style="font-size:13px;line-height:1.5;color:#6b6b6b;margin:0;">
+    If you didn't ask for this, ignore this email. Your password has not been
+    changed and nobody can change it without this code.
+  </p>
+</div>

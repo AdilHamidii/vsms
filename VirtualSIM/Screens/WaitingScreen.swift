@@ -15,7 +15,7 @@ import SwiftUI
 /// |---|---|
 /// | 0s  | the number, one full-width Copy, the ring |
 /// | 25s | the rejection path, the delivery notice, our record |
-/// | 90s | Cancel & refund (the server's own `MIN_HOLD_SECONDS`) |
+/// | the hold | Cancel & refund (the server's own per-provider minimum hold) |
 ///
 /// 25s is not arbitrary: a site rejects a number at its signup form within
 /// ~20 seconds, so that is the first moment the "it was rejected" escape is
@@ -64,8 +64,12 @@ struct WaitingScreen: View {
     /// suggestion. See the type comment.
     private static let disclosureSeconds = 25
 
+    /// ⚠️ `.full` is gated on `holdRemaining`, NOT on `elapsed` against the
+    /// local constant. Those two disagree exactly when the server has told us
+    /// the hold is longer than we thought, which is the one case where showing
+    /// "Cancel & refund" hands the user a button that returns 429.
     private var phase: Phase {
-        if elapsed >= Self.minHoldSeconds { return .full }
+        if holdRemaining == nil { return .full }
         if elapsed >= Self.disclosureSeconds { return .options }
         return .fresh
     }
@@ -178,24 +182,31 @@ struct WaitingScreen: View {
         )
     }
 
-    /// Minimum hold before a paid order can be destroyed. Mirrors
-    /// MIN_HOLD_SECONDS in cancel-order — the server refuses early cancels, so
-    /// leaving these enabled would only produce an error banner.
+    /// Minimum hold before a paid order can be destroyed, for THIS order's
+    /// provider. Mirrors `MIN_HOLD_BY_PROVIDER` in `cancel-order` — the server
+    /// refuses early cancels, so leaving these enabled only produces an error
+    /// banner on a button the user has already committed to.
     ///
-    /// 180 -> 90 (2026-08-03). Measured over 90 days: on HeroSMS, which serves
-    /// most volume, no code has ever arrived later than 86s, and 0 of 21 orders
-    /// still alive at 90s went on to deliver. The 90-180s stretch was dead time.
-    ///
-    /// This constant may only ever be RAISED ahead of the server, never lowered
-    /// ahead of it: a client that offers cancel before the server allows it just
-    /// collects a 429. Ship the backend change first — which also means shipped
-    /// 1.6/1.7 (still 180 here) stay safe, they simply keep the stricter hold.
-    private static let minHoldSeconds = 90
+    /// It was a flat `private static let minHoldSeconds = 90` here while the
+    /// server had already gone per-provider, which is only safe while every
+    /// provider's value is 90. It is the client that has to move FIRST when one
+    /// of them rises — see `AppState.minHoldByProvider` for the sequencing and
+    /// for why 5sim is still 90 today.
+    private var minHoldSeconds: Int {
+        AppState.minHoldSeconds(forProvider: order.providerId)
+    }
 
     /// Seconds left before cancel/reroll unlock, or nil once they're free.
-    /// Driven by `elapsed`, which already ticks once per second.
+    ///
+    /// Driven by `elapsed`, which already ticks once per second, and by the
+    /// SERVER's own countdown when it has refused us once. The table above is a
+    /// mirror and can be a release out of date; `retry_after_seconds` is the
+    /// server's arithmetic on the server's clock, so the later of the two is
+    /// the only one that cannot re-offer a button that fails.
     private var holdRemaining: Int? {
-        let left = Self.minHoldSeconds - elapsed
+        let local = minHoldSeconds - elapsed
+        let fromServer = state.serverHoldRemaining(forOrder: order.id) ?? 0
+        let left = max(local, fromServer)
         return left > 0 ? left : nil
     }
 

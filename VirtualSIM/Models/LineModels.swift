@@ -168,6 +168,15 @@ struct Line: Codable, Identifiable, Hashable {
         case notLive
     }
 
+    // ⚠️ `sendBlock` and `callBlock` below now have NO CALLERS. `sendBlock`
+    // lost its last one when the composer was deleted in the 2026-08-18
+    // outbound-SMS pivot; `callBlock` had none before that — the dialer reads
+    // `voiceSecondsRemaining` directly. Kept rather than deleted because
+    // `callBlock` is the correct shape for the dialer's refusal and deleting
+    // it would invite the next person to hand-roll the check a fourth time.
+    // A `SendBlock.message` accessor lived here for a few hours on 08-18 and
+    // was removed with the composer that rendered it.
+
     var sendBlock: SendBlock? {
         switch status {
         case .active, .grace:

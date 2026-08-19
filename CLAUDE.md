@@ -27,13 +27,27 @@ when nobody has the relevant file open.
 ## What this is
 
 **vSMS** (App Store display name; formerly "vSIM OTP" — the Xcode target/scheme is still `VirtualSIM`) — iOS app selling three products, all paid with in-app **credits**: (1) **temporary phone numbers** for SMS verification codes, (2) **temporary e-mail addresses**, and (3) **eSIM data plans** priced at 4× wholesale (line currently PAUSED). A
-**fourth** line — rentable second numbers with two-way SMS and voice, billed by
-**StoreKit subscription rather than credits** — is BUILT, DEPLOYED and LIVE in
-the repo (`lines_paused = false`), and is the app's first tab. Nobody has
-bought one: the remaining blockers are **Telnyx float** (money, not code) and
-10DLC for US numbers. `TelnyxRTC` was added and the dialer wired on 2026-08-06,
-so calling is reachable — but **no real call has ever been placed**. See
-"Rentable second numbers". iOS frontend in SwiftUI + Supabase backend (Postgres + Auth + Edge Functions + pg_cron).
+**fourth** line — rentable second numbers, billed by **StoreKit subscription
+rather than credits** — is LIVE ON THE APP STORE in 2.0. ⚠️ **PIVOTED
+2026-08-18 (owner decision): the product is now "RECEIVE texts + codes from
+US/Canadian senders, and CALL OUT worldwide". OUTBOUND SMS IS DROPPED** — it is
+the one capability needing carrier approval (10DLC), which the owner will not
+pursue. In 2.1 every send affordance is gone (`ComposeScreen` deleted,
+`ThreadScreen` is read-only, `.compose` flow removed) and `send-line-message`
+refuses everything with `outbound_sms_retired`. The tab is the SECOND tab (Home
+is first — reverted 2026-08-08; this line said "first tab" for ten days after).
+**Six numbers rented, five subscriptions, and all five cancelled auto-renew —
+median 3.9 minutes after paying.**
+
+Half the product works, and the halves are not the ones this file claimed:
+**calling connected for the first time on 2026-08-18** — 3 completed calls to
+France (6s / 2s / 23s), each carrying a `provider_call_session_id`, after 7
+earlier attempts that never reached the provider at all. Verified against
+`line_calls`, not inferred. ⚠️ **That is OUTBOUND calling only. INBOUND has
+never once worked** and carries four open client bugs, so "take calls from
+anywhere" is not a claim this product can make yet — see Known-open. Meanwhile
+**outbound SMS is 1 sent against 6 failed** (`40010`, 10DLC).
+Inbound SMS works, 3 of 3. See "Rentable second numbers". iOS frontend in SwiftUI + Supabase backend (Postgres + Auth + Edge Functions + pg_cron).
 
 **Provider split as of 2026-08-10 — 5sim is the PRIMARY SMS provider; HeroSMS
 and SMSPVA still serve the services 5sim does not map; HeroSMS also serves the
@@ -67,6 +81,27 @@ operator), `{cost, count, rate720}` — a 30-day delivery rate **per pool**. Tha
 turns "buy from the best pool" and "show the user that pool's number" from
 guesswork into arithmetic. It is the first time we can steer on delivery before
 placing an order rather than after failing one.
+
+**Two 5sim behaviours settled by PAID PROBE on 2026-08-18 (`probe-5sim`,
+balance read before/after every step — do not re-run, the answers are
+arithmetic, not opinion):**
+- **Cancel REFUNDS, fully.** `3.6239 → 3.6109 → 3.6239` on a $0.013 buy.
+  Second confirmation (the first was $0.008 on 08-03). `cancel-order`'s core
+  assumption holds; with ~60% of numbered orders cancelled, this is the one
+  that would bleed float on every order if it were ever false.
+- **`user/reuse/{product}/{number}` after a CANCEL returns 400 `"reuse not
+  possible"`**, balance untouched, even when the order was bought with
+  `?reuse=1`. So reuse CANNOT rescue the "cancelled just before the code" case
+  — cancelling releases reuse eligibility with the number. Do not build on it
+  for retries. (It may still work after a COMPLETED order, i.e. re-verifying
+  the same service on the same number — a much smaller case, not pursued.)
+- Incidental: both fresh buys read `status: RECEIVED` with `sms: null` at
+  t=0. RECEIVED means "number received", never "code received" — live proof
+  that `sms[].code` must stay the only authority. `?reuse=1` is accepted
+  silently; nothing in the response says whether it took.
+- Also from the docs re-read the same day: **`maxPrice` EXISTS but only when
+  `operator=any`** — now passed on the unpinned fallback buy. Pinned pools
+  still take no cap.
 
 ⚠️ **"Ownership is per SERVICE, never per route" WAS the design rule and the
 live catalog does NOT satisfy it.** Measured 2026-08-04: **109 of 254 visible
@@ -138,8 +173,9 @@ supabase db push
 supabase functions deploy create-order check-order cancel-order register-push iap-verify delete-account \
   create-esim-order check-esim-usage redeem-referral \
   create-email-order check-email-order email-domains support-send \
-  search-line-numbers reserve-line-number verify-line-subscription \
-  send-line-message line-thread-action mint-line-token begin-line-call report-line-call
+  search-line-numbers reserve-line-number verify-line-subscription rent-line-credits \
+  send-line-message line-thread-action mint-line-token begin-line-call report-line-call \
+  record-attribution
 # Cron-gated functions MUST ship --no-verify-jwt: their pg_cron relays send
 # only x-cron-secret, no Authorization header. winback lived in the JWT group
 # until 2026-07-21 and silently 401'd on every daily run — zero nudges ever
@@ -148,6 +184,7 @@ supabase functions deploy poll-active-orders sync-prices sync-5sim sync-herosms 
   sync-esim-plans sync-smspva-operators sync-smspva-conversions winback \
   telegram-notify telegram-webhook daily-credit telegram-setup goodwill-credit \
   broadcast-push telnyx-webhook apple-notifications release-lines sync-telnyx-cdr \
+  sync-line-voice probe-telnyx-connection \
   --no-verify-jwt
 # ✅ The two lists above are now EXHAUSTIVE, and `supabase/config.toml` carries
 # a `[functions.<name>] verify_jwt = false` entry for every member of the second
@@ -165,6 +202,9 @@ supabase functions deploy poll-active-orders sync-prices sync-5sim sync-herosms 
 # owns 560 active SMS routes AND the e-mail line's balance.
 # DELETED 2026-07-30: sync-virtualsms/, sync-smspool/, smspool-catalog/ — all
 # three are gone from disk AND undeployed.
+# ✅ Re-asserted 2026-08-18: the two lists are exhaustive — 23 + 20 = **43** (probe-telnyx-connection added the same day),
+# against `ls supabase/functions | grep -v _shared | wc -l`. record-attribution
+# (Apple Search Ads) joined the JWT group that day.
 # ✅ As of 2026-08-06 the two lists ARE exhaustive — 21 + 18 = **39**, asserted
 # against `ls supabase/functions | grep -v _shared | wc -l`. They were not
 # before: this comment claimed 19, then 25, then 26 while two functions
@@ -909,11 +949,40 @@ picker rather than failing at checkout.
 
 ### Rentable second numbers — the FOURTH product line (IN PROGRESS, 2026-08-05)
 
-🚧 **BUILT BUT UNSOLD.** As of 2026-08-05 late: the Number tab is the app's
-FIRST tab and launch tab, purchase and messaging are built and deployed, and
-`lines_paused` is now **`false`**. Nobody has bought one — **the only hard
-blocker is Telnyx float** ($2.33; a number costs $1 + $1/month), deferred by
-the owner. Full design: `~/.claude/plans/binary-humming-moonbeam.md`.
+🔴 **SOLD, AND EVERY SINGLE SUBSCRIBER HAS CANCELLED (2026-08-17).** This
+section said "BUILT BUT UNSOLD … Nobody has bought one" for twelve days after
+the first sale. It is live on the App Store in 2.0, `lines_paused = false`, and:
+
+| | |
+|---|---|
+| numbers rented | **6** |
+| subscriptions | **5** (3 yearly w/ 3-day trial, 2 monthly) |
+| `auto_renew = true` | **0 of 5** |
+| median time from purchase to cancelling renewal | **3.9 minutes** |
+| fastest | **6 seconds** |
+
+**Read the two MONTHLY ones, not the average.** Yearly carries a 3-day free
+trial and cancelling a trial immediately is ordinary hygiene, not a verdict. The
+monthly plan has **no trial** — those two people paid $9.99 and killed renewal
+at 6 seconds and 9.7 minutes.
+
+**One churn is traceable end to end and it is not about price.**
+`+14377832487` bought at **00:25:22**, attempted five calls between 00:25:52 and
+00:31:37 — every one `missed`/`no_cdr` with no provider session — and cancelled
+at **00:35**. The product did not work; he left. He is also the person who
+e-mailed to say calling was broken.
+
+**Do not treat this as a demand problem.** ~1.9% of 14-day signups subscribed
+with the Number tab as the first tab, which is respectable for a $9.99/month
+subscription shown to people who came for one throwaway SMS code. The leak is
+entirely AFTER purchase. Scaling acquisition here multiplies refunds — Apple
+already sent **15 `CONSUMPTION_REQUEST`** and **3 `REFUND_DECLINED`**
+notifications in 48h.
+
+⚠️ n = 5. Treat the ORDERING as the finding (cancellation is immediate and
+universal), not the percentages.
+
+Full design: `~/.claude/plans/binary-humming-moonbeam.md`.
 
 | | state |
 |---|---|
@@ -968,11 +1037,80 @@ Number tab's Calls segment), **call history**, the **allowance gate**
 (`begin-line-call`), **session reporting** (`report-line-call`) and **CDR
 settlement** (`sync-telnyx-cdr`, on cron).
 
-🔴 **NO REAL CALL HAS EVER BEEN PLACED.** It compiles and it is reachable;
-neither is evidence it works. The account has no float, the voice adapters in
-`_shared/telnyx.ts` were written from docs, and the whole media path is
-device-only. **The first real call IS the probe** — read
-`app_config.telnyx_voice_faults` and `telnyx_cdr_probe` immediately after it.
+✅ **CALLING WORKS — FIRST CONNECTED CALLS 2026-08-18.** Three to France
+(`+33`, 6s / 2s / 23s) and one attempt to Poland, every row carrying a
+`provider_call_session_id`, i.e. the leg reached Telnyx and media flowed. The
+provisioning fix below is what changed; nothing on the device did.
+
+⚠️ **Nothing settles them from provider evidence yet.** `sync-telnyx-cdr`
+returns `{records: 0, pending: 4, unmatched: 4}` — it runs, Telnyx reports no
+detail records for these calls, and the 6-hour `settle_stale_calls` backstop
+picks them up on the CLIENT's reported duration instead. That is the designed
+fallback, not the designed path: minutes are being settled on the device's
+word. The detail-records query has already been wrong twice (see the CDR
+section); assume a third cause before assuming provider lag.
+
+*Kept because it is how this was diagnosed — the state until 2026-08-17:* seven
+attempts across two users, every row `provider_call_session_id = NULL`, so no
+call reached Telnyx at all.
+
+The probe cleared the server:
+
+- `mint-line-token` **succeeded** — no new entry in `app_config.telnyx_voice_faults`
+- the destination priced correctly (France, `iso=FR`, 0.75 cr/min, 2 credits reserved)
+- `allowance_settled = false`, i.e. the settle fix is holding
+
+~~**So the failure is on the DEVICE, after the token is issued.**~~ 🔴 **NO.
+THIS WAS WRONG FOR TWELVE DAYS. THE FAILURE WAS ON THE SERVER, AND IT IS FIXED
+(2026-08-18).**
+
+`attachOutboundProfile` in `_shared/telnyx.ts` PATCHed
+`outbound_voice_profile_id` at the TOP LEVEL of the credential connection. The
+docs put it under `outbound: {}`. Telnyx returned **200 and attached nothing**
+— its documented silent-no-op on a misplaced field, the THIRD time this
+adapter has hit that pattern (after `messaging_profile_id` and
+`features.sms.international_inbound`). So every connection was recorded
+`provider_voice_attached = true` in OUR database while Telnyx held **no
+profile at all**, and — as the comment two lines above the function said —
+"Telnyx requires a profile on the connection to place an outbound call." Every
+INVITE was refused before a session existed. That IS "music ducks then
+returns": CallKit activated audio, the dial was rejected, the session tore
+down. It read exactly like an SDK failure from the phone.
+
+**Found by a Sonnet agent re-reading the Telnyx docs, then VERIFIED, not
+inferred**: `probe-telnyx-connection` (new, cron-gated, read-only — the API key
+never leaves the platform) read connection `3028594732042290885` back and
+`outbound.outbound_voice_profile_id` was **`null`** on a line we had marked
+attached. After the fix + one `sync-line-voice` run: **`3028594742351890119`**
+— the exact profile id our row holds — and `attached_verified: 6`.
+
+Three things changed:
+- `attachOutboundProfile` sends the nested shape **and reads the connection
+  back**, returning a fault unless the profile is genuinely held. A 200 is not
+  evidence on this API; the read-back is.
+- `lineVoice.ts` step 2b: a line whose profile id is already persisted is
+  verified-and-repaired on every run, not skipped.
+- `sync-line-voice` runs that verify on every line with a profile, hourly,
+  and reports `attached_verified` / `attach_faults`.
+
+**The lesson is the one this file already states and this bug then broke:
+"the first real use IS the probe" — but only if you READ BACK. Our own
+`provider_voice_attached = true` was a record of a 200, and a 200 here means
+nothing.** Anything that PATCHes Telnyx must read the field back before
+recording success. `providers.md`'s standing rule ("read the value back; do
+not trust the 200") applied to this function and was not followed.
+
+⚠️ **The four inbound-calling client bugs in Known-open are still real and
+still unfixed** — inbound has never been tried, and they are device-side. But
+outbound was never a device bug. **The next step is a real outbound call from
+a device with the 2.1 build** — the server half is now, for the first time,
+actually able to place one.
+
+⚠️ *Historical, kept because it was half-right:* provisioning WAS a separate
+bug (five of six lines had no connection at all until 08-17, provisioned
+lazily in `mint-line-token`). Fixing that was necessary. It could not have
+been sufficient, because the thing it provisioned was then attached to
+nothing.
 
 **`isVoiceAvailable` still gates `case .dialer`**, and the "Make a call" button
 is *hidden* rather than disabled when no client is attached. Keep that: a
@@ -1019,6 +1157,18 @@ repo, so they are kept here — losing them costs a device-only debugging sessio
    ```bash
    plutil -p "$APP/Info.plist" | grep -A3 UIBackgroundModes   # must list audio + voip
    ```
+5. 🔴 **THE IN-CALL SCREEN IS A ROOT `.overlay`, AND A ROOT OVERLAY RENDERS
+   BELOW EVERY `fullScreenCover`.** The dialer IS a cover, so pressing call
+   left the keypad on screen with the live call underneath it — invisible, and
+   with no way to end it from inside the app. Reported from a real call to
+   France, 2026-08-18. `InCallOverlay` is now duplicated into the cover's
+   content (the shape `ErrorBanner` already had), the root copy is scoped to
+   `state.flow == nil` so exactly one instance ever renders, the dialer
+   dismisses itself once the call is committed, and any open sheet is
+   dismissed — sheets are detented, so a call screen hosted in one would draw
+   at sheet height. **In this app, "above everything" cannot be a root
+   overlay.**
+
 4. ⚠️ **`UUID.uuidString` is UPPERCASE and Telnyx's detail records are
    lowercase.** `sync-telnyx-cdr` matches with an exact-string lookup, so
    `providerSessionId` lowercases both ids. Uppercase would settle nothing and
@@ -1294,6 +1444,83 @@ Google Voice free). At $4.99 with the same allowance the line LOSES money on a
 heavy user, and hard-stop billing means there is no overage to recover it.
 The schema defaults already encode this (`sms_allowance 200`,
 `voice_allowance_seconds 6000`).
+
+### International calling — credits, not minutes (2026-08-17)
+
+The $9.99 plan sells **100 DOMESTIC (NANP) minutes**, hard stop. Anything else
+is priced from `public.voice_rates` at 5× wholesale and paid in **credits**,
+because a minute-denominated bucket cannot tell a $0.005/min call from a
+$3.62/min one — which is the whole reason this exists.
+
+**TWO GATES, IN TWO SYSTEMS, AND ENABLING EITHER ALONE IS A BUG:**
+
+| gate | where | enforced by |
+|---|---|---|
+| **price** | `voice_rates.enabled` | `begin_intl_call_claim` |
+| **permission** | `whitelisted_destinations` on the line's Telnyx outbound voice profile | the carrier |
+
+`begin_intl_call_claim` refuses an un-`enabled` row with `destination_unavailable`
+**before charging** — *a price is not permission*. Both halves now derive from
+one SQL function, `voice_dial_destinations()`, and `sync-line-voice` (hourly,
+`:11`) patches every existing profile so a widening reaches lines already sold.
+Profiles are **per line** (`vsms-<line id>`), each with its own
+`daily_spend_limit`, so one abused line cannot ground another.
+
+🔴 **THE NANP ROW IS NOT "US".** `voice_rates` carries ONE row for +1 labelled
+"United States & Canada" with `iso2 = 'US'`. Deriving Telnyx destinations from
+`iso2` alone yields a list with **no CA in it** — and every number sold is
+Canadian, whose owners call Canada. `voice_dial_destinations()` expands it to
+US/CA/PR/VI (matching `_shared/phone.ts`), giving **53** destinations from 50
+rows. Verify with `select public.voice_dial_destinations();` before touching it.
+
+🔴 **LONGEST-PREFIX MATCHING MEANS A COUNTRY ROW ANSWERS FOR ITS PREMIUM
+RANGES.** Until 2026-08-17 the override mechanism the table documented had been
+used **zero** times, so `+1900`/`+1976` (US premium, $1–5/min) resolved to the
++1 row as **`covered_by_allowance = true`** — billed against the free minute
+allowance, with the dialer saying *"Included in your minutes"* — and `+4470`
+(UK personal numbering, a classic IRSF target) billed at the UK landline rate.
+The Caribbean NANP countries did the same. There are now **49 `enabled = false`
+rows** covering those ranges; a disabled row is a REFUSAL, not a missing price.
+
+⚠️ **A prefix table looks right in review and is wrong against real numbering
+plans.** The first attempt used `3519` for "Portugal premium" — Portuguese
+MOBILES are 91/92/93/96, so it would have refused most of Portugal. Premium is
+760/761/762, shared-cost 707/808. **Query `voice_rate_for()` on real numbers
+after any change**, both a number that must be refused and one that must not.
+
+⚠️ Rates are **provisional**, written from public price lists — Telnyx has no
+pricing API. Nine destinations (CH, JP, NZ, SI, HR, FI, SK, AT, LV/EE) sit close
+enough to plausible mobile termination that a single expensive MNO range inside
+them could go negative. Replace them from the real rate deck before volume.
+
+### 🔴 The client is never authoritative about money
+
+`report-line-call` takes `status` from the REQUEST BODY. Until 2026-08-17
+`attach_line_call_session` saw a terminal-unconnected status and immediately
+called `settle_call_claim(call, 0, …)`, which refunds the whole credit block and
+sets `allowance_settled = true` — and `sync-telnyx-cdr` sweeps
+`allowance_settled = false`, so **the real detail record could never correct
+it**.
+
+Exploit: dial anywhere, POST `{call_id, status:"canceled"}` ten seconds in
+(`begin-line-call` is deliberately not on the ring path, so the call continues),
+get every credit back, talk as long as you like, repeat. The same request
+returned the 120-second domestic reservation on every call — an unlimited
+allowance.
+
+The migration that introduced it argued *"canceled/failed/busy/missed mean no leg
+was ever answered BY DEFINITION"*. **True of a PROVIDER-reported status; false
+of a client-reported one**, and this function only ever receives the latter.
+
+The client's report is now **advisory**: it records status, `ended_at` and
+duration for the UI and settles nothing. Money moves only on provider evidence
+(`sync-telnyx-cdr`) or the `settle_stale_calls` backstop. The cost is that a
+genuinely failed call holds its reservation until a sweep runs — the right
+trade, because an instant refund on a live call is a loss that also destroys the
+evidence needed to notice it.
+
+**Generalise it: if a value decides money and the device can set it, the device
+must not be the one that settles.**
 
 ### Support chat — user types in-app, owner answers from Telegram (2026-07-30)
 
@@ -1686,11 +1913,27 @@ asserting a provider switch in the second case would be a guess dressed as fact.
 
 ### The minimum hold (now 90s), and the late-code rescue (2026-07-27)
 
-⚠️ **`MIN_HOLD_SECONDS` is 90, NOT 180 — lowered 2026-08-03.** This whole
-section was written for 180 and much of the reasoning below still quotes it;
-the *arguments* stand, the *number* does not. Read `cancel-order/index.ts:44`
-before quoting a figure. 1.8's release notes tell users "90 seconds instead of
-3 minutes", so the shipped copy and the constant agree.
+⚠️ **THE HOLD IS PER-PROVIDER as of 2026-08-18 — `MIN_HOLD_BY_PROVIDER` in
+`cancel-order`, ALL AT 90 TODAY.** This whole section was written for a flat
+180 and much of the reasoning below still quotes it; the *arguments* stand,
+the *number* does not. Read `cancel-order/index.ts` before quoting a figure.
+
+Why per-provider: measured over every code ever delivered, HeroSMS has NEVER
+arrived after 86s (p90 79s) while 5sim's p90 is 155s. One number cannot be
+right for both. **5sim is deliberately held at 90, not its p90 of 155**,
+because shipped 2.0's `WaitingScreen.minHoldSeconds` is a hardcoded 90 —
+raising the server first unlocked a Cancel the server then refused (13 of 29
+recent 5sim cancels landed in that 90–155s gap), i.e. exactly the invariant
+that file states: the client may only ever be RAISED ahead of the server.
+It was raised to 155 and reverted the same day. **2.1 fixes the client side**
+(`AppState.minHoldByProvider` mirrors the server, and `WaitingScreen` honours
+`retry_after_seconds` from a 429 so the button re-locks instead of erroring)
+— raise the 5sim server value to 155 ONLY after 2.1 is adopted, in the same
+change as the client table.
+
+⚠️ Do NOT justify a longer hold with "otherwise the code is lost": since
+2026-07-27 a cancel does NOT release the number — the poller still delivers
+a late code free. The hold protects the code from a REROLL, not a cancel.
 
 Cancels landed at a **median of 57s**; codes arrive at a **median of 58s**, p90
 134s, and 45% of codes that arrive do so after 60s. Users were destroying orders
@@ -2145,6 +2388,8 @@ for essentially every hidden route.
 - **Charge and order row must be written together.** `create-order` used to charge and only insert the row after a provider reservation succeeded, so every failure left a spend+refund pointing at nothing: **258 spends vs 126 orders — 51% of paid attempts invisible**, and the real failure rate unmeasurable. `begin_order()` now does dedupe + insert + charge in one transaction under a per-user advisory lock (the old dedupe `SELECT`ed ~120 lines before the `INSERT`, with a multi-second provider call between, so two concurrent requests both passed it and both charged). A stranded row self-heals: the poller skips it for polling (`smspva_id is not null`) but the expiry sweep still closes and refunds it.
 - **Never write a status transition without an atomic claim.** Every `orders` status write is `.eq("status","waiting")` + row-count check. `check-order`'s `received` branch was the one exception and could overwrite a terminal state the expiry cron had already set — handing a user a working code they'd *already been refunded for*.
 - **A status claim and its refund must be ONE transaction, never two round-trips.** Where they are split, a worker killed in between leaves a TERMINAL row with the charge never returned — and the expiry sweeps only select `status='waiting'`, so nothing ever revisits it. No timeout value fixes this; a TypeScript rollback cannot either, because the process is gone. Seven paths had it wrong and were fixed one at a time across 2026-07-31 and 08-02 (`expire_order_claim`, `expire_order_early_claim`, `fail_esim_order_claim`, `close_email_order_claim`). ⚠️ **This entry then said "if you add an eighth close path, it goes through a claim function" while TWO existing paths still did not** — `cancel-order` and `create-order`'s `failOrder`, i.e. the busiest close path in the product (`margin_too_low`, stockouts, provider faults and `order_persist_failed` all land there). Both carried the TypeScript rollback this very rule says cannot work. Closed 2026-08-06 with **`cancel_order_claim(p_order, p_late_watch_until)`** (`20260806140000`); it had never fired — a query for terminal charged orders with no matching refund returns zero — but the window is real and the failure is silent and permanent. **The lesson is about the rule, not the bug: a written invariant is not an enforced one. Grep for violators when you write one down.**
+- 🔴 **`on conflict (version) do nothing` WILL SILENTLY SWALLOW YOUR MIGRATION RECORD when two sessions pick the same timestamp.** Hit for real on 2026-08-18: a migration was applied with `db query --file`, then recorded with the documented `insert … on conflict (version) do nothing` — and `20260818130000` was ALREADY TAKEN by `iap_refund_revocation` from a parallel session. The insert did nothing, the SQL stayed applied, and `schema_migrations` had no trace of it. Two different migrations then claimed one version, one of them only on disk. **After recording a migration, SELECT it back by name**, not by assuming the insert landed — and pick a version by reading `select max(version) from supabase_migrations.schema_migrations` rather than from the clock, because more than one session works on this repo per day.
+
 - **`apply_migration` (MCP) mints its own version number and does NOT write a repo file.** Three migrations performing an entire provider cutover existed only in the live DB; a fresh `supabase db push` would have come up SMSPool-primary with the wrong crons scheduled. After any `apply_migration`, immediately write `supabase/migrations/<live-version>_<name>.sql` with the same SQL. Recover forgotten ones from `supabase_migrations.schema_migrations.statements`.
 - **An unqualified `UPDATE` inside a SECURITY DEFINER function fails when called
   over RPC — `UPDATE requires a WHERE clause`.** Supabase's safeupdate guard
@@ -2225,11 +2470,13 @@ for essentially every hidden route.
 - **A constant duplicated across files WILL drift.** `MAX_WHOLESALE_CENTS` lives in three sync functions (and as `MAX_ORDER_COST_USD` in `poll-active-orders`, and as `LOW_BALANCE_USD` in `_shared/opsFormat.ts`). Changing it in one place on 2026-07-27 stripped 1,432 routes of their carrier pin and premium price, and left the digest warning at $20 while the pager fired at $37.50. Same for `CREDIT_DIVISOR` (the SMSPVA 0.05 is **two** copies — `sync-prices` and `sync-smspva-operators` — and `sync-herosms` carries a deliberately DIFFERENT 0.025, so "consolidating" the three into one constant would silently reprice a whole provider) and `ESIM_MARGIN`/`CREDIT_VALUE_USD` (two each). `MAX_WHOLESALE_CENTS`'s three syncs are now `sync-prices`, `sync-smspva-operators` and `sync-herosms`. Change them in one commit or consolidate them into `_shared/`.
 - **Deleting an IAP receipt to force StoreKit redelivery can eat the payment.** `iap-verify` used to delete the row when `wallet_credit` failed, assuming StoreKit would retry. But the client runs **two** paths into that endpoint (`Transaction.updates` and the `Transaction.unfinished` sweep), so a concurrent duplicate may already have been answered `already_credited` and called `finish()` — retiring the transaction forever. It now zeroes `granted_credits` (keeping both the audit trail and the replay guard), and the duplicate branch refuses to confirm a receipt that has no matching `wallet_transactions` row.
 - **EVERY credit grant is farmable through account deletion unless it is tombstoned OUTSIDE the `auth.users` cascade.** This is the single most repeated money bug in this codebase — it has now been found three times, once per grant. Everything user-scoped cascades, so delete → sign in again erases our only record and mints the grant afresh. Apple *mandates* the Delete Account button, so this is not an edge case. The three grants and their tombstones: **signup +3** → `signup_grants` (hash of the email); **referral +2** → `signup_grants.referral_redeemed_at` (same key); **IAP purchases** → `public.iap_grants` (keyed on Apple's `transaction_id`). Each tombstone table must have **no foreign key to `auth.users`** — a reference there is precisely what deletes the row with the account. The email hash works because Apple's private-relay address is stable per (user, app), so it survives deletion while storing no address; all three fail **open** on a null email, because a missed grant on a real signup costs more than a rare duplicate. **If you add a fourth grant, it needs a tombstone in the same commit.**
+
+  ⚠️ **THAT RELAY-STABILITY ARGUMENT IS NO LONGER THE WHOLE GUARANTEE (2026-08-18).** Email + password signup means the key can be an address the USER picks, which costs nothing to re-roll. Two things now hold it up, and neither is sufficient alone: `signup_grants.email_hash_norm` (md5 of `public.normalize_email`, which strips plus-tags everywhere and dots on gmail only) and the fact that the grant is paid on **confirmation** rather than at INSERT, so the mailbox must actually receive mail. **Both keys are checked and written; the legacy `email_hash` stays the primary key** because 8 of the 517 tombstones belong to deleted accounts whose address is unrecoverable — rewriting the key would have dropped exactly the rows doing the most work. State the residual honestly: a user with ten real mailboxes still gets ten grants. That is a cost floor, and it is LOWER than Apple's — price the grant accordingly (it is 0 today). See `20260818160000_email_signup_normalized_tombstone.sql` and `scripts/verify-signup-grant.sql`.
 - **APNs `aps-environment` is `production`** in the entitlements file (flipped for archiving; set `APNS_ENV=production` secret to match). Flip back to `development` if you need to test push against a dev-token build from Xcode.
 - **`Secrets.swift` is gitignored.** Template in `supabase/README.md`. Just `supabaseURL` + `supabaseAnonKey`. The publishable key (`sb_publishable_*`) is fine in client code — it's the new name for the anon key.
 - **Logo loading cascades** in `ServiceLogo`: DuckDuckGo ip3 (`icons.duckduckgo.com/ip3/<domain>.ico`) → Google FaviconV2 → SF Symbol on tinted background. URLCache caches across launches. **Clearbit (`logo.clearbit.com`) was removed** — HubSpot sunset the free Logo API on 2025-12-01 and its host no longer resolves; leaving it as source #1 made every logo eat a DNS failure before falling through. Do not re-add it.
 - **Logos + flags are bundled** (`VirtualSIM/BundledLogos/<domain>.png`, `VirtualSIM/BundledFlags/<code>.png`). `ServiceLogo`/`FlagImage`/`FlagCircle` render the bundled PNG **first** (via `BundledImageStore.shared`) and only fall back to the network cascade above for catalog entries not yet bundled. The Xcode file-system-synchronized group **flattens** these into the bundle root, so lookup is by flat filename (`Bundle.main.url(forResource: "<key>.png", withExtension: nil)`) — do NOT expect a `BundledLogos/` subdirectory at runtime. Logo key = `Service.domain`; flag key = `Country.flagImageCode` (`uk`→`gb`). After the catalog grows, regenerate + commit with `scripts/fetch-bundled-assets.sh --refresh`, then ship an app update; new services/countries work via the network fallback in the meantime.
-- **Apple Sign-In is iOS-native flow** — no JWT secret needed in Supabase (the apple provider config). The dashboard's secret/services-id fields stay blank.
+- **Apple Sign-In is iOS-native flow** — no JWT secret needed in Supabase (the apple provider config). The dashboard's secret/services-id fields stay blank. **Since 2026-08-18 it is no longer the ONLY door**: `AuthFlowScreen` also offers email + password (`AuthWelcomeScreen` → sign-in / sign-up / 6-digit confirmation / password reset). 🔴 **It cannot reach a real user until custom SMTP is configured** — Supabase's built-in mailer is rate-limited to a couple of messages an hour and sends from their domain. **`vsmsapp.com` was bought for this on 2026-08-18**; the remaining work is Resend + DNS + the SMTP and template settings, all of it dashboard-side and written up in `docs/email-auth-setup.md`. Send from `mail.vsmsapp.com`, never the apex — the apex is where the legal pages the App Store points at will live, and sending reputation is per domain. The flow is deliberately **code-based, never link-based**: nothing in the app handles the `relay://auth` scheme `config.toml` declares, and mail scanners pre-fetch links and burn single-use tokens. Verified live 2026-08-18: `invalid_credentials` is a 400, **`otp_expired` is a 403** (the status ladder used to answer that with "Please sign in again"), `weak_password` a 422 whose server minimum is **6** (the client asks 8), `/auth/v1/recover` answers **200 for an unknown address** and `/auth/v1/resend` exists.
 - **Never present seed data as measured fact.** `Service.successRate` is seed data (86–99% across all 268 services, avg 91%) and `Service.swift` says so explicitly. Show only `AppState.successRate(for:country:)` / `deliveryOdds` / `DeliveryNotice`, which are gated on real observed samples, and show **nothing** when there's no measurement. `WaitingScreen` was the last violator — it promised ~91% right after payment on clusters that actually measure ~9%. Same rule for eSIM coverage: the parser returns `null` rather than guess, because a wrong coverage claim is worse than none since the user acts on it.
 - **Review prompt must stay incentive-free (App Store 5.6.4).** `OtpScreen` calls Apple's native `@Environment(\.requestReview)` (needs `import StoreKit`) on code delivery, gated by `AppState.shouldRequestReview(forOrderId:)` — fires from the user's FIRST successful code (lowered from the 2nd on 2026-07-31: only 7 of 20 code-receiving users ever reached two codes, so the 2nd-code gate excluded most of the eligible pool), at most once per app version, de-duped per order. **Never** tie credits/rewards to leaving a review, and **never** build a custom review UI that deep-links to the App Store page — both are rejectable. A no-strings welcome/bonus credit is fine as long as it isn't conditioned on a review.
 
@@ -2338,21 +2585,24 @@ SMS provider again, walk this list:
 Every number below has been wrong within a day of being written at least once.
 It is a starting point for "is this roughly right", never a citation.
 
-- **iOS**: `MARKETING_VERSION 2.0`, `CURRENT_PROJECT_VERSION 39` (live store
-  version is still 1.9/31 while 2.0 sits in review), iOS min **18.0**,
-  **116** Swift sources, **689** strings / 0 untranslated / 0 specifier reorders,
-  and **3** SwiftPM dependencies (TelnyxRTC 4.1.2 → WebRTC 139.0.0, Starscream
-  4.0.8). (Counted 08-06 after the calling commit. The previous figures — 96
-  sources, 357 strings, ZERO dependencies — predated the Number tab, the
-  calling client and the design overhaul.)
-- **Backend**: **39** edge function dirs besides `_shared`, **14** `_shared` files,
-  **150** migration files, **20** pg_cron jobs (all active). (Counted 08-06.
-  The previous figures — 27 dirs, 145 migrations, 16 crons — were stale by 12,
-  5 and 4; `ls | wc -l` rather than trusting this line.)
-  ✅ **The two deploy lists at the top of this file are now EXHAUSTIVE** and are
-  asserted against that 39: every directory appears in exactly one, and
-  `config.toml` carries a `verify_jwt = false` entry for all 18 members of the
-  cron/webhook group.
+- **iOS**: `MARKETING_VERSION 2.0`, `CURRENT_PROJECT_VERSION 39`, iOS min
+  **18.0**, **120** Swift sources, and **3** SwiftPM dependencies (TelnyxRTC
+  4.1.2 → WebRTC 139.0.0, Starscream 4.0.8). (Counted 08-17.)
+  ⚠️ **2.0 IS LIVE, not "in review" — this line said otherwise for a week.**
+  Six numbers have been rented and five subscriptions bought through it since
+  08-15, which is only possible from a shipped build. Read App Store Connect;
+  this file has now been wrong about the review state three versions running.
+- **Backend**: **41** edge function dirs besides `_shared`, **19** `_shared`
+  files, **178** migration files, **20** pg_cron jobs (all active). (Counted
+  08-17. The previous figures — 39 / 14 / 150 — were stale by 2, 5 and 28 in
+  eleven days; run `ls | wc -l` rather than trusting this line, which has never
+  once been correct when checked.)
+  ✅ **The two deploy lists at the top of this file are EXHAUSTIVE**, asserted
+  against that 41 programmatically on 08-17 — `rent-line-credits` and
+  `sync-line-voice` were in NEITHER list until then, which is exactly how a
+  `_shared` fix ships to every function except the two nobody redeploys.
+  `config.toml` carries a `verify_jwt = false` entry for all **19** members of
+  the cron/webhook group.
 - **Catalog** (08-06, AFTER the sync-5sim repair): **15,561** active routes —
   up from 9,358, because 6,900 routes had been seized from the providers that
   own them and hidden (see the changelog entry for that date; the 9,358 figure
@@ -2384,13 +2634,23 @@ It is a starting point for "is this roughly right", never a citation.
   2026-08-10; 174 of 175 territories live). Apple/MIIT forbids CallKit in apps
   sold on the China App Store, and 2.0 ships CallKit. Re-adding China requires
   gating CallKit off by storefront first — do not re-tick it casually.
-- **Signup grant: 2 credits — RESTORED 2026-08-08** (owner decision; it was 0
-  from 08-04 to 08-08, and 5 → 0 → 1 → 3 → 0 in the two days before that).
-  Measured effect of the restore: signups placing an order went **~8%/day →
-  ~45%/day** within 48h, while purchases stayed flat — the grant buys
-  *activation*, not instant purchases; see Retention. `handle_new_user()` reads
+- **Signup grant: 0 credits — SET 2026-08-18** (owner decision, after the
+  first-session audit). It was 2 from 08-08 to 08-18, and 5 → 0 → 1 → 3 → 0
+  in the two days before that. The 08-18 case: **27 of 28 buyers ever bought
+  BEFORE placing an order** (median 3.0 min after signup); 112 users ordered
+  free and never paid, and 106 of them still hold credits — nobody is refused
+  a paywall, they take a free order that fails (first-order delivery 12.8%,
+  and ≤2cr routes deliver 10.4% vs 26.7% at 5+cr) and leave. A 2cr grant
+  pinned every new user to the worst inventory. Grant 0 puts the paywall in
+  front of a GOOD route. ⚠️ Known cost, measured on the 08-04→08 zero era:
+  activation fell to ~8%/day; purchases stayed flat. Watch signup→purchase
+  over the next 14 days, not signup→order. `handle_new_user()` reads
   `app_config.signup_bonus_credits` live, clamped 0–50, tombstoned via
-  `signup_grants`. Rollback is one UPDATE, no deploy.
+  `signup_grants`. Rollback is one UPDATE, no deploy. Note `telegram-notify`
+  already renders 0 correctly ("no signup credit (grant is 0)").
+- **Free e-mail cap: 1/user/day — CUT from 3 on 2026-08-17.** Free email had
+  been outselling paid SMS ~5:1 (Aug 15: 3 SMS orders vs 22 free emails) and
+  has earned one credit in its lifetime. `app_config.email_free_daily_cap = 1`.
 
 ### ⚠️ The grant size decides which ONE route new users land on
 
@@ -2658,6 +2918,80 @@ Also this day, each verified against live DB state rather than a deploy log:
 Reasoning for each of these lives in the topic section above; this is only an
 index, so "why is it like this" has a date to search for.
 
+- **08-18 (second stream, merged into 2.1)** The dialer never got out of the
+  way of the call it placed: `InCallOverlay` is a root `.overlay` and the
+  dialer is a `fullScreenCover`, which always renders above it — so a live call
+  drew UNDERNEATH the keypad, invisible and unendable from inside the app. See
+  trap 5 under "Calling". Also in this stream: **email + password auth** end to
+  end (Resend on `mail.vsmsapp.com`, 6-digit codes, grant paid only on
+  confirmation against a normalized address), a **four-page onboarding** that
+  leads with temp SMS instead of the $9.99 subscription, and a cleanup pass
+  (5 dead declarations, 2 drifted constants including a missing `988` in
+  `send-line-message`'s emergency set, both Swift 6 actor-isolation warnings).
+  ⚠️ This stream ran in parallel with the one below and did not know about the
+  outbound-SMS pivot; where the two disagreed, the pivot won.
+- **08-17/18** Owner asked to "fix everything" toward $2,000/mo (lifetime is
+  $273; best month ~$200 net). Three parallel audits (money, first-session
+  funnel, number-line pivot) plus the ASA research. **The catalog was 39%
+  unfillable**: SMSPVA was retired from routing that morning and the hourly
+  `sync-prices` re-activated all 6,305 of its routes the same evening — 5,955
+  with no 5sim/HeroSMS fallback. Fixed in code (`SMSPVA_RETIRED` in
+  `sync-prices`) and via `blocked_routes` (survives the evidence un-hide);
+  15,293 → 8,988 active routes, zero unfillable. **The Apple-lapse leak**:
+  the only active→suspended path was an EXPIRED notification, zero had ever
+  arrived, and three yearly trials were lapsing in 40h — `reclaim_lapsed_
+  lines()` gained a `current_period_end` backstop (20260818110000) 88 minutes
+  before the first one. **The watchdog watched no money**: added provider
+  RUNWAY (fired at once — 5sim covered ~2.6 days), the credit-line rent
+  heartbeat, and the lapse STATE, as a companion function so no existing
+  clause was regenerated (20260818120000). **Apple refunds now revoke
+  credits** (`revoke_iap_purchase`, one transaction, capped at the balance
+  with the shortfall paged — `wallets_balance_check` deliberately kept). **ASA
+  keyword rewrite** applied and read-back-verified: 11 second-number/
+  authenticator terms paused, `sms verification` resumed, 4 verification
+  terms added, first 23 negatives; the €20/day is spent 14.6% because the
+  account goes dark 1 day in 3 (both campaigns, identical days — billing, no
+  API can show it). **AdServices attribution** shipped end to end (client in
+  2.1). **Money settings by owner decision**: signup grant 2 → **0**, free
+  email cap 3 → **1**, orphan-number sweep ON, `line.yearly` KEPT on sale.
+  **The number line PIVOTED to receive + call out** (see the header) — 2.1
+  removes every send affordance, sells international calling on the store
+  screen for the first time, and the inbound push now leads with the
+  extracted code. Copy corrected the same day: "receives texts from anywhere"
+  was FALSE (`international_inbound: false`, unfixable via API) → "US and
+  Canadian senders". **First-session fixes in 2.1**: RecoveryScreen's ranked
+  retry silently re-ordered the FAILED country (117 users saw it), the hero
+  priced and graded a route the button would not buy, no purchase moment
+  existed after a delivered code, the paywall dead-ended on a partial
+  StoreKit answer, per-provider hold + `retry_after_seconds` in the client.
+  **A regression I introduced and reverted the same day**: raising the 5sim
+  hold to 155 while shipped 2.0 hardcodes 90 — see the hold section. **2.1
+  (build 40) SUBMITTED 2026-08-18 07:29Z — `WAITING_FOR_REVIEW`**, version
+  `2a703399-…`, submission `7fa935aa-…`, build uploaded via `altool` with
+  `BuildMachineOSBuild` patched to 25F84 (verified inside the IPA), release
+  notes patched on all 13 locales. Its last commit before archive added the
+  "Not yet" ledger rows (sending texts / receiving from outside US+CA) to the
+  store pitch AND the checkout screen, screenshot-verified on both. Read ASC
+  for the review state, not this line.
+- **08-17** The second-number line met its first real customers and most of it
+  did not work. **Voice was provisioned lazily** in `mint-line-token` while
+  messaging was provisioned at rental, so five of six sold numbers had no Telnyx
+  connection at all and could neither call nor ring — fixed in
+  `_shared/lineVoice.ts` (provisioned at rental, repaired hourly by the renamed
+  `sync-line-voice`), all 6 lines repaired live. **Two money exploits, both
+  introduced the same day by the fixes above them**: the client could settle its
+  own live call to zero and keep talking, and `+1900`/`+1976`/Caribbean ranges
+  billed against the free minute allowance. **International calling enabled** to
+  50 rated destinations (53 Telnyx ISO2s) with the two-gate design and 49
+  refusal rows for premium ranges. **Outbound SMS found to be entirely broken**
+  (1 sent / 6 failed, `40010`), retracting the "Canada needs no 10DLC" premise
+  the launch was built on; sends are now refused up front and the copy no longer
+  promises them. Client: the Number tab's hero header, `VoiceReadinessNotice`,
+  post-call allowance refresh, one-tap verification-code copy, and 53 error
+  messages that had never reached the string catalog. A five-agent adversarial
+  audit produced the inbound-calling and subscription findings now in
+  Known-open. **Five of six items I had listed as known-open were already
+  fixed** — verified by reading the code rather than trusting the list.
 - **08-10** eSIM provider switched SMSPool → **eSIM Access** (owner decision;
   line STAYS PAUSED until the ~$50 top-up). New `_shared/esimaccess.ts`
   (probed live: RT-AccessCode-only auth, ×10,000 money units, HTTP-200
@@ -2783,7 +3117,78 @@ read healthy. `paymentModel: PAYG` plus a previously observed
 billing endpoint**, so the campaign layer keeps reading fine forever. Check
 ads.apple.com → Settings → Billing.
 
+### ASA attribution — which keyword produced a PAYING user (2026-08-18)
+
+Until this landed, ASA reported installs, `iap_receipts` recorded purchases,
+and **the two were never joined** — so every bid was set on the cheap half of
+the funnel. `AppState.submitAttributionIfNeeded` reads
+`AAAttribution.attributionToken()` (framework `AdServices`, autolinked — no
+project change) and posts it to **`record-attribution`**, which resolves it
+against `https://api-adservices.apple.com/api/v1/` and writes one row per user
+to `public.install_attributions`. Read it with **`attribution_summary()`**
+(installs / buyers / purchases / credits per campaign+keyword; service-role
+only, Production receipts only).
+
+Five things that are load-bearing:
+- **It runs AFTER `bootPhase = .ready`**, last in `coldStart`. A measurement may
+  never lengthen the boot critical path.
+- **It cannot throw out.** Every failure is swallowed; a simulator has no token
+  at all and that is ordinary, not an error.
+- **The `attribution.submitted` pref is set only on SUCCESS**, so a launch with
+  no network retries next time. The token is per install, so one success is all
+  there ever is to send.
+- **Apple's 404 is AMBIGUOUS** — organic, or the token is not resolvable yet
+  (documented propagation delay). The function retries once after ~3s and then
+  takes it at face value. An UNREACHABLE Apple writes **no row**, so an absent
+  row means "not measured", never "organic".
+- **The table cascades from `auth.users` on purpose.** It is user data, not a
+  grant tombstone — do not "fix" it to match `signup_grants` / `iap_grants`.
+
+Not built: a `/attribution` Telegram command. `attribution_summary()` is the
+payoff and is queryable by hand; the bot surface needs a formatter in
+`_shared/opsFormat.ts` and is worth doing once there is data in the table.
+
 ### Known-open
+
+🔴 **OUTBOUND SMS DOES NOT WORK, AND IT IS THE PRODUCT (2026-08-17).**
+Lifetime: **1 sent / 6 failed** (the one "sent" never got a delivery receipt).
+Inbound: **3 of 3**. Every cross-border send returns `40010: The sending number
+is not 10DLC-registered but is required to be by the carrier`, and the number
+also reports `features.sms.international_outbound: false`. The claim that
+Canadian numbers need no 10DLC is **RETRACTED** — see `.claude/rules/providers.md`.
+
+`send-line-message` now refuses cross-border (`cross_border_sms`) and non-NANP
+(`international_sms`) sends up front rather than spending a segment to buy a
+failure, and checkout/store no longer promise sending. **The decisive untested
+case is CA → CA**: `domestic_two_way: true` says it should work with no
+registration, and nobody has tried it. One message decides whether this product
+has a market today or is receive-only until toll-free verification or 10DLC
+clears — both of which require declaring a use case that "users send whatever
+they like" does not satisfy.
+
+🔴 **INBOUND CALLING CANNOT WORK — FOUR CLIENT BUGS, NONE FIXED (2026-08-17).**
+Zero inbound calls in the product's history. Found by audit against the
+TelnyxRTC SDK source, not from docs:
+
+1. **`onIncomingCall` raises nothing.** `reportNewIncomingCall` appears exactly
+   once in the app, inside the PushKit callback — so a call arriving over an
+   open socket never rings at all.
+2. **The push payload is read with keys Telnyx does not send.**
+   `info["from"]`/`info["uuid"]` are nil; the SDK sends
+   `metadata["caller_number"]` / `metadata["call_id"]`. Consequences: blank
+   caller, a CallKit UUID that does not match the SDK's call, and
+   `registerInboundCall`'s `!peer.isEmpty` guard means **no inbound `line_calls`
+   row is ever written**.
+3. **`PKPushRegistry` is created only in `LineScreen.task`**, so a VoIP push to
+   a terminated app finds no registry. Repeat offences are what makes iOS stop
+   delivering VoIP pushes to a bundle permanently.
+4. **Dismissal pushes ("Missed call!") are reported as NEW incoming calls** and
+   nothing ends them.
+
+Also: `mint-line-token` computes `inbound_ready` from the ENV VAR rather than
+from the connection's actual push credential, so a connection created while the
+secret was unset reports ready forever.
+
 
 ✅ **RESOLVED 2026-08-06 — `TELNYX_IOS_PUSH_CREDENTIAL_ID` EXISTS AND POINTS AT
 OUR OWN CERTIFICATE.** Credential `65804c06-85e1-4467-b868-818e9e370ac8`, alias
@@ -2884,16 +3289,28 @@ chain including a modulus check that the cert and key are actually a pair.
   (`scripts/verify-line-lifecycle.sql`, 12 checks in a rolled-back
   transaction). What genuinely remains:
   - **Telnyx float** — the one hard blocker, and it is money, not code.
+  - ⚠️ **`CallController.phase` moves to `.dialing` only AFTER the call is
+    committed** — the server authorised it and CallKit accepted it. It used to
+    be set on the tap, so the in-call overlay went up for the whole
+    `begin-line-call` round trip and came back down on a refusal. Re-entrancy
+    over that window is `isStarting`, which is also the dialer's busy state:
+    without it a double-tap sends two gating requests and each reserves
+    credits. `isCommitted` (live, and not `.ending`) is what the dialer
+    dismisses on — a refused call passes through `.ending`, and dismissing
+    there would take its error message with it.
   - **Calling is WIRED but UNPROVEN.** `TelnyxRTC 4.1.2` was added and the
     dialer wired on 2026-08-06, so `NullVoiceClient` no longer stands in.
     **No real call has ever been placed**, the voice adapters were written
     from docs, and the media path is device-only — the simulator cannot
     receive a PushKit push. Treat the first call as the probe and read
     `app_config.telnyx_voice_faults` after it.
-  - **A client release.** Everything above is repo-only: the App Store has
-    **1.9**, which has no Number tab at all.
-  - **10DLC for US numbers.** Canada needs none, which is why the launch is
-    Canadian.
+  - **A client release** for anything client-side. 2.0 IS live (that is how six
+    numbers were sold); everything fixed on the client after it — the hero
+    header, the readiness notice, the post-call meter refresh, code copy — needs
+    2.1 before a user sees it.
+  - **10DLC / toll-free verification — for EVERY number, not just US ones.**
+    "Canada needs none" is retracted: a Canadian longcode is refused with the
+    same `40010` on every send to a US number. See `.claude/rules/providers.md`.
 - ✅ **RESOLVED in build 39 (2.0, WAITING_FOR_REVIEW as of 2026-08-10) — the two
   client-blocked fixes both ride in it.** The review prompt now also fires on
   app-foreground within 30 minutes of a delivered code (`loadOrders` diffs for
@@ -3268,9 +3685,17 @@ refused.
   no commit (verified), but rotate it.
 - ⚠️ **Removable code — most of it is now gone.** `virtualsms.ts`,
   `sync-virtualsms/`, `sync-smspool/`, `smspool-catalog/` and `smspool.ts`'s SMS
-  surface were all deleted 2026-07-30. Still outstanding: `AppState.routes`
-  (written once, never read, ~3 MB of observation-tracked memory) and the
-  constants duplicated across files above.
+  surface were all deleted 2026-07-30. A second sweep on 2026-08-18 removed
+  `NumberGenerator` (a whole unreferenced file), `FlagBox` and `StockPill` (two
+  components with no call site), and `AppState.checkNow` — orphaned when the
+  "Check now" button was deliberately taken off `WaitingScreen`.
+  ❌ **`AppState.routes` was listed here as "written once, never read" and that
+  was FALSE.** It is read at `Sheets/CreditsSheet.swift:655`
+  (`for r in state.routes where r.status == "active"`), which is how the credit
+  packs know what a balance can actually reach. Deleting it on the strength of
+  this line would have broken that. The memory cost is real; the claim that
+  nothing reads it was not. Still outstanding: the constants duplicated across
+  files above.
 - ⚠️ **Supabase project is on the FREE plan (no backups).** Owner action.
 
 **A snake_case property name is a decode FAILURE, not a no-op.**

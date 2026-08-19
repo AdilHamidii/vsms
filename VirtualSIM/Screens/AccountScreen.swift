@@ -45,6 +45,7 @@ struct AccountScreen: View {
     var openCredits: () -> Void
 
     @State private var showSupport = false
+    @State private var showChangePassword = false
     @State private var showDeleteConfirm = false
     @State private var deleteInProgress = false
 
@@ -99,6 +100,15 @@ struct AccountScreen: View {
             SupportChatScreen()
                 .environment(\.theme, theme)
                 .environment(api)
+        }
+        // A sheet rather than a `FlowStage`: changing a password is a settings
+        // errand, not one of the app's product flows, and it has no business
+        // in the enum that drives the full-screen cover.
+        .sheet(isPresented: $showChangePassword) {
+            ChangePasswordScreen()
+                .environment(\.theme, theme)
+                .environment(api)
+                .environment(session)
         }
         .confirmationDialog("Delete your account?",
                             isPresented: $showDeleteConfirm,
@@ -575,6 +585,13 @@ struct AccountScreen: View {
                                onTap: restore)
                     SettingRow(label: "Contact support", icon: "envelope",
                                onTap: { openMail() })
+                    // Only an email account HAS a password. An Apple account
+                    // does not, and offering the row would open a screen whose
+                    // every outcome is an error.
+                    if session.isEmailUser {
+                        SettingRow(label: "Change password", icon: "lock",
+                                   onTap: { showChangePassword = true })
+                    }
                     SettingRow(label: "Sign out", isLast: true, isDanger: true,
                                onTap: { Task { await session.signOut() } })
                 }

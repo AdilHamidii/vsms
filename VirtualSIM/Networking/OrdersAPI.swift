@@ -16,6 +16,14 @@ struct ServerOrder: Codable, Hashable {
     let arrivedAt: Date?
     let closedAt: Date?
     let tier: String?        // "standard" | "premium"; nil on pre-tier rows
+    /// Which SMS provider filled this order ("5sim" | "herosms" | "smspva").
+    ///
+    /// Optional because the edge functions' order envelopes are not guaranteed
+    /// to carry it and pre-cutover rows may not have it either — and a required
+    /// field that is occasionally absent throws on decode and takes the whole
+    /// Orders tab down. Read through `AppState.minHoldSeconds(forProvider:)`,
+    /// which treats nil as the fallback hold.
+    let provider: String?
 }
 
 private struct OrderEnvelope: Codable { let order: ServerOrder }

@@ -51,7 +51,15 @@ const PRICING: Record<string, number> = {
  *  policy: every real-world quote passes; a mis-parsed $99 must not be bought
  *  for $0. Worst-case exposure is bounded by email_free_daily_cap (3/user/day),
  *  not by this constant. */
-const NET_USD_PER_CREDIT = 0.30;
+/** ⚠️ 0.30 UNTIL 2026-08-18, i.e. stale by two weeks. `NET_USD_PER_CREDIT` is
+ *  one measured fact about the whole business — what a credit actually nets
+ *  after Apple's cut, derived from real receipts — not a per-product knob. It
+ *  was corrected 0.30 → 0.40 on 08-05 in `create-order` and `sync-prices` and
+ *  this third copy was missed, leaving the e-mail line's order-time ceiling
+ *  ~25% tighter than intended. Non-binding in practice (gmail wholesale is
+ *  ~$0.04 against a ceiling of $0.15), which is exactly why nobody noticed.
+ *  Re-derive from receipts if the pack mix shifts; change all three together. */
+const NET_USD_PER_CREDIT = 0.40;
 const MIN_MARGIN = 6.0;
 const CEILING_HEADROOM_USD = 0.10;
 const FREE_MAX_COST_USD = 1.00;

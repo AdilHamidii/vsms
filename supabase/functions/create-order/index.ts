@@ -945,7 +945,7 @@ Deno.serve(async (req) => {
     // SMSPVA keeps the tighter bound: it accepts no price cap and reports no
     // cost, so an over-ceiling fill can only be discovered after the purchase
     // and undone by release() — churn worth avoiding.
-    // 5sim takes NO price cap, so like SMSPVA it gets the TIGHT bound: an
+    // 5sim honours maxPrice ONLY on the operator="any" fallback (see fivesim.ts note 4); pinned pools take NO price cap, so like SMSPVA it gets the TIGHT bound: an
     // over-ceiling fill can only be found after the purchase and undone with
     // release(). Only HeroSMS, which enforces maxPrice server-side, earns the
     // loose one.

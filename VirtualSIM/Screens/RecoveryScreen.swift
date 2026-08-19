@@ -204,14 +204,20 @@ struct RecoveryScreen: View {
                     icon: RIcon.refresh
                 ) {
                     RHaptic.select()
-                    // Move the selection to the ranked country before retrying;
-                    // otherwise the button would name one country and reorder
-                    // the one that just failed. `retryFromRecovery` already
-                    // handles the measured case internally.
-                    if suggestion == nil, let ranked = rankedSuggestion {
-                        state.lastCountry = ranked.country
-                    }
-                    state.retryFromRecovery()
+                    // 🔴 PASS THE COUNTRY THE BUTTON JUST NAMED.
+                    //
+                    // This used to assign `state.lastCountry` and then call
+                    // `retryFromRecovery()` with no argument — but that function
+                    // never read `lastCountry`. It resolved
+                    // `bestMeasuredCountry() ?? failedCountry`, and the ranked
+                    // branch exists precisely when `bestMeasuredCountry` is nil,
+                    // so the retry landed on THE COUNTRY THAT HAD JUST FAILED
+                    // while the button said "Try Poland". Silent, and on the one
+                    // screen every failed first order ends up at.
+                    //
+                    // nil on the measured branch keeps that path byte-identical:
+                    // the function resolves the measured country itself.
+                    state.retryFromRecovery(country: rankedSuggestion?.country)
                 }
                 .padding(.top, 22)
                 .padding(.horizontal, 20)

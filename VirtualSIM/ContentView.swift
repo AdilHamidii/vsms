@@ -134,8 +134,18 @@ struct ContentView: View {
         // the user had in progress — including a half-finished checkout. The
         // environment is re-injected because a ZStack layer at this level does
         // not inherit reliably, the same reason `EnvBundle` exists.
+        //
+        // ⚠️ AN OVERLAY AT THIS LEVEL IS BELOW EVERY `fullScreenCover` AND
+        // `sheet`, so this copy alone could never be seen while one was open —
+        // which is exactly what happened when a call was placed from the
+        // dialer (itself a cover): the keypad stayed up and the call screen
+        // rendered underneath it, invisible. So this copy is scoped to "no
+        // cover is open" and the cover carries its own, the same way
+        // `ErrorBanner` is already duplicated into it. Sheets are detented, so
+        // hosting a call screen inside one would render it at sheet height —
+        // they are dismissed instead, below.
         .overlay {
-            if calls.isLive {
+            if calls.isLive, state.flow == nil {
                 InCallOverlay()
                     .environment(\.theme, theme)
                     .environment(calls)
@@ -143,6 +153,14 @@ struct ContentView: View {
             }
         }
         .animation(.easeOut(duration: 0.22), value: calls.isLive)
+        // A picker is not work worth preserving over a live call, and left
+        // open it would sit on top of the call screen.
+        .onChange(of: calls.isLive) { _, live in
+            if live {
+                sheet = nil
+                flowSheet = nil
+            }
+        }
         .overlay {
             if state.maintenance.isActiveNow {
                 MaintenanceView(
@@ -389,6 +407,19 @@ struct ContentView: View {
                         .presentationDragIndicator(.visible)
                         .presentationBackground(theme.bg)
                 }
+                // The cover's own copy of the call screen. Without it a call
+                // arriving while ANY cover is open — a thread, a checkout, the
+                // dialer itself — is rendered underneath that cover and cannot
+                // be seen or ended.
+                .overlay {
+                    if calls.isLive {
+                        InCallOverlay()
+                            .environment(\.theme, theme)
+                            .environment(calls)
+                            .transition(.opacity)
+                    }
+                }
+                .animation(.easeOut(duration: 0.22), value: calls.isLive)
         }
     }
 
@@ -439,8 +470,6 @@ struct ContentView: View {
             LineProvisioningScreen()
         case .thread:
             ThreadScreen()
-        case .compose:
-            ComposeScreen()
         case .orders:
             // Was a tab until 2026-08-06. As a cover it needs its own way out,
             // which a tab never did — the tab bar WAS the way out.
@@ -606,12 +635,6 @@ extension ContentView {
             state.lineMessages = ["t1": ScreenshotMode.sampleMessages]
             state.openThreadId = "t1"
             state.flow = .thread
-
-        case .compose:
-            state.tab = .line
-            state.lines = [ScreenshotMode.sampleLine]
-            state.lineThreads = ScreenshotMode.sampleThreads
-            state.flow = .compose
 
         case .home:
             state.tab = .home

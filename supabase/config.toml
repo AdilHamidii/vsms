@@ -48,9 +48,48 @@ enable_signup = true
 enable_anonymous_sign_ins = false
 
 [auth.email]
-enable_signup = false
+# ⚠️ THIS BLOCK DISAGREED WITH PRODUCTION UNTIL 2026-08-18, in both directions:
+# it declared `enable_signup = false` while `GET /auth/v1/settings` reported
+# `email: true`, and `enable_confirmations = false` while the live project has
+# `mailer_autoconfirm: false`, i.e. confirmations REQUIRED. Nothing in the repo
+# pushes this file, so **the dashboard is authoritative** — the same drift the
+# `max_rows` note at the top of this file records. Read the settings endpoint
+# before believing any line here.
+enable_signup = true
 double_confirm_changes = true
-enable_confirmations = false
+# Load-bearing for money, not just hygiene: `handle_new_user` no longer pays
+# the signup grant at INSERT for an unconfirmed address. Turning confirmations
+# OFF would hand every self-chosen address a grant with no proof the mailbox is
+# even reachable — see 20260818160000_email_signup_normalized_tombstone.sql.
+enable_confirmations = true
+
+# ⚠️ SMTP LIVES IN THE DASHBOARD, NOT HERE. This file is not pushed to the
+# hosted project, so the block below only affects `supabase start` locally.
+# Production settings (Authentication → Emails → SMTP Settings):
+#
+#   host      smtp.resend.com
+#   port      465                 (implicit TLS; 587 also works)
+#   username  resend
+#   password  a Resend API key with SENDING access only
+#   sender    no-reply@mail.vsmsapp.com     ← domain bought 2026-08-18
+#   name      vSMS
+#
+# ⚠️ SEND FROM THE `mail.` SUBDOMAIN, NOT THE APEX. A bounce or complaint
+# problem then damages the reputation of the sending subdomain only, and not of
+# the domain the Terms and Privacy pages live on — which is the same domain the
+# App Store listing points at.
+#
+# Also raise Authentication → Rate Limits → "Emails per hour" off the built-in
+# default (a couple per hour). That default is the single likeliest cause of a
+# "the code never arrived" report on launch day.
+
+[auth.email.template.confirmation]
+subject = "Your vSMS confirmation code"
+content_path = "./supabase/templates/confirmation.html"
+
+[auth.email.template.recovery]
+subject = "Your vSMS password reset code"
+content_path = "./supabase/templates/recovery.html"
 
 [auth.external.apple]
 # For native iOS Sign in with Apple we exchange an Apple-signed ID token via
@@ -120,4 +159,7 @@ verify_jwt = false
 [functions.release-lines]
 verify_jwt = false
 [functions.sync-telnyx-cdr]
+verify_jwt = false
+
+[functions.sync-line-voice]
 verify_jwt = false

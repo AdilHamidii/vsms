@@ -12,6 +12,15 @@ final class Session {
     var accessToken: String?
     var email: String?
 
+    /// Which providers this account can sign in with, e.g. `["apple"]` or
+    /// `["email"]`. Cached in the Keychain alongside the tokens so it survives
+    /// a cold launch, since nothing re-reads the user until a refresh lands.
+    var providers: [String] = []
+
+    /// True when the account has a password to change. An Apple-only account
+    /// does not, and offering the row would be a dead end.
+    var isEmailUser: Bool { providers.contains("email") }
+
     private var refreshToken: String?
     private let api: APIClient
     private let auth: AuthAPI
@@ -21,6 +30,7 @@ final class Session {
         static let access  = "supabase.access_token"
         static let userId  = "supabase.user_id"
         static let email   = "supabase.email"
+        static let providers = "supabase.providers"
     }
 
     init(api: APIClient) {
@@ -36,6 +46,8 @@ final class Session {
             self.accessToken = access
             self.refreshToken = refresh
             self.email = KeychainStore.get(KKey.email)
+            self.providers = (KeychainStore.get(KKey.providers) ?? "")
+                .split(separator: ",").map(String.init)
             self.status = .signedIn(userId: userId)
             _ = await self.refresh()
         } else {
@@ -53,6 +65,17 @@ final class Session {
         KeychainStore.set(session.user.id,      for: KKey.userId)
         if let email = session.user.email {
             KeychainStore.set(email, for: KKey.email)
+        }
+        // Same non-nil discipline as `email` directly above, and for the same
+        // reason: a response that simply omits `app_metadata` must not erase
+        // what we already know. `/token?grant_type=refresh_token` is the one
+        // that tends to omit it.
+        if let list = session.user.appMetadata?.providers, !list.isEmpty {
+            self.providers = list
+            KeychainStore.set(list.joined(separator: ","), for: KKey.providers)
+        } else if let single = session.user.appMetadata?.provider, !single.isEmpty {
+            self.providers = [single]
+            KeychainStore.set(single, for: KKey.providers)
         }
     }
 
@@ -99,10 +122,12 @@ final class Session {
         accessToken = nil
         refreshToken = nil
         email = nil
+        providers = []
         status = .signedOut
         KeychainStore.remove(KKey.access)
         KeychainStore.remove(KKey.refresh)
         KeychainStore.remove(KKey.userId)
         KeychainStore.remove(KKey.email)
+        KeychainStore.remove(KKey.providers)
     }
 }

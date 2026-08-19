@@ -601,15 +601,72 @@ export async function createOutboundVoiceProfile(opts: {
   return { id: String(r.id) };
 }
 
+/**
+ * Re-point an EXISTING profile at a new destination list.
+ *
+ * Needed because `whitelisted_destinations` is fixed at creation, so widening
+ * the catalog does nothing for lines already provisioned — the customer who
+ * subscribed yesterday would keep yesterday's permissions forever, with no
+ * error anywhere. `sync-voice-destinations` calls this for every profile we
+ * know about, on a schedule, so the answer to "did the widening reach live
+ * lines?" is a query rather than a hope.
+ */
+export async function updateOutboundVoiceProfile(
+  profileId: string, destinations: string[],
+): Promise<true | TelnyxFault> {
+  const r = await call<Record<string, unknown>>(
+    "PATCH", `/outbound_voice_profiles/${profileId}`,
+    { whitelisted_destinations: destinations });
+  if (faultOf(r)) return r;
+  return true;
+}
+
 /** Point a credential connection at its outbound profile. Without this the
- *  connection can register and receive, but every outbound call is rejected. */
+ *  connection can register and receive, but every outbound call is rejected.
+ *
+ *  🔴 THE FIELD IS NESTED UNDER `outbound`, NOT TOP-LEVEL — and this function
+ *  sent it top-level from 2026-08-06 until 2026-08-18. Telnyx returned 200
+ *  and changed NOTHING (its documented silent-no-op on a misplaced field —
+ *  the third time this file has hit that pattern, after `messaging_profile_id`
+ *  and `features.sms.international_inbound`). So every connection was marked
+ *  `provider_voice_attached = true` in OUR database while Telnyx held no
+ *  profile at all, and every outbound dial was rejected before a session
+ *  existed: 0 of 7 calls ever produced a `provider_call_session_id`, and the
+ *  device showed "music ducks for a few seconds and comes back" — CallKit
+ *  activating audio, the INVITE being refused, the session torn down. This
+ *  was diagnosed as a device-side bug for twelve days.
+ *
+ *  Verified 2026-08-18 by reading connection 3028594732042290885 back
+ *  through `probe-telnyx-connection`: `outbound.outbound_voice_profile_id`
+ *  was NULL on a line we had recorded as attached.
+ *
+ *  So this function now (a) sends the documented shape and (b) READS THE
+ *  CONNECTION BACK and only returns true if the profile is actually there.
+ *  A 200 is not evidence on this API; the read-back is. */
 export async function attachOutboundProfile(
   connectionId: string, profileId: string,
 ): Promise<true | TelnyxFault> {
   const r = await call<Record<string, unknown>>(
     "PATCH", `/credential_connections/${connectionId}`,
-    { outbound_voice_profile_id: profileId });
+    { outbound: { outbound_voice_profile_id: profileId } });
   if (faultOf(r)) return r;
+  // Read-back: the only proof that survives a silent no-op.
+  const back = await call<{ outbound?: { outbound_voice_profile_id?: string | null } }>(
+    "GET", `/credential_connections/${connectionId}`);
+  if (faultOf(back)) return back;
+  const held = back.outbound?.outbound_voice_profile_id ?? null;
+  if (held !== profileId) {
+    return {
+      telnyxFault: true,
+      // TRANSPORT_ERROR is the honest bucket: the request "succeeded" and the
+      // provider did not do what it acknowledged — retryable, not a stockout,
+      // not auth, not balance.
+      type: "TRANSPORT_ERROR",
+      status: 200,
+      detail: `attachOutboundProfile: PATCH returned 200 but read-back holds ` +
+              `${JSON.stringify(held)} — expected ${profileId}. Field shape may have changed.`,
+    };
+  }
   return true;
 }
 

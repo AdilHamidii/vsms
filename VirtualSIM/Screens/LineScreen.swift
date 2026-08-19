@@ -53,6 +53,8 @@ private struct LiveLineView: View {
             header
             LineStatusBanner(line: line)
                 .padding(.horizontal, 20)
+            VoiceReadinessNotice(readiness: calling.readiness)
+                .padding(.horizontal, 20)
 
             if line.status.isSettingUp {
                 provisioning
@@ -65,7 +67,10 @@ private struct LiveLineView: View {
                 ])
                 .padding(.horizontal, 16).padding(.top, 12).padding(.bottom, 10)
 
-                AllowanceStrip(line: line)
+                // The hero already states the renewal date, and the allowance
+                // resets on renewal — so the strip's own copy of it would print
+                // the same date twice on one screen.
+                AllowanceStrip(line: line, showsResetDate: false)
                     .padding(.horizontal, 20)
                     .padding(.bottom, 14)
 
@@ -104,6 +109,28 @@ private struct LiveLineView: View {
             calling.registerForVoIPPushes()
             await calling.prepareVoice()
         }
+        // The allowance is spent by a call that happens OUTSIDE this view:
+        // CallKit is a system overlay, not a navigation change, so `.task` does
+        // not re-run when the call ends and the meter kept reading whatever it
+        // read before — a user could talk for ten minutes and still see the
+        // full 100 remaining until the next cold launch. The meter is the thing
+        // they check to decide whether the plan is worth keeping.
+        //
+        // Keyed on the RETURN to `.idle` rather than on any particular end
+        // path, because there are four of them (in-call button, remote hangup,
+        // CallKit's own end action, and a failure) and one of them would
+        // eventually be missed.
+        .onChange(of: calling.phase) { _, phase in
+            guard phase == .idle else { return }
+            Task {
+                // `report-line-call` settles the claim server-side; give it a
+                // moment to land, otherwise this reads the pre-settlement row
+                // and looks exactly like the bug it fixes.
+                try? await Task.sleep(for: .seconds(2))
+                await state.loadLine(using: LineAPI(client: api))
+                await state.loadLineCalls(using: LineAPI(client: api))
+            }
+        }
         // Tell the call controller which number it is acting as. Without this
         // the dialer mints a credential for, and calls out from, whichever line
         // the server picks rather than the one on screen.
@@ -117,46 +144,111 @@ private struct LiveLineView: View {
 
     // MARK: - Header
 
+    /// The number, as the centre of the screen rather than a caption.
+    ///
+    /// This is the whole product: a subscriber pays $9.99/month for this string
+    /// of digits, and it used to render as 25pt text in the top-left with a
+    /// copy glyph beside it — smaller than the segmented control under it. It
+    /// is also the thing they read aloud, paste into a signup form and show to
+    /// people, so the two actions that matter (copy, share) are given equal
+    /// weight instead of one being an icon and the other being buried in the
+    /// empty state.
+    ///
+    /// Centred, deliberately, against an app that is otherwise left-aligned.
+    /// The asymmetry is the point — it marks this as the identity of the screen
+    /// rather than one more row of information.
     private var header: some View {
-        HStack(alignment: .top) {
-            VStack(alignment: .leading, spacing: 2) {
-                // The switcher REPLACES the static label when there is more
-                // than one number, rather than sitting beside it. With a single
-                // line this is byte-identical to what shipped — multi-number
-                // must not make the common case busier.
+        VStack(spacing: 14) {
+            // Label row. The switcher REPLACES it when there is more than one
+            // number rather than sitting beside it, which is the rule the
+            // previous header established: multi-number must not make the
+            // common case busier.
+            HStack(spacing: 8) {
+                CodeFlag(code: line.countryCode, size: 20, style: .circle)
                 if state.hasMultipleLines {
                     lineSwitcher
                 } else {
-                    Text("Your number")
-                        .font(RFont.text(13)).foregroundStyle(theme.text2)
+                    Text("YOUR NUMBER")
+                        .font(RFont.text(11, weight: .semibold))
+                        .tracking(0.8)
+                        .foregroundStyle(theme.text3)
                 }
-                Button {
-                    UIPasteboard.general.string = line.e164
-                    withAnimation(RMotion.select) { copied = true }
-                    Task {
-                        try? await Task.sleep(for: .seconds(1.6))
-                        withAnimation(RMotion.select) { copied = false }
-                    }
-                } label: {
-                    HStack(spacing: 8) {
-                        Text(PhoneFormat.national(line.e164))
-                            .font(RFont.display(25, weight: .bold))
-                            .tracking(-0.6)
-                            .foregroundStyle(theme.text)
-                            .minimumScaleFactor(0.7)
-                            .lineLimit(1)
-                        Image(systemName: copied ? RIcon.check : RIcon.copy)
-                            .font(.system(size: 13, weight: .semibold))
-                            .foregroundStyle(copied ? theme.live : theme.text3)
-                    }
-                }
-                .buttonStyle(.plain)
             }
-            Spacer(minLength: 0)
+
+            Text(PhoneFormat.national(line.e164))
+                .font(RFont.display(34, weight: .bold))
+                .tracking(-1)
+                .foregroundStyle(theme.text)
+                .minimumScaleFactor(0.6)
+                .lineLimit(1)
+                .padding(.horizontal, 12)
+                // The number itself stays tappable-to-copy. It was the only
+                // copy affordance before and muscle memory is cheap to keep.
+                .onTapGesture { copyNumber() }
+
+            HStack(spacing: 10) {
+                Button { copyNumber() } label: {
+                    heroAction(icon: copied ? RIcon.check : RIcon.copy,
+                               label: copied ? "Copied" : "Copy",
+                               tint: copied ? theme.live : theme.text)
+                }
+                .buttonStyle(PressScaleStyle())
+
+                ShareLink(item: PhoneFormat.national(line.e164)) {
+                    heroAction(icon: "square.and.arrow.up", label: "Share",
+                               tint: theme.text)
+                }
+                .simultaneousGesture(TapGesture().onEnded { RHaptic.select() })
+            }
+
+            statusLine
         }
+        .frame(maxWidth: .infinity)
         .padding(.horizontal, 20)
-        .padding(.top, 6)
-        .padding(.bottom, 4)
+        .padding(.top, 10)
+        .padding(.bottom, 6)
+    }
+
+    private func heroAction(icon: String, label: LocalizedStringKey,
+                            tint: Color) -> some View {
+        HStack(spacing: 7) {
+            Image(systemName: icon)
+                .font(.system(size: 13, weight: .semibold))
+            Text(label)
+                .font(RFont.text(14, weight: .medium))
+        }
+        .foregroundStyle(tint)
+        .frame(height: 42)
+        .frame(maxWidth: .infinity)
+        .background(theme.chipBg, in: Capsule())
+    }
+
+    /// One quiet line: is it live, and when does it renew.
+    ///
+    /// Deliberately says nothing about a PROBLEM state — `LineStatusBanner`
+    /// sits directly below and explains grace, past-due and suspension in a
+    /// full sentence. Two components describing the same fault, one in three
+    /// words and one in thirty, is how they drift apart.
+    @ViewBuilder
+    private var statusLine: some View {
+        if line.status == .active, let end = line.currentPeriodEnd {
+            HStack(spacing: 6) {
+                Circle().fill(theme.live).frame(width: 6, height: 6)
+                Text("Active · renews \(end.formatted(.dateTime.day().month(.abbreviated)))")
+                    .font(RFont.text(12))
+                    .foregroundStyle(theme.text3)
+            }
+        }
+    }
+
+    private func copyNumber() {
+        UIPasteboard.general.string = line.e164
+        RHaptic.select()
+        withAnimation(RMotion.select) { copied = true }
+        Task {
+            try? await Task.sleep(for: .seconds(1.6))
+            withAnimation(RMotion.select) { copied = false }
+        }
     }
 
     /// Pick which of your numbers the tab is showing.
@@ -246,7 +338,6 @@ private struct LiveLineView: View {
                     title: "Your number is ready",
                     message: "Texts sent to it land here. Share it with someone to get started."
                 )
-                composeButton
                 ShareLink(item: PhoneFormat.national(line.e164)) {
                     Text("Share my number")
                         .font(RFont.text(15, weight: .medium))
@@ -261,7 +352,6 @@ private struct LiveLineView: View {
         } else {
             ScrollView {
                 LazyVStack(spacing: 8) {
-                    composeButton.padding(.bottom, 6)
                     ForEach(state.threadsForSelectedLine) { thread in
                         ThreadRow(thread: thread) {
                             state.openThreadId = thread.id
@@ -275,33 +365,17 @@ private struct LiveLineView: View {
         }
     }
 
-    /// The one entry point to a NEW conversation, in both states — mirroring
-    /// `dialButton`.
-    ///
-    /// Present in the empty state too, because that is where it is needed
-    /// most: "Share my number" was the only affordance there, so a user whose
-    /// number had never been texted could do nothing with it but wait. Unlike
-    /// the dialer this has no capability gate — outbound SMS needs no client
-    /// SDK, only the allowance, which the compose screen states rather than
-    /// hiding behind a disabled button.
-    private var composeButton: some View {
-        Button {
-            RHaptic.select()
-            state.flow = .compose
-        } label: {
-            HStack(spacing: 8) {
-                Image(systemName: "square.and.pencil")
-                    .font(.system(size: 14, weight: .semibold))
-                Text("New message")
-                    .font(RFont.text(15, weight: .medium))
-            }
-            .foregroundStyle(theme.text)
-            .frame(maxWidth: .infinity)
-            .frame(height: 48)
-            .background(theme.chipBg, in: Capsule())
-        }
-        .buttonStyle(PressScaleStyle())
-    }
+    // 🔴 A "New message" button lived here, in both states, and is GONE
+    // (owner decision, 2026-08-18: outbound SMS is dropped, not delayed).
+    // Every send this product ever attempted to a US number came back
+    // `40010 — the sending number is not 10DLC-registered`, and registration
+    // is not being pursued. HIDDEN rather than disabled, which is the rule
+    // `dialButton` already follows: a disabled button still advertises the
+    // feature, and here the feature is never coming back.
+    //
+    // Messages is now a RECEIVING surface. "Share my number" is the correct
+    // and only affordance in the empty state, because giving the number out is
+    // genuinely the whole next step.
 
     // MARK: - Calls
 
@@ -424,9 +498,13 @@ private struct NumberDetailView: View {
                         divider
                         row(label: renewLabel, value: renewValue)
                         divider
-                        row(label: "Texts left",
-                            value: "\(line.smsRemaining) of \(line.smsAllowance)")
-                        divider
+                        // 🔴 A "Texts left · N of 200" row lived here and is
+                        // GONE. It metered an allowance that can no longer be
+                        // spent (outbound SMS dropped 2026-08-18), and it must
+                        // NOT be turned into an inbound counter: inbound is
+                        // never metered, so a received-texts figure would
+                        // invent a cap this product does not have. Same rule
+                        // that removed the figure from the paywall.
                         // Restored with the dialer. It was removed while
                         // calling was unreachable, because a plan row stating
                         // an unspendable balance is a promise — a subscriber
@@ -552,10 +630,12 @@ struct LineStatusBanner: View {
                  text: "There's a problem with your payment. Update it to keep your number. Everything still works for now.")
         case .pastDue:
             Copy(icon: "exclamationmark.circle", tint: theme.fail,
-                 // The receive/send split is the point of this banner: inbound
+                 // The receive/dial split is the point of this banner: inbound
                  // stays on because the user cannot control who contacts them,
-                 // while outbound is what lapsing withdraws.
-                 text: "Your subscription lapsed. You can still receive texts and calls, but you can't send or dial out until you renew.")
+                 // while outbound is what lapsing withdraws. It said "send or
+                 // dial out" — sending is gone product-wide, so naming it here
+                 // would advertise a capability by describing its loss.
+                 text: "Your subscription lapsed. You can still receive texts and calls, but you can't call out until you renew.")
         case .suspended:
             Copy(icon: "lock", tint: theme.fail,
                  text: "Your number is on hold. Resubscribe to get it back before it's released for good.")
@@ -650,5 +730,61 @@ struct CallRow: View {
                 ? String(localized: "Incoming") : String(localized: "Outgoing")
         }
         return PhoneFormat.duration(s)
+    }
+}
+
+/// Says out loud which half of calling is working.
+///
+/// 🔴 THE SIGNAL EXISTED AND NOTHING RENDERED IT. `mint-line-token` has always
+/// returned `inbound_ready`, `LineModels` decoded it, `CallController` stored
+/// it — and no view read it, so a number that could not ring looked identical
+/// to one that could. Every line sold before 2026-08-17 was in that state, and
+/// the only reason we found out was one customer bothering to send an e-mail.
+///
+/// Two rules this deliberately follows:
+///
+/// - **Silent when everything works.** A banner that is always present is
+///   chrome nobody reads; this renders nothing for `.ready` and `.unknown`.
+///   `.unknown` in particular means "not attempted yet", which is not the same
+///   as broken and must not be drawn as a fault.
+/// - **It never blames the user's connection for a server problem.** The
+///   `.unavailable` reason comes from `APIError.userMessage`, which maps the
+///   business codes; the fallback says what we could not do, not what they
+///   should go and check.
+struct VoiceReadinessNotice: View {
+    @Environment(\.theme) private var theme
+    let readiness: CallController.Readiness
+
+    var body: some View {
+        switch readiness {
+        case .ready, .unknown:
+            EmptyView()
+        case .outboundOnly:
+            // The user may already have given this number out, so the useful
+            // sentence is what to DO, not merely that something is wrong.
+            notice(icon: "phone.badge.waveform", tint: theme.warn,
+                   text: Text("You can make calls, but your number can't receive them yet. Reopen this tab in a moment — we're still setting it up."))
+        case .unavailable(let reason):
+            notice(icon: "phone.down", tint: theme.fail, text: Text(reason))
+        }
+    }
+
+    private func notice(icon: String, tint: Color, text: Text) -> some View {
+        HStack(alignment: .top, spacing: 9) {
+            Image(systemName: icon)
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(tint)
+                .padding(.top, 2)
+            text
+                .font(RFont.text(12, weight: .medium))
+                .foregroundStyle(theme.text)
+                .lineSpacing(2)
+                .fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 11)
+        .background(tint.opacity(0.12), in: .rect(cornerRadius: 14))
+        .padding(.top, 10)
     }
 }

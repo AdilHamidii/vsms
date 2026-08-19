@@ -28,6 +28,7 @@ import {
   searchNumbers, orderNumber, getOrder, findNumberId, attachMessagingProfile,
   releaseNumber, faultOf,
 } from "../_shared/telnyx.ts";
+import { provisionLineVoice } from "../_shared/lineVoice.ts";
 
 /** Mirrors `reserve-line-number` and `search-line-numbers`. The three must
  *  agree on what "Toronto" means or this buys from a different pool than the
@@ -212,13 +213,35 @@ Deno.serve(async (req) => {
     }
   }
 
+  // 🔴 VOICE IS PROVISIONED HERE, not lazily on first dialer open. Attaching
+  // the number's voice to a connection is what makes it RING, and it used to
+  // happen only in `mint-line-token` — so a number was sold that could not
+  // receive a call until its owner opened the Number tab. Zero inbound calls
+  // had ever been received. Best-effort: a voice fault must not fail a
+  // purchase that already took the money, and `mint-line-token` still repairs
+  // whatever is missing on the next open.
+  const voice = await provisionLineVoice(
+    sb,
+    { id: lineId, provider_number_id: typeof numberId === "string" ? numberId : null },
+    // The claim below writes these columns as part of activation; writing them
+    // first would target a line that is not live yet.
+    { persistIds: false },
+  );
+  if (voice.faults.length) {
+    console.error(JSON.stringify({
+      alert: "line_voice_provision_failed", line: lineId,
+      steps: voice.faults.map((f) => f.step),
+      detail: voice.faults.map((f) => f.fault.detail).join("; "),
+    }));
+  }
+
   const { data: activated, error: actErr } = await sb.rpc("activate_line_claim", {
     p_line: lineId,
     p_number_id: typeof numberId === "string" ? numberId : null,
-    p_connection: null,
+    p_connection: voice.connectionId,
     p_msg_profile: msgProfile,
-    p_voice_profile: null,
-    p_credential: null,
+    p_voice_profile: voice.voiceProfileId,
+    p_credential: voice.credentialId,
     // The period the rent just bought. `begin_credit_line_rental` already set
     // current_period_end and next_debit_at 30 days out; this keeps the claim's
     // own view consistent with them.
@@ -239,5 +262,17 @@ Deno.serve(async (req) => {
     return json({ error: "provision_failed" }, { status: 500 });
   }
 
-  return json({ ok: true, line_id: lineId, e164, rent_credits: RENT_CREDITS });
+  // `activate_line_claim` has no `p_attached`, so the one fact that decides
+  // whether the phone RINGS is recorded separately — and only after the line is
+  // live, which is what `record_line_voice_binding` scopes itself to.
+  if (voice.attached) {
+    await sb.rpc("record_line_voice_binding", {
+      p_line: lineId, p_attached: true,
+    });
+  }
+
+  return json({
+    ok: true, line_id: lineId, e164, rent_credits: RENT_CREDITS,
+    inbound_ready: voice.attached,
+  });
 });
