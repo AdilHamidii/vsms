@@ -175,7 +175,10 @@ struct ErrorBanner: View {
         "esim_out_of_stock", "plan_unavailable", "email_out_of_stock",
         "domain_unavailable", "email_unsupported_service", "free_limit_reached",
         "unknown_service", "order_not_found", "unknown_order",
-        "lines_paused", "line_exists", "number_taken",
+        // Same family as `line_exists`: a limit the user can clear themselves,
+        // not a fault. Blocking treatment would offer "Check your orders",
+        // which is not where lines live.
+        "lines_paused", "line_exists", "line_limit_reached", "number_taken",
         // The line's SEND failures. Blocking treatment renders "Check your
         // orders", whose action does `flow = nil` + `tab = .orders` — so a
         // failed text closed the conversation, DISCARDED the composer draft,

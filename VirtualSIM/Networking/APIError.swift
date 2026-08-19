@@ -210,6 +210,14 @@ enum APIError: Error, LocalizedError {
                 // stockout, a pause, or the user's own existing line.
                 case "lines_paused":
                     return String(localized: "Second numbers aren't available right now. Please check back soon.")
+                // Emitted by `reserve-line-number` when the account already
+                // holds `app_config.line_max_per_user` lines. Unmapped it fell
+                // to the generic 409, "Not available right now. Try a different
+                // option." — which reads as a stockout and sends the user
+                // hunting for another city. Nothing will work until they
+                // release a line, so the copy must name the only real action.
+                case "line_limit_reached":
+                    return String(localized: "You've reached the most numbers you can hold at once. Release one to rent another.")
                 case "line_exists":
                     return String(localized: "You already have a second number. You can only have one at a time.")
                 case "number_taken":

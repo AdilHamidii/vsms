@@ -30508,6 +30508,46 @@
         }
       }
     },
+    "You've reached the most numbers you can hold at once. Release one to rent another.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sie haben die maximale Anzahl gleichzeitiger Nummern erreicht. Geben Sie eine frei, um eine weitere zu mieten."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ha alcanzado el máximo de números que puede tener a la vez. Libere uno para alquilar otro."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vous avez atteint le nombre maximal de numéros simultanés. Libérez-en un pour en louer un autre."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ha raggiunto il numero massimo di numeri che può avere contemporaneamente. Ne rilasci uno per noleggiarne un altro."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "同時に保有できる番号の上限に達しました。別の番号を借りるには、1つ解放してください。"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Você atingiu o máximo de números que pode ter ao mesmo tempo. Libere um para alugar outro."
+          }
+        }
+      }
+    },
     "You've used all your texts this month. They reset when your plan renews.": {
       "localizations": {
         "de": {
