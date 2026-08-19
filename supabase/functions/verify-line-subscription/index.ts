@@ -24,7 +24,7 @@
 import { handleCors, json } from "../_shared/cors.ts";
 import { admin, callerUserId } from "../_shared/supabaseAdmin.ts";
 import {
-  verifyTransactionJWS, isSubscriptionProduct, IapVerificationError,
+  verifyTransactionJWS, subscriptionFamily, IapVerificationError,
   linePlanLabel,
 } from "../_shared/iap.ts";
 import {
@@ -100,7 +100,15 @@ Deno.serve(async (req) => {
 
   // The subscription id must never reach PRODUCT_TO_CREDITS, and a credit pack
   // must never reach here. Both directions are wrong and both are silent.
-  if (!isSubscriptionProduct(tx.productId)) {
+  //
+  // 🔴 THIS MUST BE `subscriptionFamily(...) !== "line"`, NEVER
+  // `isSubscriptionProduct`, which answers "is this a subscription at all" and
+  // is TRUE for the $2.99 mail products too. Everything below provisions a
+  // rented Telnyx number, and neither `record_line_subscription` nor
+  // `begin_line_rental` validates the product id — so a mail JWS posted here
+  // would write a mail product into `line_subscriptions` and buy a $9.99/mo
+  // phone number with a $2.99 purchase. Dispatch on the FAMILY.
+  if (subscriptionFamily(tx.productId) !== "line") {
     return json({ error: "unknown_product" }, { status: 400 });
   }
 
