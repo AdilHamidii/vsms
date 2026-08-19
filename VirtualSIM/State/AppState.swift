@@ -579,8 +579,39 @@ final class AppState {
     @ObservationIgnored
     private var pollFailureStreak = 0
 
-    /// Latest error string for UI banners. Phase F wires real banner UI.
-    var lastError: String?
+    /// Latest banner error: the sentence the user reads, plus the backend
+    /// code it came from when there was one.
+    ///
+    /// 🔴 The CODE is what `ErrorBanner` classifies on. It used to classify by
+    /// comparing the rendered sentence against a precomputed set, which cannot
+    /// work for any message that interpolates server data — `cancel_too_early`
+    /// carrying `retry_after_seconds` reads "Hang on. You can cancel in 42
+    /// seconds…", matched nothing, and so an informational wait was shown as a
+    /// blocking red error. Carrying the code makes the classification exact.
+    struct BannerError: Equatable {
+        var message: String
+        /// nil means "no backend code" — either a locally-composed string or a
+        /// transport failure. Those stay blocking, which is the safe default.
+        var code: String?
+    }
+
+    private(set) var lastBannerError: BannerError?
+
+    /// Kept as the writable surface every existing call site already uses. A
+    /// plain string assignment carries NO code, which is correct: it is either
+    /// our own copy or a transport error, and both should keep blocking.
+    var lastError: String? {
+        get { lastBannerError?.message }
+        set { lastBannerError = newValue.map { BannerError(message: $0, code: nil) } }
+    }
+
+    /// Show an `APIError` in the banner WITH its code, so it can be classified
+    /// exactly. Prefer this over `lastError = err.userMessage` wherever an
+    /// `APIError` is in hand.
+    func showError(_ error: APIError) {
+        lastBannerError = BannerError(message: error.userMessage,
+                                      code: error.businessCode)
+    }
 
     /// Cold-launch readiness. `SplashScreen` covers the app until this leaves
     /// `.loading`, so the first Home frame a user ever sees is a true one.
@@ -1695,7 +1726,7 @@ final class AppState {
         } catch {
             emailDomains = []
             emailDomain = nil
-            lastError = (error as? APIError)?.userMessage
+            if let apiErr = error as? APIError { showError(apiErr) } else { lastError = nil }
         }
     }
 
@@ -1901,7 +1932,7 @@ final class AppState {
             await loadLine(using: api)
             return true
         } catch let err as APIError {
-            lastError = err.userMessage
+            showError(err)
             return false
         } catch {
             lastError = String(localized: "Couldn't send that message. Please try again.")
@@ -1915,7 +1946,7 @@ final class AppState {
             try await api.threadAction(threadId: threadId, action: blocked ? "block" : "unblock")
             await loadLineThreads(using: api)
         } catch let err as APIError {
-            lastError = err.userMessage
+            showError(err)
         } catch { /* the list refresh below is cosmetic */ }
     }
 
@@ -2010,7 +2041,7 @@ final class AppState {
                 showMailPaywall = true
                 return
             }
-            lastError = err.userMessage
+            showError(err)
         } catch {
             lastError = String(localized: "Couldn't get an address. Please try again.")
         }
@@ -2063,7 +2094,7 @@ final class AppState {
             flow = .esimDetail
             await refreshWallet(using: wallet)
         } catch let apiErr as APIError {
-            lastError = apiErr.userMessage
+            showError(apiErr)
         } catch {
             lastError = "Couldn't buy that eSIM. Please try again."
         }
@@ -2206,7 +2237,7 @@ final class AppState {
             flow = .waiting
             await refreshWallet(using: wallet)
         } catch let apiErr as APIError {
-            lastError = apiErr.userMessage
+            showError(apiErr)
         } catch {
             lastError = "Something went wrong. Please try again."
         }
@@ -2436,7 +2467,7 @@ final class AppState {
             // its constants can be a release behind, and re-locking the control
             // is what stops the user tapping a button that cannot work yet.
             noteServerHold(from: apiErr, orderId: order.id)
-            lastError = apiErr.userMessage
+            showError(apiErr)
         } catch {
             lastError = "Couldn't cancel that order. Please try again."
         }
@@ -2543,7 +2574,7 @@ final class AppState {
             // A reroll releases the number exactly like a cancel, so it hits
             // the same hold and carries the same `retry_after_seconds`.
             noteServerHold(from: apiErr, orderId: order.id)
-            lastError = apiErr.userMessage
+            showError(apiErr)
             return
         } catch {
             lastError = "Couldn't release the current number. Please try again."
@@ -2568,7 +2599,7 @@ final class AppState {
         } catch let apiErr as APIError {
             // The old number is already released and refunded — recover, don't
             // dead-end. The banner still explains why this attempt failed.
-            lastError = apiErr.userMessage
+            showError(apiErr)
             recovery = RecoveryContext(service: svc, failedCountry: next, reason: .canceled,
                                        refundedCredits: order.costCredits)
             flow = .recovery

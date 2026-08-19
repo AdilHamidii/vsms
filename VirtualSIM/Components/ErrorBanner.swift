@@ -42,8 +42,9 @@ struct ErrorBanner: View {
         // sign in again to continue." across the top of the product. The
         // banner is honest about a real session and pure noise here, and this
         // compiles away in Release.
-        if let message = state.lastError, !message.isEmpty, !ScreenshotMode.isActive {
-            let blocking = Self.isBlocking(message)
+        if let entry = state.lastBannerError, !entry.message.isEmpty, !ScreenshotMode.isActive {
+            let message = entry.message
+            let blocking = Self.isBlocking(entry)
 
             VStack(alignment: .leading, spacing: 10) {
                 HStack(alignment: .top, spacing: 10) {
@@ -189,30 +190,26 @@ struct ErrorBanner: View {
         "message_send_failed",
     ]
 
-    /// Built by asking `APIError` for each code's own copy rather than by
-    /// re-typing the sentences here.
+    /// 🔴 CLASSIFY ON THE CODE, NEVER ON THE RENDERED SENTENCE.
     ///
-    /// That matters: this file would otherwise hold a second, silently drifting
-    /// copy of every user-facing error string in the app — the exact
-    /// duplicated-constant failure mode that has already cost this codebase a
-    /// stripped carrier pin and a mismatched balance alert. Reword a message in
-    /// `APIError` and this set rewords with it.
-    /// The copy `APIError` falls back to when it does not recognise a code.
-    /// Any of ours that resolves to THIS has been dropped from `APIError`'s
-    /// switch, and admitting it would make every unmapped 409 in the app —
-    /// including money paths — auto-dismiss. Excluded, so the failure mode of
-    /// a stale list is "this persists when it needn't", not "this vanishes
-    /// when it mustn't".
-    private static let unmappedFallback =
-        APIError.http(status: 409, body: nil).userMessage
-
-    private static let informationalMessages: Set<String> = Set(
-        informationalCodes
-            .map { APIError.http(status: 409, body: "{\"error\":\"\($0)\"}").userMessage }
-            .filter { $0 != unmappedFallback }
-    )
-
-    private static func isBlocking(_ message: String) -> Bool {
-        !informationalMessages.contains(message)
+    /// This used to build a `Set<String>` by rendering every code above with a
+    /// body of `{"error":"<code>"}` and then testing the live message for
+    /// membership. That is exact string equality, so it collapses the moment a
+    /// message interpolates anything the server sent — and one does:
+    /// `cancel_too_early` carrying `retry_after_seconds` renders "Hang on. You
+    /// can cancel in 42 seconds…", which was in no set, so the friendliest
+    /// message in the app was shown as a BLOCKING error — warning haptic, red
+    /// triangle, no auto-dismiss, and a "Check your orders" action — on the
+    /// waiting screen, which carries the highest cancel pressure anywhere in
+    /// the product. `AppState.BannerError` now carries the code alongside the
+    /// sentence so the comparison is on identity rather than on prose.
+    ///
+    /// A nil code stays BLOCKING. That covers our own locally-composed strings
+    /// and every transport failure, and it keeps the failure mode of an
+    /// out-of-date list at "this persists when it needn't" rather than "this
+    /// vanishes when it mustn't".
+    private static func isBlocking(_ entry: AppState.BannerError) -> Bool {
+        guard let code = entry.code else { return true }
+        return !informationalCodes.contains(code)
     }
 }

@@ -775,7 +775,7 @@ struct AccountScreen: View {
             try await AccountAPI(client: api).deleteAccount()
             await session.signOut(remote: false)
         } catch let apiErr as APIError {
-            state.lastError = apiErr.userMessage
+            state.showError(apiErr)
         } catch {
             state.lastError = String(localized: "We couldn't delete your account. Please try again.")
         }

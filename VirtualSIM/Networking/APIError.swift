@@ -32,6 +32,27 @@ enum APIError: Error, LocalizedError {
         return parseRetryAfterSeconds(body)
     }
 
+    /// The backend's own `{"error": "..."}` code, when there is one.
+    ///
+    /// 🔴 This exists so a caller can classify an error WITHOUT comparing the
+    /// rendered sentence. `ErrorBanner` used to decide "informational vs
+    /// blocking" by rendering every known code with an empty body and testing
+    /// the live message for set membership — which silently fails for any
+    /// message that interpolates server data. `cancel_too_early` is exactly
+    /// that: with `retry_after_seconds` it renders "Hang on. You can cancel in
+    /// 42 seconds…", which matches nothing in the precomputed set, so a purely
+    /// informational wait was shown as a blocking red error with a warning
+    /// haptic and a "Check your orders" escape — on the screen with the
+    /// highest cancel pressure in the app. Classify on the CODE.
+    ///
+    /// Deliberately nil for GoTrue responses: auth speaks a different envelope
+    /// and `parseErrorType` must never be pointed at it (see `parseGoTrueError`).
+    var businessCode: String? {
+        guard case .http(_, let body) = self else { return nil }
+        if parseGoTrueError(body) != nil { return nil }
+        return parseErrorType(body)
+    }
+
     /// Short, user-facing — safe to show in the error banner.
     var userMessage: String {
         switch self {

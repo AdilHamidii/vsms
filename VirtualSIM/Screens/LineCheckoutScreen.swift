@@ -644,7 +644,7 @@ struct LineCheckoutScreen: View {
             } catch let err as APIError {
                 isReserving = false
                 RHaptic.warn()
-                state.lastError = err.userMessage
+                state.showError(err)
                 // The number went between the picker and the tap. Re-search so
                 // the screen never offers digits we can no longer deliver, and
                 // make the user tap again — provisioning a DIFFERENT number
