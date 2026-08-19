@@ -124,7 +124,24 @@ begin
   end if;
   raise notice 'ok  6. grace period is entitled';
 
-  -- 7. The subscriber daily sanity cap is a HARD stop and reports the cap.
+  -- 7. A renewed subscriber carrying a STALE past grace_expires_at must still
+  --    be entitled. This is the exact defect coalesce(grace_expires_at,
+  --    expires_at) had: coalesce picks whichever column is non-null first
+  --    regardless of which is LATER, so a subscriber who went through grace
+  --    and then renewed (expires_at pushed forward, grace_expires_at left
+  --    behind in the past) would read as not entitled even though they are an
+  --    active, fully paid subscriber. greatest() must win here.
+  update public.email_subscriptions
+     set state = 'active'::public.line_sub_state,
+         expires_at = now() + interval '30 days',
+         grace_expires_at = now() - interval '5 days'
+   where original_transaction_id = 'tx-fixture-1';
+  if public.has_email_subscription(v_user) is not true then
+    raise exception 'CHECK 7 FAILED: stale past grace_expires_at wrongly refused an active, renewed subscriber';
+  end if;
+  raise notice 'ok  7. a stale past grace stamp does not shadow a later expires_at';
+
+  -- 8. The subscriber daily sanity cap is a HARD stop and reports the cap.
   update public.email_subscriptions
      set state = 'active'::public.line_sub_state, expires_at = now() + interval '30 days'
    where original_transaction_id = 'tx-fixture-1';
@@ -144,14 +161,14 @@ begin
     from generate_series(1, v_cap);
   v_res := public.begin_email_order(v_user, 'google', 'google.com', 'hotmail.com', 0);
   if v_res->>'reason' is distinct from 'daily_cap_reached' then
-    raise exception 'CHECK 7 FAILED: expected daily_cap_reached, got %', v_res;
+    raise exception 'CHECK 8 FAILED: expected daily_cap_reached, got %', v_res;
   end if;
   if (v_res->>'cap')::integer is distinct from v_cap then
-    raise exception 'CHECK 7 FAILED: cap not reported: %', v_res;
+    raise exception 'CHECK 8 FAILED: cap not reported: %', v_res;
   end if;
-  raise notice 'ok  7. subscriber daily cap is a hard stop and reports the cap';
+  raise notice 'ok  8. subscriber daily cap is a hard stop and reports the cap';
 
-  -- 8. Replay: the same Apple transaction presented by a SECOND user is
+  -- 9. Replay: the same Apple transaction presented by a SECOND user is
   --    refused. This is the delete-account replay, and rebinding it would hand
   --    a new account an entitlement the old one is still paying for.
   v_res := public.record_email_subscription(
@@ -160,9 +177,9 @@ begin
     'active'::public.line_sub_state, true, 'Production',
     now() + interval '30 days', 'tx-fixture-1-last', null, null, null, null);
   if v_res->>'reason' is distinct from 'subscription_bound' then
-    raise exception 'CHECK 8 FAILED: expected subscription_bound, got %', v_res;
+    raise exception 'CHECK 9 FAILED: expected subscription_bound, got %', v_res;
   end if;
-  raise notice 'ok  8. replay by a second account is refused';
+  raise notice 'ok  9. replay by a second account is refused';
 
   raise notice 'ALL CHECKS PASSED';
 end $$;

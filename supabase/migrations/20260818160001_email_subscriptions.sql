@@ -159,6 +159,21 @@ $fn$;
 -- ── The entitlement ─────────────────────────────────────────────────────────
 -- `grace` counts as entitled: Apple is still trying to bill, and cutting
 -- service off mid-retry loses a customer we still have.
+--
+-- `record_email_subscription` deliberately never writes `grace_expires_at` or
+-- the revocation columns — those are owned by the App Store notification
+-- handler (a later task), which UPDATEs this table directly from ASSN
+-- payloads. That keeps a sparse renewal notification from wiping what the
+-- original purchase recorded.
+--
+-- `greatest(expires_at, grace_expires_at)`, NOT `coalesce`. A subscriber who
+-- went through a grace period and then renewed carries a stale
+-- `grace_expires_at` in the past alongside a fresh, later `expires_at` —
+-- `coalesce` picks whichever column is non-null FIRST regardless of which one
+-- is later, so it would read that stale grace stamp and refuse an active,
+-- fully paid subscriber. `greatest` compares both and ignores NULLs in
+-- Postgres, so it stays correct when either column is null and cannot be
+-- fooled by a grace stamp the renewal has already superseded.
 create or replace function public.has_email_subscription(p_user uuid)
 returns boolean
 language sql stable security definer set search_path to 'public' as $fn$
@@ -166,7 +181,7 @@ language sql stable security definer set search_path to 'public' as $fn$
     select 1 from public.email_subscriptions
      where user_id = p_user
        and state in ('active', 'grace')
-       and coalesce(grace_expires_at, expires_at) > now()
+       and greatest(expires_at, grace_expires_at) > now()
   );
 $fn$;
 
