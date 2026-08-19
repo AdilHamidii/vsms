@@ -1,5 +1,8 @@
 import SwiftUI
-import StoreKit   // \.requestReview lives here — see OtpScreen / EmailCodeScreen
+import StoreKit   // \.requestReview lives here. The ONLY call site is the
+                 // foreground block below; OtpScreen and EmailCodeScreen
+                 // both dropped the import when the prompt moved off the
+                 // code screens.
 
 enum ActiveSheet: String, Identifiable {
     case services, country, credits, emailDomain

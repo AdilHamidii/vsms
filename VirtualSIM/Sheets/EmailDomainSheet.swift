@@ -178,7 +178,12 @@ struct EmailDomainSheet: View {
     /// address still unused, or spent and now behind the paywall. Gmail is
     /// untouched — it was never part of either the old allowance or the new
     /// subscription.
-    private func entitlementLabel(_ option: EmailDomainOption) -> LocalizedStringKey {
+    /// Takes no argument on purpose: it is only ever rendered for a FREE
+    /// domain (`priceTag` calls it inside `if option.isFree`), and what it
+    /// says depends solely on the account — whether the user is subscribed
+    /// and whether they have spent their one free address. It used to accept
+    /// an `EmailDomainOption` and ignore it, which read as a per-domain label.
+    private var entitlementLabel: LocalizedStringKey {
         if mailStore.isEntitled { return "Included" }
         return state.hasUsedFreeEmail ? "Subscription" : "Free"
     }
@@ -186,7 +191,7 @@ struct EmailDomainSheet: View {
     @ViewBuilder
     private func priceTag(_ option: EmailDomainOption) -> some View {
         if option.isFree {
-            Text(entitlementLabel(option))
+            Text(entitlementLabel)
                 .font(RFont.display(15, weight: .semibold))
                 .foregroundStyle(option.inStock ? theme.text : theme.text3)
         } else {
