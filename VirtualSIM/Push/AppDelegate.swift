@@ -1,4 +1,5 @@
 import UIKit
+import UserNotifications
 
 @MainActor
 final class AppDelegate: NSObject, UIApplicationDelegate {
@@ -17,6 +18,10 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
                 pendingTokenData = nil
                 push.receivedDeviceToken(data)
             }
+            if let response = pendingResponse, let push {
+                pendingResponse = nil
+                push.handle(response: response)
+            }
         }
     }
 
@@ -24,13 +29,30 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
     /// recent one and flush it as soon as `push` is set.
     private static var pendingTokenData: Data?
 
+    /// A tapped notification that arrived before `push` existed.
+    ///
+    /// This is the NORMAL case for a launch-from-push, not an edge case: UIKit
+    /// delivers the response within milliseconds of launch, while `push` is set
+    /// from `AuthGate`'s task. Same buffer-and-flush shape as the device token,
+    /// and for the same reason — dropping it loses the deep link silently.
+    private static var pendingResponse: UNNotificationResponse?
+
     override init() { super.init() }
 
     func application(
         _ application: UIApplication,
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
     ) -> Bool {
-        true
+        // 🔴 THE DELEGATE MUST BE SET BEFORE LAUNCH COMPLETES. Apple only
+        // delivers a tapped-notification response to a delegate that was
+        // already assigned when the app finished launching. It used to be
+        // assigned by `PushManager` from `AuthGate`'s `.task`, i.e. after
+        // launch — so terminated app → "Your code arrived" push → tap opened
+        // on Home with `pendingOrderId` never set, on the app's
+        // highest-volume re-entry path. Nothing logged; it just looked like
+        // the push did not deep-link.
+        UNUserNotificationCenter.current().delegate = self
+        return true
     }
 
     nonisolated func application(
@@ -51,5 +73,34 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
         didFailToRegisterForRemoteNotificationsWithError error: Error
     ) {
         print("APNs registration failed: \(error.localizedDescription)")
+    }
+}
+
+/// The single `UNUserNotificationCenterDelegate` for the whole app.
+///
+/// It lives on the AppDelegate rather than on `PushManager` because only the
+/// AppDelegate exists early enough — see `didFinishLaunchingWithOptions`. It
+/// owns no routing: every tap is forwarded to `PushManager.handle(response:)`,
+/// or buffered until that object exists.
+extension AppDelegate: UNUserNotificationCenterDelegate {
+    nonisolated func userNotificationCenter(
+        _ center: UNUserNotificationCenter,
+        willPresent notification: UNNotification
+    ) async -> UNNotificationPresentationOptions {
+        // Show banner+sound even when the app is in foreground.
+        [.banner, .sound, .list]
+    }
+
+    nonisolated func userNotificationCenter(
+        _ center: UNUserNotificationCenter,
+        didReceive response: UNNotificationResponse
+    ) async {
+        await MainActor.run {
+            if let push = AppDelegate.push {
+                push.handle(response: response)
+            } else {
+                AppDelegate.pendingResponse = response
+            }
+        }
     }
 }

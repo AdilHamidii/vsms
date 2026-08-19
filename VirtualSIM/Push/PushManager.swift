@@ -11,7 +11,7 @@ final class PushManager: NSObject {
     /// route to the OTP screen once the catalog/orders have loaded.
     var pendingOrderId: String?
     /// A tapped inbound-text push. Routed on `kind`, never on `orderId` — see
-    /// the note in `userNotificationCenter(_:didReceive:)`.
+    /// the note in `handle(response:)`.
     var pendingLineThreadId: String?
 
     private var apiClient: APIClient?
@@ -37,7 +37,6 @@ final class PushManager: NSObject {
         // `false`.
         if ScreenshotMode.isActive { return }
         let center = UNUserNotificationCenter.current()
-        center.delegate = self
         do {
             // HONOUR the result. iOS hands out a device token even when alert
             // authorization was DENIED, and APNs then returns 200 for a push
@@ -65,7 +64,6 @@ final class PushManager: NSObject {
         // harness run. Same gate as above, same reason.
         if ScreenshotMode.isActive { return }
         let center = UNUserNotificationCenter.current()
-        center.delegate = self
         let settings = await center.notificationSettings()
         guard settings.authorizationStatus == .notDetermined else { return }
         do {
@@ -85,7 +83,6 @@ final class PushManager: NSObject {
     /// screen asks with context.
     func registerIfAuthorized() async {
         let center = UNUserNotificationCenter.current()
-        center.delegate = self
         let settings = await center.notificationSettings()
         guard settings.authorizationStatus == .authorized
                 || settings.authorizationStatus == .provisional else { return }
@@ -119,19 +116,20 @@ final class PushManager: NSObject {
     }
 }
 
-extension PushManager: UNUserNotificationCenterDelegate {
-    nonisolated func userNotificationCenter(
-        _ center: UNUserNotificationCenter,
-        willPresent notification: UNNotification
-    ) async -> UNNotificationPresentationOptions {
-        // Show banner+sound even when the app is in foreground.
-        return [.banner, .sound, .list]
-    }
-
-    nonisolated func userNotificationCenter(
-        _ center: UNUserNotificationCenter,
-        didReceive response: UNNotificationResponse
-    ) async {
+extension PushManager {
+    /// Route a TAPPED notification.
+    ///
+    /// 🔴 This is called by `AppDelegate`, which is the sole
+    /// `UNUserNotificationCenterDelegate` and sets itself as such during
+    /// `didFinishLaunchingWithOptions`. `PushManager` used to be the delegate
+    /// and assigned itself from `registerIfAuthorized()` /
+    /// `registerProvisionalIfUndetermined()` — i.e. from `AuthGate`'s task,
+    /// AFTER launch had completed. Apple delivers the tapped-notification
+    /// response only to a delegate set before the app finishes launching, so
+    /// the highest-volume re-entry path in the product — terminated app, "Your
+    /// code arrived" push, tap — opened on Home with `pendingOrderId` never
+    /// set. Do not move the delegate assignment back into a `.task`.
+    func handle(response: UNNotificationResponse) {
         let info = response.notification.request.content.userInfo
 
         // ⚠️ `kind` is checked FIRST. Routing used to be `orderId`-only, so an
@@ -143,7 +141,7 @@ extension PushManager: UNUserNotificationCenterDelegate {
             switch kind {
             case "line_message":
                 if let threadId = info["threadId"] as? String {
-                    await MainActor.run { self.pendingLineThreadId = threadId }
+                    pendingLineThreadId = threadId
                 }
                 return
             default:
@@ -152,7 +150,7 @@ extension PushManager: UNUserNotificationCenterDelegate {
         }
 
         if let orderId = info["orderId"] as? String {
-            await MainActor.run { self.pendingOrderId = orderId }
+            pendingOrderId = orderId
         }
     }
 }
