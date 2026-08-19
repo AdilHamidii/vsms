@@ -568,20 +568,59 @@ struct HomeScreen: View {
     /// the code comes back to this app and you paste it somewhere else.
     private var explainer: some View {
         VStack(alignment: .leading, spacing: 10) {
-            explainerStep(1, "Pick the service you're verifying")
-            // Step 2 names the thing the user is about to be given, and in
-            // e-mail mode that is not a number. The generic wording read as a
-            // promise the e-mail line cannot keep — same class as every other
-            // leak of SMS vocabulary into the e-mail flow.
-            explainerStep(2, state.emailMode
-                          ? "We hand you a real, working e-mail address"
-                          : "We hand you a real, working number")
-            explainerStep(3, "The code lands here. Paste it back")
+            ForEach(Array(explainerSteps.enumerated()), id: \.offset) { idx, label in
+                explainerStep(idx + 1, label)
+            }
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 14)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(theme.chipBg, in: .rect(cornerRadius: RRadius.sm))
+    }
+
+    /// ⚠️ THE PAYWALL IS A STEP, AND IT WAS MISSING.
+    ///
+    /// `needsExplainer` fires exactly for the first-run user who CANNOT afford
+    /// the route on screen — which, with the signup grant at 0, is nearly every
+    /// new signup. The card walked them through pick → we hand you a number →
+    /// the code lands here, mentioning cost nowhere, while the button directly
+    /// beneath it read "Buy credits". Naming the money step is not a
+    /// deterrent; discovering it one tap later is.
+    ///
+    /// Deliberately quotes no figure. Prices, the grant and the pack ladder all
+    /// change server-side with no release — this file's standing rule after the
+    /// onboarding card promised "+3 credits" through two versions in which the
+    /// grant was 0.
+    private var explainerSteps: [LocalizedStringKey] {
+        var steps: [LocalizedStringKey] = ["Pick the service you're verifying"]
+        if explainerNeedsCredits {
+            steps.append("Add credits — that's how you pay for it")
+        }
+        // This step names the thing the user is about to be given, and in
+        // e-mail mode that is not a number. The generic wording read as a
+        // promise the e-mail line cannot keep — same class as every other
+        // leak of SMS vocabulary into the e-mail flow.
+        steps.append(state.emailMode
+                     ? "We hand you a real, working e-mail address"
+                     : "We hand you a real, working number")
+        steps.append("The code lands here. Paste it back")
+        return steps
+    }
+
+    /// Whether the thing this screen's button will buy actually costs credits
+    /// the user does not have.
+    ///
+    /// E-mail is checked separately because `routeCost` is always the SMS
+    /// route's price — so in e-mail mode `needsExplainer` can be true while the
+    /// address on offer is FREE, and asserting a payment step there would be
+    /// the mirror of the bug this fixes.
+    private var explainerNeedsCredits: Bool {
+        if state.emailMode {
+            guard let dom = state.emailDomain, dom.credits > 0 else { return false }
+            return state.balance < dom.credits
+        }
+        guard let routeCost else { return false }
+        return state.balance < routeCost
     }
 
     private func explainerStep(_ n: Int, _ label: LocalizedStringKey) -> some View {

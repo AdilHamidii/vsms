@@ -3158,6 +3158,46 @@
         }
       }
     },
+    "Add credits — that's how you pay for it": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Guthaben aufladen — damit bezahlen Sie"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Añada créditos: así se paga"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ajoutez des crédits — c'est ainsi que vous payez"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aggiunga crediti: è così che si paga"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "クレジットを追加 — お支払いはクレジットで"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Adicione créditos — é assim que você paga"
+          }
+        }
+      }
+    },
     "Addresses are included with your subscription.": {
       "localizations": {
         "de": {
