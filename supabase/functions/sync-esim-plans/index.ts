@@ -246,8 +246,21 @@ Deno.serve(async (req) => {
   // impossible, so the fail-loud abort above is the real guard.
   let hidden = 0;
   if (upserted >= 500) {
-    const { count } = await sb.from("esim_plans").update({ status: "hidden" }, { count: "exact" })
+    const { count, error: hideErr } = await sb.from("esim_plans")
+      .update({ status: "hidden" }, { count: "exact" })
       .eq("status", "active").or(`last_checked_at.is.null,last_checked_at.lt."${runStart}"`);
+    // 🔴 DESTRUCTURING ONLY `{ count }` MADE FAILURE LOOK LIKE SUCCESS.
+    // supabase-js RETURNS errors, so on failure `count` is null, `hidden`
+    // renders 0, and the response is byte-identical to a healthy run where
+    // nothing needed hiding — while every plan the provider delisted stays ON
+    // SALE. Fail loud, the way the upsert loop above already does: a sync that
+    // could not retire delisted inventory has not succeeded.
+    if (hideErr) {
+      return json({
+        error: "hide_failed", detail: hideErr.message,
+        plansUpserted: upserted, hidden: 0,
+      }, { status: 500 });
+    }
     hidden = count ?? 0;
   }
 

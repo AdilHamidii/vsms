@@ -177,7 +177,26 @@ async function esimaccessRefresh(sb: ReturnType<typeof admin>, order: any): Prom
         // Never allocated to the user — fail_esim_order_claim flips to
         // 'failed' AND refunds in one transaction, so the client's
         // "+N credits refunded" line on the failed card is TRUE.
-        const { data: didClose } = await sb.rpc("fail_esim_order_claim", { p_order: order.id });
+        const { data: didClose, error: closeErr } = await sb.rpc(
+          "fail_esim_order_claim", { p_order: order.id });
+        // 🔴 DESTRUCTURE IT. supabase-js RETURNS errors, so an unchecked call
+        // left `didClose` undefined and skipped this branch in silence — the
+        // provider cancelled a never-allocated eSIM, the user was never
+        // refunded, and nothing anywhere said so. `create-esim-order`
+        // destructures the error on this same RPC; this is the same shape.
+        //
+        // Do NOT return an error to the caller: this endpoint reports usage and
+        // a 500 blanks the detail screen. The screen polls every 8s and
+        // `status === 'provisioning'` is still true, so the next poll retries
+        // the claim and a transient failure self-heals. Page so a persistent
+        // one is visible rather than waiting for the user to notice.
+        if (closeErr) {
+          console.error(JSON.stringify({
+            alert: "esim_refund_claim_failed",
+            order: order.id, esim_status: es, detail: closeErr.message,
+          }));
+          await pageProviderClosed(sb, order.id, es, "REFUND CLAIM FAILED — credits NOT returned");
+        }
         if (didClose) {
           const { data: closed } = await sb
             .from("esim_orders").select("*").eq("id", order.id).single();
