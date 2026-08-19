@@ -82,6 +82,29 @@ protocol VoiceClient: AnyObject, Sendable {
     func audioSessionActivated(_ session: AVAudioSession)
     func audioSessionDeactivated(_ session: AVAudioSession)
 
+    /// 🔴 **Re-assert audio AFTER the SDK has built the call, or an outbound
+    /// call is silent both ways.**
+    ///
+    /// Creating a call makes the SDK build a `Peer`, and a `Peer` turns WebRTC's
+    /// manual audio mode on and the audio unit OFF (`useManualAudio = true`,
+    /// `isAudioEnabled = false`) so that CallKit, not WebRTC, decides when
+    /// audio starts. Telnyx's own sample places the call from inside
+    /// `provider(_:perform: CXStartCallAction)` and fulfills only afterwards,
+    /// so that disable always happens BEFORE CallKit activates the session and
+    /// `audioSessionActivated` re-enables it.
+    ///
+    /// We fulfill the action first — the allowance gate has to be able to
+    /// refuse a call before CallKit ever hears about it — so our order is
+    /// reversed: CallKit activates, we enable, and only then does `dial` build
+    /// the peer that switches audio back off. Nothing in the normal call path
+    /// ever turns it back on. The call connects, the timer runs, a session id
+    /// is issued, and neither side hears anything.
+    ///
+    /// So the enable is re-asserted once the peer exists. It must only be
+    /// called while CallKit has actually handed the session over — see
+    /// `CallController.reassertAudioIfActive()`.
+    func reassertAudioSession()
+
     /// The APNs VoIP token, so Telnyx can ring this device. Supplied whenever
     /// PushKit hands us one, which may be before or after `connect`.
     func registerPushToken(_ token: String)
@@ -125,6 +148,7 @@ final class NullVoiceClient: VoiceClient, @unchecked Sendable {
 
     func audioSessionActivated(_ session: AVAudioSession) {}
     func audioSessionDeactivated(_ session: AVAudioSession) {}
+    func reassertAudioSession() {}
     func registerPushToken(_ token: String) {}
     func handleVoIPPush(metadata: [String: Any]) {}
 }

@@ -1037,10 +1037,18 @@ Number tab's Calls segment), **call history**, the **allowance gate**
 (`begin-line-call`), **session reporting** (`report-line-call`) and **CDR
 settlement** (`sync-telnyx-cdr`, on cron).
 
-✅ **CALLING WORKS — FIRST CONNECTED CALLS 2026-08-18.** Three to France
-(`+33`, 6s / 2s / 23s) and one attempt to Poland, every row carrying a
-`provider_call_session_id`, i.e. the leg reached Telnyx and media flowed. The
-provisioning fix below is what changed; nothing on the device did.
+🟠 **CALLS CONNECT; AUDIO PROBABLY DID NOT — corrected 2026-08-19.** Three
+calls to France (`+33`, 6s / 2s / 23s) and one attempt to Poland connected on
+2026-08-18, every row carrying a `provider_call_session_id`, i.e. the leg
+reached Telnyx. The provisioning fix below is what changed; nothing on the
+device did.
+
+⚠️ **"and media flowed" was an INFERENCE from the session id, and it does not
+follow.** A session id says the signalling leg reached Telnyx, not that the
+audio unit was running — and trap 6 below is a mechanism by which it was not,
+on every outbound call, until 2026-08-19. Durations of 6s / 2s / 23s are what
+"connected but silent" looks like. Nobody has reported hearing audio; treat
+that as untested, not working.
 
 ⚠️ **Nothing settles them from provider evidence yet.** `sync-telnyx-cdr`
 returns `{records: 0, pending: 4, unmatched: 4}` — it runs, Telnyx reports no
@@ -1173,6 +1181,36 @@ repo, so they are kept here — losing them costs a device-only debugging sessio
    lowercase.** `sync-telnyx-cdr` matches with an exact-string lookup, so
    `providerSessionId` lowercases both ids. Uppercase would settle nothing and
    look exactly like a provider that never reported the call.
+
+6. 🔴 **FULFILLING `CXStartCallAction` BEFORE DIALLING MAKES AN OUTBOUND CALL
+   SILENT BOTH WAYS — fixed 2026-08-19, and a green build proves nothing about
+   it.** Creating a call makes the SDK build a `Peer`, and `Peer.init` runs
+   `configureAudioSession()`, which sets `useManualAudio = true` and
+   **`isAudioEnabled = false`** (TelnyxRTC 4.1.2, `Peer.swift:267-268`). The
+   ONLY thing in a healthy call path that sets it back is the app's own
+   `enableAudioSession` (`TxClient.swift:253-255`) — the other re-enable
+   (`Peer.swift:829`) fires only on an ICE restart / network change.
+
+   Telnyx's sample places the call INSIDE `provider(_:perform: CXStartCallAction)`
+   and fulfills afterwards, so the disable always precedes CallKit's activate.
+   We fulfill first — the allowance gate must be able to refuse a call before
+   CallKit hears about it — so our order was reversed: activate → enable →
+   `dial` → **disable**, and nothing ever re-enabled it. The call connected, the
+   timer ran, a `provider_call_session_id` was issued, and neither side heard
+   anything. That is the shape of the three France calls (6s / 2s / 23s) and of
+   `+14377832487`, who cancelled four minutes after five dead calls.
+
+   The fix keeps our ordering and re-asserts the enable once the peer exists:
+   `VoiceClient.reassertAudioSession()` (→ `isAudioDeviceEnabled = true`, NOT
+   `enableAudioSession`, which would re-apply the category and `setActive` on a
+   session CallKit already owns), called from `CallController` after `dial`
+   returns AND again on `.ACTIVE` in `mediaConnected()` — the SDK does that
+   configuration on its own queue, so a single call site is a race. It is gated
+   on `audioSessionActive`, tracked from `didActivate`/`didDeactivate`, because
+   claiming the session before CallKit hands it over is the same bug mirrored.
+
+   ⚠️ **Still unverified on a device as of 2026-08-19** — read from the app and
+   the resolved SDK source, not from a call anyone heard.
 
 **Two costs, both now paid and both accepted by the owner:**
 `swiftc -typecheck` no longer works and `xcodebuild` is the only check (done —

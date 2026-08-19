@@ -174,6 +174,22 @@ final class TelnyxVoiceClient: NSObject, VoiceClient, @unchecked Sendable {
         client.disableAudioSession(audioSession: session)
     }
 
+    /// Re-enable the audio unit after `newCall` has built the peer — see the
+    /// long note on `VoiceClient.reassertAudioSession()` for why this is not
+    /// redundant with `audioSessionActivated`.
+    ///
+    /// `isAudioDeviceEnabled` rather than `enableAudioSession`: the setter does
+    /// exactly the two things needed here (tell WebRTC the session is live and
+    /// switch the audio unit on) and nothing else. `enableAudioSession` also
+    /// re-applies the category and calls `setActive(true)` on a session CallKit
+    /// already activated, which is the churn the CallKit rules warn about — it
+    /// is the right call ONCE, from `provider(_:didActivate:)`, and the wrong
+    /// one to repeat mid-call.
+    func reassertAudioSession() {
+        guard !client.isAudioDeviceEnabled else { return }
+        client.isAudioDeviceEnabled = true
+    }
+
     // MARK: - Push
 
     func registerPushToken(_ token: String) {
