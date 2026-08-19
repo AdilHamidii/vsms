@@ -175,7 +175,7 @@ supabase functions deploy create-order check-order cancel-order register-push ia
   create-email-order check-email-order email-domains support-send \
   search-line-numbers reserve-line-number verify-line-subscription rent-line-credits \
   send-line-message line-thread-action mint-line-token begin-line-call report-line-call \
-  record-attribution
+  record-attribution verify-email-subscription
 # Cron-gated functions MUST ship --no-verify-jwt: their pg_cron relays send
 # only x-cron-secret, no Authorization header. winback lived in the JWT group
 # until 2026-07-21 and silently 401'd on every daily run — zero nudges ever
@@ -205,6 +205,14 @@ supabase functions deploy poll-active-orders sync-prices sync-5sim sync-herosms 
 # ✅ Re-asserted 2026-08-18: the two lists are exhaustive — 23 + 20 = **43** (probe-telnyx-connection added the same day),
 # against `ls supabase/functions | grep -v _shared | wc -l`. record-attribution
 # (Apple Search Ads) joined the JWT group that day.
+# ⚠️ Re-asserted 2026-08-19, and it is NOT exhaustive right now: the two lists
+# are 24 + 20 = **44** (verify-email-subscription — the mail-subscription
+# entitlement grant, JWT-verified, no config.toml entry — added this day) but
+# `ls supabase/functions | grep -v _shared | wc -l` reads **45**. The gap is
+# `probe-5sim`, a one-off diagnostic (see "Two 5sim behaviours settled by PAID
+# PROBE" above — "do not re-run") that was never added to either list and is
+# not meant to be redeployed on a normal cadence. Re-assert the sum before
+# trusting either number; do not assume this note stays current.
 # ✅ As of 2026-08-06 the two lists ARE exhaustive — 21 + 18 = **39**, asserted
 # against `ls supabase/functions | grep -v _shared | wc -l`. They were not
 # before: this comment claimed 19, then 25, then 26 while two functions

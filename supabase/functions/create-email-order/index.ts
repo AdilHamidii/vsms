@@ -143,12 +143,31 @@ Deno.serve(async (req) => {
     return json({ error: "spend_failed" }, { status: 500 });
   }
   const res = begun as
-    { ok?: boolean; reason?: string; order_id?: string; cap?: number } | null;
+    {
+      ok?: boolean; reason?: string; order_id?: string; cap?: number;
+      used?: number; grants?: number;
+    } | null;
 
   if (res?.reason === "insufficient")       return json({ error: "insufficient_credits" }, { status: 402 });
   if (res?.reason === "duplicate_request")  return json({ error: "duplicate_request" }, { status: 409 });
   if (res?.reason === "free_limit_reached") {
     return json({ error: "free_limit_reached", cap: res.cap ?? 3 }, { status: 429 });
+  }
+  // Lifetime free allowance used up, not subscribed. 402, not 429 — this is
+  // "payment required", and waiting does not make it go away the way a rate
+  // limit does.
+  if (res?.reason === "subscription_required") {
+    return json({
+      error: "subscription_required",
+      used: res.used ?? null,
+      grants: res.grants ?? null,
+    }, { status: 402 });
+  }
+  // Subscribed, but the SHARED free-domain inventory has a stated hard stop
+  // per subscriber per day (`app_config.email_sub_daily_cap`) — one looping
+  // subscriber must not be able to drain stock for everyone else.
+  if (res?.reason === "daily_cap_reached") {
+    return json({ error: "daily_cap_reached", cap: res.cap ?? 25 }, { status: 429 });
   }
   const orderId = res?.order_id;
   if (!res?.ok || !orderId) {
