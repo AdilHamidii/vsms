@@ -537,7 +537,16 @@ Deno.serve(async (req) => {
   for (const o of lateWatch ?? []) {
     try {
       if (!o.smspva_id) {
-        await sb.from("orders").update({ late_watch_until: null }).eq("id", o.id);
+        const { error: clearErr } = await sb
+          .from("orders").update({ late_watch_until: null }).eq("id", o.id);
+        // Unchecked, a failure here re-selects this row on every run forever —
+        // it holds one of the 50 slots below permanently, and enough of them
+        // starve the sweep of the rescues it exists to perform.
+        if (clearErr) {
+          console.error(JSON.stringify({
+            alert: "late_watch_clear_failed", order: o.id, detail: clearErr.message,
+          }));
+        }
         continue;
       }
       // Window closed with no code — reclaim what we can and stop watching.
@@ -546,8 +555,30 @@ Deno.serve(async (req) => {
       // only accidentally correct while the DB session is UTC — and inverts
       // silently if that ever changes, leaving every watched number unreleased.
       if (new Date(o.late_watch_until as string).getTime() <= Date.now()) {
+        // 🔴 STOP WATCHING FIRST, THEN RELEASE — the order of these two is
+        // load-bearing and it used to be the other way round with the write
+        // unchecked. `late_watch_until <= now()` stays true forever, so if the
+        // clear fails after markDead() the row is re-selected on EVERY minutely
+        // run and we re-cancel-and-ban an already-dead number at the provider,
+        // for the life of the row. That is a permanent, compounding leak of
+        // both provider calls and of the 50-row budget this sweep shares with
+        // real rescues.
+        //
+        // Clearing first makes the failure bounded instead: if the clear fails
+        // we have released nothing and the next run retries the whole step
+        // (markDead is only reached once the flag is safely down); if markDead
+        // then throws, we forfeit one number's reclaimed wholesale — capped at
+        // ~$3.50, one-time, and the provider expires the number on its own
+        // anyway. A bounded one-time loss beats an unbounded minutely loop.
+        const { error: clearErr } = await sb
+          .from("orders").update({ late_watch_until: null }).eq("id", o.id);
+        if (clearErr) {
+          console.error(JSON.stringify({
+            alert: "late_watch_clear_failed", order: o.id, detail: clearErr.message,
+          }));
+          continue;   // nothing released; retried next run
+        }
         await markDead((o.provider ?? "smspva") as OrderProvider, o.smspva_id);
-        await sb.from("orders").update({ late_watch_until: null }).eq("id", o.id);
         lateReleased++;
         continue;
       }
@@ -558,7 +589,7 @@ Deno.serve(async (req) => {
       // Write the code onto the canceled row. `otp is not null` is what the
       // delivery-evidence functions now count as a code, so a rescue correctly
       // credits the route with having delivered.
-      const { data: got } = await sb
+      const { data: got, error: rescueErr } = await sb
         .from("orders")
         .update({
           otp: res.code,
@@ -569,6 +600,21 @@ Deno.serve(async (req) => {
         .eq("id", o.id)
         .is("otp", null)
         .select("id");
+      // 🔴 AN ERROR AND A LOST RACE PRODUCE THE SAME SHAPE. supabase-js RETURNS
+      // errors, so `data` is null on failure just as it is an empty array when
+      // `.is("otp", null)` matched nothing — and the bare `!got` test below read
+      // both as "another run got there first". A rescued code was then dropped
+      // silently: no row, no push, no log, and the user never learns the code
+      // they were refunded for actually arrived.
+      //
+      // Deliberately does NOT clear late_watch_until on this path, so the row
+      // stays in the sweep and the next run re-polls and retries the write.
+      if (rescueErr) {
+        console.error(JSON.stringify({
+          alert: "late_code_rescue_write_failed", order: o.id, detail: rescueErr.message,
+        }));
+        continue;
+      }
       if (!got || got.length === 0) continue;   // another run got there first
 
       await markSuccess((o.provider ?? "smspva") as OrderProvider, o.smspva_id);
