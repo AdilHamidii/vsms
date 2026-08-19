@@ -80,6 +80,13 @@ Deno.serve(async (req) => {
   if (res?.ok !== true) {
     // `subscription_bound` is the deletion-replay catch, and it is a REFUSAL
     // rather than an error: the entitlement belongs to another account.
+    //
+    // `subscription_revoked` / `subscription_expired` are the other two, added
+    // 20260818160003. This function posts `p_state: 'active'` unconditionally
+    // — a client cannot know a state — so without them, re-posting a JWS the
+    // device still holds after a REFUND would upgrade `revoked` back to
+    // `active`. The rule lives in the SQL so it protects every future caller;
+    // see that migration's header for why `revoked` and `expired` differ.
     return json({ error: res?.reason ?? "subscription_record_failed" }, { status: 409 });
   }
 
