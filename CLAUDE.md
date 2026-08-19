@@ -943,9 +943,14 @@ checkout; `create-email-order` refuses when `count` is 0. Never cache it.
 
 **The free tier is the SCARCEST inventory**, two to three orders of magnitude
 below gmail/icloud. It is also the only thing with no credit gate, so
-`begin_email_order` enforces **N free per user per UTC day (default 3, tunable
-via `app_config.email_free_daily_cap`)** under the same advisory lock. And
-`cost_credits >= 0` is deliberate: `wallet_spend` RAISES on a non-positive
+`begin_email_order` enforces **N free per user per UTC day**, live in
+`app_config.email_free_daily_cap` — **currently 1, cut from 3 on 2026-08-17**
+(see "Free e-mail cap" under Current state; re-query before quoting, this is
+a lever the owner turns without a deploy) under the same advisory lock.
+**This is the pre-2.2 rule only** — once
+`email_subscription_enforced` flips true it is replaced entirely by the
+lifetime-and-subscription rule in the "Temp-e-mail subscription" section
+below. And `cost_credits >= 0` is deliberate: `wallet_spend` RAISES on a non-positive
 amount, so the free path skips the spend entirely rather than calling it with 0.
 
 `site` comes from `services.domain`, populated for **254 of 265** visible
@@ -1019,8 +1024,21 @@ there would suspend or release a rented phone number over a cancelled $2.99
 mail plan.
 
 **`ops_subs()` gained a `mail` key, migration `20260818160002`** (Task 9): `total`,
-`active` (mirrors `has_email_subscription`'s own predicate), `by_state`,
-`auto_renew_on`. Rendered in `/subs` (Telegram) with a disagreement warning —
+`active`, `by_state`, `auto_renew_on`. ⚠️ **`active` MUST use
+`greatest(expires_at, grace_expires_at) > now()`, byte-identical to
+`has_email_subscription`'s own predicate — never `coalesce`.** Fix round 1
+(2026-08-19) caught the migration shipping `coalesce(grace_expires_at,
+expires_at)`, copied verbatim from the original brief without checking it
+against the entitlement function it was meant to mirror: `coalesce` picks
+whichever column is non-null FIRST regardless of which is later, so a
+subscriber who went through a grace period and then renewed — a stale
+`grace_expires_at` in the past alongside a fresh, later `expires_at` — read as
+INACTIVE even though `has_email_subscription` correctly grants them the
+entitlement. That would have fired the `/subs` disagreement warning below on a
+perfectly healthy account, training the owner to ignore it. If this key and
+`has_email_subscription` are ever touched separately again, re-diff them
+against each other, not just against the brief that specified them. Rendered
+in `/subs` (Telegram) with a disagreement warning —
 entitled count vs raw active/grace state count — the same shape as the line
 block's subs-vs-lines warning, catching a subscription stuck in an
 active/grace state past its own expiry (an ASSN notification not yet landed

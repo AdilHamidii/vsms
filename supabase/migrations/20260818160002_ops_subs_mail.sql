@@ -11,6 +11,30 @@
 -- the new version against the captured original clause by clause, and
 -- confirming EXACTLY ONE hunk differs — the new 'mail' key appended after
 -- 'dev_hidden'. Nothing else in the function changed.
+--
+-- FIX ROUND 1 (2026-08-19): the original 'mail'.'active' predicate used
+-- `coalesce(grace_expires_at, expires_at) > now()`, copied verbatim from the
+-- task-9 brief -- which was itself wrong, because `has_email_subscription()`
+-- (the real entitlement check) uses `greatest(expires_at, grace_expires_at)
+-- > now()` for a specific reason: `coalesce` can read a stale grace stamp
+-- ahead of a later, real renewal and report an entitled subscriber as
+-- inactive. Fixed here to `greatest`, matching `has_email_subscription()`
+-- exactly. Re-applied following the SAME procedure: captured
+-- `pg_get_functiondef` first (dump length 5002 vs `prosrc` length 4850, gap
+-- matches the boilerplate exactly -- not truncated), changed only that one
+-- clause, diffed clause by clause, confirmed exactly one hunk.
+--
+-- ⚠️ ALSO ON THIS ROUND: the PREVIOUS live apply of this function is missing
+-- every inline `--` comment that is in this file, even though this file's
+-- comments were written before that apply. Postgres does not strip `--`
+-- comments from `prosrc` for a traditional `LANGUAGE SQL AS $$ ... $$`
+-- function body (this is not a `prosqlbody`/SQL-standard-body function,
+-- which WOULD reparse and lose them) -- the comments were dropped because
+-- the SQL actually sent to `execute_sql` on the previous round had been
+-- copy-edited down to a comment-free version for brevity before running,
+-- not because any tool in the path strips them. This round applies the
+-- COMPLETE text of this file, comments included, verbatim, and the fix
+-- report verifies the live `prosrc` contains them afterwards.
 create or replace function public.ops_subs()
 returns jsonb
 language sql
@@ -111,14 +135,27 @@ as $function$
     'dev_hidden', jsonb_build_object(
                 'lines', (select lines from devl),
                 'subs',  (select subs from devl)),
-    -- Task 9 (ops visibility for the temp-e-mail subscription line). Mirrors
-    -- the SQL in the task-9 brief verbatim, added as its own key so it cannot
-    -- perturb any existing subs/lines figure.
+    -- Task 9 (ops visibility for the temp-e-mail subscription line), fix
+    -- round 1 (2026-08-19): 'active' now matches has_email_subscription()'s
+    -- own predicate EXACTLY. The task-9 brief's snippet said `coalesce
+    -- (grace_expires_at, expires_at) > now()`, which was already wrong the
+    -- day it was written -- has_email_subscription() uses `greatest`, not
+    -- `coalesce`, specifically because a subscriber who went through a grace
+    -- period and then renewed carries a STALE grace_expires_at in the past
+    -- alongside a fresh, later expires_at. `coalesce` picks whichever column
+    -- is non-null FIRST regardless of which is later, so it would read the
+    -- stale grace stamp and report a fully-paid renewed subscriber as
+    -- inactive -- which would then fire the /subs disagreement warning on a
+    -- perfectly healthy system, training the owner to ignore it. `greatest`
+    -- compares both and ignores NULLs, so it agrees with the real
+    -- entitlement check in every case. If you ever touch this again: this
+    -- key must read `greatest`, never `coalesce`, and so must
+    -- has_email_subscription() -- keep the two in lockstep.
     'mail', jsonb_build_object(
       'total',    (select count(*) from public.email_subscriptions),
       'active',   (select count(*) from public.email_subscriptions
                     where state in ('active','grace')
-                      and coalesce(grace_expires_at, expires_at) > now()),
+                      and greatest(expires_at, grace_expires_at) > now()),
       'by_state', (select coalesce(jsonb_agg(jsonb_build_object('state', state, 'n', n)), '[]'::jsonb)
                      from (select state, count(*) n from public.email_subscriptions
                             group by 1 order by 2 desc) s),
