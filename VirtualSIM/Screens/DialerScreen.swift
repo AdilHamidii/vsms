@@ -297,6 +297,20 @@ struct Dialpad: View {
     @Environment(\.theme) private var theme
     var onKey: (String) -> Void
 
+    /// When the 0 key's long press last emitted a `+`.
+    ///
+    /// 🔴 A `simultaneousGesture` DOES NOT SUPPRESS THE BUTTON'S OWN ACTION.
+    /// The long press fired `onKey("+")` at 0.4s and then, on finger-up, the
+    /// Button ALSO fired `onKey("0")` — so the only way to type a `+` produced
+    /// `"+0"`, France became `+033…`, `voiceRates.match(dialled:)` matched no
+    /// prefix, and the readout said "We can't call this country yet." with the
+    /// call button disabled. International calling — priced in credits and
+    /// newly promoted on the store screen — was unreachable by construction.
+    ///
+    /// Timestamped rather than a bare flag so a long press the user drags away
+    /// from (Button action never fires) cannot swallow the NEXT real tap on 0.
+    @State private var plusEmittedAt: Date?
+
     private static let keys: [[(String, String)]] = [
         [("1", ""),    ("2", "ABC"), ("3", "DEF")],
         [("4", "GHI"), ("5", "JKL"), ("6", "MNO")],
@@ -309,7 +323,17 @@ struct Dialpad: View {
             ForEach(Array(Self.keys.enumerated()), id: \.offset) { _, row in
                 HStack(spacing: 26) {
                     ForEach(row, id: \.0) { key, letters in
-                        Button { onKey(key) } label: {
+                        Button {
+                            // The long press below has already emitted the
+                            // `+`; letting this fire too appended a `0` to it.
+                            // See `plusEmittedAt`.
+                            if key == "0", let at = plusEmittedAt,
+                               Date().timeIntervalSince(at) < 1.5 {
+                                plusEmittedAt = nil
+                                return
+                            }
+                            onKey(key)
+                        } label: {
                             VStack(spacing: 1) {
                                 Text(verbatim: key)
                                     .font(RFont.display(27, weight: .regular))
@@ -337,6 +361,10 @@ struct Dialpad: View {
                                 .onEnded { _ in
                                     guard key == "0" else { return }
                                     RHaptic.select()
+                                    // Stamped BEFORE emitting, because the
+                                    // Button's own action fires on finger-up
+                                    // and reads this to stand down.
+                                    plusEmittedAt = Date()
                                     onKey("+")
                                 }
                         )
