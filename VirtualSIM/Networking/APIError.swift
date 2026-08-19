@@ -190,6 +190,15 @@ enum APIError: Error, LocalizedError {
                     return String(localized: "That service isn't available anymore.")
                 case "order_persist_failed":
                     return String(localized: "Something went wrong saving that. Your credits are unchanged.")
+                // `update_failed` means a status write we could not record —
+                // emitted by check-order and by cancel-order's late-code
+                // rescue. In BOTH cases the order is left `waiting` on purpose,
+                // so a code still in flight is still recoverable and nothing
+                // has been charged or refunded. The copy must therefore invite
+                // a retry and must not say the action succeeded or failed
+                // outright, because neither is known yet.
+                case "update_failed":
+                    return String(localized: "We couldn't finish that just now. Your credits are unchanged and your order is still running — please try again in a moment.")
                 // Apple took the money and the credit did not land. The
                 // generic 409 text is "Not available right now. Try a different
                 // option." — which on a paid purchase reads as "pick another

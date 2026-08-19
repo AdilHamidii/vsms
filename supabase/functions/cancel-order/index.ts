@@ -227,7 +227,7 @@ Deno.serve(async (req) => {
     try {
       const last = await poll((order.provider ?? "smspva") as OrderProvider, order.smspva_id);
       if (last.state === "received" && last.code) {
-        const { data: got } = await sb
+        const { data: got, error: rescueErr } = await sb
           .from("orders")
           .update({
             status: "received",
@@ -239,6 +239,30 @@ Deno.serve(async (req) => {
           .eq("id", order.id)
           .eq("status", "waiting")
           .select("*");
+        // 🔴 DESTRUCTURE THE ERROR. supabase-js RETURNS errors, it does not
+        // throw — so `const { data: got }` alone makes a failed write
+        // indistinguishable from "lost the race", which is the one case this
+        // branch is allowed to fall through on. The code is already AT the
+        // provider at this point, so falling through would: discard it with no
+        // log and no page, refund the user seconds before the thing they paid
+        // for, skip `markSuccess` (earning the provider's harshest karma
+        // penalty for an SMS that arrived and was never fetched), and score the
+        // route as a delivery failure it did not earn.
+        //
+        // Fail LOUD instead of cancelling. A 500 leaves the row `waiting`, so
+        // the code is still recoverable — `poll-active-orders` sweeps waiting
+        // orders every minute and `check-order` will hand it over on the next
+        // poll. The user taps cancel again at worst; they do not lose the code.
+        // `check-order:76` writes this identical statement and has always
+        // destructured it; this is the same shape, made to match.
+        if (rescueErr) {
+          console.error(JSON.stringify({
+            alert: "cancel_order_rescue_write_failed",
+            order: order.id,
+            detail: rescueErr.message,
+          }));
+          return json({ error: "update_failed", detail: rescueErr.message }, { status: 500 });
+        }
         if (got && got.length > 0) {
           await markSuccess((order.provider ?? "smspva") as OrderProvider, order.smspva_id);
           console.warn(`cancel-order: code was in flight for ${order.id} — delivered instead of canceled`);
