@@ -52,6 +52,14 @@ final class CallController: NSObject {
     private var voice: VoiceClient
     private var pushRegistry: PKPushRegistry?
 
+    /// Whether CallKit has handed us the audio session and not taken it back.
+    ///
+    /// Gates `reassertAudioIfActive()`: telling the SDK audio is live before
+    /// CallKit has activated the session is the mirror image of the bug it
+    /// exists to fix, and would have us claiming the session on a call that
+    /// iOS has not started.
+    private var audioSessionActive = false
+
     /// The CallKit id for the call in flight. CallKit is keyed on UUID and the
     /// provider is keyed on ours, so they must be the same value or an end
     /// action will not match anything.
@@ -304,6 +312,11 @@ final class CallController: NSObject {
             // record against. Without it the call kept its whole 120-second
             // reservation forever and the allowance meant nothing.
             let session = try await voice.dial(to: dialled, from: lineNumber)
+            // 🔴 The peer now exists, and building it switched WebRTC's audio
+            // unit OFF. Without this the call connects silently. Repeated on
+            // `.ACTIVE` in `mediaConnected()`, because the SDK does that work
+            // on its own queue and can land after this line.
+            reassertAudioIfActive()
             report(sessionId: session, legId: voice.providerLegId, status: "ringing")
             provider.reportOutgoingCall(with: uuid, startedConnectingAt: Date())
         } catch {
@@ -430,10 +443,26 @@ final class CallController: NSObject {
         didReportFinal = false
     }
 
+    /// Switch the SDK's audio unit back on once a call object exists.
+    ///
+    /// A no-op unless CallKit has actually activated the session, and a no-op
+    /// when audio is already on — so it is safe to call from every point where
+    /// a peer may just have been built. The full explanation of why an outbound
+    /// call is otherwise silent is on `VoiceClient.reassertAudioSession()`.
+    private func reassertAudioIfActive() {
+        guard audioSessionActive else { return }
+        voice.reassertAudioSession()
+    }
+
     /// Called by the SDK once media is flowing.
     func mediaConnected() {
         guard phase != .active else { return }
         phase = .active
+        // The last and most reliable point to re-assert audio: `.ACTIVE` lands
+        // well after the SDK has finished configuring the peer, so this catches
+        // the case where the post-`dial` attempt raced ahead of it — and every
+        // inbound call, where the peer is built before we ever answer.
+        reassertAudioIfActive()
         let now = Date()
         startedAt = now
         RHaptic.success()
@@ -539,11 +568,17 @@ extension CallController: CXProviderDelegate {
     /// and the on-screen timer on a phone that was still ringing. The SDK's own
     /// `.ACTIVE` state is the honest signal and now drives it.
     nonisolated func provider(_ provider: CXProvider, didActivate audioSession: AVAudioSession) {
-        Task { @MainActor in voice.audioSessionActivated(audioSession) }
+        Task { @MainActor in
+            audioSessionActive = true
+            voice.audioSessionActivated(audioSession)
+        }
     }
 
     nonisolated func provider(_ provider: CXProvider, didDeactivate audioSession: AVAudioSession) {
-        Task { @MainActor in voice.audioSessionDeactivated(audioSession) }
+        Task { @MainActor in
+            audioSessionActive = false
+            voice.audioSessionDeactivated(audioSession)
+        }
     }
 }
 
