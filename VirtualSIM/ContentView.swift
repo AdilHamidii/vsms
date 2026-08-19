@@ -29,6 +29,13 @@ struct ContentView: View {
     @Environment(IAPStore.self) private var iap
     @Environment(SubscriptionStore.self) private var subs
     @Environment(CallController.self) private var calls
+    /// The e-mail subscription's store. Owned here rather than in `AuthGate`
+    /// alongside `SubscriptionStore` because it is only ever consumed inside
+    /// this view tree (the paywall and the domain sheet) — but it still needs
+    /// its own `.environment` injection at this level and in `EnvBundle`,
+    /// because `state` gets the same treatment for the same reason: a value
+    /// this view owns does not reach sheet/cover content by inheritance alone.
+    @State private var mailStore = MailSubscriptionStore()
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.requestReview) private var requestReview
 
@@ -119,6 +126,7 @@ struct ContentView: View {
         // content all see AppState in scope.
         .environment(\.theme, theme)
         .environment(state)
+        .environment(mailStore)
         .preferredColorScheme(state.appearance.colorScheme)
         .overlay(alignment: .top) {
             ErrorBanner()
@@ -212,6 +220,16 @@ struct ContentView: View {
             // before the splash lifts. See AppState.coldStart.
             await state.coldStart(api: api)
 
+            mailStore.attach(api: api)
+            // One shared `Transaction.updates` listener lives on `IAPStore`
+            // (see `SubscriptionStore`'s note on why) — this registers the
+            // e-mail subscription's handler on it rather than opening a
+            // second one, which would split the stream and mean at most one
+            // listener sees any given renewal.
+            iap.onMailSubscription = { [weak mailStore] result in
+                await mailStore?.submit(result) ?? false
+            }
+
             // StoreKit prices, BEHIND the reveal — nothing on Home waits for
             // them, but Home cannot render its money line without them.
             //
@@ -257,6 +275,13 @@ struct ContentView: View {
                 // third instance of the PurchaseIntent bug class).
                 state.emailDomain = nil
                 state.intent = .sms
+                // The paywall is the fourth instance of this same bug class —
+                // reached and left entirely at flow == nil, from the domain
+                // sheet, so nothing else clears it when the user backs out of
+                // e-mail mode with it still open. `showMailPaywall`'s own
+                // didSet clears `intent` for the ordinary "tap Restore /
+                // dismiss the sheet" path; this covers the second way out.
+                state.showMailPaywall = false
                 return
             }
             // ENTERING email mode must declare the intent too — the exit branch
@@ -385,14 +410,26 @@ struct ContentView: View {
         }
         .sheet(item: $sheet) { which in
             sheetContent(which)
-                .modifier(EnvBundle(theme: theme, state: state, api: api, push: push, session: session, iap: iap, subs: subs, calls: calls))
+                .modifier(EnvBundle(theme: theme, state: state, api: api, push: push, session: session, iap: iap, subs: subs, mailStore: mailStore, calls: calls))
                 .presentationDetents(which.detents)
+                .presentationDragIndicator(.visible)
+                .presentationBackground(theme.bg)
+        }
+        // Not an `ActiveSheet` case: it is reached from `confirmGetEmail`
+        // refusing with `subscription_required`, which can happen at
+        // `flow == nil` from the domain sheet — a plain Bool, like
+        // `state.maintenance`, rather than something threaded through the
+        // item-based sheet enum.
+        .sheet(isPresented: $state.showMailPaywall) {
+            MailPaywallScreen()
+                .modifier(EnvBundle(theme: theme, state: state, api: api, push: push, session: session, iap: iap, subs: subs, mailStore: mailStore, calls: calls))
+                .presentationDetents([.large])
                 .presentationDragIndicator(.visible)
                 .presentationBackground(theme.bg)
         }
         .fullScreenCover(item: $state.flow) { stage in
             flowContent(stage)
-                .modifier(EnvBundle(theme: theme, state: state, api: api, push: push, session: session, iap: iap, subs: subs, calls: calls))
+                .modifier(EnvBundle(theme: theme, state: state, api: api, push: push, session: session, iap: iap, subs: subs, mailStore: mailStore, calls: calls))
                 .preferredColorScheme(state.appearance.colorScheme)
                 .overlay(alignment: .top) {
                     ErrorBanner()
@@ -402,7 +439,7 @@ struct ContentView: View {
                 }
                 .sheet(item: $flowSheet) { which in
                     sheetContent(which)
-                        .modifier(EnvBundle(theme: theme, state: state, api: api, push: push, session: session, iap: iap, subs: subs, calls: calls))
+                        .modifier(EnvBundle(theme: theme, state: state, api: api, push: push, session: session, iap: iap, subs: subs, mailStore: mailStore, calls: calls))
                         .presentationDetents(which.detents)
                         .presentationDragIndicator(.visible)
                         .presentationBackground(theme.bg)
@@ -758,6 +795,7 @@ private struct EnvBundle: ViewModifier {
     let session: Session
     let iap: IAPStore
     let subs: SubscriptionStore
+    let mailStore: MailSubscriptionStore
     /// Required here specifically: the dialer is presented INSIDE the flow
     /// cover, and a cover's content does not inherit `@Observable` environment
     /// objects from its presenter — which is the whole reason this modifier
@@ -774,6 +812,7 @@ private struct EnvBundle: ViewModifier {
             .environment(session)
             .environment(iap)
             .environment(subs)
+            .environment(mailStore)
             .environment(calls)
     }
 }
