@@ -148,6 +148,14 @@ final class IAPStore {
     /// Returns true if the purchase was accepted (verified on the server).
     /// Returns false if the user cancelled or the verification failed.
     func purchase(_ pack: CreditPack) async -> Bool {
+        // 🔴 THE PREVIOUS ATTEMPT'S ERROR IS NOT THIS ATTEMPT'S. Nothing
+        // cleared it, so failing a purchase, dismissing the sheet and
+        // reopening it pinned the error card under the CTA before the user had
+        // touched anything — and cancelling Apple's own sheet then re-fired
+        // the warning haptic for a failure that was already over. Cleared
+        // BEFORE `loadProducts`, which sets its own more specific message that
+        // the guard below depends on finding.
+        lastError = nil
         // If products haven't loaded yet (or returned empty), try once more
         // before giving up — covers the case where the sheet's .task is still
         // mid-fetch when the user taps Buy.
@@ -165,7 +173,11 @@ final class IAPStore {
             let result = try await product.purchase()
             switch result {
             case .success(let verification):
-                return await handle(verification)
+                let accepted = await handle(verification)
+                // A purchase that went through leaves no error behind, even if
+                // the shared transaction listener set one meanwhile.
+                if accepted { lastError = nil }
+                return accepted
             case .userCancelled:
                 return false
             case .pending:
