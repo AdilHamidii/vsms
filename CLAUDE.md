@@ -652,10 +652,43 @@ that could not absorb a median 1.11× price tick went **3,870 → 0**, p95 2.03�
 went 10,285 → 193, and zero routes ended up tighter than before, below their own
 cost, or loss-making.
 
-**Price does NOT predict delivery** (16% / 19% / 17% / 23% across ≤5¢ / 6–15¢ /
-16–40¢ / >40¢, n=32/69/23/40, drift inside the noise, cancels dominating every
-band). So dearer stock is not better stock, just more of it — there is no
-quality argument for hugging the floor.
+🔴 **PRICE DOES PREDICT DELIVERY, and this file said the opposite for weeks.**
+Re-measured 2026-08-20 on the SETTLED cohort (`status in ('received','expired')`,
+numbered, excluding app-default routes), July+August pooled:
+
+| wholesale paid | n | delivered |
+|---|---|---|
+| ≤5¢ | 33 | **12.1%** |
+| 6–15¢ | 51 | 47.1% |
+| 16–40¢ | 20 | 50.0% |
+| >40¢ | 14 | **78.6%** |
+
+The old claim (16/19/17/23%, "drift inside the noise") was computed over ALL
+orders — where ~60% are cancelled by the user at a median 57s against codes
+arriving at a median 58s. Impatience swamped the signal, and the conclusion
+inverted. **Never compute a delivery rate over unsettled orders.**
+
+Consequences that follow, all measured the same day:
+- The 5sim "collapse" (75.0% July → 22.4% August) is largely NOT the provider.
+  Median wholesale per settled order fell **17¢ → 6¢** at the cutover, and at
+  constant price the providers are indistinguishable (6–15¢: 5sim 42.3% n=26,
+  SMSPVA 38.5% n=13). Reweighting August's own band rates to July's price mix
+  recovers **47.8%** — price mix alone explains ~53% of the gap. HeroSMS fell
+  the same way (0/11 in its ≤5¢ band), which is the tell: it is provider-
+  independent.
+- SMSPVA's headline 78.7% was bought at >40¢, where it went 9 of 9.
+- `routes.pool_rate_pct` (5sim's published rate) does NOT predict our outcome
+  post-08-05: >60 → 37% (n=19), 30–60 → 41% (n=22), 1–29 → 38% (n=13). The
+  monotonicity previously recorded came from the pre-08-05 `rate24` stamp.
+
+⚠️ **Confounded, and honestly so:** 31 of 32 default-landed ≤5¢ orders came
+from users who had never paid. Cheap inventory and non-serious users cannot be
+separated at this n. Settling it needs a two-arm test — default routes forced
+to ≥15¢ for two weeks — at ~60 settled orders per arm. **Owner declined that
+change on 2026-08-20**, betting on the 5-credit signup grant instead; the grant
+does move new users out of the ≤5¢ band (5 credits ≈ 20¢ at 5sim's divisor),
+but the app's own default picker is unchanged and still delivers 4.0% (n=50)
+against 41.2% (n=102) for routes users pick themselves.
 
 **Changing `CREDIT_DIVISOR` silently breaks the PREMIUM tier until you backfill
 `routes.premium_credits`.** This bit us on the 3× → 6× change (2026-07-25).
