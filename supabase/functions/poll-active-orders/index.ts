@@ -74,6 +74,13 @@ const FAIL_FAST_SECONDS_BY_PROVIDER: Record<string, number> = { herosms: 150 };
 // crowd out the polling loop below, which is what delivers codes.
 const FAIL_FAST_LIMIT = 25;
 
+// How many times the late-watch sweep may attempt markDead() on one order
+// before giving up on it for good. See the block at the release site below —
+// the count exists because `late_watch_until` alone cannot express "retry, but
+// not forever", and both orderings of (clear the flag, release the number) that
+// rely on it alone are wrong in one direction or the other.
+const MAX_LATE_RELEASE_ATTEMPTS = 5;
+
 function validateCronSecret(req: Request): boolean {
   const header = req.headers.get("x-cron-secret");
   const expected = Deno.env.get("CRON_SECRET");
@@ -518,7 +525,7 @@ Deno.serve(async (req) => {
   const nowIso = new Date().toISOString();
   const { data: lateWatch, error: lateErr } = await sb
     .from("orders")
-    .select("id, user_id, cost_credits, provider, smspva_id, late_watch_until, service:service_id ( name )")
+    .select("id, user_id, cost_credits, provider, smspva_id, late_watch_until, late_release_attempts, service:service_id ( name )")
     .not("late_watch_until", "is", null)
     .is("otp", null)
     // 'expired' as well as 'canceled' since the fail-fast sweep above: it
@@ -555,30 +562,76 @@ Deno.serve(async (req) => {
       // only accidentally correct while the DB session is UTC — and inverts
       // silently if that ever changes, leaving every watched number unreleased.
       if (new Date(o.late_watch_until as string).getTime() <= Date.now()) {
-        // 🔴 STOP WATCHING FIRST, THEN RELEASE — the order of these two is
-        // load-bearing and it used to be the other way round with the write
-        // unchecked. `late_watch_until <= now()` stays true forever, so if the
-        // clear fails after markDead() the row is re-selected on EVERY minutely
-        // run and we re-cancel-and-ban an already-dead number at the provider,
-        // for the life of the row. That is a permanent, compounding leak of
-        // both provider calls and of the 50-row budget this sweep shares with
-        // real rescues.
+        // 🔴 THE RETRY HERE IS BOUNDED BY A COUNTER, NOT BY THE FLAG — and it
+        // has to be, because `late_watch_until` alone cannot express "retry,
+        // but not forever". Both orderings that rely on it alone are wrong in
+        // one direction:
         //
-        // Clearing first makes the failure bounded instead: if the clear fails
-        // we have released nothing and the next run retries the whole step
-        // (markDead is only reached once the flag is safely down); if markDead
-        // then throws, we forfeit one number's reclaimed wholesale — capped at
-        // ~$3.50, one-time, and the provider expires the number on its own
-        // anyway. A bounded one-time loss beats an unbounded minutely loop.
+        //   * markDead() first, clear second: `late_watch_until <= now()` stays
+        //     true forever, so a failed clear makes EVERY minutely run
+        //     re-cancel-and-ban an already-dead number at the provider, for the
+        //     life of the row — unbounded, compounding, and it starves the
+        //     50-row budget this sweep shares with real code rescues.
+        //   * clear first, markDead second: bounds the DB failure but inverts
+        //     the PROVIDER failure, which is the likelier of the two. The flag
+        //     is already down, so a throwing markDead() is a PERMANENT forfeit
+        //     with no retry — during a provider outage every expiring watched
+        //     number forfeits ~$3.50 instead of one.
+        //
+        // So: increment the attempt counter FIRST, then release. The counter is
+        // monotone and is written before the provider is touched, so the number
+        // of markDead() calls one order can ever cause is capped at
+        // MAX_LATE_RELEASE_ATTEMPTS whatever fails — while a transient provider
+        // outage is still retried on the next minutely run.
+        //
+        // THE BOUND, explicitly: at most MAX_LATE_RELEASE_ATTEMPTS (5) release
+        // attempts per order, i.e. ~5 minutes of retrying. On reaching it the
+        // row GIVES UP ONCE AND FOR ALL — `late_watch_until` is cleared, the row
+        // leaves the sweep permanently, and we forfeit that one number's
+        // reclaimable wholesale (~$3.50 worst case). The provider expires the
+        // number on its own regardless, and create-order's fresh-number
+        // guarantee means it can never be handed back to the same user for the
+        // same service. A bounded one-time loss beats both an unbounded
+        // provider loop and an outage that is never retried.
+        const attempts = (o.late_release_attempts as number | null) ?? 0;
+        if (attempts >= MAX_LATE_RELEASE_ATTEMPTS) {
+          const { error: giveUpErr } = await sb
+            .from("orders").update({ late_watch_until: null }).eq("id", o.id);
+          console.error(JSON.stringify({
+            alert: "late_watch_release_gave_up", order: o.id, attempts,
+            detail: giveUpErr?.message ?? null,
+          }));
+          continue;
+        }
+
+        // Checked, and the release is SKIPPED when it fails. If this write is
+        // what is broken, the row is re-selected next run but never reaches the
+        // provider — so the pathological case degrades to a row holding one of
+        // the 50 slots, never to a repeating cancel-and-ban.
+        const { error: bumpErr } = await sb
+          .from("orders")
+          .update({ late_release_attempts: attempts + 1 })
+          .eq("id", o.id);
+        if (bumpErr) {
+          console.error(JSON.stringify({
+            alert: "late_release_attempt_bump_failed", order: o.id,
+            detail: bumpErr.message,
+          }));
+          continue;   // nothing released; retried next run
+        }
+
+        await markDead((o.provider ?? "smspva") as OrderProvider, o.smspva_id);
+
+        // Released — stop watching. If THIS clear fails the row comes back next
+        // run with the counter already advanced, so it retries at most up to the
+        // cap and then gives up above. The re-kill loop stays closed.
         const { error: clearErr } = await sb
           .from("orders").update({ late_watch_until: null }).eq("id", o.id);
         if (clearErr) {
           console.error(JSON.stringify({
             alert: "late_watch_clear_failed", order: o.id, detail: clearErr.message,
           }));
-          continue;   // nothing released; retried next run
         }
-        await markDead((o.provider ?? "smspva") as OrderProvider, o.smspva_id);
         lateReleased++;
         continue;
       }
