@@ -106,6 +106,18 @@ struct AuthGate: View {
             // recovery path was silently dead. Both stores register here,
             // synchronously, in the same task that starts the sweep.
             mailStore.attach(api: api)
+            // 🔴 RESOLVED HERE, NOT IN THE DOMAIN SHEET. `isEntitled` starts
+            // false and `EmailDomainSheet.task` was its only refresher, so on
+            // every cold launch a PAYING subscriber's Home screen priced the
+            // free address as "Subscription", in the paywall colour, until
+            // they happened to open a sheet they had no reason to open. The
+            // app told a customer to buy what they had already bought.
+            //
+            // Deliberately NOT awaited: this reads `Transaction.currentEntitlements`
+            // locally and cold launch is already six sequential round-trips,
+            // so it resolves long before the splash lifts without any
+            // measurement lengthening the boot critical path.
+            Task { await mailStore.refreshEntitlement() }
             // One shared `Transaction.updates` listener lives on `IAPStore`
             // (see `SubscriptionStore`'s note on why) — this registers the
             // e-mail subscription's handler on it rather than opening a second
