@@ -172,9 +172,14 @@ struct SetNewPasswordScreen: View {
 
                 BottomBar {
                     // Stops promising a save that has already happened.
-                    PrimaryButton(label: changedPassword == nil
-                                  ? String(localized: "Save and sign in")
-                                  : String(localized: "Sign in"),
+                    // Tracks what is on screen, not merely what has happened
+                    // once: editing the field after a successful change means
+                    // there IS something left to save, and a button reading
+                    // "Sign in" would promise to use a password the user has
+                    // just replaced.
+                    PrimaryButton(label: changedPassword == password
+                                  ? String(localized: "Sign in")
+                                  : String(localized: "Save and sign in"),
                                   disabled: !canSubmit, action: submit)
                 }
             }
@@ -204,16 +209,31 @@ struct SetNewPasswordScreen: View {
         Task {
             let api = AuthAPI(client: self.api)
 
-            // Step 1 — change the password. Skipped once it has succeeded.
-            if changedPassword == nil {
+            // Step 1 — change the password. Skipped only while the field still
+            // holds the password the server already accepted.
+            //
+            // ⚠️ `changedPassword == nil` was the wrong condition: once set it
+            // was never re-entered, so a user who then EDITED the field to a
+            // different password and tapped the button was signed in with the
+            // old one and what they typed was silently discarded. Comparing
+            // against the field means a retry still never re-spends the
+            // recovery token, while a genuine second change is honoured.
+            if changedPassword != password {
+                let hadSaved = changedPassword != nil
                 do {
                     try await api.updatePassword(newPassword: password,
                                                  overrideToken: recoveryToken)
                     changedPassword = password
                 } catch {
                     RHaptic.warn()
-                    self.error = (error as? APIError)?.userMessage
-                        ?? String(localized: "Couldn't save your new password. Try again.")
+                    // A SECOND change can fail because the recovery token is
+                    // spent, and that user is not locked out — the password
+                    // they saved first still works, and saying so is the whole
+                    // difference between "try again" and knowing what to type.
+                    self.error = hadSaved
+                        ? String(localized: "We couldn't save that second change. The password you saved first is still the one that works.")
+                        : ((error as? APIError)?.userMessage
+                           ?? String(localized: "Couldn't save your new password. Try again."))
                     busy = false
                     return
                 }
@@ -228,9 +248,16 @@ struct SetNewPasswordScreen: View {
                 session.adopt(supa)
             } catch {
                 RHaptic.warn()
-                // States the part that is already true. Whatever happens next,
-                // the new password is the one that works.
-                self.error = String(localized: "Your new password is saved, but we couldn't sign you in just now. Try again with it.")
+                // States the part that is already true — whatever happens next,
+                // the new password is the one that works — WITHOUT discarding
+                // what the server said. A bare "try again" here read the same
+                // for `over_email_send_rate_limit` (waiting is the only fix)
+                // and `email_not_confirmed` (retrying can never fix it).
+                if let detail = (error as? APIError)?.userMessage, !detail.isEmpty {
+                    self.error = String(localized: "Your new password is saved. \(detail)")
+                } else {
+                    self.error = String(localized: "Your new password is saved, but we couldn't sign you in just now. Try again with it.")
+                }
                 busy = false
             }
         }
