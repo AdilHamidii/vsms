@@ -77,6 +77,42 @@ final class MailSubscriptionStore {
 
     private var apiClient: APIClient?
 
+    #if DEBUG
+    /// Prices for the App Store screenshot harness.
+    ///
+    /// Xcode applies `Products.storekit` when Xcode itself launches the app;
+    /// `simctl` does not, so a scripted screenshot run loads no products at all
+    /// and `MailPaywallScreen` renders "The App Store isn't offering this
+    /// subscription right now" with no plan rows and no CTA under it. That
+    /// exact frame has already been uploaded to App Store Connect once as a
+    /// subscription's review screenshot — a reviewer opened it and saw an
+    /// error instead of a purchase screen.
+    /// `SubscriptionStore.ScreenshotPricing` exists for the line paywall for
+    /// precisely the same reason; this is its e-mail twin.
+    ///
+    /// ⚠️ **These are not placeholder strings.** The frame BECOMES an App
+    /// Store review screenshot, so every figure has to equal what the store
+    /// will really charge. They mirror `Products.storekit`, which is itself
+    /// kept in step with App Store Connect by hand. If a price moves in ASC,
+    /// it moves in all three.
+    ///
+    /// The whole thing is `#if DEBUG`, so a Release archive cannot be put into
+    /// this state by any launch argument or server response — the same
+    /// guarantee `ScreenshotMode` documents for its sample data.
+    struct ScreenshotPricing {
+        var monthly = "$2.99"
+        var yearly = "$29.99"
+        /// ($2.99 × 12 − $29.99) ÷ ($2.99 × 12) = 16.4% → 16, which is what
+        /// `yearlySavingsPercent` computes from the live prices.
+        var savingsPercent = 16
+        var trial = "3 days"
+    }
+
+    /// Non-nil ONLY under `ScreenshotMode`. Every read of it is behind
+    /// `#if DEBUG`, so this is inert in a shipping build.
+    var screenshotPricing: ScreenshotPricing?
+    #endif
+
     func attach(api: APIClient) { self.apiClient = api }
 
     func product(for plan: MailPlan) -> Product? {
@@ -84,7 +120,76 @@ final class MailSubscriptionStore {
         return products.first { $0.id == id }
     }
 
+    /// Whether the paywall has anything to offer. The screen gates its plan
+    /// picker, price block and CTA on THIS rather than on `products` directly,
+    /// so the screenshot shim has exactly one place to answer from and the
+    /// three gates cannot disagree with each other.
+    var hasProducts: Bool {
+        #if DEBUG
+        if screenshotPricing != nil { return true }
+        #endif
+        return !products.isEmpty
+    }
+
+    /// The store's own price string, localized by StoreKit for the user's
+    /// storefront. Never hardcoded outside the DEBUG shim: the credit-pack
+    /// ladder drifted to $4.99-vs-€5.99 on its top revenue product precisely
+    /// because a price was assumed rather than read.
+    func displayPrice(for plan: MailPlan) -> String? {
+        #if DEBUG
+        if let s = screenshotPricing { return plan == .yearly ? s.yearly : s.monthly }
+        #endif
+        return product(for: plan)?.displayPrice
+    }
+
+    /// Yearly saving against twelve monthly payments, computed from the LIVE
+    /// StoreKit prices in the user's own currency. The two prices are set
+    /// independently in App Store Connect and per territory, so a percentage
+    /// written into the app is a claim that goes wrong silently the first time
+    /// either one moves.
+    var yearlySavingsPercent: Int? {
+        #if DEBUG
+        if let s = screenshotPricing { return s.savingsPercent }
+        #endif
+        guard let m = product(for: .monthly)?.price,
+              let y = product(for: .yearly)?.price, m > 0 else { return nil }
+        let twelve = m * 12
+        guard twelve > y else { return nil }
+        let pct = ((twelve - y) / twelve) * 100
+        return max(1, Int((pct as NSDecimalNumber).doubleValue.rounded()))
+    }
+
+    /// "3 days" — or nil when there is no trial to promise.
+    ///
+    /// 🔴 nil is the important case and it is NOT an error. Apple grants one
+    /// introductory offer per subscription GROUP per Apple ID, so someone who
+    /// already trialled the monthly gets nothing here and StoreKit reports no
+    /// offer. Every trial claim on the paywall hangs off this, so an ineligible
+    /// user is never shown "3 days free" and then charged immediately — which
+    /// is a refund, a one-star review, and an App Store 3.1.2 problem.
+    var yearlyTrialLabel: String? {
+        #if DEBUG
+        if let s = screenshotPricing { return s.trial }
+        #endif
+        guard let offer = product(for: .yearly)?.subscription?.introductoryOffer,
+              offer.paymentMode == .freeTrial else { return nil }
+        let n = offer.period.value
+        switch offer.period.unit {
+        case .day:   return n == 1 ? String(localized: "1 day")   : String(localized: "\(n) days")
+        case .week:  return n == 1 ? String(localized: "1 week")  : String(localized: "\(n) weeks")
+        case .month: return n == 1 ? String(localized: "1 month") : String(localized: "\(n) months")
+        case .year:  return n == 1 ? String(localized: "1 year")  : String(localized: "\(n) years")
+        @unknown default: return nil
+        }
+    }
+
     func load() async {
+        #if DEBUG
+        // The harness supplies every figure this screen renders. A real
+        // `Product.products(for:)` here would come back empty under `simctl`
+        // and could write `lastError` across the top of the frame.
+        if screenshotPricing != nil { return }
+        #endif
         do {
             products = try await Product.products(for: MailProduct.allIds)
         } catch {
