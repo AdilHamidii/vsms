@@ -85,126 +85,6 @@
         }
       }
     },
-    "We couldn't save that second change. The password you saved first is still the one that works.": {
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Die zweite Änderung konnte nicht gespeichert werden. Das zuerst gespeicherte Passwort gilt weiterhin."
-          }
-        },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "No pudimos guardar ese segundo cambio. La contraseña que guardaste primero sigue siendo la que funciona."
-          }
-        },
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Nous n'avons pas pu enregistrer ce second changement. Le mot de passe enregistré en premier reste celui qui fonctionne."
-          }
-        },
-        "it": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Non siamo riusciti a salvare questa seconda modifica. La password salvata per prima è ancora quella valida."
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "2回目の変更は保存できませんでした。最初に保存したパスワードが引き続き有効です。"
-          }
-        },
-        "pt-BR": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Não foi possível salvar essa segunda alteração. A senha que você salvou primeiro continua sendo a que funciona."
-          }
-        }
-      }
-    },
-    "Your new password is saved. %@": {
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Ihr neues Passwort ist gespeichert. %@"
-          }
-        },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Tu nueva contraseña está guardada. %@"
-          }
-        },
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Votre nouveau mot de passe est enregistré. %@"
-          }
-        },
-        "it": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "La tua nuova password è salvata. %@"
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "新しいパスワードは保存されました。%@"
-          }
-        },
-        "pt-BR": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Sua nova senha foi salva. %@"
-          }
-        }
-      }
-    },
-    "Your new password is saved, but we couldn't sign you in just now. Try again with it.": {
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Dein neues Passwort ist gespeichert, aber die Anmeldung hat gerade nicht geklappt. Versuch es damit noch einmal."
-          }
-        },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Tu nueva contraseña está guardada, pero no hemos podido iniciar sesión ahora mismo. Inténtalo de nuevo con ella."
-          }
-        },
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Votre nouveau mot de passe est enregistré, mais la connexion n'a pas abouti. Réessayez avec celui-ci."
-          }
-        },
-        "it": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "La nuova password è salvata, ma non siamo riusciti ad accedere ora. Riprova con questa."
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "新しいパスワードは保存されましたが、今はサインインできませんでした。新しいパスワードでもう一度お試しください。"
-          }
-        },
-        "pt-BR": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Sua nova senha foi salva, mas não conseguimos entrar agora. Tente de novo com ela."
-          }
-        }
-      }
-    },
     "%@ / month": {
       "localizations": {
         "de": {
@@ -28752,6 +28632,46 @@
         }
       }
     },
+    "We can't call this country yet.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dieses Land können wir noch nicht anrufen."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Todavía no podemos llamar a este país."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nous ne pouvons pas encore appeler ce pays."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Non possiamo ancora chiamare questo Paese."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "この国にはまだ発信できません。"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ainda não conseguimos ligar para este país."
+          }
+        }
+      }
+    },
     "We couldn't confirm your purchase. Please try again.": {
       "localizations": {
         "de": {
@@ -29109,6 +29029,46 @@
           "stringUnit": {
             "state": "translated",
             "value": "Não foi possível carregar seu código de convite. Seus créditos e pedidos não são afetados."
+          }
+        }
+      }
+    },
+    "We couldn't save that second change. The password you saved first is still the one that works.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Die zweite Änderung konnte nicht gespeichert werden. Das zuerst gespeicherte Passwort gilt weiterhin."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No pudimos guardar ese segundo cambio. La contraseña que guardaste primero sigue siendo la que funciona."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nous n'avons pas pu enregistrer ce second changement. Le mot de passe enregistré en premier reste celui qui fonctionne."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Non siamo riusciti a salvare questa seconda modifica. La password salvata per prima è ancora quella valida."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "2回目の変更は保存できませんでした。最初に保存したパスワードが引き続き有効です。"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Não foi possível salvar essa segunda alteração. A senha que você salvou primeiro continua sendo a que funciona."
           }
         }
       }
@@ -31472,6 +31432,86 @@
           "stringUnit": {
             "state": "translated",
             "value": "Seu novo número, pronto agora."
+          }
+        }
+      }
+    },
+    "Your new password is saved, but we couldn't sign you in just now. Try again with it.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dein neues Passwort ist gespeichert, aber die Anmeldung hat gerade nicht geklappt. Versuch es damit noch einmal."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tu nueva contraseña está guardada, pero no hemos podido iniciar sesión ahora mismo. Inténtalo de nuevo con ella."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Votre nouveau mot de passe est enregistré, mais la connexion n'a pas abouti. Réessayez avec celui-ci."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "La nuova password è salvata, ma non siamo riusciti ad accedere ora. Riprova con questa."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "新しいパスワードは保存されましたが、今はサインインできませんでした。新しいパスワードでもう一度お試しください。"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sua nova senha foi salva, mas não conseguimos entrar agora. Tente de novo com ela."
+          }
+        }
+      }
+    },
+    "Your new password is saved. %@": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ihr neues Passwort ist gespeichert. %@"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tu nueva contraseña está guardada. %@"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Votre nouveau mot de passe est enregistré. %@"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "La tua nuova password è salvata. %@"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "新しいパスワードは保存されました。%@"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sua nova senha foi salva. %@"
           }
         }
       }
