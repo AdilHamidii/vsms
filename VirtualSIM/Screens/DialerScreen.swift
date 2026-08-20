@@ -294,22 +294,7 @@ struct DialerScreen: View {
 /// A 4×3 keypad. Digits carry their letters because a phone keypad without
 /// them does not read as one.
 struct Dialpad: View {
-    @Environment(\.theme) private var theme
     var onKey: (String) -> Void
-
-    /// When the 0 key's long press last emitted a `+`.
-    ///
-    /// 🔴 A `simultaneousGesture` DOES NOT SUPPRESS THE BUTTON'S OWN ACTION.
-    /// The long press fired `onKey("+")` at 0.4s and then, on finger-up, the
-    /// Button ALSO fired `onKey("0")` — so the only way to type a `+` produced
-    /// `"+0"`, France became `+033…`, `voiceRates.match(dialled:)` matched no
-    /// prefix, and the readout said "We can't call this country yet." with the
-    /// call button disabled. International calling — priced in credits and
-    /// newly promoted on the store screen — was unreachable by construction.
-    ///
-    /// Timestamped rather than a bare flag so a long press the user drags away
-    /// from (Button action never fires) cannot swallow the NEXT real tap on 0.
-    @State private var plusEmittedAt: Date?
 
     private static let keys: [[(String, String)]] = [
         [("1", ""),    ("2", "ABC"), ("3", "DEF")],
@@ -323,54 +308,111 @@ struct Dialpad: View {
             ForEach(Array(Self.keys.enumerated()), id: \.offset) { _, row in
                 HStack(spacing: 26) {
                     ForEach(row, id: \.0) { key, letters in
-                        Button {
-                            // The long press below has already emitted the
-                            // `+`; letting this fire too appended a `0` to it.
-                            // See `plusEmittedAt`.
-                            if key == "0", let at = plusEmittedAt,
-                               Date().timeIntervalSince(at) < 1.5 {
-                                plusEmittedAt = nil
-                                return
-                            }
-                            onKey(key)
-                        } label: {
-                            VStack(spacing: 1) {
-                                Text(verbatim: key)
-                                    .font(RFont.display(27, weight: .regular))
-                                    .foregroundStyle(theme.text)
-                                if !letters.isEmpty {
-                                    Text(verbatim: letters)
-                                        .font(RFont.text(10, weight: .semibold))
-                                        .tracking(1.2)
-                                        .foregroundStyle(theme.text3)
-                                }
-                            }
-                            .frame(width: 72, height: 62)
-                            .background(theme.chipBg, in: .circle)
-                            .contentShape(.circle)
-                        }
-                        .pressable(0.9)
-                        // 🔴 `+` WAS UNREACHABLE. The 0 key has always PRINTED
-                        // "+" as its subtitle, exactly like a hardware phone —
-                        // but nothing was bound to it, so no user could ever
-                        // type an international number. Long-press is the iOS
-                        // convention every phone keypad uses, and it is what
-                        // the printed glyph has been promising all along.
-                        .simultaneousGesture(
-                            LongPressGesture(minimumDuration: 0.4)
-                                .onEnded { _ in
-                                    guard key == "0" else { return }
-                                    RHaptic.select()
-                                    // Stamped BEFORE emitting, because the
-                                    // Button's own action fires on finger-up
-                                    // and reads this to stand down.
-                                    plusEmittedAt = Date()
-                                    onKey("+")
-                                }
-                        )
+                        DialKey(key: key, letters: letters, onKey: onKey)
                     }
                 }
             }
         }
+    }
+}
+
+/// One keypad key, owning its ENTIRE press lifecycle.
+///
+/// 🔴 THIS IS DELIBERATELY NOT A `Button`, AND MUST NOT BECOME ONE AGAIN.
+/// The `+` every international number starts with is a long press on 0, and a
+/// `Button` cannot express that: `.simultaneousGesture` DOES NOT SUPPRESS THE
+/// BUTTON'S OWN ACTION, so the long press emitted `+` at 0.4s and the Button
+/// then emitted `0` on finger-up. The only way to type a `+` produced `"+0"`,
+/// France became `+033…`, `voiceRates.match(dialled:)` matched no prefix, and
+/// the readout said "We can't call this country yet." with the call button
+/// disabled. International calling — priced in credits and promoted on the
+/// store screen — was unreachable by construction.
+///
+/// The first fix guarded the Button's action on a 1.5s timestamp, and it did
+/// not work: **the Button fires on FINGER-UP, not at the 0.4s threshold**.
+/// Holding 0 for two seconds — exactly what a person does, hold until the `+`
+/// appears and then a moment longer — expired the window and typed `"+0"`
+/// again. It also left the stamp set when the finger was dragged off (the
+/// Button action never runs), swallowing the next genuine tap on 0.
+///
+/// The correct signal is not elapsed time. It is "this gesture already
+/// produced a `+`", cleared when the GESTURE ENDS. Both gestures below are
+/// ours, so their ordering is guaranteed rather than hoped for: the long press
+/// resolves at 0.4s with the finger still down, and the drag always ends later,
+/// on finger-up. The flag is cleared at BOTH points a press can end — on
+/// release, and on the first movement of the next press — so a cancelled or
+/// dragged-away press can never leave it set and eat a later tap.
+private struct DialKey: View {
+    @Environment(\.theme) private var theme
+    let key: String
+    let letters: String
+    let onKey: (String) -> Void
+
+    private static let size = CGSize(width: 72, height: 62)
+    /// Release slop, matching the forgiveness a `Button` gives: a finger that
+    /// drifts a few points during a tap still means that key.
+    private static let slop: CGFloat = 12
+
+    @State private var isPressed = false
+    @State private var emittedPlus = false
+
+    var body: some View {
+        VStack(spacing: 1) {
+            Text(verbatim: key)
+                .font(RFont.display(27, weight: .regular))
+                .foregroundStyle(theme.text)
+            if !letters.isEmpty {
+                Text(verbatim: letters)
+                    .font(RFont.text(10, weight: .semibold))
+                    .tracking(1.2)
+                    .foregroundStyle(theme.text3)
+            }
+        }
+        .frame(width: Self.size.width, height: Self.size.height)
+        .background(theme.chipBg, in: .circle)
+        .contentShape(.circle)
+        // Mirrors `PressScaleStyle(scale: 0.9)`, i.e. the `.pressable(0.9)`
+        // these keys carried while they were Buttons. One press vocabulary.
+        .scaleEffect(isPressed ? 0.9 : 1)
+        .animation(.easeOut(duration: 0.12), value: isPressed)
+        .simultaneousGesture(
+            // Resolves at the threshold, with the finger still down. Only 0
+            // carries a `+`, exactly as its printed subtitle has always
+            // promised — nothing was bound to that glyph before.
+            LongPressGesture(minimumDuration: 0.4, maximumDistance: Self.slop)
+                .onEnded { _ in
+                    guard key == "0" else { return }
+                    emittedPlus = true
+                    // No haptic here: `onKey` already fires one for every key,
+                    // and two in the same instant read as a stutter.
+                    onKey("+")
+                }
+        )
+        .simultaneousGesture(
+            DragGesture(minimumDistance: 0)
+                .onChanged { _ in
+                    guard !isPressed else { return }
+                    isPressed = true
+                    // A press cancelled without ever ending cannot leave its
+                    // `+` behind to swallow this one.
+                    emittedPlus = false
+                }
+                .onEnded { v in
+                    isPressed = false
+                    let alreadyPlus = emittedPlus
+                    emittedPlus = false
+                    guard !alreadyPlus else { return }
+                    // Dragging off a key types nothing, as on every dialer.
+                    guard CGRect(origin: .zero, size: Self.size)
+                        .insetBy(dx: -Self.slop, dy: -Self.slop)
+                        .contains(v.location) else { return }
+                    onKey(key)
+                }
+        )
+        .accessibilityElement(children: .combine)
+        .accessibilityAddTraits(.isButton)
+        // VoiceOver activation drives neither gesture, so the key needs its own
+        // action or it becomes untappable for anyone using it.
+        .accessibilityAction { onKey(key) }
     }
 }
