@@ -1751,6 +1751,30 @@ evidence needed to notice it.
 **Generalise it: if a value decides money and the device can set it, the device
 must not be the one that settles.**
 
+🔴 **`provider_call_session_id` AND `provider_call_leg_id` ARE CLIENT-SUPPLIED,
+DESPITE THE NAMES. THEY ARE NEVER PROVIDER EVIDENCE.** They are written only by
+`attach_line_call_session`, whose argument is `report-line-call`'s request body
+verbatim (`p_session: body.session_id ?? null`); `telnyx-webhook` handles no
+call events. **Nothing in this product writes a call identifier from a source
+the device does not control.**
+
+This is not a hypothetical. On 2026-08-20 `settle_stale_calls` was changed to
+bill ZERO when both ids are null — "the call never reached Telnyx" — explicitly
+choosing that gate over a `status` gate because `status` is client-supplied.
+Same column, same problem, hidden by the name. It made **silence the winning
+move**: never report (or force-quit mid-call) and the 6-hour backstop refunded
+the whole reservation and the whole international credit block, with
+`sync-telnyx-cdr` unable to correct it because it matches on the ids the
+attacker suppressed. Reverted in `20260820120000`.
+
+**The only correct source of a call's duration is the provider's detail
+record.** `sync-telnyx-cdr` has matched ZERO in the product's history, so until
+it does, the backstop deliberately **over-bills rather than under-bills**: it
+charges the server-set reservation from dial time. An over-charge is bounded,
+visible in the ledger and refundable by hand; an under-charge is unbounded,
+invisible and repeatable. **Any future gate must key on data THE DEVICE CANNOT
+SET** — today no such field exists on `line_calls`.
+
 ### Support chat — user types in-app, owner answers from Telegram (2026-07-30)
 
 `support_threads` + `support_messages`, `support-send`, and a widened
