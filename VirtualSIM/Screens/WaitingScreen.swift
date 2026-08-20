@@ -28,7 +28,19 @@ struct WaitingScreen: View {
     @Environment(PushManager.self) private var push
 
     let order: Order
-    @State private var elapsed: Int = 0   // seeded from order.createdAt in .task
+    /// The clock, ticked once a second by the task below.
+    ///
+    /// 🔴 `elapsed` IS DERIVED FROM THE ORDER, NEVER STORED. It used to be the
+    /// stored `Int`, and `.task(id:)` restarts only AFTER the body has rendered
+    /// with the new order — so for one frame after a reroll the count still
+    /// belonged to the PREVIOUS order, `holdRemaining` was nil, and "Cancel &
+    /// refund" plus both reroll buttons were live on a number seconds old.
+    /// Every such tap returns 429 `cancel_too_early`. Keying the task shrank
+    /// that window from forever to one frame; deriving it closes it, because
+    /// a stale `now` measured against a fresh `createdAt` is at worst a
+    /// fraction of a second — it can never read as PAST the hold.
+    @State private var now = Date()
+    private var elapsed: Int { max(0, Int(now.timeIntervalSince(order.createdAt))) }
     @State private var copied = false
     @State private var showCancelConfirm = false
 
@@ -138,7 +150,7 @@ struct WaitingScreen: View {
             // staging is about the user's first 90 seconds with a number, not
             // about how long this view has been on screen.
             while !Task.isCancelled {
-                elapsed = max(0, Int(Date().timeIntervalSince(order.createdAt)))
+                now = Date()
                 try? await Task.sleep(nanoseconds: 1_000_000_000)
             }
         }
