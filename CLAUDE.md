@@ -2840,18 +2840,23 @@ SMS provider again, walk this list:
 Every number below has been wrong within a day of being written at least once.
 It is a starting point for "is this roughly right", never a citation.
 
-- **iOS**: `MARKETING_VERSION 2.0`, `CURRENT_PROJECT_VERSION 39`, iOS min
-  **18.0**, **120** Swift sources, and **3** SwiftPM dependencies (TelnyxRTC
-  4.1.2 → WebRTC 139.0.0, Starscream 4.0.8). (Counted 08-17.)
-  ⚠️ **2.0 IS LIVE, not "in review" — this line said otherwise for a week.**
-  Six numbers have been rented and five subscriptions bought through it since
-  08-15, which is only possible from a shipped build. Read App Store Connect;
-  this file has now been wrong about the review state three versions running.
-- **Backend**: **41** edge function dirs besides `_shared`, **19** `_shared`
-  files, **178** migration files, **20** pg_cron jobs (all active). (Counted
-  08-17. The previous figures — 39 / 14 / 150 — were stale by 2, 5 and 28 in
-  eleven days; run `ls | wc -l` rather than trusting this line, which has never
-  once been correct when checked.)
+- **iOS**: `MARKETING_VERSION 2.2`, `CURRENT_PROJECT_VERSION 42`, iOS min
+  **18.0**, **126** Swift sources, and **3** SwiftPM dependencies (TelnyxRTC
+  4.1.2 → WebRTC 139.0.0, Starscream 4.0.8). (Counted 2026-08-20 with
+  `find VirtualSIM -name '*.swift' | wc -l`.)
+  **2.1 is `READY_FOR_SALE` — verified against the ASC API on 2026-08-20, not
+  inferred.** 2.2 (build 42) was uploaded the same day.
+  ⚠️ **This line has been wrong about the review state FOUR versions running**,
+  each time by describing a submitted build as still in review after it shipped.
+  It is a decision error, not a typo: "still in review" is the argument for
+  cutting another release. Read ASC — `GET /v1/apps/6774768570/appStoreVersions`
+  answers it in one call — and never trust this bullet.
+- **Backend**: **45** edge function dirs besides `_shared`, **193** migration
+  files. (Counted 2026-08-20 with
+  `ls supabase/functions | grep -v _shared | wc -l` and
+  `ls supabase/migrations/*.sql | wc -l`. The previous figures — 41 / 178 —
+  were stale by 4 and 15 in three days; run the commands rather than trusting
+  this line, which has never once been correct when checked.)
   ✅ **The two deploy lists at the top of this file are EXHAUSTIVE**, asserted
   against that 41 programmatically on 08-17 — `rent-line-credits` and
   `sync-line-voice` were in NEITHER list until then, which is exactly how a
@@ -3172,6 +3177,38 @@ Also this day, each verified against live DB state rather than a deploy log:
 
 Reasoning for each of these lives in the topic section above; this is only an
 index, so "why is it like this" has a date to search for.
+
+- **08-19/20 — 2.2 (build 42): a bug + UX pass, red-teamed.** Four discovery
+  agents (client correctness, first-session UX, backend money paths, error
+  copy) produced ~30 candidates; 21 were fixed, then an adversarial pass broke
+  12 of the FIXES and those were corrected in turn.
+
+  🔴 **The lesson worth keeping: a fix can be worse than the bug, and only an
+  adversarial reader finds it.** `settle_stale_calls` was changed so a call
+  that "never connected" settles to zero, gated on `provider_call_session_id`
+  — chosen specifically to AVOID gating on client-supplied `status`. But that
+  column is written by `attach_line_call_session` straight from
+  `report-line-call`'s request body, so it is equally client-supplied, and the
+  new gate made SILENCE the winning move: never report, and the sweep billed
+  nothing at all, where before it cost 2 credits per dial. All six live
+  `line_calls` rows were already sitting at `credits_reserved = 0` by the time
+  it was caught. Reverted to billing the server-set reservation. **Any future
+  gate on call billing must key on data the DEVICE CANNOT SET** — and note
+  `provider_call_session_id` is client-supplied despite the name.
+
+  Also fixed: the waiting screen kept the previous order's clock across a
+  reroll (unkeyed `.task`), so cancel and both reroll buttons were live at t=0
+  and every tap 429'd; banner errors were classified by comparing RENDERED
+  STRINGS, so "you can cancel in 42 seconds" — which carries interpolated
+  server data — was treated as a blocking red error; the dialpad could not
+  produce a usable `+` at all, making international calling unreachable; Home
+  advertised a free e-mail address that was already spent, and printed the cash
+  value of a credit price; the notification delegate was registered after
+  launch, so a push tapped from a terminated app never deep-linked; a
+  `MailSubscriptionStore` on `AuthGate` survived sign-out and leaked one user's
+  entitlement to the next; the watchdog had been permanently red since 08-17
+  because `20260817100000` retired SMSPVA without writing the
+  `smspva_retired` flag its own guards read.
 
 - **08-18 (second stream, merged into 2.1)** The dialer never got out of the
   way of the call it placed: `InCallOverlay` is a root `.overlay` and the
