@@ -613,6 +613,19 @@ final class AppState {
                                       code: error.businessCode)
     }
 
+    /// Re-raise a failure another store has already classified.
+    ///
+    /// 🔴 The alternative — `state.lastError = someStore.lastError` — LAUNDERS
+    /// the code away, because that setter can only carry a message. Every such
+    /// error then classified as blocking: a red triangle that never
+    /// auto-dismisses, and on the `.line` flow the action block renders
+    /// nothing at all, so `line_exists` / `line_limit_reached` / `number_taken`
+    /// — limits the user can clear themselves, all listed as informational —
+    /// left the ✕ as the only way out of the screen.
+    func showError(_ banner: BannerError) {
+        lastBannerError = banner
+    }
+
     /// Cold-launch readiness. `SplashScreen` covers the app until this leaves
     /// `.loading`, so the first Home frame a user ever sees is a true one.
     ///

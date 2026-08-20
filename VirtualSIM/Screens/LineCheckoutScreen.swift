@@ -156,13 +156,18 @@ struct LineCheckoutScreen: View {
                     if state.line?.status.isLive == true {
                         RHaptic.success()
                         state.flow = nil
-                    } else if let msg = subs.lastError {
+                    } else if let failure = subs.lastFailure {
                         // A restore that recovers nothing must SAY so. Silence
                         // reads as "it worked" — the worst possible answer for
                         // the only person who ever taps this button: someone
                         // who has been charged and has no number.
+                        //
+                        // Re-raised WITH its code. Passing `lastError` here
+                        // dropped it, and a codeless banner is blocking —
+                        // which on this flow means a red triangle with no
+                        // action and no auto-dismiss.
                         RHaptic.warn()
-                        state.lastError = msg
+                        state.showError(failure)
                     }
                 }
             } label: {
@@ -669,8 +674,12 @@ struct LineCheckoutScreen: View {
             if ok {
                 RHaptic.success()
                 state.flow = .lineProvisioning
-            } else if let msg = subs.lastError {
-                state.lastError = msg
+            } else if let failure = subs.lastFailure {
+                // WITH its code — see the Restore branch above. `line_exists`,
+                // `line_limit_reached` and `number_taken` are all classified
+                // informational, and arriving here as a bare sentence made
+                // every one of them a dead-end blocking banner.
+                state.showError(failure)
             }
         }
     }

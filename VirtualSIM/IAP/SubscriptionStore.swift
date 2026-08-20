@@ -131,7 +131,26 @@ final class SubscriptionStore {
     }
     private(set) var isLoadingProduct = false
     private(set) var isPurchasing = false
-    var lastError: String?
+
+    /// The last failure WITH its backend code, for a caller that re-raises it
+    /// in the app's banner. Mirrors `AppState.lastBannerError` exactly, and for
+    /// the same reason: `ErrorBanner` classifies on the code, so a failure that
+    /// arrives as a bare sentence is treated as blocking — no auto-dismiss, and
+    /// no action button at all on the `.line` flow.
+    private(set) var lastFailure: AppState.BannerError?
+
+    /// Kept as the writable String surface every existing call site uses. A
+    /// plain assignment carries NO code, which is correct: those are all our
+    /// own copy or a StoreKit failure, and both should keep blocking.
+    var lastError: String? {
+        get { lastFailure?.message }
+        set { lastFailure = newValue.map { .init(message: $0, code: nil) } }
+    }
+
+    /// Record an `APIError` without discarding what the server said it was.
+    private func fail(_ error: APIError) {
+        lastFailure = .init(message: error.userMessage, code: error.businessCode)
+    }
 
     /// Set once a purchase has been verified AND the server has provisioned.
     /// The provisioning screen watches this to know the flow finished.
@@ -420,7 +439,7 @@ final class SubscriptionStore {
             // `IAPStore.restorePurchases()` sweeps it on the next launch and
             // the money is recoverable by construction rather than by a
             // support ticket.
-            lastError = apiErr.userMessage
+            fail(apiErr)
             return false
         } catch {
             lastError = String(localized: "Your subscription went through but we couldn't set the number up. It'll retry automatically.")
