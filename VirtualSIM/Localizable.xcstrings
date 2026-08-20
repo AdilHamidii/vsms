@@ -28873,6 +28873,46 @@
         }
       }
     },
+    "We couldn't finish that just now. Your credits are unchanged and your order is still running — please try again in a moment.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Das hat gerade nicht geklappt. Ihre Credits sind unverändert und Ihre Bestellung läuft weiter – bitte versuchen Sie es gleich noch einmal."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No pudimos completar eso ahora mismo. Tus créditos no han cambiado y tu pedido sigue activo: inténtalo de nuevo en un momento."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nous n'avons pas pu terminer cette action pour le moment. Vos crédits sont inchangés et votre commande est toujours en cours — veuillez réessayer dans un instant."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Non siamo riusciti a completare l'operazione adesso. I tuoi crediti non sono cambiati e il tuo ordine è ancora attivo: riprova tra un momento."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "今は完了できませんでした。クレジットは変わらず、注文も続いています。少ししてからもう一度お試しください。"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Não foi possível concluir isso agora. Seus créditos não mudaram e seu pedido continua ativo — tente novamente em instantes."
+          }
+        }
+      }
+    },
     "We couldn't get an address right now. Please try again.": {
       "extractionState": "stale",
       "localizations": {
