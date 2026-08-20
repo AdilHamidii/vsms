@@ -215,9 +215,10 @@ struct CreditsSheet: View {
             withAnimation(RMotion.content) { appeared = true }
             await iap.loadProducts()
             // Also here, not only in `onChange(of: productsLoaded)`: products
-            // are often already loaded when the sheet opens (Home fetches them
-            // for its "about $x" line), so that change never fires and a
-            // missing selected pack would keep its disabled CTA.
+            // are often already loaded when the sheet opens — `ContentView`
+            // preloads them behind the cold-launch reveal (Home's own "about
+            // $x" line is gone; the preload is not) — so that change never
+            // fires and a missing selected pack would keep its disabled CTA.
             snapToAvailable()
         }
         // An `optional` pack can be selected while the ladder is still loading

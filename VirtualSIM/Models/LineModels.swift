@@ -131,19 +131,20 @@ struct Line: Codable, Identifiable, Hashable {
     // I still do", so making them subtract is a tax paid on every glance —
     // the same reasoning as `DataRing`.
 
-    var smsRemaining: Int { max(0, smsAllowance - smsUsed) }
+    // ⚠️ There is deliberately NO `smsRemaining` / `hasSmsLeft` / `smsFraction`
+    // any more. Outbound SMS was dropped on 2026-08-18 and nothing can spend
+    // that allowance, so a "texts left" figure is a cap on a capability the
+    // product does not sell. It must not come back as an INBOUND counter
+    // either: inbound is never metered, and a received-texts figure would
+    // invent a limit that does not exist. `smsAllowance` / `smsUsed` stay as
+    // decoded columns of the `my_line` view and nothing renders them.
     var voiceSecondsRemaining: Int { max(0, voiceAllowanceSeconds - voiceUsedSeconds) }
     var voiceMinutesRemaining: Int { voiceSecondsRemaining / 60 }
 
-    var hasSmsLeft: Bool { smsRemaining > 0 }
     var hasVoiceLeft: Bool { voiceSecondsRemaining > 0 }
 
     /// 0…1 of the allowance consumed, for the bars. Guards a zero allowance so
     /// a misconfigured line renders empty rather than dividing by zero.
-    var smsFraction: Double {
-        guard smsAllowance > 0 else { return 0 }
-        return min(1, Double(smsUsed) / Double(smsAllowance))
-    }
     var voiceFraction: Double {
         guard voiceAllowanceSeconds > 0 else { return 0 }
         return min(1, Double(voiceUsedSeconds) / Double(voiceAllowanceSeconds))
@@ -154,12 +155,12 @@ struct Line: Codable, Identifiable, Hashable {
     /// subscriber a free extra allowance.
     var allowanceResetsAt: Date? { currentPeriodEnd }
 
-    // MARK: Send gating
+    // MARK: Call gating
     //
-    // Two different reasons a composer is disabled, and they must not be
-    // collapsed: one is "you have used your texts", the other is "your payment
-    // failed". Telling a past-due user they are out of texts would send them
-    // to wait for a reset that is not coming.
+    // Two different reasons a control is disabled, and they must not be
+    // collapsed: one is "you have used your minutes", the other is "your
+    // payment failed". Telling a past-due user they are out of minutes would
+    // send them to wait for a reset that is not coming.
 
     enum SendBlock: Hashable {
         case allowanceExhausted
@@ -168,24 +169,14 @@ struct Line: Codable, Identifiable, Hashable {
         case notLive
     }
 
-    // ⚠️ `sendBlock` and `callBlock` below now have NO CALLERS. `sendBlock`
-    // lost its last one when the composer was deleted in the 2026-08-18
-    // outbound-SMS pivot; `callBlock` had none before that — the dialer reads
-    // `voiceSecondsRemaining` directly. Kept rather than deleted because
-    // `callBlock` is the correct shape for the dialer's refusal and deleting
-    // it would invite the next person to hand-roll the check a fourth time.
+    // ⚠️ `callBlock` has NO CALLERS — the dialer reads `voiceSecondsRemaining`
+    // directly. Kept because it is the correct shape for the dialer's refusal
+    // and deleting it would invite the next person to hand-roll the check a
+    // fourth time. Its `sendBlock` twin is GONE: it lost its last caller when
+    // the composer was deleted in the 2026-08-18 outbound-SMS pivot, and
+    // unlike this one it has no future — there is nothing left to send.
     // A `SendBlock.message` accessor lived here for a few hours on 08-18 and
     // was removed with the composer that rendered it.
-
-    var sendBlock: SendBlock? {
-        switch status {
-        case .active, .grace:
-            return hasSmsLeft ? nil : .allowanceExhausted
-        case .pastDue:  return .pastDue
-        case .suspended: return .suspended
-        default:        return .notLive
-        }
-    }
 
     var callBlock: SendBlock? {
         switch status {

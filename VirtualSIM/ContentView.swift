@@ -230,17 +230,20 @@ struct ContentView: View {
             // `AuthGate`, before the restore sweep — doing it here meant the
             // sweep had already dropped the transaction. Do not move it back.
 
-            // StoreKit prices, BEHIND the reveal — nothing on Home waits for
-            // them, but Home cannot render its money line without them.
+            // StoreKit prices, BEHIND the reveal.
             //
-            // `iap.products` had exactly three writers, all inside CreditsSheet
-            // or `purchase()`, and `IAPStore.attach` only restores. So the "5 cr
-            // · about $2.50" line — which exists precisely because "cr" is
-            // otherwise undefined anywhere on that screen — rendered nothing
-            // until the user had opened the paywall at least once. `iap` is
-            // `@State` in `AuthGate`, so that was true on EVERY cold launch,
-            // not just the first: exactly the population for whom the unit is
-            // meaningless.
+            // ⚠️ Home's "about $x" money line is GONE, so this no longer feeds
+            // it. It stays because `CreditsSheet` is the only other reader and
+            // it opens on a tap: without the preload the paywall renders its
+            // ladder with no prices until StoreKit answers, on the one screen
+            // where the price IS the content. Nothing waits for it either way.
+            //
+            // Historical, and the reason this call exists at all: `iap.products`
+            // had exactly three writers, all inside CreditsSheet or
+            // `purchase()`, and `IAPStore.attach` only restores — so anything
+            // outside the paywall that quoted a price rendered nothing until
+            // the user had opened the paywall at least once. `iap` is `@State`
+            // in `AuthGate`, so that was true on EVERY cold launch.
             await iap.loadProducts()
         }
         // Keep polling a live email activation even when no screen shows it.

@@ -26,36 +26,40 @@ struct AllowanceStrip: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            HStack(alignment: .top, spacing: 16) {
-                // 🔴 THERE IS NO "texts left" GAUGE HERE, AND ADDING ONE BACK IN
-                // ANY FORM IS A REGRESSION. Outbound SMS was dropped from this
-                // product on 2026-08-18 — the composer is gone, `ThreadScreen`
-                // is read-only, `send-line-message` refuses every send with
-                // `outbound_sms_retired`, and both the store pitch and the
-                // checkout ledger say "Sending texts — Not yet". So
-                // `line.sms_used` is frozen at whatever it was and the gauge
-                // rendered a permanently full bar reading "200 texts left":
-                // a metered promise of a capability the product cannot honour,
-                // on the one screen a paying subscriber opens daily.
-                // `NumberDetailView` deleted its own copy of this row for the
-                // same reason, and its comment there also forbids re-purposing
-                // it as an INBOUND counter — inbound is unmetered, so a bar
-                // that only ever falls would misrepresent that too.
-                //
-                // Restored in the commit that shipped the dialer. It was held
-                // back while `flow = .dialer` was assigned nowhere, because a
-                // meter reading "78 minutes left" promises 78 spendable
-                // minutes on the screen a subscriber looks at every day. The
-                // rule it enforced still applies to anything added here: a
-                // gauge is a claim, so it ships with the capability or after
-                // it, never before.
-                gauge(
-                    icon: RIcon.phone,
-                    value: "\(line.voiceSecondsRemaining / 60)",
-                    unit: "minutes left",
-                    fraction: line.voiceFraction
-                )
-            }
+            // The `HStack(alignment: .top, spacing: 16)` that used to hold two
+            // gauges is gone with the second one — a single-child stack whose
+            // spacing applies to nothing. The gauge keeps its
+            // `.frame(maxWidth: .infinity)`, so the bar renders exactly as it
+            // did before this cleanup: full width.
+            //
+            // 🔴 THERE IS NO "texts left" GAUGE HERE, AND ADDING ONE BACK IN
+            // ANY FORM IS A REGRESSION. Outbound SMS was dropped from this
+            // product on 2026-08-18 — the composer is gone, `ThreadScreen`
+            // is read-only, `send-line-message` refuses every send with
+            // `outbound_sms_retired`, and both the store pitch and the
+            // checkout ledger say "Sending texts — Not yet". So
+            // `line.sms_used` is frozen at whatever it was and the gauge
+            // rendered a permanently full bar reading "200 texts left":
+            // a metered promise of a capability the product cannot honour,
+            // on the one screen a paying subscriber opens daily.
+            // `NumberDetailView` deleted its own copy of this row for the
+            // same reason, and its comment there also forbids re-purposing
+            // it as an INBOUND counter — inbound is unmetered, so a bar
+            // that only ever falls would misrepresent that too.
+            //
+            // Restored in the commit that shipped the dialer. It was held
+            // back while `flow = .dialer` was assigned nowhere, because a
+            // meter reading "78 minutes left" promises 78 spendable
+            // minutes on the screen a subscriber looks at every day. The
+            // rule it enforced still applies to anything added here: a
+            // gauge is a claim, so it ships with the capability or after
+            // it, never before.
+            gauge(
+                icon: RIcon.phone,
+                value: "\(line.voiceSecondsRemaining / 60)",
+                unit: "minutes left",
+                fraction: line.voiceFraction
+            )
             if showsResetDate, let reset = line.allowanceResetsAt {
                 // Allowances reset on RENEWAL, never on a calendar boundary —
                 // resetting on the 1st would hand a mid-month subscriber a free
