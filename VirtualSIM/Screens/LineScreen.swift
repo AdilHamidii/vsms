@@ -453,6 +453,24 @@ private struct NumberDetailView: View {
     @Environment(SubscriptionStore.self) private var subs
     let line: Line
 
+    /// Is the Apple subscription paying for THIS number?
+    ///
+    /// Apple allows one active subscription per group with no quantity, so it
+    /// can only ever pay for one line — while credits can rent as many as the
+    /// wallet allows. Nothing on the client can join the two: `my_line`
+    /// projects no billing source, and `line_subscriptions` is server-side and
+    /// FK-free by design.
+    ///
+    /// Two things we CAN substantiate: the number this launch's purchase
+    /// provisioned, and the degenerate case where the only live line there is
+    /// must be the subscribed one. Anything else is unattributable and renders
+    /// no plan row at all — the same rule as `ownedPlan`. A missing row is
+    /// honest; a wrong price on the wrong number is not.
+    private var isSubscriptionBillable: Bool {
+        if let e164 = subs.provisionedE164, e164 == line.e164 { return true }
+        return state.lines.filter { $0.status.isLive }.count == 1
+    }
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
@@ -508,7 +526,16 @@ private struct NumberDetailView: View {
                         // The period now comes from the entitlement the Apple
                         // ID actually holds, and when that is unknown the row
                         // is OMITTED. A missing row is honest.
-                        if let price = subs.ownedPlanPrice, let plan = subs.ownedPlan {
+                        //
+                        // 🔴 AND ONLY ON A LINE WE CAN ATTRIBUTE TO THAT
+                        // SUBSCRIPTION. Credits rent lines too, and `Line`
+                        // carries no billing source — `my_line` does not
+                        // project one — so a user holding one subscribed line
+                        // and one credit-rented line read "$99.99 / year" on
+                        // the number Apple charges nothing for. See
+                        // `isSubscriptionBillable`.
+                        if isSubscriptionBillable,
+                           let price = subs.ownedPlanPrice, let plan = subs.ownedPlan {
                             row(label: "Price",
                                 value: plan == .yearly
                                     ? String(localized: "\(price) / year")
