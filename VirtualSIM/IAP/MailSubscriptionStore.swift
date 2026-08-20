@@ -95,6 +95,16 @@ final class MailSubscriptionStore {
         await refreshEntitlement()
     }
 
+    /// Forget the entitlement when the ACCOUNT changes.
+    ///
+    /// 🔴 This store is owned by `AuthGate`, so it outlives a sign-out — and
+    /// `isEntitled` is a per-ACCOUNT claim rendered as a price ("Included") on
+    /// Home. Without this, user A's entitlement stayed true for user B on the
+    /// same device until something happened to refresh it, telling a stranger
+    /// their addresses were paid for. The server refuses either way; the screen
+    /// was the thing that lied.
+    func clearEntitlement() { isEntitled = false }
+
     func refreshEntitlement() async {
         for await result in Transaction.currentEntitlements {
             if case .verified(let tx) = result, MailProduct.allIds.contains(tx.productID) {

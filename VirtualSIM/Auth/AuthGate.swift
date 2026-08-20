@@ -98,6 +98,18 @@ struct AuthGate: View {
         .environment(subs)
         .environment(mailStore)
         .environment(calls)
+        // The stores are owned HERE and so survive a sign-out. `isEntitled` is
+        // a per-ACCOUNT claim, so it must not: it would otherwise carry from
+        // one user to the next on a shared device, pricing the free address as
+        // "Included" for someone who has paid nothing. Re-read on the way back
+        // in, which is also what makes a mid-session sign-in correct.
+        .onChange(of: session.status) { _, status in
+            switch status {
+            case .signedOut:    mailStore.clearEntitlement()
+            case .signedIn:     Task { await mailStore.refreshEntitlement() }
+            case .bootstrapping: break
+            }
+        }
         .task {
             push.attach(api: api, session: session)
             // Registered BEFORE the sweep. `iap.attach` starts
