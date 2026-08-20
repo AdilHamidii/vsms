@@ -666,6 +666,27 @@ extension ContentView {
                 subs.selectedPlan = shot == .linePaywallYearly ? .yearly : .monthly
             }
 
+        case .mailPaywall, .mailPaywallYearly:
+            // The e-mail line, not the number line, so the tab behind the
+            // sheet is Home in e-mail mode — the surface this paywall is
+            // actually raised from (`confirmGetEmail` refusing a second free
+            // address with `subscription_required`).
+            state.tab = .home
+            state.emailMode = true
+            // Presented as a plain `.sheet(isPresented:)` rather than through
+            // `ActiveSheet`, because that is how the real screen is raised —
+            // see the note at the presentation site.
+            state.showMailPaywall = true
+            // Without this the paywall renders its "isn't offering this
+            // subscription right now" state with no plan rows and no CTA:
+            // `simctl` does not apply the scheme's StoreKit configuration, so
+            // no products load. Same shim, same reason, as the line paywall
+            // above. See `MailSubscriptionStore.ScreenshotPricing` — the
+            // figures in it are the LIVE App Store Connect prices, not
+            // placeholders.
+            mailStore.screenshotPricing = .init()
+            mailStore.selectedPlan = shot == .mailPaywallYearly ? .yearly : .monthly
+
         case .lineInbox:
             state.tab = .line
             state.lines = [ScreenshotMode.sampleLine]

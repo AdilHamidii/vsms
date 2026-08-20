@@ -46,6 +46,17 @@ enum ScreenshotMode {
         // thing that differs — the price, the period under the CTA and the
         // trial line all follow the selection.
         case linePaywallYearly
+        // The e-mail subscription's paywall, monthly selected. Its own group,
+        // its own two App Store Connect products, and therefore its own pair
+        // of review screenshots — a frame of the LINE paywall would show a
+        // different price for a different subscription.
+        case mailPaywall
+        // The same screen with the YEARLY plan selected, for the same reason
+        // `linePaywallYearly` exists: each App Store Connect subscription
+        // wants a review screenshot of ITSELF being bought, and the selected
+        // row is the only thing that differs — the price, the period under the
+        // CTA and the trial line all follow the selection.
+        case mailPaywallYearly
         case lineInbox       // an owned number, with conversations
         case home            // the temp-SMS store
         case waiting         // waiting for a code

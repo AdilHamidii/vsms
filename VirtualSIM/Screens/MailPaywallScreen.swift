@@ -62,7 +62,7 @@ struct MailPaywallScreen: View {
                 VStack(alignment: .leading, spacing: 0) {
                     intro.riseIn(appeared, index: 0)
 
-                    if store.products.isEmpty {
+                    if !store.hasProducts {
                         unavailable.padding(.top, 24).riseIn(appeared, index: 1)
                     } else {
                         planPicker.padding(.top, 20).riseIn(appeared, index: 1)
@@ -86,7 +86,7 @@ struct MailPaywallScreen: View {
             }
             .scrollIndicators(.hidden)
 
-            if !store.products.isEmpty {
+            if store.hasProducts {
                 BottomBar { cta }
             }
         }
@@ -145,9 +145,13 @@ struct MailPaywallScreen: View {
         }
     }
 
+    /// Reads its price through `store.displayPrice(for:)` rather than off a
+    /// `Product`, so the DEBUG screenshot shim can render the row when
+    /// `simctl` has loaded no products — see `MailSubscriptionStore
+    /// .ScreenshotPricing`.
     @ViewBuilder
     private func planRow(_ plan: MailPlan) -> some View {
-        if let product = store.product(for: plan) {
+        if let price = store.displayPrice(for: plan) {
             let active = store.selectedPlan == plan
             Button {
                 RHaptic.select()
@@ -162,7 +166,7 @@ struct MailPaywallScreen: View {
                             Text(plan == .monthly ? "Monthly" : "Yearly")
                                 .font(RFont.text(15, weight: .semibold))
                                 .foregroundStyle(theme.text)
-                            if plan == .yearly, let pct = yearlySavingsPercent {
+                            if plan == .yearly, let pct = store.yearlySavingsPercent {
                                 Text(verbatim: String(localized: "SAVE \(pct)%"))
                                     .font(RFont.text(10, weight: .heavy))
                                     .tracking(0.3)
@@ -173,7 +177,7 @@ struct MailPaywallScreen: View {
                             }
                         }
                         // The trial is on YEARLY only — see the file header.
-                        if plan == .yearly, let trial = yearlyTrialLabel {
+                        if plan == .yearly, let trial = store.yearlyTrialLabel {
                             Text("\(trial) free, then billed yearly")
                                 .font(RFont.text(12))
                                 .foregroundStyle(theme.ink)
@@ -181,7 +185,7 @@ struct MailPaywallScreen: View {
                         }
                     }
                     Spacer(minLength: 0)
-                    Text(verbatim: product.displayPrice)
+                    Text(verbatim: price)
                         .font(RFont.text(15, weight: .semibold))
                         .foregroundStyle(theme.text)
                         .monospacedDigit()
@@ -211,9 +215,9 @@ struct MailPaywallScreen: View {
         Card(radius: RRadius.md, elevation: .flat,
              fill: theme.inkSoft.opacity(0.5), border: theme.ink.opacity(0.28)) {
             VStack(alignment: .leading, spacing: 4) {
-                if let product = store.product(for: store.selectedPlan) {
+                if let price = store.displayPrice(for: store.selectedPlan) {
                     HStack(alignment: .firstTextBaseline, spacing: 6) {
-                        Text(product.displayPrice)
+                        Text(price)
                             .displayType(28)
                             .foregroundStyle(theme.text)
                         Text(store.selectedPlan == .yearly ? "per year" : "per month")
@@ -228,8 +232,8 @@ struct MailPaywallScreen: View {
                     // sentence) so it reuses that key's catalog entry and all
                     // six translations rather than adding a near-duplicate.
                     Group {
-                        if store.selectedPlan == .yearly, let trial = yearlyTrialLabel {
-                            Text("\(trial) free, then \(product.displayPrice).  Renews every year until you cancel. Cancel any time in your Apple ID settings.")
+                        if store.selectedPlan == .yearly, let trial = store.yearlyTrialLabel {
+                            Text("\(trial) free, then \(price).  Renews every year until you cancel. Cancel any time in your Apple ID settings.")
                         } else if store.selectedPlan == .yearly {
                             Text("Renews every year until you cancel. Cancel any time in your Apple ID settings.")
                         } else {
@@ -248,34 +252,12 @@ struct MailPaywallScreen: View {
         }
     }
 
-    /// Computed from the LIVE prices, never hardcoded — a percentage that
-    /// disagrees with the store is a claim we cannot keep.
-    private var yearlySavingsPercent: Int? {
-        guard let m = store.product(for: .monthly)?.price,
-              let y = store.product(for: .yearly)?.price, m > 0 else { return nil }
-        let twelve = m * 12
-        guard twelve > y else { return nil }
-        let pct = ((twelve - y) / twelve) * 100
-        return max(1, Int((pct as NSDecimalNumber).doubleValue.rounded()))
-    }
-
-    /// nil when the yearly product has no introductory offer, or this Apple ID
-    /// is no longer eligible for one — Apple grants a single intro offer per
-    /// subscription GROUP per Apple ID. Every trial claim on this screen hangs
-    /// off this, so an ineligible user is never shown "3 days free" and then
-    /// charged immediately.
-    private var yearlyTrialLabel: String? {
-        guard let offer = store.product(for: .yearly)?.subscription?.introductoryOffer,
-              offer.paymentMode == .freeTrial else { return nil }
-        let n = offer.period.value
-        switch offer.period.unit {
-        case .day:   return n == 1 ? String(localized: "1 day")   : String(localized: "\(n) days")
-        case .week:  return n == 1 ? String(localized: "1 week")  : String(localized: "\(n) weeks")
-        case .month: return n == 1 ? String(localized: "1 month") : String(localized: "\(n) months")
-        case .year:  return n == 1 ? String(localized: "1 year")  : String(localized: "\(n) years")
-        @unknown default: return nil
-        }
-    }
+    // The yearly saving and the trial label both live on
+    // `MailSubscriptionStore` rather than here. They used to be private to
+    // this view, which meant the DEBUG screenshot shim could not reach them
+    // and a captured frame would have shown a price with no SAVE badge and no
+    // trial line — the two things the yearly product's review screenshot has
+    // to prove. One definition, one place it can be wrong.
 
     // MARK: - Action
 
@@ -285,7 +267,7 @@ struct MailPaywallScreen: View {
 
     private var ctaLabel: String {
         if store.isPurchasing { return String(localized: "Confirming…") }
-        guard let product = store.product(for: store.selectedPlan) else {
+        guard let price = store.displayPrice(for: store.selectedPlan) else {
             return String(localized: "Subscribe")
         }
         // Single-argument interpolations only, deliberately — `priceBlock`
@@ -296,10 +278,10 @@ struct MailPaywallScreen: View {
         // extractor would generate (this file's multi-argument keys are
         // NOT consistently positional — verified against the catalog rather
         // than assumed).
-        if store.selectedPlan == .yearly, let trial = yearlyTrialLabel {
+        if store.selectedPlan == .yearly, let trial = store.yearlyTrialLabel {
             return String(localized: "Start \(trial) free")
         }
-        return String(localized: "Subscribe — \(product.displayPrice)")
+        return String(localized: "Subscribe — \(price)")
     }
 
     private func buy() {
