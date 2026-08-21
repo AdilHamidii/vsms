@@ -175,7 +175,7 @@ supabase functions deploy create-order check-order cancel-order register-push ia
   create-email-order check-email-order email-domains support-send \
   search-line-numbers reserve-line-number verify-line-subscription rent-line-credits \
   send-line-message line-thread-action mint-line-token begin-line-call report-line-call \
-  record-attribution verify-email-subscription
+  record-attribution verify-email-subscription swap-line-number
 # Cron-gated functions MUST ship --no-verify-jwt: their pg_cron relays send
 # only x-cron-secret, no Authorization header. winback lived in the JWT group
 # until 2026-07-21 and silently 401'd on every daily run — zero nudges ever
@@ -574,8 +574,17 @@ policy is now:
 
 ```sql
 app_config_read: SELECT to authenticated
-  using (key = any (array['maintenance','announcement','esim_paused']))
+  using (key = any (array['maintenance','announcement','esim_paused',
+                          'lines_paused','line_swap_credits']))
 ```
+
+⚠️ **FIVE keys as of 2026-08-21, not three** — `lines_paused` and
+`line_swap_credits` were added later and this block claimed three for weeks.
+Re-read the live policy (`select qual from pg_policies where
+tablename='app_config'`) rather than quoting this list. Widening it by one
+named key is the ONLY safe way to publish a value; `line_swap_credits` is
+published because the swap confirmation dialog must quote a price the owner
+can change without a release.
 
 **Never** replace that with `using (true)` — it would publish the balances and
 the watchdog verdict to anyone holding the publishable key. Verified after the
@@ -1754,6 +1763,58 @@ after any change**, both a number that must be refused and one that must not.
 pricing API. Nine destinations (CH, JP, NZ, SI, HR, FI, SK, AT, LV/EE) sit close
 enough to plausible mobile termination that a single expensive MNO range inside
 them could go negative. Replace them from the real rate deck before volume.
+
+### Swapping a line's number — 5 credits (2026-08-21)
+
+`swap-line-number` replaces a rented line's phone number with a fresh one in
+the **same area code**, charging `app_config.line_swap_credits` (**5** today;
+`line_swap_cooldown_days` is **0**, i.e. no cooldown). Built as **refund
+defence, not revenue**: a yearly subscriber is locked in for a year, so a
+number that gets spam-flagged leaves them with $99.99 of dead product and one
+move — `reportaproblem.apple.com`, which we cannot decline. ~$2.00 net against
+~$1 of Telnyx cost is a thin margin by this app's standards and the right
+trade against a refund twenty times larger.
+
+**⚠️ It is NOT a retention fix, and the data says so.** Measured 2026-08-21
+across 13 subscriptions: **8 inbound messages lifetime, on 5 of 13 lines**.
+Nobody has worn a number out — they are not using them at all. Do not cite
+this feature as an answer to churn.
+
+🔴 **THE ROW IS MUTATED IN PLACE, and it has to be.**
+`phone_lines_one_apple_line_per_user` is a partial unique index covering
+`provisioning|active|grace|past_due|suspended|releasing`, so for an
+Apple-billed user there is NO window in which a second row can exist:
+insert-then-release is rejected by the index, and release-then-insert leaves
+the user with no line at all if the insert fails. Mutating `e164` /
+`provider_number_id` also preserves the line id — the Telnyx connection,
+outbound profile and credential are all named `vsms-<line id>`, so they
+survive the swap untouched.
+
+**`status` never changes during a swap.** Adding a `'swapping'` value to
+`line_status` would need the client shipped first, and it would be a lie: the
+OLD number keeps receiving right up to the cutover. In-flight state lives in
+`line_number_swaps`, where a partial unique index (`state='claimed'`) makes a
+double-tap impossible without touching the enum.
+
+**`complete_line_swap` sets `provider_voice_attached = false` deliberately.**
+That flag is what `provisionLineVoice` keys its attach step on; leaving it
+true would mean the new number never rings and nothing would ever notice —
+the exact shape of the twelve-day outbound-voice outage.
+
+**The old number's release is tracked in `line_number_swaps`, not
+`phone_lines`.** Because the row is mutated, the old number stops being
+referenced by any line the instant the cutover lands, so the swap row is the
+only record it is still ours. `release-lines` drains
+`swaps_pending_release()`; that drain is deliberately NOT behind
+`line_orphan_release_enabled`, because an orphan is a number we cannot prove
+is unused while a swap row names exactly which number was replaced.
+
+Verified by `scripts/verify-line-swap.sql` — 10 behavioural groups in a
+rolled-back transaction, including double-cutover, double-refund,
+cross-user, and refuse-without-charge. ⚠️ **The Telnyx order/release half has
+never run against the live API** (doing so would spend float and give away a
+real customer's number); the call shapes are copied verbatim from
+`reserve-line-number`, which is proven. **The first real swap is the probe.**
 
 ### 🔴 The client is never authoritative about money
 

@@ -178,6 +178,25 @@ struct LineAPI {
         )
     }
 
+    /// Replace this line's phone number with a fresh one in the same area
+    /// code, paid in credits.
+    ///
+    /// ⚠️ The old number is released to the carrier and CANNOT be recovered —
+    /// not by us and not by paying again. Every caller must confirm before
+    /// invoking this, and the confirmation has to say so plainly.
+    ///
+    /// The line id is required rather than optional. `send` documents why the
+    /// nil-means-oldest fallback is worse than a failure, and it is worse
+    /// again here: guessing wrong would give away a number the user is still
+    /// using.
+    func swapNumber(lineId: String) async throws -> LineSwapResult {
+        struct Body: Encodable { let line_id: String }
+        return try await client.request(
+            .post, path: "functions/v1/swap-line-number",
+            body: Body(line_id: lineId)
+        )
+    }
+
     /// `lineId` names WHICH number to send from. A user may hold several, and
     /// the server falls back to a deterministic oldest-first pick when it is
     /// omitted — so leaving it nil does not fail, it sends from the wrong

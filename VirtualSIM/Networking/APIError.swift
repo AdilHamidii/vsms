@@ -239,6 +239,20 @@ enum APIError: Error, LocalizedError {
                     // out of money": it is our problem, not something the user
                     // can act on, and no charge was made.
                     return String(localized: "We can't set up new numbers right now. Please try again later. You haven't been charged.")
+                // Swapping a line's number. Mapped in the same commit as
+                // `swap-line-number`, per the standing rule — every one of
+                // these leaves the user's EXISTING number working and their
+                // credits returned, so none of the copy may sound like a loss.
+                case "swap_in_progress":
+                    return String(localized: "We're already getting you a new number. Give it a moment.")
+                case "swap_too_soon":
+                    return String(localized: "You've changed this number recently. You can change it again a little later.")
+                case "swap_unavailable":
+                    // Covers the float guard and an unparseable number — both
+                    // are ours, neither is actionable, and nothing was charged.
+                    return String(localized: "We can't change this number right now. Please try again later. You haven't been charged.")
+                case "line_not_active":
+                    return String(localized: "This number has to be active before you can change it.")
                 case "subscription_bound":
                     return String(localized: "That subscription is already linked to another account.")
                 case "sandbox_not_provisioned":
