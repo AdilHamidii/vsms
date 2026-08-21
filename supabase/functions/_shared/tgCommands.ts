@@ -263,6 +263,22 @@ const GROUP_ORDER: CommandSpec["group"][] = [
  *  purchase figure is Production receipts only. A rate quoted without those
  *  three caveats is a different number, and the owner has already made
  *  decisions off the un-caveated version. */
+/** 🔴 `args` and `summary` are AUTHOR-written plain text and they contain
+ *  angle brackets — `<service> [country]` is the whole grammar of /route. Sent
+ *  through Telegram's HTML parse_mode unescaped, that is an unsupported start
+ *  tag, and Telegram rejects the ENTIRE message with 400 `can't parse
+ *  entities`. The visible symptom is not a broken line: it is `/help`
+ *  answering with NOTHING AT ALL, and the unknown-command fallback pointing at
+ *  a /help that also says nothing.
+ *
+ *  `help` is deliberately NOT escaped — its doc comment declares Telegram HTML
+ *  allowed, and it carries <code> spans on purpose.
+ *
+ *  Local, so this file keeps its "metadata only, no imports" property. */
+function escHtml(v: string): string {
+  return v.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
 export function helpText(): string {
   const lines: string[] = ["🤖 <b>vSMS ops</b> — every command", ""];
   for (const group of GROUP_ORDER) {
@@ -270,10 +286,10 @@ export function helpText(): string {
     if (inGroup.length === 0) continue;
     lines.push(`<b>${group}</b>`);
     for (const c of inGroup) {
-      const args = c.args ? ` <i>${c.args}</i>` : "";
-      lines.push(`/${c.name}${args} — ${c.summary}`);
+      const args = c.args ? ` <i>${escHtml(c.args)}</i>` : "";
+      lines.push(`/${escHtml(c.name)}${args} — ${escHtml(c.summary)}`);
       if (c.periods && c.defaultPeriod) {
-        lines.push(`     <i>default: ${c.defaultPeriod}</i>`);
+        lines.push(`     <i>default: ${escHtml(c.defaultPeriod)}</i>`);
       }
       if (c.help) lines.push(`     ${c.help}`);
     }
