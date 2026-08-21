@@ -451,7 +451,32 @@ private struct NumberDetailView: View {
     @Environment(\.theme) private var theme
     @Environment(AppState.self) private var state
     @Environment(SubscriptionStore.self) private var subs
+    @Environment(APIClient.self) private var api
     let line: Line
+
+    @State private var confirmingSwap = false
+    @State private var swapping = false
+    /// The number we moved to, held only long enough to confirm it on screen.
+    /// Without this the row simply changes underneath the user and nothing
+    /// says the thing they paid for actually happened.
+    @State private var swappedTo: String?
+
+    /// What a swap costs, or nil if the server has not told us.
+    ///
+    /// ⚠️ NO CLIENT DEFAULT. `app_config.line_swap_credits` changes without a
+    /// release, so a fallback here would put a stale price in a confirmation
+    /// dialog — the same defect as the "+3 credits" onboarding card that
+    /// outlived its grant. Nil hides the control entirely, which is the honest
+    /// failure: better to offer nothing than to quote a price we cannot stand
+    /// behind.
+    private var swapCredits: Int? { state.appStatus.lineSwapCredits }
+
+    /// Only an ACTIVE line can be swapped — `begin_line_swap` refuses anything
+    /// else, and showing a button that the server will refuse is how a user
+    /// learns the feature is broken.
+    private var canSwap: Bool {
+        swapCredits != nil && line.status == .active
+    }
 
     /// Is the Apple subscription paying for THIS number?
     ///
@@ -562,6 +587,51 @@ private struct NumberDetailView: View {
                     .padding(.vertical, 4)
                 }
 
+                // ── Change this number ───────────────────────────────────────
+                // Placed ABOVE "Manage subscription" deliberately. A yearly
+                // subscriber is locked in for a year, so if their number gets
+                // spam-flagged or blocked by a service they care about, the
+                // most discoverable control on this screen must not be the one
+                // that cancels — the alternative to a $5 swap is a $99.99
+                // refund request we cannot decline.
+                if canSwap, let cost = swapCredits {
+                    GhostButton(
+                        label: swapping
+                            ? String(localized: "Getting a new number…")
+                            : String(localized: "Change this number"),
+                        icon: "arrow.triangle.2.circlepath"
+                    ) {
+                        RHaptic.select()
+                        confirmingSwap = true
+                    }
+                    .disabled(swapping)
+                    .padding(.top, 16)
+
+                    // The one fact that has to survive being skim-read: the
+                    // current number is gone for good. Telnyx puts a released
+                    // number into a hold-then-aging path that nobody — not the
+                    // user, not us, not by paying again — can pull it back
+                    // from. Anyone still receiving codes on it must be told
+                    // BEFORE they tap, not after.
+                    .alert(String(localized: "Change this number?"),
+                           isPresented: $confirmingSwap) {
+                        Button(String(localized: "Cancel"), role: .cancel) { }
+                        Button(String(localized: "Change number"), role: .destructive) {
+                            Task { await performSwap() }
+                        }
+                    } message: {
+                        Text("You'll get a new number in the same area code for \(cost) credits. \(PhoneFormat.national(line.e164)) is given up for good — you can't get it back, and anything still sending codes to it won't reach you.")
+                    }
+
+                    if let to = swappedTo {
+                        Text("Your new number is \(PhoneFormat.national(to)). Share it wherever you used the old one.")
+                            .font(RFont.text(12))
+                            .foregroundStyle(theme.text2)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .padding(.top, 8)
+                    }
+                }
+
                 // Apple's own sheet, never a custom cancel flow — a bespoke one
                 // cannot actually cancel anything and reads as a dark pattern.
                 GhostButton(label: "Manage subscription", icon: RIcon.gear) {
@@ -625,6 +695,39 @@ private struct NumberDetailView: View {
     }
 
     @MainActor
+    /// Buy a replacement number for this line.
+    ///
+    /// `swapping` is the re-entrancy guard as well as the button's busy state.
+    /// Without it a double-tap sends two requests, and while the server's
+    /// in-flight index refuses the second cleanly, the user would see an error
+    /// for something that actually worked.
+    ///
+    /// Reloading the line afterwards is not cosmetic: every other surface —
+    /// the header, the share sheet, the thread list — reads `state.lines`, so
+    /// skipping it leaves the whole tab showing a number we just gave away.
+    private func performSwap() async {
+        guard !swapping else { return }
+        swapping = true
+        swappedTo = nil
+        defer { swapping = false }
+
+        do {
+            let result = try await LineAPI(client: api).swapNumber(lineId: line.id)
+            await state.loadLine(using: LineAPI(client: api))
+            // The wallet moved, and the credits pill reads AppState.
+            await state.refreshWallet(using: WalletAPI(client: api))
+            swappedTo = result.phoneNumber
+            RHaptic.success()
+        } catch let error as APIError {
+            // Every failure path server-side refunds before returning, so the
+            // banner is the whole story — there is no "and you were charged"
+            // case to explain.
+            state.showError(error)
+        } catch {
+            state.lastError = APIError.badResponse.userMessage
+        }
+    }
+
     private func openManage() async {
         guard let scene = UIApplication.shared.connectedScenes
             .first(where: { $0.activationState == .foregroundActive }) as? UIWindowScene

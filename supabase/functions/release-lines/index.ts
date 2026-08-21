@@ -148,6 +148,47 @@ Deno.serve(async (req) => {
     released++;
   }
 
+  // ── Numbers left behind by a SWAP ────────────────────────────────────────
+  // `swap-line-number` releases the old number itself and only reaches this
+  // sweep when that call failed. It cannot go through `lines_awaiting_release`
+  // because a swap mutates the line row in place — the old number stops being
+  // referenced by any `phone_lines` row the instant the cutover lands, so
+  // `line_number_swaps` is the ONLY record that it is still ours.
+  //
+  // Note this is deliberately not gated behind `line_orphan_release_enabled`:
+  // an orphan is a number we cannot prove is unused, whereas a swap row names
+  // exactly which number was replaced and when. There is no matching to get
+  // wrong.
+  let swapReleased = 0, swapFailed = 0;
+  const { data: swapPending, error: swapErr } = await sb
+    .rpc("swaps_pending_release", { p_limit: 20 });
+  if (swapErr) {
+    console.error(JSON.stringify({
+      alert: "line_swap_release_lookup_failed", detail: swapErr.message,
+    }));
+  }
+  for (const row of (swapPending ?? []) as Array<Record<string, unknown>>) {
+    const r = await releaseNumber(String(row.provider_number_id));
+    if (faultOf(r)) {
+      swapFailed++;
+      console.error(JSON.stringify({
+        alert: "line_swap_old_release_failed", swap: row.swap_id,
+        e164: row.e164, detail: r.detail,
+      }));
+      continue;
+    }
+    const { error } = await sb.rpc("mark_swap_old_released", { p_swap: row.swap_id });
+    if (error) {
+      // The number is gone at the provider; failing to record it only means
+      // we try again next run and get a harmless "already released" fault.
+      console.error(JSON.stringify({
+        alert: "line_swap_release_unrecorded", swap: row.swap_id,
+        detail: error.message,
+      }));
+    }
+    swapReleased++;
+  }
+
   // ── The orphan sweep ─────────────────────────────────────────────────────
   const orphans = await findOrphans(sb);
 
@@ -158,6 +199,7 @@ Deno.serve(async (req) => {
     key: "line_release_heartbeat",
     value: {
       at, pending: (pending ?? []).length, released, failed, no_number: noNumber,
+      swap_released: swapReleased, swap_failed: swapFailed,
       orphans: orphans.list.length, orphans_released: orphans.releasedCount,
       orphan_release_enabled: orphans.enabled,
       orphan_error: orphans.error,
@@ -170,7 +212,8 @@ Deno.serve(async (req) => {
 
   return json({
     ok: true, pending: (pending ?? []).length, released, failed,
-    no_number: noNumber, orphans: orphans.list, orphans_released: orphans.releasedCount,
+    no_number: noNumber, swap_released: swapReleased, swap_failed: swapFailed,
+    orphans: orphans.list, orphans_released: orphans.releasedCount,
     orphan_release_enabled: orphans.enabled,
   });
 });

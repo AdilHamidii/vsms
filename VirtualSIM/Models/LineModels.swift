@@ -397,6 +397,25 @@ struct LineProvisionResult: Codable, Hashable {
     let e164: String?
 }
 
+/// The outcome of replacing a line's number.
+///
+/// `balance` comes back from the server rather than being decremented locally,
+/// for the same reason `LineSendResult.remaining` does: the price is a server
+/// value (`app_config.line_swap_credits`) that can change without a release,
+/// so a client that subtracts its own idea of the cost drifts silently.
+///
+/// `voiceReady` is false when the new number reached us but its voice is not
+/// yet pointed at the line's connection. The swap still succeeded — SMS works
+/// — and the hourly repair sweep fixes the rest, so this is worth SHOWING but
+/// never worth failing on.
+struct LineSwapResult: Codable, Hashable {
+    let phoneNumber: String
+    let previousNumber: String?
+    let creditsCharged: Int?
+    let balance: Int?
+    let voiceReady: Bool?
+}
+
 struct LineSendResult: Codable, Hashable {
     let ok: Bool
     let messageId: String?

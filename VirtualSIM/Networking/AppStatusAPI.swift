@@ -29,12 +29,23 @@ struct Announcement: Codable, Hashable {
 ///
 /// The table also holds provider balances and the watchdog verdict, so it is
 /// RLS-restricted to an explicit key whitelist (`maintenance`, `announcement`,
-/// `esim_paused`). Never widen that policy to `using (true)`.
+/// `esim_paused`, `lines_paused`, `line_swap_credits`). Never widen that policy
+/// to `using (true)` — the same table holds provider balances, the watchdog
+/// verdict and every sync cursor.
 struct AppStatus: Equatable {
     var announcement: Announcement?
     var esimPaused: Bool
+    /// What it costs to replace a rented line's number.
+    ///
+    /// NIL until the server says otherwise, and that is load-bearing: this is
+    /// a price the owner changes without a release, so the client must never
+    /// carry a default. Callers hide the swap affordance entirely rather than
+    /// quoting a figure the server has not confirmed — the rule that the
+    /// "+3 credits" onboarding card and `inviteJoinerCredits` both broke.
+    var lineSwapCredits: Int?
 
-    static let unknown = AppStatus(announcement: nil, esimPaused: false)
+    static let unknown = AppStatus(announcement: nil, esimPaused: false,
+                                   lineSwapCredits: nil)
 }
 
 struct AppStatusAPI {
@@ -48,6 +59,7 @@ struct AppStatusAPI {
         let key: String
         let announcement: Announcement?
         let flag: Bool?
+        let number: Int?
 
         enum CodingKeys: String, CodingKey { case key, value }
 
@@ -56,6 +68,7 @@ struct AppStatusAPI {
             key = try c.decode(String.self, forKey: .key)
             announcement = try? c.decode(Announcement.self, forKey: .value)
             flag = try? c.decode(Bool.self, forKey: .value)
+            number = try? c.decode(Int.self, forKey: .value)
         }
     }
 
@@ -63,13 +76,17 @@ struct AppStatusAPI {
         let rows: [Row] = try await client.request(
             .get, path: "rest/v1/app_config",
             query: [
-                URLQueryItem(name: "key", value: "in.(announcement,esim_paused)"),
+                URLQueryItem(name: "key",
+                             value: "in.(announcement,esim_paused,line_swap_credits)"),
                 URLQueryItem(name: "select", value: "key,value"),
             ]
         )
         return AppStatus(
             announcement: rows.first(where: { $0.key == "announcement" })?.announcement,
-            esimPaused: rows.first(where: { $0.key == "esim_paused" })?.flag ?? false
+            esimPaused: rows.first(where: { $0.key == "esim_paused" })?.flag ?? false,
+            // No `?? 5`. An absent or unreadable price hides the feature; it
+            // must never fall back to a number this build happens to remember.
+            lineSwapCredits: rows.first(where: { $0.key == "line_swap_credits" })?.number
         )
     }
 }
