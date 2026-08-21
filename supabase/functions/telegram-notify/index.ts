@@ -532,21 +532,20 @@ Deno.serve(async (req) => {
     const winStart = new Date(now.getTime() - ROUTE_FILL_WINDOW_MIN * 60_000).toISOString();
     const { data: dead, error } = await sb
       .from("orders")
-      .select("service_id, country_id, provider, user_id, status")
+      .select("service_id, country_id, user_id, status")
       .is("smspva_number", null)
       .in("status", ["expired", "canceled", "refunded"])
       .gte("created_at", winStart);
     if (error) console.error("route_fill scan failed:", error.message);
 
-    const buckets = new Map<string, { service: string; country: string; providers: Set<string>; users: Set<string>; nn: number }>();
+    const buckets = new Map<string, { service: string; country: string; users: Set<string>; nn: number }>();
     for (const o of dead ?? []) {
       const key = `${o.service_id}|${o.country_id}`;
       const b = buckets.get(key) ?? {
         service: String(o.service_id), country: String(o.country_id),
-        providers: new Set<string>(), users: new Set<string>(), nn: 0,
+        users: new Set<string>(), nn: 0,
       };
       b.nn++;
-      if (o.provider) b.providers.add(String(o.provider));
       if (o.user_id) b.users.add(String(o.user_id));
       buckets.set(key, b);
     }
@@ -554,9 +553,13 @@ Deno.serve(async (req) => {
     const hourBucket = now.toISOString().slice(0, 13);   // YYYY-MM-DDTHH, UTC
     for (const [key, b] of buckets) {
       if (b.nn < ROUTE_FILL_AT) continue;
-      const provider = b.providers.size === 1
-        ? [...b.providers][0]
-        : (b.providers.size === 0 ? "unknown" : [...b.providers].join(", "));
+      // Provider from ROUTES, never from the order row: `orders.provider`
+      // defaults to 'smspva' and is only overwritten once a number is
+      // reserved, so a numberless order names the default, not the provider
+      // that refused it.
+      const { data: rt } = await sb.from("routes").select("provider")
+        .eq("service_id", b.service).eq("country_id", b.country).maybeSingle();
+      const provider = (rt as { provider?: string } | null)?.provider ?? "unrouted";
       await claimAndSend("route_fill", `${key}|${hourBucket}`, alertHtml({
         sev: "🟠", title: `Route handing back no numbers: ${b.service}/${b.country}`,
         what: `<b>${b.nn}</b> order${b.nn === 1 ? "" : "s"} in the last ` +

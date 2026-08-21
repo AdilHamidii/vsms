@@ -499,6 +499,16 @@ cannot tell you:
   `status='canceled'`, `actual_cost_cents is null`, and that is all — stockout,
   `margin_too_low` and provider fault are indistinguishable at row level. So
   `/failures` says "got no number", never why; the function logs hold the why.
+- 🔴 **`orders.provider` DEFAULTS TO `'smspva'` AND IS ONLY OVERWRITTEN WHEN A
+  NUMBER IS RESERVED** (`create-order` stamps `provider: used` after a
+  successful reservation). So every numberless order — today's entire
+  `/failures` "no number" cohort — reads `smspva` whatever provider actually
+  refused it, and a grouped-by-provider view would "prove" a retired provider
+  is taking orders. Found 2026-08-21 when `/failures` said telegram/co was
+  smspva while `/route` said 5sim: the route was 5sim, the orders had never
+  been stamped. `ops_failures` and the `route_fill` alert take the provider
+  from `routes`, never from a numberless order row. If you ever need the
+  truth per order, it is in the function logs, not the column.
 - **A trial is `price_milli = 0` on a `.yearly` product in state active/grace.**
   There is no offer-type column; the yearly is the only product with a trial,
   so this heuristic is exact today and wrong the day a $0 promo ships on a

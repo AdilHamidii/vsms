@@ -163,10 +163,17 @@ nonum as (
   select * from scoped
    where smspva_number is null and status <> 'waiting'
 ),
+-- Provider comes from ROUTES, never from the order row: orders.provider
+-- DEFAULTS to 'smspva' and is only overwritten once a number is reserved, so
+-- every numberless order carries the default regardless of who refused it.
 nonum_routes as (
-  select service_id, country_id, provider, count(*)::int n,
-         count(distinct user_id)::int users, max(created_at) last_at
-    from nonum group by 1,2,3 order by n desc limit 15
+  select n.service_id, n.country_id,
+         coalesce(r.provider, 'unrouted') as provider, count(*)::int n,
+         count(distinct n.user_id)::int users, max(n.created_at) last_at
+    from nonum n
+    left join public.routes r
+      on r.service_id = n.service_id and r.country_id = n.country_id
+   group by 1,2,3 order by n desc limit 15
 ),
 -- numbered but no code, settled or cancelled.
 nocode as (
