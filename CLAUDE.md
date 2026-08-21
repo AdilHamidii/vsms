@@ -4005,9 +4005,15 @@ are as load-bearing as the findings:
   branch in it plus a ledger reversal — not a new function. **First live case
   2026-08-10**: user `ae492f1f` bought three packs in 58 seconds ($11.97, 22
   credits, zero orders placed), asked support for a refund ("it was a
-  mistake"), and was pointed at reportaproblem.apple.com — the only channel;
-  developers cannot issue Apple refunds. If Apple grants it, the 22 credits
-  stay spendable until this branch is written.
+  mistake"). ⚠️ **This file said they "were pointed at reportaproblem.apple.com";
+  the thread (`e36b25ba`) holds ZERO agent messages — verified 2026-08-21 —
+  so no in-app reply was ever sent. It sat unanswered for 11 days and was
+  closed unanswered on 2026-08-21 during the Telegram overhaul.** Apple is
+  still the only refund channel (developers cannot issue Apple refunds). If
+  Apple grants it, the 22 credits stay spendable until this branch is written.
+  Note also: **the bot has no way to CLOSE a support thread** — it can only
+  move `open → assigned` — so answered threads sat in `/support` for two
+  weeks reading as live work; a `/close` command is the missing piece.
 - ✅ **RESOLVED 2026-08-06 — the alert channel no longer fails silently.**
   `telegram-notify` destructures the error on its watchdog read; a failed read
   used to skip the entire paging block and return `200 {sent:0}`, byte-identical
