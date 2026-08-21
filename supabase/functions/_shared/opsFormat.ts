@@ -1662,14 +1662,14 @@ export function formatNow(raw: Record<string, unknown>): string {
     `${esc(num0(today.signups))} signups`,
     `${esc(num0(today.orders))} orders`,
     `${esc(num0(today.numbered))} numbered`,
-    `${esc(num0(today.codes))} codes`,
+    esc(n("code", num0(today.codes))),
   ];
   if (num0(today.purchases) > 0) {
     t.push(`${esc(n("purchase", num0(today.purchases)))} ` +
            `(${esc(num0(today.purchase_credits))}cr)`);
   }
   if (num0(today.emails) > 0) {
-    t.push(`${esc(num0(today.emails))} e-mails (${esc(num0(today.email_codes))} codes)`);
+    t.push(`${esc(n("e-mail", num0(today.emails)))} (${esc(n("code", num0(today.email_codes)))})`);
   }
   out.push(`📊 Today: ${t.join(" · ")}`);
 

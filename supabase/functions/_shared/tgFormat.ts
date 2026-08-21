@@ -25,6 +25,13 @@ const DT_DATE = new Intl.DateTimeFormat("en-GB", {
   timeZone: OPS_TZ, day: "numeric", month: "short", year: "numeric",
 });
 
+/** ICU builds differ on whether the weekday takes a comma ("Sat, 22 Aug" on
+ *  the edge runtime, "Sat 22 Aug" locally). Normalise so renderings are
+ *  byte-stable across environments and the fixtures match production. */
+function noWeekdayComma(s: string): string {
+  return s.replace(/^([A-Za-z]{3}),/, "$1");
+}
+
 function toDate(v: string | number | Date | null | undefined): Date | null {
   if (v == null || v === "") return null;
   const d = v instanceof Date ? v : new Date(v);
@@ -34,7 +41,7 @@ function toDate(v: string | number | Date | null | undefined): Date | null {
 /** "Sat 22 Aug, 01:16" (Paris). Empty string for a null/invalid input. */
 export function parisFull(v: string | number | Date | null | undefined): string {
   const d = toDate(v);
-  return d ? DT_FULL.format(d) : "";
+  return d ? noWeekdayComma(DT_FULL.format(d)) : "";
 }
 
 /** "01:16" (Paris). */
@@ -46,7 +53,7 @@ export function parisTime(v: string | number | Date | null | undefined): string 
 /** "Sat 22 Aug" (Paris). */
 export function parisDay(v: string | number | Date | null | undefined): string {
   const d = toDate(v);
-  return d ? DT_DAY.format(d) : "";
+  return d ? noWeekdayComma(DT_DAY.format(d)) : "";
 }
 
 /** "22 Aug 2026" (Paris) — for dates far enough out that the weekday is noise. */
@@ -64,7 +71,7 @@ export function parisSmart(
   if (!d) return "";
   if (DT_DAY.format(d) === DT_DAY.format(now)) return `today ${DT_TIME.format(d)}`;
   const diffDays = Math.abs(d.getTime() - now.getTime()) / 86_400_000;
-  return diffDays <= 8 ? DT_FULL.format(d) : DT_DATE.format(d);
+  return diffDays <= 8 ? noWeekdayComma(DT_FULL.format(d)) : DT_DATE.format(d);
 }
 
 /** Compact duration: "42s", "3m", "2h 05m", "3d 4h". Never negative. */
@@ -129,5 +136,5 @@ export function bar(share: number, width = 8): string {
 
 /** Footer stamped on every command reply: "🕒 Fri 21 Aug, 18:43 Paris". */
 export function stamp(now: Date = new Date()): string {
-  return `🕒 ${DT_FULL.format(now)} Paris`;
+  return `🕒 ${noWeekdayComma(DT_FULL.format(now))} Paris`;
 }
