@@ -789,6 +789,15 @@ extension ContentView {
             state.tab = .home
             state.emailMode = true
             state.activeEmailOrder = ScreenshotMode.sampleEmailOrder
+            // The real flow inserts the order into `emailOrders` before it
+            // opens this screen, and `hasUsedFreeEmail` reads that list — so
+            // without this the frame renders the "you still have a free one"
+            // card instead of the state a user actually arrives in.
+            state.emailOrders = [ScreenshotMode.sampleEmailOrder]
+            // Same shim, same reason, as the paywall frames: `simctl` does not
+            // apply the scheme's StoreKit configuration, so the plan price on
+            // the card below Done would otherwise never load.
+            mailStore.screenshotPricing = .init()
             state.flow = .emailCode
 
         case .emailStore:
