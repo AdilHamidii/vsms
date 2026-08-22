@@ -211,8 +211,10 @@ struct LineStoreScreen: View {
                            label: "Receive texts and codes in the app",
                            dense: true)
                 RowRule(inset: 54)
+                // "Make and take" until 2026-08-22. Inbound has never connected
+                // once; it is a "Not yet" row below. Mirror of LineCheckoutScreen.
                 BenefitRow(icon: RIcon.phone,
-                           label: "Make and take calls in the app",
+                           label: "Make calls from the app",
                            dense: true)
                 RowRule(inset: 54)
                 // Sold here for the first time. The rates, the credit cost and
@@ -253,6 +255,13 @@ struct LineStoreScreen: View {
                 RowRule(inset: 54)
                 BenefitRow(icon: RIcon.globe,
                            label: "Receiving texts from outside the US and Canada",
+                           hint: "Not yet",
+                           tint: theme.text3,
+                           dense: true)
+                    .opacity(0.72)
+                RowRule(inset: 54)
+                BenefitRow(icon: RIcon.phone,
+                           label: "Taking incoming calls",
                            hint: "Not yet",
                            tint: theme.text3,
                            dense: true)
@@ -560,7 +569,7 @@ struct LineStoreScreen: View {
             // and the broader one would be the next refund. Calling OUT is
             // genuinely worldwide. See providers.md "US NUMBERS ARE
             // DOMESTIC-ONLY FOR SMS".
-            Text("Receives texts from US and Canadian numbers and services, and calls from anywhere. Call out to Canada, the US and 50 countries.")
+            Text("Receives texts from US and Canadian numbers and services. Call out to Canada, the US and 50 countries.")
                 .font(RFont.text(12))
                 .foregroundStyle(theme.text2)
                 .lineSpacing(2)

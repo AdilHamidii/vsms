@@ -335,7 +335,11 @@ struct WaitingScreen: View {
         HeroCard {
             VStack(alignment: .leading, spacing: 0) {
                 MicroLabel("Your number")
-                MonoText(order.number, size: 32, weight: .medium, color: theme.text)
+                // Display is formatted; `copy()` still puts the raw E.164 on
+                // the pasteboard, which is what a sign-up form wants.
+                // `national()` only touches +1 numbers and leaves the other
+                // 68 countries untouched, so this can never half-format one.
+                MonoText(PhoneFormat.national(order.number), size: 32, weight: .medium, color: theme.text)
                     .padding(.top, 10)
                     .textSelection(.enabled)
                     .minimumScaleFactor(0.6)
