@@ -69,57 +69,17 @@ struct Service: Identifiable, Hashable, Codable {
         return String(localized: "Most codes arrive within \(mins) min.")
     }
 
-    /// How confident we are that this service delivers, from our own orders.
+    /// Minimum attempts before we state a record at all.
     ///
-    /// Deliberately coarse: with ~25 orders/day a precise percentage would be
-    /// false precision, and quoting "8%" invites an argument about the exact
-    /// number. What a user needs before spending a credit is simply whether
-    /// this is a good bet, a coin flip, or a long shot.
-    enum DeliveryOdds {
-        case good           // >=50% over a usable sample
-        case mixed          // 20-49%
-        case poor           // <20% — e.g. Meta, which blocks rental numbers
-        case unknown        // too little traffic to say anything honest
-    }
-
-    /// Minimum attempts before we assign a CONFIDENCE tier (good/mixed/poor).
-    /// Deliberately higher than the evidence floor below — a coloured
-    /// "this one rarely works" headline is a strong claim.
-    private static let minSample = 8
-
-    /// Minimum attempts before we state the raw record. Much lower, because
     /// "1 of the last 7 attempts got a code" is not a claim about a rate — it
-    /// IS the sample, and it carries its own uncertainty.
+    /// IS the sample, and it carries its own uncertainty. Nothing RENDERS a
+    /// record any more (owner decision 2026-08-22 — see the header of
+    /// `SuccessBadge.swift`); this floor survives because `deliversPoorly`
+    /// steers on it.
     ///
-    /// At the old single floor of 8 the services with the worst first-order
-    /// record showed nothing at all: whatsapp (1 of 7), telegram (0 of 0) and
-    /// discord (0 of 2) took **9 first orders and produced 0 codes** while
-    /// rendering the same generic "codes don't always arrive" as everything
-    /// else. Silence reads as fine — the exact failure already fixed at the
-    /// route level, still live one layer up.
-    ///
-    /// It also suppressed the POSITIVE signal: tiktok is **5 of 7**, the best
-    /// first-order service in the app, and said nothing.
+    /// The confidence tier (`DeliveryOdds`, floor 8) and the evidence line it
+    /// coloured were deleted with the surfaces that showed them.
     private static let minEvidenceSample = 3
-
-    var deliveryOdds: DeliveryOdds {
-        guard let attempts = observedAttempts, let codes = observedCodes,
-              attempts >= Self.minSample
-        else { return .unknown }
-        let pct = Double(codes) / Double(attempts)
-        if pct >= 0.50 { return .good }
-        if pct >= 0.20 { return .mixed }
-        return .poor
-    }
-
-    /// Honest one-liner for the checkout screen — states the sample, never a
-    /// bare percentage, so the claim is falsifiable and doesn't overstate.
-    var deliveryEvidence: String? {
-        guard let attempts = observedAttempts, let codes = observedCodes,
-              attempts >= Self.minEvidenceSample
-        else { return nil }
-        return String(localized: "\(codes) of the last \(attempts) attempts got a code")
-    }
 
     /// True when our OWN orders say this service usually rejects temporary
     /// numbers — the signal used to default checkout to the real-SIM tier.
@@ -135,15 +95,6 @@ struct Service: Identifiable, Hashable, Codable {
         guard let a = observedAttempts, let c = observedCodes else { return false }
         if c == 0 && a >= 2 { return true }
         return a >= Self.minEvidenceSample && Double(c) / Double(a) < 0.20
-    }
-
-    /// Measured delivery ratio over whatever sample exists, or nil with none.
-    /// Used to colour `deliveryEvidence` when the sample is too small for a
-    /// confidence tier — otherwise a GOOD record (tiktok, 5 of 7) inherits the
-    /// warning accent and reads as a warning.
-    var observedRatio: Double? {
-        guard let a = observedAttempts, a > 0, let c = observedCodes else { return nil }
-        return Double(c) / Double(a)
     }
 
     /// Cascading list of logo sources, in priority order.

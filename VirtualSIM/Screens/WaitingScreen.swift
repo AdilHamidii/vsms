@@ -99,7 +99,6 @@ struct WaitingScreen: View {
                     if phase != .fresh {
                         recoveryBlock.transition(revealTransition)
                         refundReassurance.transition(revealTransition)
-                        if state.showMetrics { metric.transition(revealTransition) }
                     }
                     if phase == .full {
                         cancelAction.transition(revealTransition)
@@ -609,37 +608,12 @@ struct WaitingScreen: View {
             .padding(.horizontal, 24)
     }
 
-    // MEASURED delivery only, and nothing at all when we have no measurement.
-    //
-    // This used to render `order.service.successRate` — seed data that sits at
-    // 86-99% for all 268 services (avg 91%) and which Service.swift explicitly
-    // says "must never be shown as fact". Worst of all it fired here, right
-    // after the user paid, promising ~91% on clusters that actually measure ~9%.
-    //
-    // It then spent a year rendering the MEASURED rate as a PERCENTAGE, which
-    // is the other half of the same mistake: "0% of Facebook codes in Denmark
-    // have arrived" is routinely a 2-sample claim (the demotion gate is
-    // asymmetric — migration 20260725120000) wearing the confidence of a
-    // 200-sample one. `deliveryRecord` gives the raw pair, which carries its
-    // own uncertainty and needs no asterisk. Same rule, same wording, as
-    // `SuccessBadge`.
-    @ViewBuilder
-    private var metric: some View {
-        if case let .measured(codes, attempts) = state.deliveryRecord(
-            for: order.service, country: order.country), attempts > 0 {
-            HStack(spacing: 8) {
-                Image(systemName: RIcon.spark)
-                    .font(.system(size: 13, weight: .medium))
-                    .foregroundStyle(theme.text3)
-                Text("\(order.service.name) in \(order.country.name) has worked \(codes) of \(attempts) times.")
-                    .font(RFont.text(12))
-                    .tracking(-0.1)
-                    .foregroundStyle(theme.text3)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            .padding(.horizontal, 24)
-        }
-    }
+    // The "<service> in <country> has worked N of M times" line that used to
+    // sit under the refund notice was removed on 2026-08-22 along with every
+    // other rendering of our own delivery record — see the header of
+    // `SuccessBadge.swift`. It is also the wrong moment for it: the user has
+    // already paid and is watching a clock, so a record cannot inform a
+    // decision, only worry them about one already made.
 
     private func copy() {
         UIPasteboard.general.string = order.number

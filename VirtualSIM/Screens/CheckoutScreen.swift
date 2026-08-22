@@ -42,12 +42,13 @@ struct CheckoutScreen: View {
     private var standardCost: Int? { state.cost(for: service, country: country) }
     private var premiumCost: Int? { state.premiumCost(for: service, country: country) }
     private var realSimOnly: Bool { state.realSimOnly(for: service, country: country) }
-    private var record: DeliveryRecord {
-        state.deliveryRecord(for: service, country: country)
-    }
     /// The vendor's published rate for this route's pool, or nil when they
     /// publish none for it. Never 0 in the nil case — a published zero is a
     /// measurement and is rendered as one.
+    ///
+    /// Our own delivery record is not rendered on this screen any more (owner
+    /// decision 2026-08-22 — see the header of `SuccessBadge.swift`), so this
+    /// is the only delivery figure checkout has.
     private var poolRate: Int? {
         state.poolRate(for: service, country: country)
     }
@@ -100,7 +101,7 @@ struct CheckoutScreen: View {
                                 .padding(.top, 26)
                                 .riseIn(appeared, index: 2)
                         }
-                        DeliveryNotice(density: .full, service: service)
+                        DeliveryNotice(density: .full)
                             .padding(.top, 22)
                             .riseIn(appeared, index: 3)
                     }
@@ -198,7 +199,10 @@ struct CheckoutScreen: View {
                                         : String(localized: "Median across all services"))
                     })
                 }
-                if state.showMetrics {
+                // Gated on there being something to say: with our own record
+                // no longer rendered, a route the vendor publishes no rate for
+                // would otherwise draw an empty "Delivery" row.
+                if state.showMetrics, showsDeliveryRow {
                     ReceiptRow(label: "Delivery", leading: {
                         ReceiptIconBox(symbol: RIcon.shield)
                     }, trailing: {
@@ -237,13 +241,17 @@ struct CheckoutScreen: View {
         }
     }
 
-    /// Our own record for this exact route, as the one shared badge.
+    /// True when the Delivery row has anything to render: either the premium
+    /// tier's "named carrier" promise, or a published network rate.
+    private var showsDeliveryRow: Bool {
+        (state.checkoutPremium && premiumCost != nil) || poolRate != nil
+    }
+
+    /// The vendor's published rate for this exact route.
     ///
-    /// A Real-SIM pick deliberately does NOT show it: every order we have ever
-    /// placed was standard tier, so the measured number describes the random
-    /// pool and quoting it under a premium pick would misattribute it. What it
-    /// shows instead is what the tier buys — no rate, because there is no
-    /// premium order on record to derive one from.
+    /// A Real-SIM pick deliberately does NOT show a rate: every order we have
+    /// ever placed was standard tier, so no premium figure exists to quote.
+    /// What it shows instead is what the tier buys.
     @ViewBuilder
     private var deliveryValue: some View {
         if state.checkoutPremium, premiumCost != nil {
@@ -251,42 +259,17 @@ struct CheckoutScreen: View {
                          secondaryText: String(localized: "Never substituted"))
         } else {
             VStack(alignment: .trailing, spacing: 4) {
-                DeliverySignal(poolRate: poolRate, record: record, alignment: .trailing)
-                deliveryCaption
-            }
-        }
-    }
-
-    /// The caption under the delivery figure, and it must name WHOSE figure it
-    /// is qualifying.
-    ///
-    /// Four cases rather than the two it had, because the network rate arriving
-    /// on this screen (2026-08-06) made the old wording wrong: "Our own orders,
-    /// last 30 days" sat under a bar that is a third party's aggregate across
-    /// all their customers, which is precisely the conflation that forced the
-    /// seeded vendor grade to be demoted to `.notTested` in the first place.
-    ///
-    /// Each branch is its own `Text` literal rather than one interpolated
-    /// string, so all four reach the string catalog as separate keys.
-    @ViewBuilder
-    private var deliveryCaption: some View {
-        let caption = Group {
-            if poolRate != nil, case .measured = record {
-                Text("Network-wide, and our own last 30 days")
-            } else if poolRate != nil {
+                DeliverySignal(poolRate: poolRate, alignment: .trailing)
+                // The caption must still name WHOSE figure this is. It is a
+                // third party's aggregate across all their customers, and the
+                // one thing it must never be read as is a claim about the
+                // orders we placed.
                 Text("Network-wide rate, not our own record")
-            } else if record == .notTested {
-                Text("No orders on this route yet")
-            } else {
-                // The window, exposed once per screen — a bare "3 of 7"
-                // has no timeframe and no owner.
-                Text("Our own orders, last 30 days")
+                    .font(RFont.text(12))
+                    .foregroundStyle(theme.text3)
+                    .multilineTextAlignment(.trailing)
             }
         }
-        caption
-            .font(RFont.text(12))
-            .foregroundStyle(theme.text3)
-            .multilineTextAlignment(.trailing)
     }
 
     // MARK: - Number type

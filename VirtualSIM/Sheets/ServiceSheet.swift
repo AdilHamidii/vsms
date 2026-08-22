@@ -285,15 +285,8 @@ struct ServiceSheet: View {
                    // `service.domain`; some services have none and cannot
                    // offer email at all.
                    emailSupported: !(service.domain ?? "").isEmpty,
-                   // The badge must describe the route the tap actually buys.
-                   // Scored against the current country it would read "Not
-                   // tested" for a destination route we HAVE measured.
-                   record: state.deliveryRecord(
-                       for: service,
-                       country: elsewhere?.country ?? currentCountry),
-                   // Scored against the SAME destination, for the same reason.
-                   // Two figures on one row resolved from different countries
-                   // would be a row describing two routes.
+                   // The figure must describe the route the tap actually
+                   // buys — the destination route when there is none here.
                    poolRate: state.emailMode ? nil : state.poolRate(
                        for: service,
                        country: elsewhere?.country ?? currentCountry),
@@ -357,7 +350,6 @@ private struct ServiceRow: View {
     var emailMode: Bool = false
     /// Only meaningful in email mode: does this service have a target site?
     var emailSupported: Bool = true
-    let record: DeliveryRecord
     /// The vendor's published rate for the DESTINATION route's pool, or nil
     /// when they publish none — and always nil in email mode, where an SMS
     /// route's figure is another product's evidence.
@@ -414,10 +406,10 @@ private struct ServiceRow: View {
                 // directly above this list, and `typicalWaitShort` is a
                 // service-level constant that does not vary with the country
                 // being priced here — six data points where four were about
-                // this choice. On an e-mail pick the SMS delivery record is
+                // this choice. On an e-mail pick the SMS network rate is
                 // another product's evidence, so it is omitted entirely.
                 if !emailMode {
-                    DeliverySignal(poolRate: poolRate, record: record, compact: true)
+                    DeliverySignal(poolRate: poolRate)
                 }
             }
 

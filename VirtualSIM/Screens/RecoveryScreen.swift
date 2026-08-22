@@ -17,16 +17,12 @@ struct RecoveryScreen: View {
         state.bestMeasuredCountry(for: context.service)
     }
 
-    /// Our own record, as the raw pair — falling back to the percentage ONLY if
-    /// the route somehow has no sample, which `deliveryRecord` treats as
-    /// not-tested and we then do not claim at all.
-    private func deliveryLine(for s: (country: Country, rate: Int)) -> LocalizedStringKey {
-        if case .measured(let codes, let attempts) =
-            state.deliveryRecord(for: context.service, country: s.country) {
-            return "\(context.service.name) has worked \(codes) of the last \(attempts) times in \(s.country.name)."
-        }
-        return "\(context.service.name) has the best record we've measured in \(s.country.name)."
-    }
+    // `suggestion` still STEERS — it is what the primary button retries into —
+    // but it is no longer described. The two sentences that used to sit above
+    // the button ("… has worked 3 of the last 5 times in Poland", "… has the
+    // best record we've measured in Poland") were renderings of our own
+    // delivery record, removed 2026-08-22; see the header of
+    // `SuccessBadge.swift`.
 
     /// Fallback when we have measured nothing for this service — which is the
     /// common case, since route-level evidence covers a handful of routes.
@@ -122,7 +118,11 @@ struct RecoveryScreen: View {
                 // Deliberately NOT a rate, a percentage, or any claim about
                 // odds. It states a MECHANISM, which is a thing we know to be
                 // true, rather than an outcome, which we do not.
-                if suggestion == nil, rankedSuggestion == nil {
+                // Shown whenever there is no network-rate chip below — which
+                // now includes the measured-suggestion case, since that chip
+                // was removed with the rest of the record surfaces. The user
+                // still gets a reason to press the button.
+                if rankedSuggestion == nil {
                     HStack(alignment: .top, spacing: 8) {
                         Image(systemName: RIcon.refresh)
                             .font(.system(size: 13, weight: .semibold))
@@ -141,38 +141,9 @@ struct RecoveryScreen: View {
                     .padding(.horizontal, 20)
                 }
 
-                if let suggestion {
-                    HStack(spacing: 8) {
-                        FlagCircle(country: suggestion.country, size: 24)
-                        // ⚠️ The RAW PAIR, never a percentage.
-                        //
-                        // This is OUR OWN measurement (`rate_source = 'measured'`),
-                        // not a vendor aggregate, and the promotion gate is
-                        // three conclusive attempts — so "67% measured" is
-                        // routinely 2 of 3. `SuccessBadge` states the rule:
-                        // a percentage off a 7-order sample wears the confidence
-                        // of a 700-order one. This was the last surface in the
-                        // app still breaking it, and the `>= 40` gate means the
-                        // first values to appear are small-sample highs, i.e.
-                        // exactly the case the rule exists for.
-                        Text(deliveryLine(for: suggestion))
-                            .font(RFont.text(13, weight: .medium))
-                            .foregroundStyle(theme.text)
-                            .multilineTextAlignment(.leading)
-                    }
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 12)
-                    .background(theme.chipBg, in: .rect(cornerRadius: RRadius.sm))
-                    .padding(.top, 18)
-                    .padding(.horizontal, 20)
-                }
-
-                // Deliberately styled apart from the measured chip above: that
-                // one states what OUR orders did, this one relays a
-                // network-wide aggregate over traffic that is not ours. Same
-                // screen, two different kinds of claim, so the wording marks
-                // the difference every time and the colour does not borrow
-                // `theme.live`, which means "measured success" everywhere else.
+                // This chip relays a network-wide aggregate over traffic that is
+                // not ours, and its wording says so — the colour deliberately
+                // does not borrow `theme.live`.
                 //
                 // "network-wide" rather than naming a supplier — see the note
                 // in CountrySheet.providerTopCountries. The distinguishing work

@@ -236,16 +236,10 @@ struct HomeScreen: View {
         state.cost(for: state.lastService, country: state.lastCountry)
     }
 
-    /// Delivery record for the currently-selected route. Never nil — an
-    /// untested route says so rather than showing nothing. See DeliveryRecord.
-    private var routeRecord: DeliveryRecord {
-        state.deliveryRecord(for: state.lastService, country: state.lastCountry)
-    }
-
     /// The vendor's published rate for this route's pool, or nil when they
-    /// publish none. Paired with `routeRecord` in `DeliverySignal`, which is
-    /// what stops this hero saying "Not tested" for a route the country picker
-    /// is simultaneously showing a real percentage for.
+    /// publish none — in which case the hero renders no delivery figure at all.
+    /// Our own record is not shown here any more; see the header of
+    /// `SuccessBadge.swift`.
     private var routePoolRate: Int? {
         state.poolRate(for: state.lastService, country: state.lastCountry)
     }
@@ -457,9 +451,9 @@ struct HomeScreen: View {
     @ViewBuilder
     private var evidenceStrip: some View {
         // ⚠️ Nothing measured is rendered for a route the user did not choose.
-        // "Worked 1 of 4" and "Hit or miss" are real measurements about a real
-        // route — they are simply not about the purchase this screen is
-        // offering, which is currently no purchase at all.
+        // The network rate is a real measurement about a real route — it is
+        // simply not about the purchase this screen is offering, which is
+        // currently no purchase at all.
         if isSuggestion {
             EmptyView()
         } else if state.showMetrics, state.emailMode {
@@ -496,22 +490,16 @@ struct HomeScreen: View {
                         }
                         .frame(width: 100, alignment: .leading)
 
-                        VStack(alignment: .leading, spacing: 6) {
-                            // The 30-day window, stated once on this screen —
-                            // and it qualifies OUR record only. The network
-                            // meter carries its own window in the figure it
-                            // renders, which is why it says "network" in words
-                            // rather than borrowing this label.
-                            MicroLabel("Delivery · 30 days")
-                            // Colour and wording both come from the shared
-                            // delivery components. The inline
-                            // `100 * codes / attempts >= 70` arithmetic that
-                            // used to live in this view body was the app's
-                            // FOURTH definition of green.
-                            DeliverySignal(poolRate: routePoolRate,
-                                           record: routeRecord,
-                                           compact: true)
-                        }
+                        // Only the network meter now, and only when the vendor
+                        // publishes a rate for this pool. The "Delivery · 30
+                        // days" label went with our own record: it was that
+                        // record's window, and the meter carries its own in the
+                        // word `network` it renders inline.
+                        if let routePoolRate {
+                            VStack(alignment: .leading, spacing: 6) {
+                                MicroLabel("Delivery")
+                                NetworkRateMeter(pct: routePoolRate)
+                            }
                         // `minWidth`, not a fixed `width`. At 138pt the network
                         // meter fits in English (~120pt) and German, and
                         // TRUNCATES in Japanese, where "network" is
@@ -521,13 +509,9 @@ struct HomeScreen: View {
                         // slack beside this column on a 393pt screen, so
                         // letting it take its ideal width costs nothing.
                         .frame(minWidth: 138, alignment: .leading)
+                        }
 
                         Spacer(minLength: 0)
-                    }
-
-                    if let odds = oddsPhrase {
-                        StatusPill(text: odds.text, tint: odds.tint, soft: odds.soft)
-                            .padding(.top, 12)
                     }
                 }
                 .padding(.horizontal, 16)
@@ -536,28 +520,11 @@ struct HomeScreen: View {
         }
     }
 
-    /// A plain-English odds chip for the selected service.
-    ///
-    /// `Service.deliveryOdds` already produces this judgement and it appeared
-    /// ONLY on Checkout — i.e. after the decision it exists to inform. It is
-    /// honest here for the same reason it is honest there: the tier needs 8
-    /// conclusive attempts before it says anything at all, and `.unknown`
-    /// renders nothing rather than a reassuring shrug.
-    private var oddsPhrase: (text: LocalizedStringKey, tint: Color, soft: Color)? {
-        switch state.lastService.deliveryOdds {
-        case .good:
-            return ("Usually works for \(state.lastService.name)",
-                    theme.deliveryColor(.strong), theme.deliverySoft(.strong))
-        case .mixed:
-            return ("Hit or miss for \(state.lastService.name)",
-                    theme.deliveryColor(.mixed), theme.deliverySoft(.mixed))
-        case .poor:
-            return ("Rarely works for \(state.lastService.name)",
-                    theme.deliveryColor(.weak), theme.deliverySoft(.weak))
-        case .unknown:
-            return nil
-        }
-    }
+    // The plain-English odds chip ("Rarely works for Facebook", "Hit or miss")
+    // was removed on 2026-08-22 with every other rendering of our own delivery
+    // record — see the header of `SuccessBadge.swift`. `Service.deliversPoorly`
+    // still exists and still steers checkout's tier default; it is simply no
+    // longer quoted at the user.
 
     // MARK: - First run
 

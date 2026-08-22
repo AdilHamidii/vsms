@@ -8,9 +8,8 @@ import SwiftUI
 /// while the same screen has to say in as many words that this is *not* our own
 /// delivery record. A sort name is read as a promise about what comes out of
 /// it, so it now names the thing it actually sorts on and claims no ownership
-/// of the outcome. What we measured ourselves is a FILTER ("Tested by us"), not
-/// a sort, because with route-level evidence on a handful of routes a sort by it
-/// is a sort by nothing.
+/// of the outcome. What we measured ourselves is neither sorted nor shown
+/// here (owner decision 2026-08-22); it only steers the default pick.
 enum CountrySort: String, Hashable, CaseIterable {
     case networkRate, cheapest, `default`
 
@@ -52,12 +51,13 @@ enum CountrySort: String, Hashable, CaseIterable {
 /// chip, and the figure itself carries the word `network` inline so it needs no
 /// key at all.
 ///
-/// **Two colour-coded percentages, meaning different things, sat on every
-/// row** — the network rate on the left and our own record on the right. The
-/// old file's own comment admitted colour no longer told them apart. They are
-/// now told apart by SHAPE: an aggregate reads as a **bar**, our record reads as
-/// a **bordered chip that says "Ours"**. Colour is left to do the one job it is
-/// good at, magnitude, from the single shared `DeliveryBand` scale.
+/// **Two colour-coded percentages, meaning different things, used to sit on
+/// every row** — the network rate on the left and our own record on the right,
+/// and colour no longer told them apart. Our own record is no longer rendered
+/// anywhere (owner decision 2026-08-22, see the header of
+/// `SuccessBadge.swift`), so the only figure on a row is the vendor's, drawn as
+/// a bar and labelled `network`. The "Tested by us" filter went with the
+/// labels on the same day — it named our record by another route.
 struct CountrySheet: View {
     @Environment(\.theme) private var theme
     @Environment(\.dismiss) private var dismiss
@@ -66,8 +66,6 @@ struct CountrySheet: View {
 
     @State private var sort: CountrySort = .networkRate
     @State private var query: String = ""
-    /// Only countries we have actually ordered in, for this service.
-    @State private var testedOnly = false
     @State private var showRateInfo = false
     @State private var appeared = false
 
@@ -82,9 +80,6 @@ struct CountrySheet: View {
     }
     private func rate(_ c: Country) -> Int? {
         state.poolRate(for: currentService, country: c)
-    }
-    private func record(_ c: Country) -> DeliveryRecord {
-        state.deliveryRecord(for: currentService, country: c)
     }
 
     // MARK: - Filtering
@@ -108,9 +103,6 @@ struct CountrySheet: View {
         let q = query.trimmingCharacters(in: .whitespaces).lowercased()
         var list = state.availableCountries.filter { c in
             guard matches(c, query: q) else { return false }
-            // `.ratio` is non-nil only for a MEASURED record with a real
-            // sample, which is exactly what "tested" means here.
-            guard !testedOnly || record(c).ratio != nil else { return false }
             return true
         }
 
@@ -175,7 +167,6 @@ struct CountrySheet: View {
                 ForEach(Array(rows.enumerated()), id: \.element.id) { idx, c in
                     CountryRow(country: c,
                                price: price(c),
-                               record: record(c),
                                poolRate: rate(c),
                                balance: state.balance,
                                selected: c.id == state.configuringCountry.id,
@@ -212,18 +203,6 @@ struct CountrySheet: View {
                     if option == .networkRate { rateInfoButton }
                 }
 
-                Rectangle()
-                    .fill(theme.sep)
-                    .frame(width: 0.5, height: 20)
-                    .padding(.horizontal, 2)
-
-                ChipButton(label: String(localized: "Tested by us"),
-                           icon: RIcon.shield,
-                           active: testedOnly,
-                           soft: true) {
-                    RHaptic.select()
-                    withAnimation(RMotion.content) { testedOnly.toggle() }
-                }
             }
             .padding(.horizontal, 16)
         }
@@ -266,11 +245,6 @@ struct CountrySheet: View {
                 .foregroundStyle(theme.text)
 
             Text("How often codes have been arriving on this route network-wide, across everyone's orders and not just ours.")
-                .font(RFont.text(13))
-                .foregroundStyle(theme.text2)
-                .fixedSize(horizontal: false, vertical: true)
-
-            Text("It is not our own delivery record. Where we have ordered here ourselves, the row says so separately.")
                 .font(RFont.text(13))
                 .foregroundStyle(theme.text2)
                 .fixedSize(horizontal: false, vertical: true)
@@ -325,18 +299,13 @@ struct CountrySheet: View {
                                      RHaptic.select()
                                      withAnimation(RMotion.content) {
                                          query = ""
-                                         testedOnly = false
                                      }
                                  }))
         }
     }
 
-    /// Names the filter that is actually responsible, rather than shrugging.
     private var emptyMessage: LocalizedStringKey {
-        if testedOnly {
-            return "We haven't ordered \(currentService.name) anywhere that matches yet. Untested countries are still buyable."
-        }
-        return "Nothing here matches that name or dial code."
+        "Nothing here matches that name or dial code."
     }
 }
 
@@ -346,7 +315,6 @@ private struct CountryRow: View {
     @Environment(\.theme) private var theme
     let country: Country
     let price: Int?
-    let record: DeliveryRecord
     /// The network's published rate for this route's pool. nil = unrated;
     /// render nothing. Never "0%" — a missing figure and a measured zero are
     /// different claims.
@@ -407,19 +375,12 @@ private struct CountryRow: View {
                                 .foregroundStyle(theme.text3)
                         }
 
-                        // OUR record, and only when there is one.
-                        //
-                        // It used to be a `SuccessBadge` rendered on every row,
-                        // including "Not tested" — a filled capsule the same
-                        // shape and the same palette as the vendor figure two
-                        // inches to its left. The rule that badge enforces
-                        // (never let an absent badge read as reassurance) is
-                        // carried here by the meter, which is on every rated row
-                        // and says `network` in words: nothing on this row can
-                        // be mistaken for a claim about our own orders.
-                        if case let .measured(codes, attempts) = record, attempts > 0 {
-                            OurRecordChip(codes: codes, attempts: attempts)
-                        }
+                        // Our own record used to render here as an "Ours: N of
+                        // M" chip. Removed 2026-08-22 (see the header of
+                        // `SuccessBadge.swift`); the only delivery figure on
+                        // this row is now the network meter beside the dial
+                        // code, which says `network` in words, so nothing here
+                        // can be mistaken for a claim about our own orders.
                     }
                 }
                 .padding(.horizontal, 14)
