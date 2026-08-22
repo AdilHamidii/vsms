@@ -4366,6 +4366,23 @@ Moved to the `aso-listing` skill (`.claude/skills/aso-listing/SKILL.md`).
 Search is the app's ENTIRE acquisition channel — invoke it before touching
 the store listing, keywords or screenshots.
 
+**The name stays `vSMS: Temp Number, Receive SMS` — owner decision
+2026-08-22, do not re-open it on feel.** The case was made and accepted: the
+30-char name carries the two highest-weight search terms and search is the
+only channel; cross-day retention is ~5 users, so brand equity lives in
+ranking and ratings, not in users; and 2.0's umbrella-first onboarding
+(Aug 15–19) cut first-day orders from ~30/day to 1 — a live measurement of
+what breadth-first positioning costs. **Rebrand trigger:** a non-SMS line
+exceeds **40% of monthly net for two consecutive months** (read from
+`/profit` once it includes subscriptions — it does not yet, see Known-open).
+If the umbrella *feel* is wanted before then, the in-app display name, icon
+and onboarding can change per release without touching the indexed store
+name — zero keyword risk. Mechanics if it ever happens: the store name is
+editable only on a new version and reviewed with it; App ID, bundle ID,
+ratings, subscribers and installs carry over; the cost is 13 localized
+names/subtitles, new screenshots, a 7–14 day keyword re-rank and ASA
+re-pointing — and the name cannot hold an umbrella brand AND both SMS terms.
+
 ## Release prep
 
 Moved to the `release-prep` skill (`.claude/skills/release-prep/SKILL.md`).
