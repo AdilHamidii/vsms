@@ -1144,13 +1144,20 @@ picker rather than failing at checkout.
 
 ### Temp-e-mail subscription (2026-08-19)
 
-🔴 **BUILT AND SHIPPED DARK.** Every piece is in the repo and the migration
-(`20260818160001_email_subscriptions.sql`) is applied, but
-`app_config.email_subscription_enforced` is **false**, so `begin_email_order`
-still applies the OLD per-UTC-day free rule and no user can see a paywall. It
-stays false until 2.2 is live and adopted — flipping it while 2.1 is the
-shipped client would refuse the app's highest-volume surface with an error
-that build cannot render and no way to subscribe.
+✅ **ENFORCED SINCE 2026-08-22 (owner decision).**
+`app_config.email_subscription_enforced` is **true**, flipped by the owner
+after 2.2 went `READY_FOR_SALE` and both mail products read `APPROVED` in
+ASC. Verified behaviourally the same minute, inside a rolled-back
+transaction: a user who had already used a free address got
+`subscription_required` (`used 1 / grants 1`), a user with no e-mail history
+got an order, and the gmail path was gated by credits only. Consequences to
+keep in mind: the wall is RETROACTIVE — 41 of the 42 users who ordered
+e-mail in the prior 7 days were walled at once; **2.1 and older builds
+cannot render `subscription_required`** and show a generic error (the owner
+declined a Home banner for them, so the 2.2 push is the only notice);
+rollback is the same UPDATE with `'false'`, no deploy. Before the flip the
+function applied the old per-UTC-day free rule (`email_free_daily_cap`),
+which is now dead code behind the flag.
 
 Two Apple products, in a **SECOND, SEPARATE subscription group from the line**.
 **They EXIST in App Store Connect as of 2026-08-19** (`Products.storekit` still
