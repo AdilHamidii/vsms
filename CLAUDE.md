@@ -445,13 +445,152 @@ became the trigger. Both share an advisory-lock key and cannot double-grant.
 ### Telegram ops bot
 
 `telegram-notify` (cron, every minute) sweeps new signups / credit purchases /
-eSIM purchases and emits a 6-hourly digest; `telegram-webhook` answers `/stats`,
-`/today`, `/week`, `/balance`, `/revenue`, `/orders`. Exactly-once is a claim row in `telegram_events`
+eSIM purchases / line rentals, pages the watchdog verdict, emits a 6-hourly
+digest and a 09:00-Paris morning brief; `telegram-webhook` answers 21 commands
+(see "Overhaul 2026-08-21" just below). Exactly-once is a claim row in `telegram_events`
 (`kind`,`ref` PK) written *before* sending, so the instant path in `iap-verify`
 and the sweep can never double-send. Secrets: `TELEGRAM_BOT_TOKEN`,
 `TELEGRAM_CHAT_ID`, `TELEGRAM_WEBHOOK_SECRET`. The webhook is public and gated
 twice — matching `X-Telegram-Bot-Api-Secret-Token` **and** owner chat id — and
 returns a silent 200 on every rejection so it isn't an oracle.
+
+#### Overhaul 2026-08-21 — registry, Paris time, autocomplete, new screens
+
+**Commands are a REGISTRY, not an if/else.** `_shared/tgCommands.ts` is the
+single source of truth: it generates `/help` AND the Telegram `/` popup menu
+(`setMyCommands`, plus the ≡ button via `setChatMenuButton`). `_shared/
+tgHandlers.ts` holds the handlers and a pure `runCommand(text)`; `telegram-
+webhook/index.ts` is transport only (auth, support routing, send). **Adding a
+command = one entry in the registry + one handler; then RE-RUN `telegram-setup`
+or the popup menu keeps the old list** — the menu is bot-level state held on
+Telegram's side, exactly like the webhook URL.
+
+The set: `/now` (one screen: balances + runway, watchdog, paused flags, today
+since midnight Paris, lines + next conversion, support, active alerts),
+`/today` `/week` `/stats`, `/trials` (every subscription by `expires_at`, Paris
+time, auto-renew on/off, what will bill), `/failures [24h|7d]` (no-number and
+no-code orders by route, e-mail/eSIM/call failures, blocked routes),
+`/orders`, `/delivery`, `/route <service> [country]` (why something is
+unavailable — status, price, pool rate, stock, 7d orders/codes), `/balance`,
+`/revenue` `/profit`, `/subs`, `/lines` (no arg now LISTS live lines with usage
+and real rent; `on|off` unchanged), `/support` (threads waiting, oldest first),
+`/alerts` (what is firing + ladder/cooldown states), `/funnel`, `/config`
+(read-only: grant, e-mail caps, pause switches, swap price), `/announce`,
+`/esim`, `/help`.
+
+**Every timestamp the bot prints is Europe/Paris**, through
+`_shared/tgFormat.ts` (`parisFull`, `ago`, `until`, `duration`, `usd`,
+`ratio`, `stamp`). Before this every command printed raw UTC ISO strings to an
+owner in France. Every command reply ends with a `🕒 … Paris` stamp. Never
+format a time any other way in bot code.
+
+**House style, enforced by the formatter tests** (`.claude/tmp/fmt-test.ts`
+while the worktree lives; re-create from the renderings if lost): line 1 is
+the answer, caveats last in italics, percentages only when n ≥ 5 (`ratio()`
+prints "3 of 4" below that), lists capped with "… and N more", never
+`undefined`/`NaN`/raw ISO.
+
+**Six new RPCs** (`20260821120000_ops_bot_rpcs.sql`, all service-role only —
+asserted `has_function_privilege('anon', …)` = 0 rows): `ops_now()`,
+`ops_trials()`, `ops_failures(p_window)`, `ops_support()`, `ops_lines()`,
+`ops_route(p_service, p_country)`. Three facts they encode that the code
+cannot tell you:
+- **`orders` has NO close-reason column.** A numberless order is
+  `status='canceled'`, `actual_cost_cents is null`, and that is all — stockout,
+  `margin_too_low` and provider fault are indistinguishable at row level. So
+  `/failures` says "got no number", never why; the function logs hold the why.
+- 🔴 **`orders.provider` DEFAULTS TO `'smspva'` AND IS ONLY OVERWRITTEN WHEN A
+  NUMBER IS RESERVED** (`create-order` stamps `provider: used` after a
+  successful reservation). So every numberless order — today's entire
+  `/failures` "no number" cohort — reads `smspva` whatever provider actually
+  refused it, and a grouped-by-provider view would "prove" a retired provider
+  is taking orders. Found 2026-08-21 when `/failures` said telegram/co was
+  smspva while `/route` said 5sim: the route was 5sim, the orders had never
+  been stamped. `ops_failures` and the `route_fill` alert take the provider
+  from `routes`, never from a numberless order row. If you ever need the
+  truth per order, it is in the function logs, not the column.
+- **A trial is `price_milli = 0` on a `.yearly` product in state active/grace.**
+  There is no offer-type column; the yearly is the only product with a trial,
+  so this heuristic is exact today and wrong the day a $0 promo ships on a
+  monthly. `/trials`, `trial_soon` and `trial_off` all share it.
+- **"Today" is since midnight Paris**, not UTC — `ops_now` does
+  `date_trunc('day', now() at time zone 'Europe/Paris') at time zone 'Europe/Paris'`.
+- **Every count a formatter prints must be computed in SQL, not over the rows
+  it was handed.** `ops_route` caps its `routes` array at 25, so `routes_active`
+  (active AND, where the provider publishes a stock figure, non-zero) and
+  `routes_total` are BOTH returned; counting the array made the headline an
+  artifact of the LIMIT — telegram read "25 of 69 bookable" against 54.
+- **The watchdog's "last ran" is `value->>'checked_at'`, NEVER the row's
+  `updated_at`.** `telegram-notify` writes `alerted`/`last_alert_at` back onto
+  the same `app_config` row on every page, which fires `app_config_touch` — so
+  `updated_at` moves without `run_watchdog` having run, and a dead watchdog plus
+  one 6-hourly re-page reads as "ran just now". `/now`, `/balance`, `/alerts`
+  and `telegram-notify` all treat a verdict older than **30 minutes** as
+  `watchdog_stale`, and in `/now` that is the HEADLINE — `/now` is also the
+  morning brief, i.e. the one message read daily.
+
+**`telegram-setup` gained a cron-gated preview:** POST `{"preview":"/trials"}`
+(same `x-cron-secret` gate, trigger via `net.http_post` + `private_cron_secret()`)
+returns the rendered HTML WITHOUT sending it — this is how every command is
+verified without the owner's phone. Commands whose registry entry carries
+`mutates` (`/announce`, `/esim`, `/lines`) are REFUSED in preview with
+`preview_refused_mutating` — without that, the cron secret alone could post a
+banner to every user, where from the chat it takes the bot token AND the owner
+chat id. `/lines` with no argument is read-only and is refused anyway; the
+simplicity is worth more than that one preview.
+
+**Alerts share one shape** — `_shared/tgAlert.ts` `alertHtml({sev, title,
+what, why, action, at})`: 🔴 money leaking / product down, 🟠 becomes 🔴
+without action, 🟡 degraded, 🟢 recovered or good news, ℹ️ business event. The
+watchdog page groups checks into Money / Delivery / Lines / Jobs with a plain-
+English line and an action per check (`WATCHDOG_COPY`, one entry per check name
+— an unknown check falls back to Jobs + raw detail, so adding a watchdog check
+without a copy entry degrades, it does not break). Down-time per check lives in
+a NEW key **`app_config.watchdog_since`**, because `run_watchdog()` rebuilds the
+`watchdog` row every 10 minutes and drops anything extra written there.
+
+**New alert kinds** (constraint `telegram_events_kind_check` widened in
+`20260821130000_ops_bot_alerts.sql`, every pre-existing value repeated):
+`trial_soon` (🟠 converts within 24h, ref = original tx), `trial_off` (ℹ️ once
+when auto-renew flips off), `route_fill` (🟠 ≥3 no-number orders on one
+(service,country) in 60 min, ref = `service|country|UTC-hour` so at most
+hourly), `line_consumption` (split from `line_refund` — the two shared
+`(kind, originalTx)` and whichever Apple sent first silently ate the other; refs
+now carry the notification UUID). Without a kind: `support_waiting` (🟠 a
+thread with `last_sender='user'` unanswered > 2h, re-nag every 6h via
+`app_config.support_nag`) and the **morning brief** (☀️ `/now` rendering, first
+run at/after 09:00 Paris, once per Paris day via `telegram_bot.last_brief_on`
+— the `telegram_bot` write now MERGES so it cannot drop `last_digest_at`).
+
+**New service-role-only `app_config` keys — never add them to the RLS
+whitelist:** `watchdog_since`, `support_nag`, `esim_alert_low_balance`,
+`esim_alert_purchase_failed`, `esim_alert_persist_failed` (the eSIM purchase
+alerts were the last unthrottled pagers; now 6h cooldown, stamped only after a
+confirmed send, same shape as `alertLowBalanceBlock`).
+
+**`{provider}-float` no longer disarms on zero burn.** `watchdog_money_checks`
+used to `continue` when 7-day burn ≤ 0 — the exact state of a dead route. Now
+burn = 0 with ≥ 1 numbered order in the prior 7–14 days pages "no spend in 7
+days against N orders the week before — route may be dead"; burn = 0 with no
+prior orders stays silent. Regenerated from `pg_get_functiondef` and diffed:
+exactly one hunk.
+
+**`_shared/telegram.ts` SPLITS instead of truncating** (`splitForTelegram`, cut
+at the last newline under 4000 chars, `(i/n)` suffixes, `ok` only if every part
+landed). ⚠️ It is bundled per function: **every function that sends to
+Telegram must be redeployed** or it keeps the old silent truncation. The two
+deploy lists at the top of this file are the redeploy set.
+
+🔴 **A part must be well-formed HTML ON ITS OWN, and the hard-cut path is where
+that is easy to lose.** A single line over the budget has no newline to cut at,
+so it is cut mid-string: the cut is backed up to before an unclosed `<` (never
+through a tag), and any `<b>/<i>/<code>/<pre>` still open at the end of a part
+is closed there and REOPENED at the start of the next. Without both, Telegram
+answers `400 can't parse entities`, `sendMessage` fails on the FIRST part, and
+`claimAndSend` releases the claim — so the same doomed message is rebuilt and
+re-fails every minute, forever. `<a>` is deliberately not repaired: reopening
+it would have to invent an `href`, which Telegram rejects outright. Covered by
+`.claude/tmp/alert-test.ts`.
 
 **`/revenue [24h|7d|30d|90d|all]`** (default `all`) answers exactly one question —
 **how much money customers actually paid, in USD** — and derives nothing else.
@@ -611,8 +750,9 @@ Three details that are load-bearing:
 truncating would let the owner send a message whose ending nobody reads.
 
 **`telegram-webhook` MUST be deployed `--no-verify-jwt`** (Telegram sends no
-Authorization header, and `config.toml` has no entry for it, so the flag is the
-only control). Deploying it without the flag 401s every update and kills the bot
+Authorization header; `config.toml` now carries `verify_jwt = false` for it,
+`telegram-notify` and `telegram-setup`, but the flag on the command line is
+still the habit to keep). Deploying it without the flag 401s every update and kills the bot
 silently. Assert with an unauthenticated POST: it must return **200** (the
 function's own silent rejection), never 401.
 
@@ -1004,13 +1144,20 @@ picker rather than failing at checkout.
 
 ### Temp-e-mail subscription (2026-08-19)
 
-🔴 **BUILT AND SHIPPED DARK.** Every piece is in the repo and the migration
-(`20260818160001_email_subscriptions.sql`) is applied, but
-`app_config.email_subscription_enforced` is **false**, so `begin_email_order`
-still applies the OLD per-UTC-day free rule and no user can see a paywall. It
-stays false until 2.2 is live and adopted — flipping it while 2.1 is the
-shipped client would refuse the app's highest-volume surface with an error
-that build cannot render and no way to subscribe.
+✅ **ENFORCED SINCE 2026-08-22 (owner decision).**
+`app_config.email_subscription_enforced` is **true**, flipped by the owner
+after 2.2 went `READY_FOR_SALE` and both mail products read `APPROVED` in
+ASC. Verified behaviourally the same minute, inside a rolled-back
+transaction: a user who had already used a free address got
+`subscription_required` (`used 1 / grants 1`), a user with no e-mail history
+got an order, and the gmail path was gated by credits only. Consequences to
+keep in mind: the wall is RETROACTIVE — 41 of the 42 users who ordered
+e-mail in the prior 7 days were walled at once; **2.1 and older builds
+cannot render `subscription_required`** and show a generic error (the owner
+declined a Home banner for them, so the 2.2 push is the only notice);
+rollback is the same UPDATE with `'false'`, no deploy. Before the flip the
+function applied the old per-UTC-day free rule (`email_free_daily_cap`),
+which is now dead code behind the flag.
 
 Two Apple products, in a **SECOND, SEPARATE subscription group from the line**.
 **They EXIST in App Store Connect as of 2026-08-19** (`Products.storekit` still
@@ -2988,9 +3135,13 @@ It is a starting point for "is this roughly right", never a citation.
   2026-08-10; 174 of 175 territories live). Apple/MIIT forbids CallKit in apps
   sold on the China App Store, and 2.0 ships CallKit. Re-adding China requires
   gating CallKit off by storefront first — do not re-tick it casually.
-- **Signup grant: 0 credits — SET 2026-08-18** (owner decision, after the
+- **Signup grant: 5 credits — live value confirmed 2026-08-22 by the owner
+  and by `select value from app_config where key='signup_bonus_credits'`
+  (`{"credits": 5}`).** This line said 0 for four days after the value had
+  moved; re-query rather than quoting it — `/config` on the bot reads it
+  live. *History:* set to 0 on 2026-08-18 (owner decision, after the
   first-session audit). It was 2 from 08-08 to 08-18, and 5 → 0 → 1 → 3 → 0
-  in the two days before that. The 08-18 case: **27 of 28 buyers ever bought
+  in the two days before that. The 08-18 case for 0: **27 of 28 buyers ever bought
   BEFORE placing an order** (median 3.0 min after signup); 112 users ordered
   free and never paid, and 106 of them still hold credits — nobody is refused
   a paywall, they take a free order that fails (first-order delivery 12.8%,
@@ -3865,9 +4016,15 @@ are as load-bearing as the findings:
   branch in it plus a ledger reversal — not a new function. **First live case
   2026-08-10**: user `ae492f1f` bought three packs in 58 seconds ($11.97, 22
   credits, zero orders placed), asked support for a refund ("it was a
-  mistake"), and was pointed at reportaproblem.apple.com — the only channel;
-  developers cannot issue Apple refunds. If Apple grants it, the 22 credits
-  stay spendable until this branch is written.
+  mistake"). ⚠️ **This file said they "were pointed at reportaproblem.apple.com";
+  the thread (`e36b25ba`) holds ZERO agent messages — verified 2026-08-21 —
+  so no in-app reply was ever sent. It sat unanswered for 11 days and was
+  closed unanswered on 2026-08-21 during the Telegram overhaul.** Apple is
+  still the only refund channel (developers cannot issue Apple refunds). If
+  Apple grants it, the 22 credits stay spendable until this branch is written.
+  Note also: **the bot has no way to CLOSE a support thread** — it can only
+  move `open → assigned` — so answered threads sat in `/support` for two
+  weeks reading as live work; a `/close` command is the missing piece.
 - ✅ **RESOLVED 2026-08-06 — the alert channel no longer fails silently.**
   `telegram-notify` destructures the error on its watchdog read; a failed read
   used to skip the entire paging block and return `200 {sent:0}`, byte-identical

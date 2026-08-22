@@ -1,5 +1,5 @@
 // Public endpoint that Telegram POSTs updates to, so the operator can query the
-// business on demand (/stats, /today, /balance).
+// business on demand (/now, /today, /balance).
 //
 // THREAT MODEL: this URL is guessable and, unlike every other function here, it
 // is not behind a JWT or the cron secret — Telegram's servers must be able to
@@ -14,97 +14,31 @@
 // Every rejection returns a silent 200 with no reply. A 401 would confirm the
 // endpoint exists and that a guessed secret was wrong; 200 tells an attacker
 // nothing and also stops Telegram retrying.
+//
+// WHAT LIVES WHERE (2026-08-21): this file is now the TRANSPORT — auth, the
+// support-chat routing that needs Telegram context, and sending. Every command
+// body moved to `_shared/tgHandlers.ts` so telegram-setup can render one as a
+// preview without starting a second Deno.serve, and the command METADATA moved
+// to `_shared/tgCommands.ts` so the `/` autocomplete menu, /help and dispatch
+// cannot disagree about which commands exist.
 
 import { handleCors, json } from "../_shared/cors.ts";
 import { admin } from "../_shared/supabaseAdmin.ts";
-// esc and balanceLine are used by /balance below. They were referenced without
-// being imported for a while — esbuild bundles free identifiers without
-// complaint, so /balance THREW ReferenceError on every call in production
-// while every other command worked. Keep imports in lockstep with usage.
+// esc is used by the support paths below. Identifiers were referenced without
+// being imported here for a while — esbuild bundles free identifiers without
+// complaint, so /balance THREW ReferenceError on every call in production while
+// every other command worked. Keep imports in lockstep with usage.
 import {
-  sendMessage, ownerChatId, esc, sendMessageWithId, answerCallback,
+  sendMessage, ownerChatId, esc, answerCallback,
 } from "../_shared/telegram.ts";
-import {
-  formatDigest, formatRevenue, formatGross, formatLinesMoney,
-  balanceLine, TELNYX_LOW_USD,
-  formatOrders,
-  formatFunnel, formatDelivery, formatSubs,
-} from "../_shared/opsFormat.ts";
+import { runCommand } from "../_shared/tgHandlers.ts";
 // Support replies push to the user's device. Imported explicitly for the reason
 // in the note above — a free identifier here bundles fine and throws at runtime.
 import { sendPush } from "../_shared/apns.ts";
 
-const HELP = [
-  "🤖 <b>vSMS ops</b> — /help",
-  "",
-  "<b>Activity</b>",
-  "/stats — last 6 hours",
-  "/today — last 24 hours",
-  "/week — last 7 days",
-  "/funnel — signup → order → code → purchase, per day",
-  "     <i>[7d|14d|30d]</i> · default: 7d",
-  "/orders — every order, one line each, with its route",
-  "     <i>[24h|7d|30d|90d|all]</i> · default: 24h",
-  "",
-  "<b>Health</b>",
-  "/delivery — per-provider delivery, cancels and refusals",
-  "     <i>[24h|7d|30d]</i> · default: 7d",
-  "/balance — provider balances + watchdog",
-  "",
-  "<b>Money</b>",
-  "/revenue — money customers actually paid (USD)",
-  "/profit — revenue minus Apple's cut and wholesale",
-  "     <i>[24h|7d|30d|90d|all]</i> · default: all",
-  "/subs — second-number subscriptions, lines and MRR",
-  "",
-  "<b>Controls</b>",
-  "/announce <i>message</i> — banner on Home for everyone",
-  "     <code>/announce warn …</code> amber · <code>/announce off</code> clears",
-  "     <code>/announce</code> alone shows what is live",
-  "/esim <i>on|off</i> — put eSIMs on or off sale",
-  "/lines <i>on|off</i> — put second numbers on or off sale",
-  "",
-  "<i>Every delivery rate here excludes user cancels and the app's own " +
-    "pre-selection. Purchases are Production receipts only.</i>",
-].join("\n");
-
-/** Announcement ceiling. The banner is two or three lines on a phone; anything
- *  longer is silently truncated by the layout, which would let the owner send a
- *  message whose end nobody ever reads. Refuse instead of truncating. */
-const MAX_ANNOUNCE = 280;
-
-/** Accepted /revenue periods -> the interval passed to revenue_snapshot.
- *  null means lifetime (the function reads p_window null as no lower bound).
- *
- *  Membership is tested with Object.hasOwn, NOT `in` and NOT truthiness:
- *  truthiness would reject "all" (a legitimate key whose value is null), while
- *  `in` walks the prototype chain — so `/revenue constructor` would pass the
- *  guard and hand Object's constructor to the RPC as p_window. */
-const PERIODS: Record<string, string | null> = {
-  "": null, "all": null, "lifetime": null, "total": null, "ever": null,
-  "24h": "24 hours", "today": "24 hours", "day": "24 hours",
-  "7d": "7 days", "week": "7 days",
-  "30d": "30 days", "month": "30 days",
-  "90d": "90 days", "quarter": "90 days",
-};
-
-/** `/funnel` accepts only DAY windows, because it prints one row per day: a
- *  "24h" funnel would be a single line and "all" would be a wall of them. */
-const FUNNEL_PERIODS: Record<string, string> = {
-  "": "7 days", "7d": "7 days", "week": "7 days",
-  "14d": "14 days", "2w": "14 days",
-  "30d": "30 days", "month": "30 days",
-};
-
-/** `/delivery` windows. 24h is offered because a provider outage has to be
- *  visible the same day; 30d is the longest window over which a rate here is
- *  still about the provider currently serving the route (providers have changed
- *  four times, and evidence does not carry across a switch). */
-const DELIVERY_PERIODS: Record<string, string> = {
-  "": "7 days", "24h": "24 hours", "today": "24 hours", "day": "24 hours",
-  "7d": "7 days", "week": "7 days",
-  "30d": "30 days", "month": "30 days",
-};
+// Re-exported so a reader who comes looking for the dispatcher in the function
+// that used to own it finds the pointer rather than concluding it was deleted.
+export { runCommand };
 
 Deno.serve(async (req) => {
   const cors = handleCors(req); if (cors) return cors;
@@ -171,318 +105,10 @@ Deno.serve(async (req) => {
     if (routed) return ok();
   }
 
-  const text = raw.toLowerCase();
-  const parts = text.split(/\s+/);
-  const cmd = parts[0].replace(/@.*$/, "");               // strip @botname suffix
-  const arg = (parts[1] ?? "").replace(/^[-/]+/, "");     // tolerate "-7d" / "/7d"
-
-  const sb = admin();
-
-  // The FALLBACK is a pointer, not the whole help text. Answering a typo with
-  // 30 lines buries the typo, and answering plain prose with a command list
-  // does not explain why the message went nowhere — which, for the owner
-  // half-way through a support conversation, is the thing they need to know.
-  let reply: string;
-  if (cmd === "" || cmd === "/help" || cmd === "/start") {
-    reply = HELP;
-  } else if (!cmd.startsWith("/")) {
-    reply = "❓ Not a command — and no support conversation is assigned, so " +
-            "this went nowhere.\n\nPress [✅ Accept] on a thread first, or " +
-            "reply directly to a relayed message.\n\n/help for the commands.";
-  } else {
-    reply = `❓ Unknown command <b>${esc(cmd)}</b>.\n\nTry /help`;
-  }
-
-  if (cmd === "/revenue" || cmd === "/profit") {
-    if (!Object.hasOwn(PERIODS, arg)) {
-      reply = `Unknown period <b>${esc(arg)}</b>.\n\n` +
-              `Try: <code>/revenue</code> (all time), or ` +
-              `<code>24h</code> · <code>7d</code> · <code>30d</code> · <code>90d</code>`;
-    } else {
-      // p_window is an interval; null = lifetime. supabase-js sends JSON null,
-      // which Postgres binds as SQL NULL, so the DEFAULT is never applied — the
-      // function must (and does) treat an explicit null as "no lower bound"
-      // rather than relying on its own default value.
-      const { data: snap, error } = await sb.rpc("revenue_snapshot", {
-        p_window: PERIODS[arg],
-      });
-      // /revenue answers "how much did customers pay", full stop — no Apple
-      // cut, no wholesale, no profit. /profit is where the derived P&L lives.
-      // They used to be aliases for the same P&L, which meant there was no way
-      // to ask the bot for plain takings.
-      // Read the line's money FIRST — it belongs in the HEADLINE total, not a
-      // footnote. A $9.99 subscription is $9.99 taken, exactly like a credit
-      // pack, and a renewal is another $9.99.
-      const { data: lm, error: lmErr } = await sb.rpc("lines_money_snapshot", {
-        p_window: PERIODS[arg],
-      });
-      if (lmErr) console.error("lines_money_snapshot failed:", lmErr.message);
-
-      const fmt = cmd === "/revenue" ? formatGross : formatRevenue;
-      reply = error || !snap
-        ? "\u26a0\ufe0f Couldn't read revenue right now."
-        : fmt(snap as Record<string, unknown>,
-              lmErr ? null : (lm as Record<string, unknown> | null));
-
-      if (error) console.error("revenue_snapshot failed:", error.message);
-
-      // A failed read must SAY the total is short, never quietly omit
-      // subscriptions — an absent block reads as "no subscriptions", which is
-      // the same falsehood in a quieter costume.
-      if (!error && snap && lmErr) {
-        reply += "\n\n\u26a0\ufe0f <b>Subscriptions not included</b> \u2014 couldn't read them, " +
-                 "so the total above is LOW.";
-      } else if (!error && snap && lm) {
-        reply += formatLinesMoney(lm as Record<string, unknown>);
-      }
-    }
-  } else if (cmd === "/orders") {
-    // Same period vocabulary as /revenue, with two deliberate differences:
-    //
-    //  * the DEFAULT is 24h, not lifetime. This prints one line per order, so
-    //    defaulting to "all" would dump the entire history into a chat message.
-    //  * a null period (all/lifetime) becomes a very long finite interval,
-    //    because orders_recent does `now() - p_window` and a NULL there yields
-    //    NULL, which would silently match no rows and read as "no orders".
-    //
-    // Object.hasOwn, not `in` and not truthiness — same reasoning as PERIODS.
-    if (arg !== "" && !Object.hasOwn(PERIODS, arg)) {
-      reply = `Unknown period <b>${esc(arg)}</b>.\n\n` +
-              `Try: <code>/orders</code> (24h), or ` +
-              `<code>7d</code> · <code>30d</code> · <code>90d</code> · <code>all</code>`;
-    } else {
-      const window = arg === "" ? "24 hours" : (PERIODS[arg] ?? "3650 days");
-      const { data: snap, error } = await sb.rpc("orders_recent", { p_window: window });
-      reply = error || !snap
-        ? "⚠️ Couldn't read orders right now."
-        : formatOrders(snap as Record<string, unknown>, arg === "" ? "24h" : (arg || "all"));
-      if (error) console.error("orders_recent failed:", error.message);
-    }
-  } else if (cmd === "/stats" || cmd === "/today" || cmd === "/week") {
-    const window = cmd === "/stats" ? "6 hours" : cmd === "/today" ? "24 hours" : "7 days";
-    const { data: snap, error } = await sb.rpc("ops_snapshot", { p_window: window });
-    // Same window, so the subscription figure describes the same period as
-    // everything above it. A mismatched window here would be a quiet lie.
-    const { data: dlm, error: dlmErr } = await sb.rpc("lines_money_snapshot", {
-      p_window: window,
-    });
-    if (dlmErr) console.error("lines_money_snapshot (digest) failed:", dlmErr.message);
-    reply = error || !snap
-      ? "⚠️ Couldn't read stats right now."
-      : formatDigest(snap as Record<string, unknown>,
-                     dlmErr ? null : (dlm as Record<string, unknown> | null));
-  } else if (cmd === "/funnel") {
-    // Object.hasOwn, not `in` and not truthiness — same reasoning as PERIODS:
-    // `in` walks the prototype chain, so `/funnel constructor` would hand
-    // Object's constructor to the RPC as an interval.
-    if (!Object.hasOwn(FUNNEL_PERIODS, arg)) {
-      reply = `Unknown period <b>${esc(arg)}</b>.\n\n` +
-              `Try: <code>/funnel</code> (7d), or ` +
-              `<code>14d</code> · <code>30d</code>`;
-    } else {
-      const { data: snap, error } = await sb.rpc("ops_funnel", {
-        p_window: FUNNEL_PERIODS[arg],
-      });
-      reply = error || !snap
-        ? "⚠️ Couldn't read the funnel right now."
-        : formatFunnel(snap as Record<string, unknown>);
-      if (error) console.error("ops_funnel failed:", error.message);
-    }
-  } else if (cmd === "/delivery") {
-    if (!Object.hasOwn(DELIVERY_PERIODS, arg)) {
-      reply = `Unknown period <b>${esc(arg)}</b>.\n\n` +
-              `Try: <code>/delivery</code> (7d), or ` +
-              `<code>24h</code> · <code>30d</code>`;
-    } else {
-      const window = DELIVERY_PERIODS[arg];
-      const { data: snap, error } = await sb.rpc("ops_delivery", { p_window: window });
-      reply = error || !snap
-        ? "⚠️ Couldn't read delivery right now."
-        : formatDelivery(snap as Record<string, unknown>, arg === "" ? "7d" : arg);
-      if (error) console.error("ops_delivery failed:", error.message);
-    }
-  } else if (cmd === "/subs") {
-    // No period: subscription and line STATE is a right-now question, and the
-    // notification block inside carries its own fixed 7-day window.
-    const { data: snap, error } = await sb.rpc("ops_subs");
-    reply = error || !snap
-      ? "⚠️ Couldn't read subscriptions right now."
-      : formatSubs(snap as Record<string, unknown>);
-    if (error) console.error("ops_subs failed:", error.message);
-  } else if (cmd === "/balance") {
-    // BOTH providers. Reporting only SMSPool here survived the 2026-07-20
-    // migration and became actively misleading: it alarmed about the provider
-    // that now only funds eSIMs, while the balance gating every SMS order
-    // (SMSPVA) was not shown at all.
-    const { data: rows } = await sb
-      .from("app_config").select("key, value")
-      .in("key", ["5sim_health", "herosms_health", "esimaccess_health",
-                  "telnyx_health"]);
-
-    const read = (k: string) => {
-      const v = (rows ?? []).find((r) => r.key === k)?.value as
-        { balance_usd?: number; checked_at?: string } | null | undefined;
-      return v ?? null;
-    };
-    // Null out a stale reading instead of printing it as current.
-    // ops_snapshot was fixed for exactly this in 20260722050000 — "a dead poller
-    // produced confidently WRONG 'all is well' digests" — but /balance was not,
-    // and it is the owner's is-everything-alive reflex. A bold "$3.55" with a
-    // small timestamp underneath is read as now.
-    const FRESH_MS = 10 * 60 * 1000;
-    const fresh = (v: { checked_at?: string } | null) =>
-      !!v?.checked_at && Date.now() - new Date(v.checked_at).getTime() <= FRESH_MS;
-    // Only balances that fund something: 5sim buys every SMS, HeroSMS funds
-    // the temp-EMAIL line, eSIM Access funds the eSIM line (added 2026-08-10 —
-    // while the line is paused this reading is how the owner watches the $50
-    // deposit land, which is exactly when it must be visible). SMSPVA serves
-    // nothing now, so printing it was noise on the one channel that has to
-    // stay readable at a glance.
-    const fiveRaw = read("5sim_health");
-    const heroRaw = read("herosms_health");
-    const eaRaw = read("esimaccess_health");
-    // Telnyx funds the second-number line — rent per subscriber, and the one
-    // float the owner has named as that product's hard blocker (2026-08-14:
-    // added here alongside the rental/lifecycle alerts).
-    const telnyxRaw = read("telnyx_health");
-    const five = fresh(fiveRaw) ? fiveRaw : null;
-    const hero = fresh(heroRaw) ? heroRaw : null;
-    const ea = fresh(eaRaw) ? eaRaw : null;
-    const telnyx = fresh(telnyxRaw) ? telnyxRaw : null;
-    const checked = fiveRaw?.checked_at ?? heroRaw?.checked_at ??
-      eaRaw?.checked_at ?? telnyxRaw?.checked_at;
-    const stalePoller = (fiveRaw || heroRaw || eaRaw || telnyxRaw) &&
-      !five && !hero && !ea && !telnyx;
-
-    // Surface the watchdog verdict here too — /balance is the owner's "is
-    // everything alive" reflex, so it should answer for the jobs as well.
-    const { data: wd } = await sb
-      .from("app_config").select("value").eq("key", "watchdog").maybeSingle();
-    const wdVal = wd?.value as
-      { failing?: { check?: string }[]; checked_at?: string } | null;
-    const failing = (wdVal?.failing ?? []).map((f) => f.check ?? "?");
-    // Same staleness logic as telegram-notify: a frozen verdict is not health.
-    const wdAgeMs = wdVal?.checked_at
-      ? Date.now() - new Date(wdVal.checked_at).getTime() : Infinity;
-    if (wdAgeMs > 30 * 60 * 1000) failing.push("watchdog_stale");
-
-    reply = [
-      // HeroSMS first: it serves SMS for 150 services carrying 99.4% of order
-      // volume, so it is the number that answers "can we sell right now".
-      balanceLine("5sim", five?.balance_usd),
-      balanceLine("HeroSMS", hero?.balance_usd),
-      balanceLine("esimaccess", ea?.balance_usd),
-      // Telnyx gets its own low-water mark: the SMS $37.50 threshold would
-      // print a permanent "top up" against $1/month rent.
-      balanceLine("Telnyx", telnyx?.balance_usd, TELNYX_LOW_USD),
-      stalePoller ? "⚠️ balance readings are STALE — the poller may be dead" : "",
-      failing.length > 0
-        ? `🚨 watchdog: ${esc(failing.join(", "))}`
-        : "🟢 watchdog: all jobs healthy",
-      checked ? `\n<i>checked ${esc(checked)}</i>` : "",
-    ].filter(Boolean).join("\n");
-  } else if (cmd === "/announce") {
-    // Read `raw`, NOT `text`. The parser lowercases every incoming command, and
-    // an announcement is shown to users VERBATIM — "eSIMs are back" must not
-    // reach them as "esims are back".
-    const body = raw.replace(/^\/announce(@\S+)?\s*/i, "").trim();
-    const { data: cur } = await sb
-      .from("app_config").select("value").eq("key", "announcement").maybeSingle();
-    const curVal = (cur?.value ?? {}) as { active?: boolean; text?: string; kind?: string };
-
-    if (body === "") {
-      reply = curVal.active
-        ? `📣 Live now:\n\n<b>${esc(curVal.text ?? "")}</b>\n\n` +
-          `<code>/announce off</code> to clear it.`
-        : "📣 Nothing is showing.\n\n" +
-          "<code>/announce Your message</code>\n" +
-          "<code>/announce warn Your message</code> — amber";
-    } else if (body.toLowerCase() === "off") {
-      const { error } = await sb.from("app_config")
-        .update({ value: { active: false, text: "", kind: "info", id: "" } })
-        .eq("key", "announcement");
-      reply = error ? `⚠️ Couldn't clear it: ${esc(error.message)}` : "📣 Cleared.";
-    } else {
-      const warn = /^warn\s+/i.test(body);
-      const msg = warn ? body.replace(/^warn\s+/i, "").trim() : body;
-      if (msg.length === 0) {
-        reply = "⚠️ Nothing to post — give it some text after <code>warn</code>.";
-      } else if (msg.length > MAX_ANNOUNCE) {
-        reply = `⚠️ Too long: ${msg.length} characters, limit ${MAX_ANNOUNCE}. ` +
-                `Truncating would hide the end of your own message, so it is refused instead.`;
-      } else {
-        // A fresh `id` per post is what makes a DISMISSED banner come back for
-        // the NEXT announcement. Without it the client can only remember
-        // "dismissed", and every later message is invisible to whoever waved
-        // the first one away — a broadcast channel that quietly stops
-        // broadcasting to exactly the people who have used it before.
-        const { error } = await sb.from("app_config")
-          .update({
-            value: {
-              active: true, text: msg,
-              kind: warn ? "warn" : "info",
-              id: new Date().toISOString(),
-            },
-          })
-          .eq("key", "announcement");
-        reply = error
-          ? `⚠️ Couldn't post it: ${esc(error.message)}`
-          : `📣 Live${warn ? " (amber)" : ""}:\n\n<b>${esc(msg)}</b>\n\n` +
-            `<i>On Home for everyone running 1.6+. Dismissible — a new one shows again.</i>`;
-      }
-    }
-  } else if (cmd === "/esim") {
-    if (arg !== "on" && arg !== "off") {
-      const { data: p } = await sb
-        .from("app_config").select("value").eq("key", "esim_paused").maybeSingle();
-      reply = `🌐 eSIMs are <b>${p?.value === true ? "OFF sale" : "on sale"}</b>.\n\n` +
-              `<code>/esim off</code> · <code>/esim on</code>`;
-    } else {
-      const pausing = arg === "off";
-      // Destructure the error. set_esim_paused reports how many plans it moved,
-      // and resuming a catalog whose provider is gone legitimately restores 0 —
-      // that has to be shown, not read as success.
-      const { data, error } = await sb.rpc("set_esim_paused", { p_paused: pausing });
-      const d = (data ?? {}) as { plans_active?: number; plans_changed?: number };
-      reply = error
-        ? `⚠️ Couldn't change it: ${esc(error.message)}`
-        : `🌐 eSIMs ${pausing ? "are now OFF sale" : "are back on sale"}.\n` +
-          `${d.plans_changed ?? 0} plans changed · ${d.plans_active ?? 0} now on sale` +
-          (!pausing && (d.plans_active ?? 0) === 0
-            ? `\n\n⚠️ Nothing came back — the catalog has not been synced recently, ` +
-              `so there is nothing to put on sale. Wire the new provider's sync first.`
-            : "");
-    }
-  } else if (cmd === "/lines") {
-    // 🔴 `set_lines_paused` shipped with NO CALLER ANYWHERE. The kill switch
-    // for a product that costs $1/month per subscriber existed only as a
-    // function you had to open a SQL console to reach — which is exactly the
-    // moment you cannot. Mirrors /esim precisely, including reporting the live
-    // count so "pausing did nothing" is visible rather than looking like
-    // success.
-    if (arg !== "on" && arg !== "off") {
-      const { data: p } = await sb
-        .from("app_config").select("value").eq("key", "lines_paused").maybeSingle();
-      const { count } = await sb.from("phone_lines")
-        .select("id", { count: "exact", head: true })
-        .in("status", ["active", "grace", "past_due"]);
-      reply = `📞 Second numbers are <b>${p?.value === true ? "OFF sale" : "on sale"}</b>.\n` +
-              `${count ?? 0} live line(s).\n\n` +
-              `<code>/lines off</code> · <code>/lines on</code>`;
-    } else {
-      const pausing = arg === "off";
-      const { data, error } = await sb.rpc("set_lines_paused", { p_paused: pausing });
-      const d = (data ?? {}) as { active_lines?: number };
-      reply = error
-        ? `⚠️ Couldn't change it: ${esc(error.message)}`
-        : `📞 Second numbers ${pausing ? "are now OFF sale" : "are back on sale"}.\n` +
-          `${d.active_lines ?? 0} existing line(s) keep working` +
-          (pausing
-            ? `\n\n<i>Pausing stops NEW rentals only. Live lines keep sending, ` +
-              `receiving and calling — and keep costing us rent until they lapse.</i>`
-            : "");
-    }
-  }
+  // Everything else is a command (or a typo, or prose that went nowhere —
+  // runCommand answers all three, and the fallback for the last one explains
+  // WHY it went nowhere rather than dumping a command list).
+  const reply = await runCommand(raw);
 
   await sendMessage(reply);
   return ok();

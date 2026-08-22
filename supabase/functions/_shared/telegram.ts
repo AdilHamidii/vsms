@@ -37,8 +37,110 @@ export interface SendResult { ok: boolean; status: number; body?: string }
  *  you exceed it — which, on a fire-and-forget path, loses the alert silently. */
 const MAX_LEN = 4000;
 
-/** POST /sendMessage. Returns a status object; never throws on HTTP failure. */
+/**
+ * Split an over-long message into ordered parts instead of truncating it.
+ *
+ * Until 2026-08-21 anything over MAX_LEN was `slice(0, MAX_LEN) + "…"`, i.e.
+ * the TAIL was dropped with no log and no way to tell a truncated message from
+ * one that happened to fit. The tail is routinely the part that matters: the
+ * end of a list of orphan numbers still billing at Telnyx, the last group of a
+ * grouped watchdog page, the action line of an alert.
+ *
+ * Splits at the last "\n" inside the budget; a single line longer than the
+ * budget is hard-cut, because there is no newline to split on and dropping it
+ * entirely would be worse.
+ *
+ * TWO THINGS THE HARD CUT MUST NOT DO, both of which make Telegram answer
+ * `400 can't parse entities` and lose the WHOLE message (sendMessage returns
+ * !ok on the first part, and telegram-notify then releases the claim and
+ * rebuilds the same doomed message every minute, forever):
+ *
+ *   1. cut inside a tag — `…yyy<b` — so the cut is backed up to before the
+ *      last unclosed "<";
+ *   2. cut BETWEEN an opening tag and its close, orphaning either half. Any
+ *      tag still open at the end of a part is closed there and reopened at the
+ *      start of the next, so every part is independently well-formed.
+ *
+ * Pure and exported so it is testable without a bot token.
+ */
+
+/** The inline tags this codebase emits. Anything else is left alone — an
+ *  unknown tag is not something to guess the nesting rules of. `<a>` is
+ *  deliberately ABSENT: reopening it would have to invent an href, and
+ *  Telegram rejects a bare <a> outright. Nothing here emits one today. */
+const SPLIT_TAG_RE = /<(\/?)(b|strong|i|em|u|s|code|pre)\b[^>]*>/gi;
+
+/** Close whatever is still open at the end of each part and reopen it at the
+ *  start of the next. The stack carries ACROSS parts, which is the point. */
+function balanceParts(parts: string[]): string[] {
+  const open: string[] = [];
+  return parts.map((part) => {
+    const prefix = open.map((t) => `<${t}>`).join("");
+    SPLIT_TAG_RE.lastIndex = 0;
+    let m: RegExpExecArray | null;
+    while ((m = SPLIT_TAG_RE.exec(part)) !== null) {
+      const tag = m[2].toLowerCase();
+      if (m[1] === "/") {
+        const i = open.lastIndexOf(tag);
+        if (i >= 0) open.splice(i, 1);
+      } else {
+        open.push(tag);
+      }
+    }
+    const suffix = [...open].reverse().map((t) => `</${t}>`).join("");
+    return prefix + part + suffix;
+  });
+}
+
+export function splitForTelegram(html: string, maxLen = MAX_LEN): string[] {
+  // Reserve room for the " (n/m)" suffix appended below (8 chars covers up to
+  // "(99/99)") AND for the reopen/close tags balanceParts may add to a part.
+  // Without the second reserve a repaired part can exceed Telegram's own cap.
+  const budget = maxLen - 8 - 48;
+  if (html.length <= maxLen) return [html];
+
+  const parts: string[] = [];
+  let rest = html;
+  while (rest.length > maxLen) {
+    let cut = rest.lastIndexOf("\n", budget);
+    if (cut <= 0) {
+      // One giant line: hard-cut, but never through a tag. If the last "<"
+      // inside the budget has no ">" after it, that tag is still open at the
+      // cut point — back up to before it.
+      cut = budget;
+      const lt = rest.lastIndexOf("<", cut - 1);
+      const gt = rest.lastIndexOf(">", cut - 1);
+      if (lt > gt && lt > 0) cut = lt;
+    }
+    parts.push(rest.slice(0, cut).trimEnd());
+    rest = rest.slice(cut).replace(/^\n/, "");
+  }
+  if (rest.length > 0) parts.push(rest);
+
+  const total = parts.length;
+  return balanceParts(parts).map((p, i) => `${p}\n(${i + 1}/${total})`);
+}
+
+/** POST /sendMessage. Returns a status object; never throws on HTTP failure.
+ *
+ *  An over-length message is SPLIT and sent as sequential parts, in order. The
+ *  result describes the whole send: ok only if every part landed, and the first
+ *  failure's status/body is what comes back (a partially-delivered alert is a
+ *  failed alert as far as any dedupe stamp is concerned). */
 export async function sendMessage(html: string, chatId?: string): Promise<SendResult> {
+  const parts = splitForTelegram(html);
+  if (parts.length > 1) {
+    console.warn(`telegram: message split into ${parts.length} parts (${html.length} chars)`);
+  }
+  let last: SendResult = { ok: true, status: 200 };
+  for (const part of parts) {
+    last = await sendOne(part, chatId);
+    if (!last.ok) return last;
+  }
+  return last;
+}
+
+async function sendOne(text: string, chatId?: string): Promise<SendResult> {
   let resp: Response;
   try {
     resp = await fetch(`${BASE}/bot${token()}/sendMessage`, {
@@ -46,7 +148,7 @@ export async function sendMessage(html: string, chatId?: string): Promise<SendRe
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         chat_id: chatId ?? ownerChatId(),
-        text: html.length > MAX_LEN ? `${html.slice(0, MAX_LEN)}\n…` : html,
+        text,
         parse_mode: "HTML",
         disable_web_page_preview: true,
       }),
@@ -70,34 +172,49 @@ export async function sendMessage(html: string, chatId?: string): Promise<SendRe
  *  to a thread. Without the id there is no route home.
  *
  *  Returns null on any failure rather than throwing — a support relay that
- *  cannot reach Telegram must still leave the user's message stored. */
+ *  cannot reach Telegram must still leave the user's message stored.
+ *
+ *  On a split, the id returned is the LAST part's — that is the message sitting
+ *  at the bottom of the chat, which is the one a phone reader taps "reply" on.
+ *  Replying to an earlier part falls through to command parsing (the owner gets
+ *  the help text) rather than misrouting to another thread, so the failure mode
+ *  is visible. The inline keyboard rides on the last part for the same reason. */
 export async function sendMessageWithId(
   html: string,
   opts: { replyMarkup?: unknown; chatId?: string } = {},
 ): Promise<number | null> {
-  try {
-    const resp = await fetch(`${BASE}/bot${token()}/sendMessage`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        chat_id: opts.chatId ?? ownerChatId(),
-        text: html.length > MAX_LEN ? `${html.slice(0, MAX_LEN)}\n…` : html,
-        parse_mode: "HTML",
-        disable_web_page_preview: true,
-        ...(opts.replyMarkup ? { reply_markup: opts.replyMarkup } : {}),
-      }),
-      signal: AbortSignal.timeout(5000),
-    });
-    if (!resp.ok) {
-      console.error(`sendMessageWithId: HTTP ${resp.status} ${await resp.text()}`);
+  const parts = splitForTelegram(html);
+  if (parts.length > 1) {
+    console.warn(`telegram: relayed message split into ${parts.length} parts (${html.length} chars)`);
+  }
+  let id: number | null = null;
+  for (let i = 0; i < parts.length; i++) {
+    const isLast = i === parts.length - 1;
+    try {
+      const resp = await fetch(`${BASE}/bot${token()}/sendMessage`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          chat_id: opts.chatId ?? ownerChatId(),
+          text: parts[i],
+          parse_mode: "HTML",
+          disable_web_page_preview: true,
+          ...(opts.replyMarkup && isLast ? { reply_markup: opts.replyMarkup } : {}),
+        }),
+        signal: AbortSignal.timeout(5000),
+      });
+      if (!resp.ok) {
+        console.error(`sendMessageWithId: HTTP ${resp.status} ${await resp.text()}`);
+        return null;
+      }
+      const body = await resp.json() as { result?: { message_id?: number } };
+      id = body.result?.message_id ?? id;
+    } catch (e) {
+      console.error(`sendMessageWithId: ${String(e)}`);
       return null;
     }
-    const body = await resp.json() as { result?: { message_id?: number } };
-    return body.result?.message_id ?? null;
-  } catch (e) {
-    console.error(`sendMessageWithId: ${String(e)}`);
-    return null;
   }
+  return id;
 }
 
 /** Acknowledge an inline-button tap. Telegram shows a spinner on the button

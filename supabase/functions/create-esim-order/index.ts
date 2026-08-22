@@ -7,6 +7,7 @@
 
 import { handleCors, json } from "../_shared/cors.ts";
 import { notifySafe, esc } from "../_shared/telegram.ts";
+import { alertHtml } from "../_shared/tgAlert.ts";
 import { admin, callerUserId } from "../_shared/supabaseAdmin.ts";
 import {
   cancelEsim, dataMbFromBytes, listPackages, orderEsim, parseLpa, queryEsim,
@@ -25,6 +26,62 @@ const CREDIT_VALUE_USD = 0.48;
 const MAX_COST_PER_CREDIT_USD = CREDIT_VALUE_USD / ESIM_MARGIN;
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/** Re-alert window for the three operational pages below. Matches create-order's
+ *  REALERT_MS — the same 6h ladder, for the same reason. */
+const REALERT_MS = 6 * 60 * 60 * 1000;
+
+/**
+ * Page at most once per 6h per alert key, counting the occurrences in between.
+ *
+ * These three alerts had NO throttle at all: a sustained eSIM Access outage or
+ * one mispriced package pages once per purchase attempt, which is how a real
+ * outage gets read as noise and muted. Every equivalent SMS-side alert
+ * (fail-streak, low-balance-block, provider-fault) grew a 6h ladder after
+ * exactly this was found there.
+ *
+ * Mirrors `alertLowBalanceBlock` in create-order/index.ts, including the two
+ * rules that matter:
+ *   - the message reports occurrences SINCE THE LAST ALERT, not a lifetime
+ *     total, and that counter resets only when a page actually goes out;
+ *   - the suppression stamp is written ONLY after a confirmed send. Stamping
+ *     first means one dropped Telegram message buys six hours of silence in
+ *     the middle of a live outage.
+ *
+ * NEVER throws — paging must not turn a clean 503 into a 500.
+ */
+async function pageThrottled(
+  sb: ReturnType<typeof admin>,
+  key: string,
+  build: (sinceLast: number) => string,
+): Promise<void> {
+  try {
+    const { data } = await sb
+      .from("app_config").select("value").eq("key", key).maybeSingle();
+    const v = (data?.value ?? {}) as { n?: number; last_alert_at?: string };
+    const n = (v.n ?? 0) + 1;
+    const due = !v.last_alert_at ||
+      Date.now() - new Date(v.last_alert_at).getTime() >= REALERT_MS;
+
+    const value: Record<string, unknown> = { n, last_alert_at: v.last_alert_at ?? null };
+    if (due) {
+      const sent = await notifySafe(build(n));
+      if (sent) { value.last_alert_at = new Date().toISOString(); value.n = 0; }
+      else console.error(`${key}: page FAILED to send — not suppressing, will retry`);
+    }
+    await sb.from("app_config").upsert(
+      { key, value, updated_at: new Date().toISOString() }, { onConflict: "key" },
+    );
+  } catch (e) {
+    console.error(`${key}: alert failed (ignored):`, e);
+  }
+}
+
+/** " · 4 more since the last alert" — omitted entirely for the first one, where
+ *  a count of 1 is noise. */
+function sinceLine(n: number): string {
+  return n > 1 ? `\n${n - 1} more since the last alert` : "";
+}
 
 Deno.serve(async (req) => {
   const cors = handleCors(req); if (cors) return cors;
@@ -111,12 +168,16 @@ Deno.serve(async (req) => {
         `below $${maxCostUsd.toFixed(2)} for plan ${plan.id}`,
       );
       try {
-        EdgeRuntime.waitUntil(notifySafe(
-          `🚨 <b>eSIM order refused — provider balance too low</b>\n` +
-          `have $${health.balance_usd.toFixed(2)}, this order needs up to ` +
-          `$${maxCostUsd.toFixed(2)} (plan ${esc(plan.id)})\n` +
-          `User was NOT charged. Top up eSIM Access.`,
-        ));
+        const bal = health.balance_usd;
+        EdgeRuntime.waitUntil(pageThrottled(sb, "esim_alert_low_balance", (n) =>
+          alertHtml({
+            sev: "🔴", title: "eSIM order refused — provider balance too low",
+            what: `have <b>$${bal.toFixed(2)}</b>, this order needed up to ` +
+              `<b>$${maxCostUsd.toFixed(2)}</b> (short $${Math.max(0, maxCostUsd - bal).toFixed(2)})\n` +
+              `plan ${esc(plan.id)}${sinceLine(n)}`,
+            why: 'The customer was NOT charged — they saw "provider unreachable", which does not say we are out of float.',
+            action: "Top up eSIM Access to resume selling.",
+          })));
       } catch { /* paging must never affect the order path */ }
       return json({ error: "provider_unreachable" }, { status: 503 });
     }
@@ -205,17 +266,21 @@ Deno.serve(async (req) => {
     );
     await failEsim(buy.errorType ?? "purchase_failed");
     try {
-      const extra =
+      const action =
         buy.errorType === "BALANCE_ERROR"
-          ? `\n💸 eSIM Access balance is SHORT of ~$${costUsdForOrder.toFixed(2)} — top up.`
+          ? `Top up eSIM Access — it is short of ~$${costUsdForOrder.toFixed(2)}.`
           : buy.errorType === "BAD_PACKAGE"
-          ? `\n🧭 OUR catalog/mapping is wrong for this plan (package unknown at provider) — not a stockout.`
-          : "";
-      EdgeRuntime.waitUntil(notifySafe(
-        `🚨 <b>eSIM purchase failed</b>\n` +
-        `plan <b>${esc(plan.id)}</b> · ${cost} credits · refunded\n` +
-        `${buy.errorType ?? "unclassified"}: ${esc(buy.error ?? "no detail")}${extra}`,
-      ));
+          ? "OUR catalog/mapping is wrong for this plan (the package is unknown at the provider) — this is not a stockout. Re-run sync-esim-plans."
+          : undefined;
+      EdgeRuntime.waitUntil(pageThrottled(sb, "esim_alert_purchase_failed", (n) =>
+        alertHtml({
+          sev: "🔴", title: "eSIM purchase failed",
+          what: `plan <b>${esc(plan.id)}</b> · ${cost} credits · refunded\n` +
+            `${esc(buy.errorType ?? "unclassified")}: ${esc(buy.error ?? "no detail")}` +
+            sinceLine(n),
+          why: "The customer paid and was refunded; the sale is lost either way.",
+          action,
+        })));
     } catch { /* paging must never affect the order path */ }
     // Classify, don't echo — provider prose matches no case in APIError and
     // falls through to "Something went wrong on our side". Existing codes ONLY:
@@ -269,10 +334,14 @@ Deno.serve(async (req) => {
     } catch { /* best-effort reclaim only */ }
     await failEsim("order_persist_failed");
     try {
-      EdgeRuntime.waitUntil(notifySafe(
-        `🚨 <b>eSIM order persist FAILED</b> — provider orderNo <b>${esc(buy.orderNo)}</b>, ` +
-        `our order ${esc(orderId)}. Wholesale cancel attempted; verify by hand.`,
-      ));
+      EdgeRuntime.waitUntil(pageThrottled(sb, "esim_alert_persist_failed", (n) =>
+        alertHtml({
+          sev: "🔴", title: "eSIM order persist FAILED",
+          what: `provider orderNo <b>${esc(buy.orderNo)}</b>\n` +
+            `our order ${esc(orderId)}${sinceLine(n)}`,
+          why: "This is the one path where money can leave twice — the profile is allocated at the provider and we cannot record where.",
+          action: "A wholesale cancel was attempted; verify at eSIM Access by hand.",
+        })));
     } catch { /* ignore */ }
     return json({ error: "order_persist_failed", detail: resErr?.message }, { status: 500 });
   }
@@ -348,9 +417,12 @@ async function alertEsim(
       .insert({ kind: "esim", ref: String(e.id) })
       .select("ref").maybeSingle();
     if (!claimed) return;
-    await notifySafe(
-      `🌍 <b>eSIM purchased</b>\n${e.credits} credits · plan ${esc(e.planId)} · ${esc(e.status)}`,
-    );
+    // Same shape as telegram-notify's safety-net copy for this event — the two
+    // race on one (kind, ref) claim, so whichever wins should read identically.
+    await notifySafe(alertHtml({
+      sev: "🟢", title: "eSIM purchased",
+      what: `${e.credits} credits · plan ${esc(e.planId)} · ${esc(e.status)}`,
+    }));
   } catch (err) {
     console.error("alertEsim failed (ignored):", err);
   }

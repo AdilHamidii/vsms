@@ -33,6 +33,8 @@ import {
 } from "../_shared/iap.ts";
 import { findNumberId, releaseNumber, faultOf } from "../_shared/telnyx.ts";
 import { sendMessage, esc } from "../_shared/telegram.ts";
+import { alertHtml } from "../_shared/tgAlert.ts";
+import { parisFull } from "../_shared/tgFormat.ts";
 
 /** How long a suspended number is held before release. A DID costs cents for a
  *  week, and this is the difference between "fix your card and everything is as
@@ -187,13 +189,24 @@ async function process(sb: ReturnType<typeof admin>, n: Awaited<ReturnType<typeo
   // types where a human has to act inside a deadline. Everything else about a
   // consumable still belongs to `iap-verify`, not here.
   if (n.notificationType === "CONSUMPTION_REQUEST" && !isSubscriptionProduct(tx.productId)) {
-    await alertOwner(
-      `⏳ <b>Refund requested — 12h to respond</b>\n` +
-      `credit pack: ${esc(tx.productId)}\n` +
-      `tx ${esc(tx.originalTransactionId)}\n` +
-      `<i>Credits already granted are NOT revoked automatically — see the ` +
-      `known-open note. Apple decides the refund.</i>`,
-      sb, tx.originalTransactionId);
+    // 🔴 KIND AND REF BOTH CHANGED 2026-08-21. This used to claim
+    // (kind='line_refund', ref=originalTransactionId) — the SAME pair the
+    // REFUND branches claim. Whichever of the two arrived first took the row
+    // and the other was dropped in silence, so "a refund was REQUESTED" and
+    // "the money has GONE BACK" could each eat the other. They are different
+    // urgencies with different actions and neither is optional.
+    //
+    // notificationUUID is Apple's own idempotency key and is present on every
+    // notification — including the consumable ones whose originalTransactionId
+    // is null, which is exactly the traffic that used to die here.
+    await alertOwner(alertHtml({
+      sev: "🟠", title: "Refund requested — 12h to respond",
+      what: `credit pack: ${esc(tx.productId)}\n` +
+        `tx ${esc(tx.originalTransactionId ?? "(none)")}`,
+      why: "Credits already granted are NOT revoked automatically — Apple decides the refund.",
+      action: "Respond in App Store Connect within 12h; the window then closes on its own.",
+      at: new Date(n.signedDate),
+    }), sb, `consumption:${n.notificationUUID}`, "line_consumption");
     return;
   }
 
@@ -244,19 +257,23 @@ async function process(sb: ReturnType<typeof admin>, n: Awaited<ReturnType<typeo
     const clawed = Number(data?.clawed_back ?? 0);
     const shortfall = Number(data?.shortfall ?? 0);
     const balance = data?.balance_after ?? null;
-    await alertOwner(
-      `💸 <b>Credit pack refunded — credits revoked</b>\n` +
-      `${esc(tx.productId)} · tx ${esc(tx.transactionId)}\n` +
-      `user ${esc(String(data?.user_id ?? "?"))}\n` +
-      `granted ${credits} · clawed back ${clawed}` +
-      (balance != null ? ` · balance now ${balance}` : "") +
-      (status === "already_revoked" ? `\n<i>already revoked (Apple retry)</i>` : "") +
-      (status === "revoked_no_wallet" ? `\n<i>no wallet row — nothing debited</i>` : "") +
-      (shortfall > 0
-        ? `\n🔴 <b>${shortfall} credits NOT recovered</b> — already spent. ` +
-          `The balance floor is a schema invariant; this is a real loss.`
-        : ""),
-      sb, `revoke:${tx.transactionId}`);
+    await alertOwner(alertHtml({
+      // A shortfall is money we will never get back; a clean clawback is not.
+      // Severity says which happened before the reader has read a word.
+      sev: shortfall > 0 ? "🔴" : "🟡",
+      title: "Credit pack refunded — credits revoked",
+      what: `${esc(tx.productId)} · tx ${esc(tx.transactionId)}\n` +
+        `user ${esc(String(data?.user_id ?? "?"))}\n` +
+        `granted ${credits} · clawed back ${clawed}` +
+        (balance != null ? ` · balance now ${balance}` : "") +
+        (status === "already_revoked" ? "\nalready revoked (Apple retry)" : "") +
+        (status === "revoked_no_wallet" ? "\nno wallet row — nothing debited" : "") +
+        (tx.revocationDate ? `\nrefunded ${parisFull(tx.revocationDate)} Paris` : ""),
+      why: shortfall > 0
+        ? `${shortfall} credits could NOT be recovered — already spent. The balance floor is a schema invariant, so this is a real loss.`
+        : undefined,
+      at: tx.revocationDate ? new Date(tx.revocationDate) : new Date(),
+    }), sb, `revoke:${tx.transactionId}`);
     return;
   }
 
@@ -459,7 +476,19 @@ async function process(sb: ReturnType<typeof admin>, n: Awaited<ReturnType<typeo
         if (typeof EdgeRuntime !== "undefined") EdgeRuntime.waitUntil(work);
         else await work;
       }
-      await alertOwner(`💸 <b>Line refunded</b>\n${esc(originalTx)}`, sb, originalTx);
+      // Ref carries the notificationUUID so this can never collide with the
+      // CONSUMPTION_REQUEST claim below — see the note on the credit-pack
+      // branch above for the collision this closes.
+      const refundMoney = await subscriptionMoney(sb, originalTx);
+      await alertOwner(alertHtml({
+        sev: "🔴", title: "Line refunded",
+        what: `tx ${esc(originalTx)}` +
+          (refundMoney ? `\n${refundMoney}` : "") +
+          (lineId ? "\nnumber released immediately (no 7-day hold)" : "") +
+          (tx.revocationDate ? `\nrefunded ${parisFull(tx.revocationDate)} Paris` : ""),
+        why: "Apple took the money back, so the rent stops now — the hold that protects a lapsed subscriber does not apply to a reversed purchase.",
+        at: tx.revocationDate ? new Date(tx.revocationDate) : new Date(),
+      }), sb, `refund:${n.notificationUUID}`, "line_refund");
       return;
     }
 
@@ -479,14 +508,18 @@ async function process(sb: ReturnType<typeof admin>, n: Awaited<ReturnType<typeo
       // this pages a human with the facts already assembled, and answering is
       // an owner decision until consent is genuinely collected.
       const facts = await consumptionFacts(sb, originalTx);
-      await alertOwner(
-        `⏳ <b>Refund requested — 12h to respond</b>\n` +
-        `${esc(originalTx)}\n` +
-        `line: ${esc(facts.e164 ?? "none")} · status ${esc(facts.status ?? "?")}\n` +
-        `held ${facts.daysHeld ?? "?"}d · ${facts.smsUsed ?? 0} SMS · ` +
-        `${Math.round((facts.voiceUsedSeconds ?? 0) / 60)} min used\n` +
-        `<i>Apple decides the refund. Reply only if you have consent to share usage.</i>`,
-        sb, originalTx);
+      const consumptionMoney = await subscriptionMoney(sb, originalTx);
+      await alertOwner(alertHtml({
+        sev: "🟠", title: "Refund requested — 12h to respond",
+        what: `tx ${esc(originalTx)}` +
+          (consumptionMoney ? `\n${consumptionMoney}` : "") +
+          `\nline: ${esc(facts.e164 ?? "none")} · status ${esc(facts.status ?? "?")}\n` +
+          `held ${facts.daysHeld ?? "?"}d · ${facts.smsUsed ?? 0} SMS · ` +
+          `${Math.round((facts.voiceUsedSeconds ?? 0) / 60)} min used`,
+        why: "Apple decides the refund. Reply only if you have consent to share usage.",
+        action: "Respond in App Store Connect within 12h; the window then closes on its own.",
+        at: new Date(n.signedDate),
+      }), sb, `consumption:${n.notificationUUID}`, "line_consumption");
       return;
     }
 
@@ -758,15 +791,31 @@ async function releaseLine(sb: ReturnType<typeof admin>, lineId: string) {
  *  send so the sweep can still deliver it.
  *
  *  `kind` must be a member of the telegram_events check constraint
- *  (20260814100000 added 'line_event') — a rejected insert loses the alert
- *  with no trace, which is why lifecycle alerts share ONE kind with prefixed
- *  refs instead of minting a new kind per event. */
+ *  (20260814100000 added 'line_event'; 20260821130000 added 'line_consumption')
+ *  — a rejected insert loses the alert with no trace, which is why lifecycle
+ *  alerts share ONE kind with prefixed refs instead of minting a new kind per
+ *  event.
+ *
+ *  ⚠️ A new kind here needs a migration widening that constraint IN THE SAME
+ *  COMMIT. The failure is silent: the insert 23514s, `claimed` comes back
+ *  empty, and this function reads that as "someone else already sent it". */
 async function alertOwner(
   html: string, sb: ReturnType<typeof admin>, ref: string, kind = "line_refund",
 ) {
   try {
-    const { data: claimed } = await sb.from("telegram_events")
+    const { data: claimed, error } = await sb.from("telegram_events")
       .insert({ kind, ref }).select("ref").maybeSingle();
+    // 23505 is the dedupe working. Anything else — above all the 23514 this
+    // function's own comment describes — must be LOGGED, or a rejected kind
+    // silently reads as "someone else already sent it" and the alert is lost
+    // on every retry, forever.
+    if (error) {
+      if (error.code !== "23505") {
+        console.error(`alertOwner claim failed for ${kind}/${ref}:`,
+                      error.code, error.message);
+      }
+      return;
+    }
     if (!claimed) return;
     const r = await sendMessage(html);
     if (!r.ok) {
@@ -774,6 +823,37 @@ async function alertOwner(
         .delete().eq("kind", kind).eq("ref", ref);
     }
   } catch { /* an alert must never fail the notification */ }
+}
+
+/** "$99.99 · line.yearly · USA" for a subscription, or null when we hold no
+ *  row for it.
+ *
+ *  A refund alert without the amount is a question, not an answer — "$9.99 gone"
+ *  and "$99.99 gone" are the same message today. `price_milli` is Apple's own
+ *  signed figure in MILLIUNITS (99990 = 99.99) in the storefront's currency,
+ *  so it is what was actually billed rather than a USD list price; the store
+ *  charges by storefront and a hardcoded ladder mispriced every non-USD sale
+ *  elsewhere in this repo. A trial reads 0, which is worth saying out loud. */
+async function subscriptionMoney(
+  sb: ReturnType<typeof admin>, originalTx: string,
+): Promise<string | null> {
+  const { data } = await sb
+    .from("line_subscriptions")
+    .select("product_id, price_milli, currency, storefront")
+    .eq("original_transaction_id", originalTx)
+    .maybeSingle();
+  if (!data) return null;
+  const milli = data.price_milli as number | null;
+  const cur = String(data.currency ?? "USD").toUpperCase();
+  const sym = cur === "USD" ? "$" : cur === "EUR" ? "€" : cur === "GBP" ? "£" : "";
+  const amount = milli == null
+    ? "amount unknown"
+    : milli === 0
+    ? "free trial (nothing billed)"
+    : `${sym}${(milli / 1000).toFixed(2)}${sym ? "" : ` ${cur}`}`;
+  const plan = String(data.product_id ?? "").split(".").slice(-2).join(".");
+  return `<b>${amount}</b>${plan ? ` · ${esc(plan)}` : ""}` +
+    (data.storefront ? ` · ${esc(String(data.storefront))}` : "");
 }
 
 /** What the line actually delivered, for a refund conversation.
