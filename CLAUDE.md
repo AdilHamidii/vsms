@@ -3128,9 +3128,13 @@ It is a starting point for "is this roughly right", never a citation.
   2026-08-10; 174 of 175 territories live). Apple/MIIT forbids CallKit in apps
   sold on the China App Store, and 2.0 ships CallKit. Re-adding China requires
   gating CallKit off by storefront first — do not re-tick it casually.
-- **Signup grant: 0 credits — SET 2026-08-18** (owner decision, after the
+- **Signup grant: 5 credits — live value confirmed 2026-08-22 by the owner
+  and by `select value from app_config where key='signup_bonus_credits'`
+  (`{"credits": 5}`).** This line said 0 for four days after the value had
+  moved; re-query rather than quoting it — `/config` on the bot reads it
+  live. *History:* set to 0 on 2026-08-18 (owner decision, after the
   first-session audit). It was 2 from 08-08 to 08-18, and 5 → 0 → 1 → 3 → 0
-  in the two days before that. The 08-18 case: **27 of 28 buyers ever bought
+  in the two days before that. The 08-18 case for 0: **27 of 28 buyers ever bought
   BEFORE placing an order** (median 3.0 min after signup); 112 users ordered
   free and never paid, and 106 of them still hold credits — nobody is refused
   a paywall, they take a free order that fails (first-order delivery 12.8%,
