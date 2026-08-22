@@ -833,11 +833,18 @@ Consequences that follow, all measured the same day:
 ⚠️ **Confounded, and honestly so:** 31 of 32 default-landed ≤5¢ orders came
 from users who had never paid. Cheap inventory and non-serious users cannot be
 separated at this n. Settling it needs a two-arm test — default routes forced
-to ≥15¢ for two weeks — at ~60 settled orders per arm. **Owner declined that
-change on 2026-08-20**, betting on the 5-credit signup grant instead; the grant
-does move new users out of the ≤5¢ band (5 credits ≈ 20¢ at 5sim's divisor),
-but the app's own default picker is unchanged and still delivers 4.0% (n=50)
-against 41.2% (n=102) for routes users pick themselves.
+to ≥15¢ for two weeks — at ~60 settled orders per arm. Owner declined that
+change on 2026-08-20, betting on the 5-credit signup grant instead, and
+**reversed it on 2026-08-22** once pack sales were traced to first orders that
+never deliver: **`AppState.minDefaultCredits = 3`** now DEMOTES every route
+under 3 credits in the three picks the app makes for the user (starter,
+auto-landed country, post-failure retry) — a demotion, never a filter, so the
+hero can never go "Unavailable"; the user's own country list is untouched.
+Client-side, so it ships with **2.3** and does nothing for older builds.
+Measure it with `from_default` (delivery on default-landed orders was 4.0%,
+n=50, against 41.2% for user-picked), split on the 2.3 adoption date. The
+floor must never exceed the signup grant (3 today) or every first pick
+becomes unaffordable — change the two together.
 
 **Changing `CREDIT_DIVISOR` silently breaks the PREMIUM tier until you backfill
 `routes.premium_credits`.** This bit us on the 3× → 6× change (2026-07-25).

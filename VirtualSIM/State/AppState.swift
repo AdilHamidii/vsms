@@ -1085,8 +1085,46 @@ final class AppState {
         case .some:                        (poolTier, poolScore) = (2, 0)  // published 0%
         case .none:                        (poolTier, poolScore) = (1, 0)  // unrated
         }
-        return (poolTier, poolScore, base.0, base.1, price)
+        // The bargain bin sorts LAST among untested routes, whatever its pool
+        // rate says — see `Self.minDefaultCredits`. A demotion, not a filter:
+        // when nothing else is affordable the cheap route is still picked,
+        // so this can never turn the hero into "Unavailable".
+        let cheap = price < Self.minDefaultCredits ? Self.cheapTierOffset : 0
+        return (poolTier + cheap, poolScore, base.0, base.1, price)
     }
+
+    /// Routes priced below this are DEMOTED in every pick the app makes FOR
+    /// the user (starter, auto-landed country, post-failure retry). The
+    /// user's own scrolling list is untouched.
+    ///
+    /// Why: wholesale price predicts delivery, and the cheapest band is where
+    /// first orders die. Measured on SETTLED orders (received/expired,
+    /// numbered, excluding app-default routes), July+August 2026 pooled:
+    /// ≤5¢ wholesale delivered **12.1%** (n=33), 6–15¢ **47.1%** (n=51),
+    /// >40¢ 78.6%. Re-measured 2026-08-18 per retail band: ≤2 credits
+    /// **10.4%** against 26.7% at 5+. At 5sim's 0.04 divisor, 1 credit is
+    /// ≤4¢ and 2 credits ≤8¢, so "< 3 credits" is the client-visible proxy
+    /// for the dead band (the client never sees wholesale). 3 credits is
+    /// also exactly the signup grant (2026-08-22), so a new user's first
+    /// pick lands on the 3-credit tier rather than the 1–2 tier the old
+    /// cheapest-wins fallback chose — the affordable set at 3 is ~1,600
+    /// routes across 227 services, so there is always something to pick.
+    ///
+    /// Owner decision 2026-08-22 (declined on 08-20, reversed once the
+    /// pack-sales collapse was traced to first orders that never deliver).
+    /// Confounded, and honestly so: cheap inventory and non-serious users
+    /// cannot be separated at this n — `from_default` is stamped on every
+    /// order so the effect is measurable. Keep in step with the grant: a
+    /// floor ABOVE the grant makes every first pick unaffordable.
+    static let minDefaultCredits = 3
+    /// Added to the pool tier (0–2) so a cheap route sorts after every
+    /// non-cheap untested route but BEFORE the measured-failing tier, which
+    /// `routeKey`/`retryKey` place at `provenBadTier`.
+    static let cheapTierOffset = 10
+    /// Tier for a route we have measured delivering zero. Must exceed
+    /// `cheapTierOffset + 2 + 1` (the worst untested tier after offsetting) so
+    /// our own evidence of failure always sorts last.
+    static let provenBadTier = 20
 
     /// The provider's rate for one pair, or nil when it is not in their top 10.
     func rank(for service: Service, country: Country) -> CountryRank? {
@@ -1501,7 +1539,7 @@ final class AppState {
             // neutral here — these two branches are decided by orders we
             // actually placed.
             return ratio > 0 ? (0, 0, 0, -Int(ratio * 100), price)   // proven
-                             : (4, 0, 0, 0, price)                   // proven-bad
+                             : (Self.provenBadTier, 0, 0, 0, price)  // proven-bad
         }
         // Untested: the provider's pool rate first, then the country's own
         // record, then price. Offset by 1 so a route with NO record can never
@@ -2552,7 +2590,7 @@ final class AppState {
                     return (k.0 + 1, k.1, k.2, k.3, k.4)              // untested
                 }
                 return ratio > 0 ? (0, 0, 0, -Int(ratio * 100), price)   // proven
-                                 : (4, 0, 0, 0, price)                   // proven-bad
+                                 : (Self.provenBadTier, 0, 0, 0, price)  // proven-bad
             }
             next = alternatives.min { retryKey($0) < retryKey($1) } ?? order.country
         }
