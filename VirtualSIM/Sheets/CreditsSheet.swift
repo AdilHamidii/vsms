@@ -65,6 +65,10 @@ struct CreditsSheet: View {
     @State private var selected: String = CreditsSheet.defaultPackId
     @State private var purchasing = false
     @State private var didPreselect = false
+    /// Set the moment the user taps a pack. Until then the sheet may move the
+    /// selection onto the pack that covers the shortfall; after it, never —
+    /// a selection changing under someone's thumb is worse than a stale one.
+    @State private var userChosePack = false
     @State private var appeared = false
     @State private var restoreNote: Note?
     @State private var restoreTask: Task<Void, Never>?
@@ -180,15 +184,15 @@ struct CreditsSheet: View {
                     }
 
                     assurances
-                        .padding(.top, 14)
+                        .padding(.top, 10)
                         .riseIn(appeared, index: 1)
 
                     ladderHeader
-                        .padding(.top, 24)
+                        .padding(.top, 12)
                         .riseIn(appeared, index: 2)
 
                     packsList
-                        .padding(.top, 10)
+                        .padding(.top, 8)
                         .riseIn(appeared, index: 3)
 
                     // ⚠️ ONLY a LOAD failure belongs here. A load failure has
@@ -202,11 +206,15 @@ struct CreditsSheet: View {
                 }
                 .padding(.horizontal, 16)
                 .padding(.top, 4)
-                .padding(.bottom, 24)
+                .padding(.bottom, 12)
             }
             .scrollIndicators(.hidden)
 
-            BottomBar { ctaBlock }
+            // A shorter scrim than the default 56. The whole point of the grid
+            // above is that all six packs sit above the fold; 32pt of gradient
+            // is still enough to say "there is more above" without spending
+            // half a pack row on it.
+            BottomBar(scrimHeight: 24) { ctaBlock }
         }
         .background(theme.bg)
         .task {
@@ -247,6 +255,18 @@ struct CreditsSheet: View {
         .onChange(of: productsLoaded) { _, loaded in
             guard loaded else { return }
             snapToAvailable()
+        }
+        // `preselectForNeed` ran once in `.task`, and `needed` can still be 0
+        // at that instant — the wallet refreshes asynchronously after a cold
+        // launch, so a sheet opened straight from checkout could compute its
+        // shortfall a beat AFTER the one-shot preselect. The sheet then sold
+        // MOST POPULAR while "Covers what you need" sat on a different tile —
+        // seen in the 2.3 screenshot harness, where the balance lands late in
+        // exactly that way. Re-run whenever the shortfall appears or grows,
+        // but never over a pack the user has already chosen.
+        .onChange(of: needed) { _, now in
+            guard now > 0, !userChosePack, !purchasing else { return }
+            selected = recommendedId ?? selected
         }
         .onDisappear { restoreTask?.cancel() }
     }
@@ -447,17 +467,19 @@ struct CreditsSheet: View {
                 if state.intent == .sms {
                     BenefitRow(icon: RIcon.shield,
                                label: "No code in 8 minutes → your credits come straight back.",
-                               tint: theme.live)
+                               tint: theme.live,
+                               dense: true)
                 } else {
                     BenefitRow(icon: RIcon.shield,
                                label: "If we can't deliver, your credits come straight back.",
-                               tint: theme.live)
+                               tint: theme.live,
+                               dense: true)
                 }
-                RowRule()
+                RowRule(inset: 54)
                 BenefitRow(icon: "infinity",
-                           label: "Credits never expire, and they work on every country.")
+                           label: "Credits never expire, and they work on every country.",
+                           dense: true)
             }
-            .padding(.vertical, 2)
         }
     }
 
@@ -496,18 +518,31 @@ struct CreditsSheet: View {
         }
     }
 
+    /// 🔴 **A TWO-COLUMN GRID, NOT A LIST, AND THAT IS THE POINT.** As six
+    /// full-width rows the ladder was ~90pt each: at default Dynamic Type on a
+    /// 6.3" phone only the first TWO packs were above the fold, under the
+    /// context card, the assurances and the section header — on the one screen
+    /// every dollar of revenue passes through. The user had to scroll to
+    /// discover that a bigger pack existed at all, which is exactly the
+    /// discovery a ladder is for. Nothing is hidden or reordered: `visiblePacks`
+    /// is unchanged and all six tiles render at once.
     private var packsList: some View {
-        VStack(spacing: 8) {
+        LazyVGrid(
+            columns: [GridItem(.flexible(), spacing: 8),
+                      GridItem(.flexible(), spacing: 8)],
+            spacing: 8
+        ) {
             ForEach(visiblePacks) { p in
-                PackRow(pack: p,
-                        active: selected == p.id,
-                        verifications: verifications(from: p),
-                        recommended: recommendedId == p.id,
-                        unavailable: isMissing(p),
-                        displayPrice: iap.displayPrice(p),
-                        displayPerCredit: iap.perCredit(p)) {
+                PackTile(pack: p,
+                         active: selected == p.id,
+                         verifications: verifications(from: p),
+                         recommended: recommendedId == p.id,
+                         unavailable: isMissing(p),
+                         displayPrice: iap.displayPrice(p),
+                         displayPerCredit: iap.perCredit(p)) {
                     guard !purchasing else { return }
                     RHaptic.select()
+                    userChosePack = true
                     withAnimation(RMotion.select) { selected = p.id }
                 }
             }
@@ -800,12 +835,18 @@ struct CreditsSheet: View {
     }
 }
 
-/// One rung of the ladder, leading with what it BUYS.
-private struct PackRow: View {
+/// One rung of the ladder as a TILE, leading with what it BUYS.
+///
+/// It was a full-width row (~90pt) and is now half-width, because six of those
+/// rows do not fit above the fold — see `packsList`. Everything that made the
+/// row honest survives the shape change: the selection ring, the "Covers what
+/// you need" marker, the unavailable treatment, and the rule that the secondary
+/// line never repeats the credit count.
+private struct PackTile: View {
     @Environment(\.theme) private var theme
     let pack: CreditPack
     let active: Bool
-    /// Numbers obtainable in total after this pack. nil = no honest figure.
+    /// Verifications this pack buys ON ITS OWN. nil = no honest figure.
     let verifications: Int?
     /// This is the smallest pack that clears the current shortfall.
     let recommended: Bool
@@ -817,58 +858,61 @@ private struct PackRow: View {
 
     var body: some View {
         Button(action: onTap) {
-            HStack(spacing: 14) {
-                ZStack {
-                    Circle()
-                        .strokeBorder(active ? theme.ink : theme.sepStrong,
-                                      lineWidth: active ? 6 : 1.5)
-                        .frame(width: 22, height: 22)
-                }
-
-                VStack(alignment: .leading, spacing: 3) {
-                    HStack(alignment: .firstTextBaseline, spacing: 8) {
-                        headline
-                        if let badge = pack.badge {
-                            Text(LocalizedStringKey(badge))
-                                .font(RFont.text(10, weight: .heavy))
-                                .tracking(0.3)
-                                .foregroundStyle(theme.accent2)
-                                .padding(.horizontal, 7)
-                                .padding(.vertical, 2)
-                                .background(theme.inkSoft, in: .capsule)
-                        }
-                    }
-                    secondary
-                    if recommended {
-                        Text("Covers what you need")
-                            .font(RFont.text(11, weight: .semibold))
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    headline
+                    Spacer(minLength: 0)
+                    if let badge = pack.badge {
+                        // The marketing badges never move — see `CreditPack` —
+                        // so the pill scales down rather than truncating. A
+                        // half-rendered "MOST POP…" beside a half-rendered
+                        // "+12 cred…" is two truncations where the tile only
+                        // has room to lose one, and the credit count is the one
+                        // that must survive.
+                        Text(LocalizedStringKey(badge))
+                            .font(RFont.text(8, weight: .heavy))
+                            .tracking(0.2)
                             .foregroundStyle(theme.accent2)
-                    }
-                    if unavailable {
-                        Text("Not available right now")
-                            .font(RFont.text(11, weight: .semibold))
-                            .foregroundStyle(theme.warn)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.55)
+                            .padding(.horizontal, 5)
+                            .padding(.vertical, 2)
+                            .background(theme.inkSoft, in: .capsule)
                     }
                 }
-
-                Spacer(minLength: 0)
 
                 Text(verbatim: displayPrice)
-                    .font(RFont.display(18, weight: .semibold))
+                    .font(RFont.display(17, weight: .bold))
                     .tracking(-0.4)
                     .foregroundStyle(theme.text)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.75)
+
+                secondary
+
+                Text(verbatim: displayPerCredit)
+                    .font(RFont.text(10))
+                    .foregroundStyle(theme.text3)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+
+                // A fixed slot, always present. Without it a tile carrying the
+                // recommendation or the unavailable line is taller than the one
+                // beside it and the grid stops reading as a grid.
+                marker
+                    .frame(height: 12, alignment: .leading)
             }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 14)
             .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 9)
             .background {
                 RoundedRectangle(cornerRadius: RRadius.md, style: .continuous)
                     .fill(active ? theme.inkSoft.opacity(0.45) : theme.elev)
             }
             .overlay {
                 RoundedRectangle(cornerRadius: RRadius.md, style: .continuous)
-                    .strokeBorder(active ? theme.ink.opacity(0.55) : theme.sep,
-                                  lineWidth: active ? 1.5 : 1)
+                    .strokeBorder(active ? theme.ink : theme.sep,
+                                  lineWidth: active ? 2 : 1)
             }
             .contentShape(.rect(cornerRadius: RRadius.md))
             .opacity(unavailable ? 0.55 : 1)
@@ -878,62 +922,82 @@ private struct PackRow: View {
         .accessibilityAddTraits(active ? .isSelected : [])
     }
 
-    /// The useful quantity first. Falls back to the credit count when we have
-    /// no honest per-number price — never to an estimate.
     /// What this pack ADDS, always in credits.
     ///
     /// Credits are the thing being bought, they are exact, and — unlike a
     /// derived number count — the figure cannot degrade at any balance. The
     /// "how many verifications is that?" question is still answered, one line
     /// down, where being approximate is honest rather than confusing.
-    @ViewBuilder
     private var headline: some View {
         Text("+\(pack.credits) credits")
-        .font(RFont.display(19, weight: .bold))
-        .tracking(-0.4)
-        .foregroundStyle(theme.text)
-        .monospacedDigit()
+            .font(RFont.display(16, weight: .bold))
+            .layoutPriority(1)
+            .tracking(-0.4)
+            .foregroundStyle(theme.text)
+            .monospacedDigit()
+            .lineLimit(1)
+            .minimumScaleFactor(0.8)
+    }
+
+    /// ONE line, and it is the answer to "how many verifications is that?".
+    ///
+    /// ⚠️ NEVER print the credit count here — the headline already says it, and
+    /// this line printing "5 credits" directly under "+5 credits" is the
+    /// duplication this row has already shipped once, on the app's only revenue
+    /// screen.
+    ///
+    /// ⚠️ "verifications", NEVER "numbers". Since the rented line shipped,
+    /// "number" is the name of a DIFFERENT product — one that credits cannot
+    /// buy at all, because it is subscription only. Saying "≈ 25 numbers" on the
+    /// credit paywall promises exactly the thing credits do not get you.
+    ///
+    /// `n >= 1` rather than `verifications != nil`: `verifications(from:)`
+    /// returns 0, not nil, when a pack cannot fund a single verification, and
+    /// `.some(0)` satisfies a nil-check. At the live median of 6 credits that is
+    /// the $2.99 entry pack, which gets the short honest form instead — it is
+    /// what stops someone buying the entry pack twice.
+    @ViewBuilder
+    private var secondary: some View {
+        if let n = verifications, n >= 1 {
+            Text(n == 1 ? "≈ 1 verification" : "≈ \(n) verifications")
+                .font(RFont.text(12))
+                .foregroundStyle(theme.text2)
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+        } else if verifications == 0 {
+            Text("Under 1 verification")
+                .font(RFont.text(12))
+                .foregroundStyle(theme.text2)
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+        } else {
+            // No honest figure — say nothing rather than estimate, and keep the
+            // slot so the tiles stay the same height.
+            Text(verbatim: " ")
+                .font(RFont.text(12))
+        }
     }
 
     @ViewBuilder
-    private var secondary: some View {
-        HStack(spacing: 6) {
-            // ⚠️ NEVER print the credit count here — the headline already says
-            // it, and this line printing "5 credits" directly under "+5 credits"
-            // is the duplication this row has already shipped once, on the app's
-            // only revenue screen.
-            //
-            // `n >= 1` rather than `numbers != nil`: `numbers(from:)` returns 0,
-            // not nil, when a pack cannot fund a single number, and `.some(0)`
-            // satisfies a nil-check. At the live median of 6 credits that is the
-            // $2.99 entry pack, which gets the explicit line below instead.
-            if let n = verifications, n >= 1 {
-                // ⚠️ "verifications", NEVER "numbers". Since the rented line
-                // shipped, "number" is the name of a DIFFERENT product — one
-                // that credits cannot buy at all, because it is subscription
-                // only. Saying "≈ 25 numbers" on the credit paywall promises
-                // exactly the thing credits do not get you. Credits buy
-                // temporary numbers that receive verification codes, which is
-                // the language the rest of the app already uses.
-                Text(n == 1 ? "≈ 1 verification" : "≈ \(n) verifications")
-                    .font(RFont.text(12))
-                    .foregroundStyle(theme.text2)
-                Text(verbatim: "·")
-                    .font(RFont.text(12))
-                    .foregroundStyle(theme.text3)
+    private var marker: some View {
+        if unavailable {
+            Text("Not available right now")
+                .font(RFont.text(10, weight: .semibold))
+                .foregroundStyle(theme.warn)
+                .lineLimit(1)
+                .minimumScaleFactor(0.75)
+        } else if recommended {
+            HStack(spacing: 4) {
+                Image(systemName: RIcon.check)
+                    .font(.system(size: 9, weight: .bold))
+                Text("Covers what you need")
+                    .font(RFont.text(10, weight: .semibold))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.75)
             }
-            Text(verbatim: displayPerCredit)
-                .font(RFont.text(12))
-                .foregroundStyle(theme.text2)
-        }
-        // A pack that cannot buy a single number at typical prices says so.
-        // It is the honest answer to "how many verifications is that?", and it
-        // is what stops someone buying the entry pack twice.
-        if verifications == 0 {
-            Text("Not quite enough for one verification on its own")
-                .font(RFont.text(11))
-                .foregroundStyle(theme.text3)
-                .fixedSize(horizontal: false, vertical: true)
+            .foregroundStyle(theme.accent2)
+        } else {
+            Color.clear
         }
     }
 }

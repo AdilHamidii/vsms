@@ -22,15 +22,21 @@ struct BenefitRow: View {
     /// as a ledger rather than a marketing checklist.
     var hint: LocalizedStringKey? = nil
     var tint: Color? = nil
+    /// Tighter vertical rhythm, for a card that is context rather than the
+    /// subject of the screen. The credits sheet's two reassurances sit above
+    /// the pack ladder, and at full row height they pushed four of the six
+    /// packs below the fold on the app's only revenue screen — the copy is
+    /// worth keeping, the padding is not.
+    var dense: Bool = false
 
     var body: some View {
         HStack(spacing: 12) {
             RoundedRectangle(cornerRadius: RRadius.xs, style: .continuous)
                 .fill((tint ?? theme.ink).opacity(0.13))
-                .frame(width: 32, height: 32)
+                .frame(width: dense ? 26 : 32, height: dense ? 26 : 32)
                 .overlay(
                     Image(systemName: icon)
-                        .font(.system(size: 14, weight: .semibold))
+                        .font(.system(size: dense ? 12 : 14, weight: .semibold))
                         .foregroundStyle(tint ?? theme.accent2)
                 )
 
@@ -43,7 +49,8 @@ struct BenefitRow: View {
                         .monospacedDigit()
                 }
                 Text(label)
-                    .font(RFont.text(14, weight: figure == nil ? .medium : .regular))
+                    .font(RFont.text(dense ? 13 : 14,
+                                     weight: figure == nil ? .medium : .regular))
                     .foregroundStyle(figure == nil ? theme.text : theme.text2)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -56,7 +63,7 @@ struct BenefitRow: View {
             }
         }
         .padding(.horizontal, 16)
-        .padding(.vertical, 12)
+        .padding(.vertical, dense ? 8 : 12)
     }
 }
 

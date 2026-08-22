@@ -129,9 +129,21 @@ struct LineStoreScreen: View {
                     smsEscape.padding(.top, 12).riseIn(appeared, index: 3)
                 }
                 .padding(.horizontal, 20)
-                // Clears the floating tab bar + resume bar.
+                // 🔴 THE TAB-BAR CLEARANCE MUST SIT OUTSIDE THE MIN-HEIGHT
+                // FRAME. With `.padding(.bottom, 120)` applied INSIDE it, the
+                // 120pt of clearance counted as content: the two spacers then
+                // distributed slack across the FULL viewport, which put "Choose
+                // a city" flush against the bottom of the screen — i.e. on top
+                // of the floating tab bar — and pushed `smsEscape` underneath
+                // it entirely. The escape is the only route to the temp-SMS
+                // product from the launch surface, so it being invisible is a
+                // funnel bug, not a cosmetic one.
+                //
+                // Subtracting the clearance from the min height and applying it
+                // afterwards makes the spacers distribute slack in the space
+                // that is actually visible.
+                .frame(minHeight: proxy.size.height - 120, alignment: .top)
                 .padding(.bottom, 120)
-                .frame(minHeight: proxy.size.height, alignment: .top)
             }
         }
     }
@@ -194,27 +206,31 @@ struct LineStoreScreen: View {
                     .padding(.horizontal, 16)
                     .padding(.bottom, 14)
 
-                RowRule()
+                RowRule(inset: 54)
                 BenefitRow(icon: RIcon.message,
-                           label: "Receive texts and codes in the app")
-                RowRule()
+                           label: "Receive texts and codes in the app",
+                           dense: true)
+                RowRule(inset: 54)
                 BenefitRow(icon: RIcon.phone,
-                           label: "Make and take calls in the app")
-                RowRule()
+                           label: "Make and take calls in the app",
+                           dense: true)
+                RowRule(inset: 54)
                 // Sold here for the first time. The rates, the credit cost and
                 // the per-minute price all existed and were reachable ONLY from
                 // inside the dialer — i.e. only after paying — so nobody
                 // deciding whether to subscribe ever knew the number could call
                 // abroad at all.
                 BenefitRow(icon: RIcon.globe,
-                           label: "Call 50+ countries, priced per minute before you dial")
-                RowRule()
+                           label: "Call 50+ countries, priced per minute before you dial",
+                           dense: true)
+                RowRule(inset: 54)
                 // The actual reason to buy, and it used to be the last clause
                 // of a paragraph. It is the only line here that names a
                 // problem rather than a feature.
                 BenefitRow(icon: RIcon.shield,
                            label: "Keep your own number private",
-                           tint: theme.live)
+                           tint: theme.live,
+                           dense: true)
 
                 // ── What it does NOT do, stated on the same ledger ──────────
                 //
@@ -227,17 +243,19 @@ struct LineStoreScreen: View {
                 // buyer accepted. Muted tint + a "Not yet" hint so it reads
                 // as a ledger line, not an alarm. Same on the checkout screen,
                 // which is the 3.1.2(a) disclosure surface.
-                RowRule()
+                RowRule(inset: 54)
                 BenefitRow(icon: RIcon.message,
                            label: "Sending texts from this number",
                            hint: "Not yet",
-                           tint: theme.text3)
+                           tint: theme.text3,
+                           dense: true)
                     .opacity(0.72)
-                RowRule()
+                RowRule(inset: 54)
                 BenefitRow(icon: RIcon.globe,
                            label: "Receiving texts from outside the US and Canada",
                            hint: "Not yet",
-                           tint: theme.text3)
+                           tint: theme.text3,
+                           dense: true)
                     .opacity(0.72)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -554,20 +572,27 @@ struct LineStoreScreen: View {
     /// Temp SMS is second in the business, not retired. Now that this screen is
     /// the launch surface, it is the only thing standing between a user who
     /// wants a one-off code and a monthly subscription pitch.
+    /// Rendered as a real secondary button — full width, 48pt, `chipBg`, the
+    /// same shape `GhostButton` gives every other "the other way" action in the
+    /// app. It used to be a 13pt regular line in `text2`, which read as a
+    /// caption; combined with the layout bug above (see `introStep`) it was
+    /// both faint and off-screen. The copy is unchanged.
     private var smsEscape: some View {
         Button(action: onOpenSms) {
             HStack(spacing: 8) {
                 Text("Just need a one-off verification code?")
-                    .font(RFont.text(13))
-                    .foregroundStyle(theme.text2)
+                    .font(RFont.text(13, weight: .medium))
+                    .foregroundStyle(theme.text)
                 Image(systemName: RIcon.arrow)
                     .font(.system(size: 11, weight: .semibold))
                     .foregroundStyle(theme.ink)
             }
             .frame(maxWidth: .infinity)
-            .padding(.vertical, 14)
-            .background(theme.chipBg, in: .rect(cornerRadius: 14))
+            .frame(height: 48)
+            .background(theme.chipBg, in: .capsule)
+            .contentShape(.capsule)
         }
         .buttonStyle(.plain)
+        .pressable(0.96)
     }
 }
