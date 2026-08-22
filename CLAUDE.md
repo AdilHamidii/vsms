@@ -1236,6 +1236,17 @@ domains that cost nothing, and it is still bounded by the subscriber daily
 cap. Refusing Sandbox would mean the App Store reviewer subscribes, gets
 nothing, and rejects the build.
 
+**The paywall has TWO entry points as of 2.3 (2026-08-22), and they present
+it differently.** (1) A refused order — `AppState.showMailPaywall`, the root
+sheet. (2) `EmailCodeScreen`, right under *Done* once a code has landed: the
+free-grant-spent card ("That was your free address") and the still-free
+nudge both open `MailPaywallScreen` from a LOCAL `@State`, because the root
+sheet is unreachable while that `fullScreenCover` is up — writing the flag
+there is a dead button. Both paths set `intent = .mailSubscription`. The
+card is rendered only over a DELIVERED code (asking for money on a mailbox
+that got nothing sells a failure), never says "unlimited" (the 25/day cap is
+a real server refusal), and quotes only StoreKit's `displayPrice`.
+
 **`subscriptionFamily` is the SAME function line and mail must resolve
 oppositely through — see the gotcha below.** `apple-notifications` dispatches
 a mail-family notification away from the line lapse machine entirely; a bug
