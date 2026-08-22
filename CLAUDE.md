@@ -3135,11 +3135,17 @@ It is a starting point for "is this roughly right", never a citation.
   2026-08-10; 174 of 175 territories live). Apple/MIIT forbids CallKit in apps
   sold on the China App Store, and 2.0 ships CallKit. Re-adding China requires
   gating CallKit off by storefront first — do not re-tick it casually.
-- **Signup grant: 5 credits — live value confirmed 2026-08-22 by the owner
-  and by `select value from app_config where key='signup_bonus_credits'`
-  (`{"credits": 5}`).** This line said 0 for four days after the value had
-  moved; re-query rather than quoting it — `/config` on the bot reads it
-  live. *History:* set to 0 on 2026-08-18 (owner decision, after the
+- **Signup grant: 3 credits — SET 2026-08-22 16:58Z (owner decision).**
+  Reason, measured the same day: at 5 credits, **49 of 52 first orders
+  (Aug 20–22) cost ≤ 5**, so new users never met a paywall and pack sales
+  went to ~0 while orders recovered; 27 of 28 buyers ever bought BEFORE
+  their first order, so the grant must sit below the median route (6 cr).
+  The same analysis found the real Aug 15–19 collapse was 2.0's
+  number-first onboarding (`create-order` calls 30/day → 1, zero first-day
+  orders from 45 signups) followed by the grant-0 days. Re-query rather
+  than quoting this line — `/config` reads it live; it was 5 from 08-20
+  to 08-22 and this file said 0 the whole time. *History:* set to 0 on
+  2026-08-18 (owner decision, after the
   first-session audit). It was 2 from 08-08 to 08-18, and 5 → 0 → 1 → 3 → 0
   in the two days before that. The 08-18 case for 0: **27 of 28 buyers ever bought
   BEFORE placing an order** (median 3.0 min after signup); 112 users ordered
