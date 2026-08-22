@@ -172,28 +172,28 @@ struct CreditsSheet: View {
 
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
-                    // The shortfall context leads. It answers "why am I here?"
-                    // before the sheet asks for money, and it carries the
-                    // balance so the two are never read in the wrong order.
+                    // The shortfall context leads, compressed to ONE line. It
+                    // answers "why am I here?" before the sheet asks for money,
+                    // and it carries the balance so the two are never read in
+                    // the wrong order.
+                    //
+                    // ⚠️ Nothing renders here at `needed == 0`. The balance is
+                    // already on the pill that opened this sheet, and every
+                    // point spent above the ladder is a point the sixth pack
+                    // does not have — six full-width rows only clear the fold
+                    // because this is one line or none.
                     if needed > 0 {
-                        contextCard
-                            .riseIn(appeared, index: 0)
-                    } else {
-                        balanceCard
+                        contextLine
+                            .padding(.bottom, 12)
                             .riseIn(appeared, index: 0)
                     }
 
-                    assurances
-                        .padding(.top, 10)
+                    packsList
                         .riseIn(appeared, index: 1)
 
-                    ladderHeader
+                    footnote
                         .padding(.top, 12)
                         .riseIn(appeared, index: 2)
-
-                    packsList
-                        .padding(.top, 8)
-                        .riseIn(appeared, index: 3)
 
                     // ⚠️ ONLY a LOAD failure belongs here. A load failure has
                     // no pack list above it, so this IS the content. A PURCHASE
@@ -273,63 +273,58 @@ struct CreditsSheet: View {
 
     // MARK: - Context
 
-    /// What the user was buying, named. Accent-tinted, never `live`.
-    private var contextCard: some View {
-        Card(elevation: .lifted) {
-            VStack(spacing: 0) {
-                HStack(spacing: 12) {
-                    contextIcon
-                    VStack(alignment: .leading, spacing: 2) {
-                        MicroLabel("You're buying")
-                        Text(verbatim: contextTitle)
-                            .font(RFont.display(16, weight: .semibold))
-                            .tracking(-0.3)
-                            .foregroundStyle(theme.text)
-                            .lineLimit(1)
-                        if let sub = contextSubtitle {
-                            Text(verbatim: sub)
-                                .font(RFont.text(12))
-                                .foregroundStyle(theme.text2)
-                                .lineLimit(1)
-                        }
-                    }
-                    Spacer(minLength: 0)
+    /// What the user was buying, named — ONE line, not a card.
+    ///
+    /// It was a two-section `Card` carrying "You're buying", the service, the
+    /// country, the route cost, the balance and the shortfall pill: ~150pt of
+    /// the ladder's height for context the user already has, since they arrived
+    /// here from that exact checkout. Everything load-bearing survives — what,
+    /// where, what it costs, and how far short they are — at a tenth of the
+    /// height.
+    private var contextLine: some View {
+        HStack(spacing: 10) {
+            contextIcon
+            VStack(alignment: .leading, spacing: 1) {
+                // Catalog names are rendered verbatim; the separator is
+                // punctuation, not a translatable string.
+                Text(verbatim: contextHeadline)
+                    .font(RFont.text(14, weight: .semibold))
+                    .foregroundStyle(theme.text)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+                    .truncationMode(.tail)
+                // Price and balance on the second line, never appended to the
+                // first: at 402pt "WhatsApp · 🇺🇸 United States · 48 credits"
+                // truncates, and the half it drops is the price — the one fact
+                // the shortfall is computed from.
+                //
+                // Two complete sentences rather than one with a pluralised
+                // noun interpolated in — the Romance languages inflect the
+                // adjective to agree, so "%lld credit%@" cannot be
+                // translated at all.
+                Group {
                     if let cost = contextCost {
-                        VStack(alignment: .trailing, spacing: 1) {
-                            Text("\(cost)")
-                                .font(RFont.display(19, weight: .bold))
-                                .tracking(-0.4)
-                                .foregroundStyle(theme.text)
-                                .monospacedDigit()
-                            Text("credits")
-                                .font(RFont.text(12))
-                                .foregroundStyle(theme.text2)
-                        }
+                        Text("Costs \(cost) credits · you have \(balance)")
+                    } else {
+                        Text("You have \(balance) credits")
                     }
                 }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 14)
-
-                RowRule(inset: 16)
-
-                HStack(spacing: 10) {
-                    Image(systemName: RIcon.coin)
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(theme.text2)
-                    // Two complete sentences rather than one with a pluralised
-                    // noun interpolated in — the Romance languages inflect the
-                    // adjective to agree, so "%lld credit%@" cannot be
-                    // translated at all.
-                    Text("You have \(balance) credits")
-                        .font(RFont.text(13, weight: .medium))
-                        .foregroundStyle(theme.text2)
-                    Spacer(minLength: 0)
-                    shortfallPill
-                }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 12)
+                    .font(RFont.text(12))
+                    .foregroundStyle(theme.text2)
+                    .lineLimit(1)
             }
+            Spacer(minLength: 8)
+            shortfallPill
         }
+    }
+
+    /// "Leboncoin · 🇦🇹 Austria" — what and where, joined. Catalog names, so
+    /// verbatim: translating "gmail.com" or "Deliveroo" is exactly the mistake
+    /// `EmailDomainOption.displayName` warns about. The PRICE is deliberately
+    /// not appended here — see the second line.
+    private var contextHeadline: String {
+        guard let sub = contextSubtitle else { return contextTitle }
+        return contextTitle + " · " + sub
     }
 
     private var shortfallPill: some View {
@@ -351,7 +346,7 @@ struct CreditsSheet: View {
     private var contextIcon: some View {
         switch state.intent {
         case .sms:
-            ServiceLogo(service: state.configuringService, size: 38, radius: RRadius.xs)
+            ServiceLogo(service: state.configuringService, size: 32, radius: RRadius.xs)
         case .esim:
             ReceiptIconBox(symbol: "simcard")
         case .email:
@@ -431,66 +426,38 @@ struct CreditsSheet: View {
             : state.cost(for: s, country: c)
     }
 
-    private var balanceCard: some View {
-        Card(elevation: .lifted) {
-            HStack {
-                VStack(alignment: .leading, spacing: 3) {
-                    MicroLabel("Current balance")
-                    HStack(alignment: .firstTextBaseline, spacing: 6) {
-                        MonoText("\(balance)", size: 26, weight: .semibold, color: theme.text)
-                        Text("credits")
-                            .font(RFont.text(13))
-                            .foregroundStyle(theme.text2)
-                    }
-                }
-                Spacer()
-                StatusPill(text: "Pay per use",
-                           tint: theme.accent2, soft: theme.inkSoft, dot: false)
-            }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 16)
-        }
-    }
+    // MARK: - Footnote
 
-    // MARK: - Assurances
-
-    /// The two sentences that make a first purchase safe, at real weight and
-    /// ABOVE the ladder. They were 12pt `text2` in a box under the packs.
-    private var assurances: some View {
-        Card(elevation: .raised) {
-            VStack(spacing: 0) {
-                // The 8-minute window is the SMS window specifically. Quoting
-                // it over an e-mail order (22 minutes) or an eSIM (no window at
-                // all) would be a promise about the wrong product — the same
-                // class of error as pricing one product line's checkout with
-                // another's route.
+    /// The two sentences that make a first purchase safe, as ONE muted line
+    /// UNDER the ladder.
+    ///
+    /// They were a `Card` of two `BenefitRow`s above the packs — ~90pt of
+    /// reassurance standing between the user and the thing they came to buy,
+    /// and part of why the sixth pack sat below the fold. Both facts survive
+    /// in meaning; only the weight changed.
+    ///
+    /// ⚠️ INTENT-AWARE, and it must stay so. The 8-minute window is the
+    /// SMS window specifically. Quoting it over an e-mail order (22 minutes)
+    /// or an eSIM (no window at all) would be a promise about the wrong
+    /// product — the same class of error as pricing one product line's
+    /// checkout with another's route.
+    private var footnote: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            basisLine
+            Group {
                 if state.intent == .sms {
-                    BenefitRow(icon: RIcon.shield,
-                               label: "No code in 8 minutes → your credits come straight back.",
-                               tint: theme.live,
-                               dense: true)
+                    Text("No code in 8 minutes → credits back · Credits never expire")
                 } else {
-                    BenefitRow(icon: RIcon.shield,
-                               label: "If we can't deliver, your credits come straight back.",
-                               tint: theme.live,
-                               dense: true)
+                    Text("If we can't deliver, credits come back · Credits never expire")
                 }
-                RowRule(inset: 54)
-                BenefitRow(icon: "infinity",
-                           label: "Credits never expire, and they work on every country.",
-                           dense: true)
             }
+            .font(RFont.text(12))
+            .foregroundStyle(theme.text3)
+            .fixedSize(horizontal: false, vertical: true)
         }
     }
 
     // MARK: - Ladder
-
-    private var ladderHeader: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            MicroLabel("Choose a pack")
-            basisLine
-        }
-    }
 
     /// States what the per-row figure is counted against. Without this the
     /// figure is a number with no provenance — and a number with no provenance
@@ -504,11 +471,12 @@ struct CreditsSheet: View {
         // what each PACK adds, not a total, so that sentence would be describing
         // a figure that is no longer on screen. It was true of the old
         // balance-inclusive rows and became false with them.
-        case .route(let credits, let service, let country):
-            Text("\(service) in \(country) costs \(credits) credits.")
-                .font(RFont.text(12))
-                .foregroundStyle(theme.text2)
-                .fixedSize(horizontal: false, vertical: true)
+        // `.route` is only ever derived when `needed > 0` (see `deriveUnit`),
+        // and that is exactly when `contextLine` is on screen stating the same
+        // route and the same price. Saying it twice on a six-row sheet costs a
+        // row's worth of height for nothing.
+        case .route:
+            EmptyView()
         case .median(let credits):
             Text("A typical verification costs \(credits) credits. Prices vary by service and country.")
                 .font(RFont.text(12))
@@ -518,28 +486,33 @@ struct CreditsSheet: View {
         }
     }
 
-    /// 🔴 **A TWO-COLUMN GRID, NOT A LIST, AND THAT IS THE POINT.** As six
-    /// full-width rows the ladder was ~90pt each: at default Dynamic Type on a
-    /// 6.3" phone only the first TWO packs were above the fold, under the
-    /// context card, the assurances and the section header — on the one screen
-    /// every dollar of revenue passes through. The user had to scroll to
-    /// discover that a bigger pack existed at all, which is exactly the
-    /// discovery a ladder is for. Nothing is hidden or reordered: `visiblePacks`
-    /// is unchanged and all six tiles render at once.
+    /// 🔴 **ONE FULL-WIDTH COLUMN, AND ALL SIX ROWS MUST FIT AT REST.**
+    ///
+    /// It was briefly a two-column grid of half-width tiles, because as rows
+    /// the ladder had a context card, an assurances card and a section header
+    /// stacked above it and only the first two packs cleared the fold. The
+    /// tiles fixed the fold and cost the comparison: at half width the price,
+    /// the credit count and the badge all fight for the same line, and a price
+    /// ladder is only useful if the rungs read against each other.
+    ///
+    /// The row is back and the height came out of the CHROME instead — the two
+    /// cards are one line and one footnote, the section header is gone. That
+    /// budget is the constraint on anything added here: a row is ~86pt and six
+    /// of them plus the pinned CTA is the whole screen, so a new element above
+    /// the ladder pushes the sixth pack off it again. Measure on a 6.1" phone
+    /// at default Dynamic Type before adding one.
+    ///
+    /// `visiblePacks` is unchanged — nothing is hidden or reordered.
     private var packsList: some View {
-        LazyVGrid(
-            columns: [GridItem(.flexible(), spacing: 8),
-                      GridItem(.flexible(), spacing: 8)],
-            spacing: 8
-        ) {
+        VStack(spacing: 8) {
             ForEach(visiblePacks) { p in
-                PackTile(pack: p,
-                         active: selected == p.id,
-                         verifications: verifications(from: p),
-                         recommended: recommendedId == p.id,
-                         unavailable: isMissing(p),
-                         displayPrice: iap.displayPrice(p),
-                         displayPerCredit: iap.perCredit(p)) {
+                PackRow(pack: p,
+                        active: selected == p.id,
+                        verifications: verifications(from: p),
+                        recommended: recommendedId == p.id,
+                        unavailable: isMissing(p),
+                        displayPrice: iap.displayPrice(p),
+                        displayPerCredit: iap.perCredit(p)) {
                     guard !purchasing else { return }
                     RHaptic.select()
                     userChosePack = true
@@ -835,14 +808,13 @@ struct CreditsSheet: View {
     }
 }
 
-/// One rung of the ladder as a TILE, leading with what it BUYS.
+/// One rung of the ladder as a full-width ROW, leading with what it BUYS.
 ///
-/// It was a full-width row (~90pt) and is now half-width, because six of those
-/// rows do not fit above the fold — see `packsList`. Everything that made the
-/// row honest survives the shape change: the selection ring, the "Covers what
-/// you need" marker, the unavailable treatment, and the rule that the secondary
-/// line never repeats the credit count.
-private struct PackTile: View {
+/// Everything that made the row honest is independent of its shape and is kept
+/// verbatim: the selection ring, the "Covers what you need" marker, the
+/// unavailable treatment, and the rule that the secondary line never repeats
+/// the credit count.
+private struct PackRow: View {
     @Environment(\.theme) private var theme
     let pack: CreditPack
     let active: Bool
@@ -850,7 +822,7 @@ private struct PackTile: View {
     let verifications: Int?
     /// This is the smallest pack that clears the current shortfall.
     let recommended: Bool
-    /// StoreKit returned every other product but not this one.
+    /// StoreKit has answered and does not carry this product.
     let unavailable: Bool
     let displayPrice: String
     let displayPerCredit: String
@@ -858,53 +830,54 @@ private struct PackTile: View {
 
     var body: some View {
         Button(action: onTap) {
-            VStack(alignment: .leading, spacing: 2) {
-                HStack(alignment: .firstTextBaseline, spacing: 6) {
-                    headline
-                    Spacer(minLength: 0)
-                    if let badge = pack.badge {
-                        // The marketing badges never move — see `CreditPack` —
-                        // so the pill scales down rather than truncating. A
-                        // half-rendered "MOST POP…" beside a half-rendered
-                        // "+12 cred…" is two truncations where the tile only
-                        // has room to lose one, and the credit count is the one
-                        // that must survive.
-                        Text(LocalizedStringKey(badge))
-                            .font(RFont.text(8, weight: .heavy))
-                            .tracking(0.2)
-                            .foregroundStyle(theme.accent2)
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.55)
-                            .padding(.horizontal, 5)
-                            .padding(.vertical, 2)
-                            .background(theme.inkSoft, in: .capsule)
-                    }
+            HStack(spacing: 14) {
+                ZStack {
+                    Circle()
+                        .strokeBorder(active ? theme.ink : theme.sepStrong,
+                                      lineWidth: active ? 7 : 1.5)
+                        .frame(width: 22, height: 22)
                 }
 
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack(alignment: .firstTextBaseline, spacing: 8) {
+                        headline
+                        if let badge = pack.badge {
+                            Text(LocalizedStringKey(badge))
+                                .font(RFont.text(10, weight: .heavy))
+                                .tracking(0.3)
+                                .foregroundStyle(theme.accent2)
+                                .lineLimit(1)
+                                // The badge sets its own width and the headline
+                                // shrinks instead: a truncated "BEST VAL…" is a
+                                // half-rendered marketing claim, where "+150
+                                // credits" at 95% scale reads identically.
+                                .fixedSize()
+                                .padding(.horizontal, 7)
+                                .padding(.vertical, 2)
+                                .background(theme.inkSoft, in: .capsule)
+                        }
+                    }
+                    secondary
+                    marker
+                }
+
+                Spacer(minLength: 8)
+
                 Text(verbatim: displayPrice)
-                    .font(RFont.display(17, weight: .bold))
+                    .font(RFont.display(20, weight: .bold))
                     .tracking(-0.4)
                     .foregroundStyle(theme.text)
                     .lineLimit(1)
                     .minimumScaleFactor(0.75)
-
-                secondary
-
-                Text(verbatim: displayPerCredit)
-                    .font(RFont.text(10))
-                    .foregroundStyle(theme.text3)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.8)
-
-                // A fixed slot, always present. Without it a tile carrying the
-                // recommendation or the unavailable line is taller than the one
-                // beside it and the grid stops reading as a grid.
-                marker
-                    .frame(height: 12, alignment: .leading)
+                    .layoutPriority(1)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, 12)
-            .padding(.vertical, 9)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 11)
+            // A floor, not a fixed height: the marker line only exists on the
+            // recommended (or unavailable) row, and without this the ladder
+            // would step in and out by ~15pt as the selection moves.
+            .frame(minHeight: 76)
             .background {
                 RoundedRectangle(cornerRadius: RRadius.md, style: .continuous)
                     .fill(active ? theme.inkSoft.opacity(0.45) : theme.elev)
@@ -918,7 +891,7 @@ private struct PackTile: View {
             .opacity(unavailable ? 0.55 : 1)
         }
         .pressable(0.985)
-        .disabled(unavailable)
+        .buttonStyle(.plain)
         .accessibilityAddTraits(active ? .isSelected : [])
     }
 
@@ -930,13 +903,13 @@ private struct PackTile: View {
     /// down, where being approximate is honest rather than confusing.
     private var headline: some View {
         Text("+\(pack.credits) credits")
-            .font(RFont.display(16, weight: .bold))
+            .font(RFont.display(22, weight: .bold))
             .layoutPriority(1)
             .tracking(-0.4)
             .foregroundStyle(theme.text)
             .monospacedDigit()
             .lineLimit(1)
-            .minimumScaleFactor(0.8)
+            .minimumScaleFactor(0.7)
     }
 
     /// ONE line, and it is the answer to "how many verifications is that?".
@@ -958,46 +931,45 @@ private struct PackTile: View {
     /// what stops someone buying the entry pack twice.
     @ViewBuilder
     private var secondary: some View {
-        if let n = verifications, n >= 1 {
-            Text(n == 1 ? "≈ 1 verification" : "≈ \(n) verifications")
-                .font(RFont.text(12))
-                .foregroundStyle(theme.text2)
-                .lineLimit(1)
-                .minimumScaleFactor(0.8)
-        } else if verifications == 0 {
-            Text("Under 1 verification")
-                .font(RFont.text(12))
-                .foregroundStyle(theme.text2)
-                .lineLimit(1)
-                .minimumScaleFactor(0.8)
-        } else {
-            // No honest figure — say nothing rather than estimate, and keep the
-            // slot so the tiles stay the same height.
-            Text(verbatim: " ")
-                .font(RFont.text(12))
+        HStack(spacing: 6) {
+            if let n = verifications, n >= 1 {
+                Text(n == 1 ? "≈ 1 verification" : "≈ \(n) verifications")
+                Text(verbatim: "·")
+                    .foregroundStyle(theme.text3)
+            } else if verifications == 0 {
+                Text("Under 1 verification")
+                Text(verbatim: "·")
+                    .foregroundStyle(theme.text3)
+            }
+            // No honest verification figure — say nothing rather than estimate.
+            // The per-credit price is exact either way and always renders.
+            Text(verbatim: displayPerCredit)
         }
+        .font(RFont.text(14))
+        .foregroundStyle(theme.text2)
+        .lineLimit(1)
+        .minimumScaleFactor(0.75)
     }
 
     @ViewBuilder
     private var marker: some View {
         if unavailable {
             Text("Not available right now")
-                .font(RFont.text(10, weight: .semibold))
+                .font(RFont.text(12, weight: .semibold))
                 .foregroundStyle(theme.warn)
                 .lineLimit(1)
-                .minimumScaleFactor(0.75)
+                .minimumScaleFactor(0.8)
         } else if recommended {
             HStack(spacing: 4) {
                 Image(systemName: RIcon.check)
-                    .font(.system(size: 9, weight: .bold))
+                    .font(.system(size: 10, weight: .bold))
                 Text("Covers what you need")
-                    .font(RFont.text(10, weight: .semibold))
+                    .font(RFont.text(12, weight: .semibold))
                     .lineLimit(1)
-                    .minimumScaleFactor(0.75)
+                    .minimumScaleFactor(0.8)
             }
             .foregroundStyle(theme.accent2)
-        } else {
-            Color.clear
+            .padding(.top, 1)
         }
     }
 }
