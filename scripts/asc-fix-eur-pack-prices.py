@@ -107,6 +107,9 @@ for pid, numeral in TARGETS.items():
         print(f"  DRY: would post schedule with {len(plan)} manual prices "
               f"({len(plan) - len(existing)} new)")
         continue
+    if len(plan) == len(existing):
+        print("  nothing new — schedule left as is")
+        continue
 
     included = []
     rel = []
@@ -127,8 +130,9 @@ for pid, numeral in TARGETS.items():
     r = call("POST", "/v1/inAppPurchasePriceSchedules", body)
     nsid = r["data"]["id"]
     back = call("GET", f"/v1/inAppPurchasePriceSchedules/{nsid}/manualPrices"
-                       "?include=inAppPurchasePricePoint&limit=200")
-    bpts = {i["id"]: i["attributes"]["customerPrice"] for i in back.get("included", [])}
+                       "?include=inAppPurchasePricePoint,territory&limit=200")
+    bpts = {i["id"]: i["attributes"]["customerPrice"] for i in back.get("included", [])
+            if i["type"] == "inAppPurchasePricePoints"}
     got = {p["relationships"]["territory"]["data"]["id"]:
            bpts[p["relationships"]["inAppPurchasePricePoint"]["data"]["id"]] for p in back["data"]}
     print(f"  POSTED schedule {nsid}; read back {len(got)} manual prices; "

@@ -980,6 +980,17 @@ Three things that will bite if forgotten:
   MANUAL prices in both USD and EUR (same numeral); never set only the base and
   trust equalization. Bases remain mixed per product (5/12/30 FRA; 8/60/150 USA)
   — change a price on the product's own base, don't rebase.
+  🔴 **This rule was NOT true for credits.60/150 until 2026-08-22.** Both had a
+  manual price in the USA ONLY, so every euro storefront showed Apple's
+  equalized **€29.99 / €69.99** — and in euros the 30-pack (€0.43/cr) beat the
+  60 (€0.50) and the 150 (€0.47). Caught from the owner's own phone; the
+  client's `assertLadderImproves()` cannot see it (it runs against one
+  storefront). Fixed with `scripts/asc-fix-eur-pack-prices.py` (dry-run by
+  default): manual **€24.99 / €59.99 in all 25 EUR territories**, read back
+  from ASC. An IAP price schedule can only be REPLACED (POST carries base +
+  the full manual list), never patched. Re-run the dry run after any pack
+  price change; "manual: USA=…" alone on a pack is the inversion waiting to
+  happen.
 - **`PRODUCT_TO_CREDITS` has credits.8 and `iap-verify` was redeployed
   2026-08-10 13:24Z** — before that the deployed bundle predated the mapping and
   a credits.8 purchase would have 400'd `unknown_product`. `credits.5` stays in
@@ -2611,17 +2622,26 @@ unconditional, it left any quiet service with NULL evidence, and
 `apply_measured_service_ranking` needs `observed_attempts >= 8` — so a service
 that went quiet was frozen at its last `sort_order`, unable to be re-evaluated.
 
-Client side, **every route carries a label and there are exactly two of them**
-(`DeliveryRecord` in `Components/SuccessBadge.swift`): **"Not tested"** or
-**"Worked X of Y times"**. Rendered unconditionally in ServiceSheet, CountrySheet,
-Home and Checkout.
+🔴 **OUR OWN RECORD IS NO LONGER RENDERED ANYWHERE — owner decision
+2026-08-22, in 2.3.** "Ours: 0 of 4", "Worked X of Y times", "Not tested",
+"Rarely works for <service>" and the `DeliveryNotice` odds sentences are
+gone from Home, Checkout, ServiceSheet, CountrySheet, Waiting and Recovery.
+The vendor's NETWORK rate (`NetworkRateMeter`) is the only delivery figure a
+user sees. Everything below about the record is now about DATA and
+STEERING only: `DeliveryRecord`, `routes.success_codes`, `routeKey`,
+`bestCountry`, `retryKey`, `Country.deliversPoorly` are unchanged and still
+decide where the app points a user — they just say nothing on screen. The
+history of why the labels existed is kept because the reasoning still
+governs the steering, and because the case for them (below) is real: a
+route with no label reads as *fine*, not *unknown*. That trade was made
+knowingly; do not reintroduce a record label without the owner.
 
-The third state is what was wrong. A route we had never sold rendered **no badge
-at all**, and an absent badge reads as *fine*, not as *unknown* — which described
-**17,471 of 17,804 active routes**. Silence was the answer to almost every "is
-this any good?".
+*Historical (1.6–2.2):* every route carried one of exactly two labels —
+"Not tested" or "Worked X of Y times" — rendered unconditionally, because a
+route we had never sold used to render **no badge at all**, and an absent
+badge reads as *fine* for what was then **17,471 of 17,804 active routes**.
 
-Two rules that look like details and are not:
+Two rules that still govern the DATA (and would govern any future label):
 - **A seeded rate is `.notTested`.** SMSPVA's per-country grade (323 routes) is a
   vendor's number about a route we may never have sold once. The old muted
   "~40% estimate" was still a *number*, and users read numbers as evidence.
@@ -2630,9 +2650,10 @@ Two rules that look like details and are not:
 
 `routes.success_codes` is the numerator (backfilled + written by
 `refresh_route_observed_success`) — deliberately stored rather than derived from
-the rounded `success_rate`, because an off-by-one in "worked N times" discredits
-the whole label. **Colour still carries confidence**: `.notTested` is always
-muted; green/amber/red are reserved for measured records.
+the rounded `success_rate`, because an off-by-one in "worked N times" would
+discredit any label built on it. (The colour-carries-confidence rule for
+`.notTested` vs measured records applied to the labels and is moot while
+none render.)
 
 ### Evidence must describe the provider that serves the NEXT order
 
