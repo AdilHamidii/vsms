@@ -207,6 +207,46 @@
         }
       }
     },
+    "%@ a month. Cancel any time in Settings.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ pro Monat. Jederzeit in den Einstellungen kündbar."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ al mes. Cancela cuando quieras en Ajustes."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ par mois. Annulable à tout moment dans Réglages."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ al mese. Annulla quando vuoi in Impostazioni."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "月額%@。設定からいつでも解約できます。"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ por mês. Cancele quando quiser nos Ajustes."
+          }
+        }
+      }
+    },
     "%@ accepts temporary numbers some of the time. You're only charged if a code arrives, and trying another number is free.": {
       "extractionState": "stale",
       "localizations": {
@@ -5613,6 +5653,46 @@
           "stringUnit": {
             "state": "translated",
             "value": "As chamadas que você faz e recebe neste número aparecem aqui."
+          }
+        }
+      }
+    },
+    "Calls you make from this number appear here.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Anrufe, die Sie von dieser Nummer aus führen, erscheinen hier."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Las llamadas que hagas desde este número aparecerán aquí."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Les appels que vous passez depuis ce numéro apparaissent ici."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Le chiamate che effettui da questo numero appariranno qui."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "この番号からかけた通話がここに表示されます。"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "As ligações que você fizer deste número aparecerão aqui."
           }
         }
       }
@@ -27270,6 +27350,46 @@
         }
       }
     },
+    "Text it from your own phone — the message appears here within seconds.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Schreiben Sie ihr eine SMS von Ihrem eigenen Handy — die Nachricht erscheint hier innerhalb von Sekunden."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Envíale un SMS desde tu propio teléfono: el mensaje aparecerá aquí en segundos."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Envoyez-lui un SMS depuis votre propre téléphone — le message apparaît ici en quelques secondes."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Inviagli un SMS dal tuo telefono: il messaggio apparirà qui in pochi secondi."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ご自身の携帯からこの番号にSMSを送ってみてください。数秒でここに表示されます。"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Envie um SMS para ele do seu próprio celular — a mensagem aparece aqui em segundos."
+          }
+        }
+      }
+    },
     "Texts left": {
       "extractionState": "stale",
       "localizations": {
@@ -29509,6 +29629,46 @@
           "stringUnit": {
             "state": "translated",
             "value": "Este número recebe mensagens, mas não envia. As chamadas funcionam — toque no ícone do telefone."
+          }
+        }
+      }
+    },
+    "This number receives texts. Replying isn't available yet.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Diese Nummer empfängt SMS. Antworten ist noch nicht möglich."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Este número recibe SMS. Responder aún no está disponible."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ce numéro reçoit des SMS. Répondre n'est pas encore disponible."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Questo numero riceve SMS. Rispondere non è ancora disponibile."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "この番号はSMSの受信専用です。返信はまだご利用いただけません。"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Este número recebe SMS. Responder ainda não está disponível."
           }
         }
       }
@@ -35531,6 +35691,86 @@
           "stringUnit": {
             "state": "translated",
             "value": "Seu número ainda não faz nem recebe chamadas. As mensagens já funcionam, e as chamadas chegam em uma atualização futura."
+          }
+        }
+      }
+    },
+    "Your number is at the top of this screen — tap it to copy.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ihre Nummer steht oben auf diesem Bildschirm — zum Kopieren antippen."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tu número está en la parte superior de esta pantalla: tócalo para copiarlo."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Votre numéro est en haut de cet écran — touchez-le pour le copier."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Il tuo numero è in cima a questa schermata: toccalo per copiarlo."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "番号はこの画面の上部にあります。タップするとコピーできます。"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Seu número está no topo desta tela — toque nele para copiar."
+          }
+        }
+      }
+    },
+    "Your number is live": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ihre Nummer ist aktiv"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tu número está activo"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Votre numéro est actif"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Il tuo numero è attivo"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "番号が有効になりました"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Seu número está ativo"
           }
         }
       }

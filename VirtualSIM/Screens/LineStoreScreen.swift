@@ -4,15 +4,17 @@ import SwiftUI
 ///
 /// ── Why this is a sequence and not one long page ──────────────────────────
 ///
-/// Three steps — read the pitch, pick a city, pick your actual number — and
-/// only then the price. So the user CHOOSES twice before money is mentioned.
-/// Two reasons, and the second is the important one:
+/// Three steps — read the pitch, pick a city, pick your actual number — then
+/// the paywall. Each step renders instantly: a single page had to wait on a
+/// Telnyx search before it could show anything, and the whole screen sat blank
+/// meanwhile.
 ///
-/// 1. Each step renders instantly. A single page had to wait on a Telnyx search
-///    before it could show anything, and the whole screen sat blank meanwhile.
-/// 2. By the time the price appears, the number on screen is *theirs* — they
-///    picked the city and picked the digits. Leading with "$9.99/month" asks
-///    someone to value a product they have not seen yet.
+/// ⚠️ The city step NAMES THE MONTHLY PRICE as of 2026-08-23 (owner decision —
+/// see `priceNote`). The original sequencing argument was that the number on
+/// screen should be *theirs* before money is mentioned; that was overruled by
+/// the cancellation data, and a subscriber who meets $9.99/month only after two
+/// choices can feel walked into it. The full 3.1.2(a) disclosure is still
+/// `LineCheckoutScreen`'s job alone.
 ///
 /// There is deliberately **no credit pill** anywhere here. This product is paid
 /// entirely through a StoreKit subscription and never touches the wallet;
@@ -65,10 +67,10 @@ struct LineStoreScreen: View {
         // up" was. Nothing on the city step needs the network at all.
         .task {
             withAnimation(RMotion.content) { appeared = true }
-            // Prefetch ONLY — this screen no longer shows a price (see the
-            // note above `cityList`). Kept because the store is the app's
-            // first screen, so the product is warm by the time the paywall
-            // opens; `LineCheckoutScreen` renders a redacted placeholder while
+            // Loads the product the city step's `priceNote` reads — and the
+            // reason that note renders nothing until this returns. Also keeps
+            // the product warm for the paywall: the store is the app's first
+            // screen, and `LineCheckoutScreen` renders a redacted placeholder while
             // StoreKit is still answering, and this usually removes it.
             // Idempotent, so calling it in both places is free.
             await subs.loadProduct()
@@ -163,6 +165,7 @@ struct LineStoreScreen: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
                     cityList
+                    priceNote.padding(.top, 14)
                     usSoon.padding(.top, 16)
                 }
                 .padding(.horizontal, 20)
@@ -295,23 +298,51 @@ struct LineStoreScreen: View {
         }
     }
 
-    // ⚠️ **THERE IS DELIBERATELY NO PRICE ON THIS SCREEN** (owner decision,
-    // 2026-08-06). Read, pick a city, get a number, and meet the paywall once
-    // — in that order. A `priceAnchor` capsule lived here and contradicted
-    // this file's own header, which has always described the flow as "choose
-    // twice before it ever mentions money".
-    //
-    // The counter-argument is on the record and was overruled: a user who has
-    // invested two choices before meeting a recurring charge can feel walked
-    // into it, where a price on step one lets people who will not pay leave
-    // early. If refunds or 1-star reviews cite a surprise subscription, this
-    // is the first thing to re-examine.
-    //
-    // What makes the removal SAFE is that App Store 3.1.2(a) asks for the
-    // disclosure on the screen immediately before the purchase, not on every
-    // screen — and `LineCheckoutScreen` carries all of it: price, billing
-    // period, renewal terms, and the Terms and Privacy links. Do not add a
-    // price back here without moving that reasoning with it.
+    /// What this costs, stated on the city step.
+    ///
+    /// ⚠️ **THIS REVERSES AN EARLIER OWNER DECISION** (2026-08-06: "there is
+    /// deliberately no price on this screen … read, pick a city, get a number,
+    /// and meet the paywall once — in that order"). That note said the removal
+    /// would be the first thing to re-examine if a surprise subscription
+    /// showed up in refunds or reviews, and it did: every subscriber so far
+    /// cancelled auto-renew at a median of 3.9 minutes, with the two
+    /// no-trial monthlies killed at 6 seconds and 9.7 minutes. Owner decision
+    /// 2026-08-23 — a $9.99/month recurring charge is now named BEFORE the two
+    /// choices, so someone who will not pay leaves before investing in a
+    /// number.
+    ///
+    /// This does not move the App Store 3.1.2(a) disclosure: price, billing
+    /// period, renewal terms and the Terms/Privacy links stay on
+    /// `LineCheckoutScreen`, which is the screen immediately before the
+    /// purchase and the one the guideline is about. This is one line of
+    /// context, not the disclosure.
+    ///
+    /// 🔴 **NEVER A HARDCODED "$9.99".** The price is StoreKit's own localized
+    /// `displayPrice` for the MONTHLY product, and when StoreKit has not
+    /// answered — which is the normal state for the first moment of the app's
+    /// launch surface, and permanently in the simulator — this renders
+    /// NOTHING. A stale or assumed figure here is exactly the drift that put
+    /// $4.99 against €5.99 on the credit ladder's top product.
+    ///
+    /// ⚠️ `monthlyPriceDisplay`, not `displayPrice`: the latter follows the
+    /// paywall's `selectedPlan`, so a user who had tapped Yearly would read
+    /// "$99.99 a month" here. Same trap that misstated the plan row by 12×.
+    ///
+    /// ⚠️ **NO TRIAL IS MENTIONED.** The line's 3-day trial was deleted in App
+    /// Store Connect on 2026-08-23 after all three conversions to $99.99 were
+    /// declined, so a trial claim would be false — and `trialLabel` is nil per
+    /// Apple ID eligibility anyway, which is why no trial copy may ever be
+    /// written as a literal.
+    @ViewBuilder
+    private var priceNote: some View {
+        if let price = subs.monthlyPriceDisplay {
+            Text("\(price) a month. Cancel any time in Settings.")
+                .font(RFont.text(12))
+                .foregroundStyle(theme.text2)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
 
     /// Cities, never area codes.
     ///

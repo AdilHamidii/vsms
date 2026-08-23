@@ -118,17 +118,30 @@ extension ScreenshotMode {
 
     /// Three conversations, because the point of a rented number is that it
     /// holds history across different people — which one thread cannot show.
+    ///
+    /// 🔴 EVERY PREVIEW HERE IS INBOUND, AND THAT IS NOT A STYLE CHOICE. A
+    /// `"You: Yes, 7pm 👍"` row lived at `t2` and rendered an OUTGOING message
+    /// — a capability this product refuses at the server on every attempt
+    /// (`outbound_sms_retired`, outbound SMS dropped 2026-08-18). These
+    /// fixtures feed App Store screenshots, so that row was a marketing claim
+    /// that we can send texts, in the same class as the listing copy that
+    /// promised texts "in and out" and had to be purged. **If a fixture line
+    /// starts with "You:", it is a bug.**
     static var sampleThreads: [LineThread] {
         let now = Date()
         return [
-            LineThread(id: "t1", lineId: "sample-line", peerE164: "+14165550199",
+            // The lead thread is a verification code, because that is what the
+            // number is bought FOR and it is the half that demonstrably works
+            // (inbound 3 of 3 lifetime). It also renders the one-tap
+            // "Copy 123456" affordance in `MessageBubble`.
+            LineThread(id: "t1", lineId: "sample-line", peerE164: "+18885550111",
                        lastMessageAt: now.addingTimeInterval(-120),
-                       lastPreview: "Is the bike still available?",
+                       lastPreview: "Your verification code is 123456",
                        unreadCount: 2, blocked: false,
                        createdAt: now.addingTimeInterval(-3_600)),
-            LineThread(id: "t2", lineId: "sample-line", peerE164: "+15145550102",
+            LineThread(id: "t2", lineId: "sample-line", peerE164: "+14165550199",
                        lastMessageAt: now.addingTimeInterval(-2_400),
-                       lastPreview: "You: Yes, 7pm 👍",
+                       lastPreview: "Is the bike still available?",
                        unreadCount: 0, blocked: false,
                        createdAt: now.addingTimeInterval(-86_400)),
             LineThread(id: "t3", lineId: "sample-line", peerE164: "+16135550144",
@@ -139,28 +152,38 @@ extension ScreenshotMode {
         ]
     }
 
-    /// The open conversation behind the `thread` frame. Both directions,
-    /// because a one-sided list does not show that this is a real two-way
-    /// number rather than a receive-only inbox.
+    /// The open conversation behind the `thread` frame — **inbound only**.
+    ///
+    /// 🔴 It used to alternate directions, on the reasoning that "a one-sided
+    /// list does not show that this is a real two-way number". It is not a
+    /// two-way number: `send-line-message` refuses every send with
+    /// `outbound_sms_retired`, the composer was deleted from `ThreadScreen`,
+    /// and the store pitch carries "Sending texts — Not yet". Two outgoing
+    /// bubbles in an App Store screenshot were a claim the app cannot honour.
+    ///
+    /// What replaces them is the strongest honest pitch there is: codes
+    /// arriving, each with the one-tap Copy affordance under it.
     static var sampleMessages: [LineMessage] {
         let now = Date()
         func msg(_ id: String, _ dir: LineMsgDirection, _ body: String,
                  _ ago: TimeInterval) -> LineMessage {
             LineMessage(
                 id: id, threadId: "t1", lineId: "sample-line", direction: dir,
-                e164From: dir == .inbound ? "+14165550199" : "+14375550128",
-                e164To: dir == .inbound ? "+14375550128" : "+14165550199",
+                e164From: dir == .inbound ? "+18885550111" : "+14375550128",
+                e164To: dir == .inbound ? "+14375550128" : "+18885550111",
                 body: body, status: .delivered, segments: 1,
                 sentAt: dir == .outbound ? now.addingTimeInterval(-ago) : nil,
                 receivedAt: dir == .inbound ? now.addingTimeInterval(-ago) : nil,
                 createdAt: now.addingTimeInterval(-ago))
         }
+        // ⚠️ `123456` / `654321` are deliberately not plausible codes, and no
+        // sender is named — the same rule as `sampleOrder`. A realistic code
+        // next to a real brand invites the reading that it came from that
+        // brand.
         return [
-            msg("m1", .inbound,  "Hi! Is the bike still available?", 900),
-            msg("m2", .outbound, "It is — still has the original receipt too.", 780),
-            msg("m3", .inbound,  "Could I see it tomorrow around 6?", 600),
-            msg("m4", .outbound, "6 works. I'll send the address closer to the time.", 480),
-            msg("m5", .inbound,  "Is the bike still available?", 120),
+            msg("m1", .inbound, "Your verification code is 123456. It expires in 10 minutes.", 900),
+            msg("m2", .inbound, "New sign-in from a device we don't recognise. If this wasn't you, ignore this message.", 600),
+            msg("m3", .inbound, "Your login code is 654321. Never share it with anyone.", 120),
         ]
     }
 

@@ -651,6 +651,14 @@ extension ContentView {
         case .lineIntro, .lineStore, .linePaywall, .linePaywallYearly:
             state.tab = .line
             state.lines = []                   // not yet a subscriber
+            if shot == .lineStore {
+                // The city step now prints the monthly price (see
+                // `LineStoreScreen.priceNote`), and it renders NOTHING until
+                // StoreKit answers — which `simctl` never makes it do, because
+                // it does not apply the scheme's StoreKit configuration. Same
+                // shim, same reason, as the paywall frames below.
+                subs.screenshotPricing = .init()
+            }
             if shot == .linePaywall || shot == .linePaywallYearly {
                 state.lineCity = "toronto"
                 state.lineOffer = LineNumberOffer(phoneNumber: "+14375550128",

@@ -38,6 +38,7 @@ struct ThreadScreen: View {
                 header
                 Divider().overlay(theme.sep)
                 transcript
+                readOnlyNote
             }
         }
         .task {
@@ -144,6 +145,40 @@ struct ThreadScreen: View {
             }
             .onAppear { proxy.scrollTo("bottom", anchor: .bottom) }
         }
+    }
+
+    // MARK: - Read-only note
+
+    /// One quiet line where the composer used to be.
+    ///
+    /// Deleting the composer removed the failure, but it also removed the
+    /// EXPLANATION: a user who opens a conversation and finds no text field
+    /// hunts for it, decides the app is broken or the thread is somehow
+    /// locked, and — measured — cancels. Saying it outright costs one line and
+    /// turns a missing control into a stated limitation, which is the same
+    /// choice the store pitch and the checkout ledger already make ("Sending
+    /// texts — Not yet").
+    ///
+    /// Muted `text3` on the page background, NOT a banner: this is a permanent
+    /// fact about the product, and a permanent tinted banner is chrome the eye
+    /// stops seeing while training the user to ignore the real ones
+    /// (`LineStatusBanner` sits in that role and only appears when something
+    /// is actually wrong).
+    ///
+    /// ⚠️ "yet" is the owner's framing on every other surface and is kept for
+    /// consistency — but do not turn it into a date or a promise. Outbound SMS
+    /// is DROPPED, not scheduled: it needs 10DLC registration nobody is
+    /// pursuing.
+    private var readOnlyNote: some View {
+        Text("This number receives texts. Replying isn't available yet.")
+            .font(RFont.text(12))
+            .foregroundStyle(theme.text3)
+            .multilineTextAlignment(.center)
+            .fixedSize(horizontal: false, vertical: true)
+            .frame(maxWidth: .infinity)
+            .padding(.horizontal, 24)
+            .padding(.top, 10)
+            .padding(.bottom, 18)
     }
 
     // The composer — text field, send button, `blockReason`, the "N texts left

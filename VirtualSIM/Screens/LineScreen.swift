@@ -67,12 +67,15 @@ private struct LiveLineView: View {
                 ])
                 .padding(.horizontal, 16).padding(.top, 12).padding(.bottom, 10)
 
-                // The hero already states the renewal date, and the allowance
-                // resets on renewal — so the strip's own copy of it would print
-                // the same date twice on one screen.
-                AllowanceStrip(line: line, showsResetDate: false)
-                    .padding(.horizontal, 20)
-                    .padding(.bottom, 14)
+                // 🔴 THE MINUTES METER LIVES IN THE CALLS SEGMENT, NOT HERE.
+                // It sat above the segment content, so a subscriber reading
+                // their (empty) INBOX was shown a bar reading "78 minutes
+                // left" — a CALL allowance metered over a list of TEXTS. The
+                // one number a messages screen must not print is a countdown
+                // belonging to another capability: it reads as "you have 78
+                // messages left", which is both wrong and, since inbound is
+                // unmetered, a cap this product does not have. Moved into
+                // `calls`, above the history, where the thing it meters is.
 
                 // No blanket `.animation` here — `SegmentedTabs` already wraps
                 // its selection change in `withAnimation`, which these
@@ -325,30 +328,35 @@ private struct LiveLineView: View {
     // MARK: - Messages
 
     /// The empty inbox is what a user who just paid $9.99 actually looks at for
-    /// their first hour, so it is the screen that most deserves designing — and
-    /// it was one grey glyph and "Give it out and see", which tells them
-    /// nothing to DO. Sharing the number is the actual next step, so the empty
-    /// state offers it rather than describing it.
+    /// their first hour, so it is the screen that most deserves designing.
+    ///
+    /// 🔴 IT IS THE CANCELLATION SCREEN. Every subscriber so far killed
+    /// auto-renew at a median of 3.9 minutes after paying, and lifetime inbound
+    /// is 8 messages across 13 subscriptions — so what they bought, looked at,
+    /// and cancelled is this exact view with nothing in it. Silence on a screen
+    /// that is supposed to receive reads as "the number is dead", and nothing
+    /// here ever told them how to find out otherwise.
+    ///
+    /// So it is now ONE instruction, not an invitation to share and wait:
+    /// **text the number from your own phone.** Inbound SMS is the half that
+    /// demonstrably works (3 of 3 lifetime), it costs the user nothing, it
+    /// needs no second person, and it answers the only question they have in
+    /// seconds. Sharing is still one tap away in the hero header above.
+    ///
+    /// ⚠️ It must NOT say "call it and see". Inbound CALLING has never
+    /// connected once, so half the instruction would be a broken promise on the
+    /// same card — and this is the surface the product's credibility rests on.
+    ///
+    /// ⚠️ The number is deliberately NOT reprinted here. The hero header
+    /// directly above renders it at 34pt with Copy and Share beside it; a
+    /// second copy on the same screen is a second thing to keep correct
+    /// through a number swap, and the card can simply point at it.
     @ViewBuilder
     private var messages: some View {
         if state.threadsForSelectedLine.isEmpty {
-            VStack(spacing: 14) {
-                EmptyState(
-                    icon: RIcon.message,
-                    title: "Your number is ready",
-                    message: "Texts sent to it land here. Share it with someone to get started."
-                )
-                ShareLink(item: PhoneFormat.national(line.e164)) {
-                    Text("Share my number")
-                        .font(RFont.text(15, weight: .medium))
-                        .foregroundStyle(theme.text)
-                        .frame(height: 48)
-                        .padding(.horizontal, 22)
-                        .background(theme.chipBg, in: Capsule())
-                }
-                .simultaneousGesture(TapGesture().onEnded { RHaptic.select() })
-            }
-            .padding(.top, 20)
+            proofOfLife
+                .padding(.horizontal, 20)
+                .padding(.top, 24)
         } else {
             ScrollView {
                 LazyVStack(spacing: 8) {
@@ -362,6 +370,41 @@ private struct LiveLineView: View {
                 .padding(.horizontal, 20)
                 .padding(.bottom, 120)
             }
+        }
+    }
+
+    /// The one card the empty inbox shows: how to prove the number works.
+    ///
+    /// A `Card` rather than the shared `EmptyState`, deliberately. `EmptyState`
+    /// is centred chrome that says "there is nothing here" — which is the
+    /// reading that gets this product cancelled. This is an instruction, so it
+    /// is left-aligned, raised, and reads as something to act on.
+    private var proofOfLife: some View {
+        Card(elevation: .raised) {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(spacing: 8) {
+                    // The live dot is the same grammar as the hero's status
+                    // line: this is a state, not a decoration.
+                    Circle().fill(theme.live).frame(width: 7, height: 7)
+                    Text("Your number is live")
+                        .font(RFont.display(17, weight: .semibold))
+                        .tracking(-0.3)
+                        .foregroundStyle(theme.text)
+                }
+                Text("Text it from your own phone — the message appears here within seconds.")
+                    .font(RFont.text(14))
+                    .lineSpacing(2)
+                    .foregroundStyle(theme.text2)
+                    .fixedSize(horizontal: false, vertical: true)
+                // Points at the hero rather than repeating it. See the note on
+                // `messages` — one number per screen.
+                Text("Your number is at the top of this screen — tap it to copy.")
+                    .font(RFont.text(12))
+                    .foregroundStyle(theme.text3)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .padding(18)
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 
@@ -384,28 +427,43 @@ private struct LiveLineView: View {
     /// The rule that produced that copy still stands and is worth keeping in
     /// view: **sell what ships.** It is only correct to offer the keypad here
     /// because the SDK is now linked and `isVoiceAvailable` gates the flow.
-    @ViewBuilder
     private var calls: some View {
-        if state.callsForSelectedLine.isEmpty {
-            VStack(spacing: 14) {
-                EmptyState(
-                    icon: RIcon.phone,
-                    title: "No calls yet",
-                    message: "Calls you make and receive on this number appear here."
-                )
-                dialButton
-            }
-            .padding(.top, 20)
-        } else {
-            ScrollView {
-                LazyVStack(spacing: 8) {
-                    dialButton.padding(.bottom, 6)
-                    ForEach(state.callsForSelectedLine) { call in
-                        CallRow(call: call)
-                    }
-                }
+        VStack(spacing: 0) {
+            // The minutes meter belongs to THIS segment and only this one. It
+            // used to sit above the segmented content, so it metered call
+            // minutes over the Messages list — see the note at that call site.
+            // The hero already states the renewal date, and the allowance
+            // resets on renewal, so the strip's own copy of it would print the
+            // same date twice on one screen.
+            //
+            // It still refreshes after a call: `onChange(of: calling.phase)`
+            // reloads the line into `state`, and `line` is passed down from
+            // there, so the bar re-renders wherever it is mounted.
+            AllowanceStrip(line: line, showsResetDate: false)
                 .padding(.horizontal, 20)
-                .padding(.bottom, 120)
+                .padding(.bottom, 14)
+
+            if state.callsForSelectedLine.isEmpty {
+                VStack(spacing: 14) {
+                    EmptyState(
+                        icon: RIcon.phone,
+                        title: "No calls yet",
+                        message: "Calls you make from this number appear here."
+                    )
+                    dialButton
+                }
+                .padding(.top, 6)
+            } else {
+                ScrollView {
+                    LazyVStack(spacing: 8) {
+                        dialButton.padding(.bottom, 6)
+                        ForEach(state.callsForSelectedLine) { call in
+                            CallRow(call: call)
+                        }
+                    }
+                    .padding(.horizontal, 20)
+                    .padding(.bottom, 120)
+                }
             }
         }
     }
