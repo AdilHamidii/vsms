@@ -1940,16 +1940,40 @@ pricing API. Nine destinations (CH, JP, NZ, SI, HR, FI, SK, AT, LV/EE) sit close
 enough to plausible mobile termination that a single expensive MNO range inside
 them could go negative. Replace them from the real rate deck before volume.
 
-### Swapping a line's number — 5 credits (2026-08-21)
+### The line has NO free trial on either plan (owner decision 2026-08-23)
+
+The yearly's 3-day `FREE_TRIAL` introductory offer was DELETED in ASC on
+2026-08-23 (read back: 0 offers on `line.monthly` and `line.yearly`); the
+monthly never had one. Why: 11 yearly trials lifetime — 4 cancelled inside
+the trial, and **every one of the 3 that reached the $99.99 charge with
+auto-renew ON was declined** (`DID_FAIL_TO_RENEW` → grace, all three still
+`auto_renew = true`), including the line's most active user. The yearly has
+billed **$0** in the product's history; the only successful line charges are
+$9.99 monthlies. A trial converting to a single $99.99 hit is the wrong shape
+for this audience. The 4 trials in flight at the time (converting 08-23 →
+08-25) keep their original terms — Apple does not alter a running offer.
+The paywall needs NO code change: `SubscriptionStore.trialLabel` reads the
+live intro offer and is nil without one, so "Start 3 days free" disappears
+on its own; `Products.storekit` and the DEBUG fixture were updated to match.
+⚠️ The ops bot's trial heuristic (`price_milli = 0` on a `.yearly`) stays
+exact for the in-flight four and is simply empty afterwards; the MAIL yearly
+still carries its trial and is unaffected by this decision.
+
+### Swapping a line's number — 8 credits (2026-08-21, repriced 2026-08-23)
 
 `swap-line-number` replaces a rented line's phone number with a fresh one in
-the **same area code**, charging `app_config.line_swap_credits` (**5** today;
-`line_swap_cooldown_days` is **0**, i.e. no cooldown). Built as **refund
-defence, not revenue**: a yearly subscriber is locked in for a year, so a
-number that gets spam-flagged leaves them with $99.99 of dead product and one
-move — `reportaproblem.apple.com`, which we cannot decline. ~$2.00 net against
-~$1 of Telnyx cost is a thin margin by this app's standards and the right
-trade against a refund twenty times larger.
+the **same area code**, charging `app_config.line_swap_credits` — **8** as of
+2026-08-23 (was 5 at launch; `line_swap_cooldown_days` is **0**, i.e. no
+cooldown). Owner rule: **≥ 3× margin on the swap.** Cost basis is Telnyx's
+flat **$1.00 upfront** per number (the new number's $1/month replaces the
+old one's); at the measured $0.40 net per credit, 8 credits nets $3.20 =
+3.2×. The old number's unused remainder of the month is sunk and not in
+that basis — if that ever matters, 10 credits is 4× / 2× against the $2
+worst case. Available to monthly AND yearly lines alike (`canSwap` keys on
+`status == .active`, not on the product). Built as **refund defence, not
+revenue**: a yearly subscriber is locked in for a year, so a number that
+gets spam-flagged leaves them with $99.99 of dead product and one move —
+`reportaproblem.apple.com`, which we cannot decline.
 
 **⚠️ It is NOT a retention fix, and the data says so.** Measured 2026-08-21
 across 13 subscriptions: **8 inbound messages lifetime, on 5 of 13 lines**.

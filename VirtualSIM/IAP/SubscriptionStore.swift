@@ -59,7 +59,12 @@ final class SubscriptionStore {
         /// ($9.99 × 12 − $99.99) ÷ ($9.99 × 12) = 16.6% → 17, which is what
         /// `yearlySavingsPercent` computes from the live prices.
         var savingsPercent = 17
-        var trial = "3 days"
+        /// nil since 2026-08-23: the line has no trial on either plan (owner
+        /// decision after 3 of 3 yearly trial conversions declined). The
+        /// paywall derives its trial copy from the live intro offer, so the
+        /// fixture must mirror ASC or the screenshot advertises an offer
+        /// that does not exist.
+        var trial: String? = nil
     }
 
     /// Non-nil ONLY under `ScreenshotMode`. Every read of it is behind
