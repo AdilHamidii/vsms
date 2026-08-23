@@ -3144,12 +3144,16 @@ SMS provider again, walk this list:
 Every number below has been wrong within a day of being written at least once.
 It is a starting point for "is this roughly right", never a citation.
 
-- **iOS**: `MARKETING_VERSION 2.3`, `CURRENT_PROJECT_VERSION 43`, iOS min
+- **iOS**: `MARKETING_VERSION 2.3`, `CURRENT_PROJECT_VERSION 44`, iOS min
   **18.0**, **3** SwiftPM dependencies (TelnyxRTC 4.1.2 → WebRTC 139.0.0,
   Starscream 4.0.8). Re-count sources with
   `find VirtualSIM -name '*.swift' | wc -l` rather than quoting a number.
-  **2.2 is `READY_FOR_SALE`; 2.3 (build 43) SUBMITTED 2026-08-23 09:55Z —
-  `WAITING_FOR_REVIEW`, submission `22be3a0b-…`, version `223625a6-…`.**
+  **2.2 is `READY_FOR_SALE`; 2.3 (build 44) SUBMITTED 2026-08-23 11:22Z —
+  `WAITING_FOR_REVIEW`, submission `887a51cf-…`, version `223625a6-…`.**
+  (Build 43's submission `22be3a0b-…` was CANCELLED the same morning to pull
+  the "≈ N verifications" paywall estimate and add the line-UI batch; the
+  cancel → `DEVELOPER_REJECTED` → reattach → resubmit path worked a fourth
+  time.)
   All 13 localizations carry the corrected listing (no "in and out", no
   trial, inbound calls in the "not yet" block). Read the live state with
   `python3 scripts/asc-release.py status 2.3` — never this line.
@@ -3495,6 +3499,25 @@ Also this day, each verified against live DB state rather than a deploy log:
 Reasoning for each of these lives in the topic section above; this is only an
 index, so "why is it like this" has a date to search for.
 
+- **08-23 (later) — build 43's submission cancelled, 2.3 resubmitted as
+  build 44 (11:22Z).** Two changes rode in: the paywall's "≈ N verifications"
+  per-row estimate REMOVED (owner: "horrible" — it was derived from a catalog
+  median that moves hourly; rows now carry exact credits + per-credit price
+  only, `UnitPrice`/`deriveUnit` deleted from `CreditsSheet`), and a
+  five-item line-UI batch aimed at the 3.9-minute cancel: the empty inbox is
+  a proof-of-life instruction ("text it from your own phone"), the screenshot
+  fixtures no longer show an outgoing reply the product refuses to send, the
+  minutes meter moved from Messages to Calls, read-only threads state the
+  limit, the city picker quotes the live monthly price, and the Calls empty
+  state no longer claims received calls. Six new keys translated.
+  **`rent-line-credits` had its FIRST real use the same day**: a
+  credits-billed Toronto test line for the owner's dev account
+  (`+14377804893`, line `f595c56a-…`, 20 credits granted via
+  `goodwill-credit`, active to 2026-09-22, `billing='credits'`). The whole
+  order → messaging-attach → voice-provision sequence worked; **inbound SMS
+  on a credits-billed line is still untested** — the owner got the number in
+  the app but never texted it. Note the credits path has NO renewal
+  mechanism proven: watch what `reclaim_lapsed_lines` does to it on Sep 22.
 - **08-22/23 — 2.3 (build 43), submitted 08-23 09:55Z.** Diagnosed the
   pack-sales collapse (2.0's number-first onboarding cut `create-order`
   calls 30/day → 1; then grant 0; then grant 5 covered 49 of 52 first
@@ -3513,9 +3536,11 @@ index, so "why is it like this" has a date to search for.
   all 13 locales (live 2.2 text still promised "in and out" texts and
   calls). 101 new strings translated; `scripts/asc-release.py`,
   `scripts/audit-xcstrings.py`, `scripts/asc-fix-eur-pack-prices.py` added.
-  Telegram ops bot overhaul merged to main the same day. Not done: the RC
-  never reached the owner's phone (unreachable); the Number swap's Telnyx
-  half is still unprobed live — the first real swap is the probe.
+  Telegram ops bot overhaul merged to main the same day. (The build-44 tree
+  was installed and launched on the owner's phone at midday 08-23 — an
+  earlier version of this line said the RC never reached it.) Still not
+  done: the Number swap's Telnyx half is unprobed live — the first real
+  swap is the probe.
 - **08-19/20 — 2.2 (build 42): a bug + UX pass, red-teamed.** Four discovery
   agents (client correctness, first-session UX, backend money paths, error
   copy) produced ~30 candidates; 21 were fixed, then an adversarial pass broke
