@@ -765,7 +765,7 @@ struct HomeScreen: View {
                 // Selling the plan before spending the request is both honest
                 // and the only way this line is ever bought on purpose.
                 PrimaryButton(
-                    label: "Get more addresses",
+                    label: String(localized: "Get more addresses"),
                     // StoreKit's own localized price, or nothing. A hardcoded
                     // "$2.99" here is the drift that put $4.99-vs-€5.99 on the
                     // credit ladder.
