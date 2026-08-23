@@ -3144,12 +3144,15 @@ SMS provider again, walk this list:
 Every number below has been wrong within a day of being written at least once.
 It is a starting point for "is this roughly right", never a citation.
 
-- **iOS**: `MARKETING_VERSION 2.2`, `CURRENT_PROJECT_VERSION 42`, iOS min
-  **18.0**, **126** Swift sources, and **3** SwiftPM dependencies (TelnyxRTC
-  4.1.2 → WebRTC 139.0.0, Starscream 4.0.8). (Counted 2026-08-20 with
-  `find VirtualSIM -name '*.swift' | wc -l`.)
-  **2.1 is `READY_FOR_SALE` — verified against the ASC API on 2026-08-20, not
-  inferred.** 2.2 (build 42) was uploaded the same day.
+- **iOS**: `MARKETING_VERSION 2.3`, `CURRENT_PROJECT_VERSION 43`, iOS min
+  **18.0**, **3** SwiftPM dependencies (TelnyxRTC 4.1.2 → WebRTC 139.0.0,
+  Starscream 4.0.8). Re-count sources with
+  `find VirtualSIM -name '*.swift' | wc -l` rather than quoting a number.
+  **2.2 is `READY_FOR_SALE` — verified against the ASC API on 2026-08-23.**
+  2.3 exists as a draft (`223625a6-…`, `PREPARE_FOR_SUBMISSION`) with all
+  13 localizations already patched to the corrected listing (no "in and
+  out", no trial, inbound calls in the "not yet" block) via
+  `scripts/asc-release.py listing`; `status 2.3` prints the live state.
   ⚠️ **This line has been wrong about the review state FOUR versions running**,
   each time by describing a submitted build as still in review after it shipped.
   It is a decision error, not a typo: "still in review" is the argument for
