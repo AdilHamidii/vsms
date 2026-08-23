@@ -38,6 +38,11 @@ struct EmailDomainSheet: View {
     var onPick: (EmailDomainOption) -> Void
 
     @State private var appeared = false
+    /// Presented from this sheet rather than through `state.showMailPaywall`:
+    /// the root sheet is unreachable while a cover is up, and this keeps the
+    /// paywall's presenter next to the control that opens it — the same shape
+    /// `EmailCodeScreen` uses.
+    @State private var showPaywall = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -53,6 +58,15 @@ struct EmailDomainSheet: View {
         }
         .background(theme.bg)
         .presentationDetents([.medium, .large])
+        .sheet(isPresented: $showPaywall) {
+            MailPaywallScreen()
+                .environment(\.theme, theme)
+                .environment(state)
+                .environment(mailStore)
+                .presentationDetents([.large])
+                .presentationDragIndicator(.visible)
+                .presentationBackground(theme.bg)
+        }
         .task {
             withAnimation(RMotion.content) { appeared = true }
             // A UI hint, not an authority — `mailStore.isEntitled` only
@@ -141,35 +155,67 @@ struct EmailDomainSheet: View {
         .scrollIndicators(.hidden)
     }
 
+    /// ⚠️ Two shapes, and the split is structural rather than cosmetic. A free
+    /// domain for someone whose lifetime free address is spent carries a
+    /// tappable **Subscribe** chip, and a Button cannot live inside another
+    /// Button's label in SwiftUI — the inner one simply never receives the
+    /// tap. So that case renders the identity and the chip as SIBLINGS: the
+    /// left half still picks the domain, the chip opens the paywall.
+    @ViewBuilder
     private func row(_ option: EmailDomainOption) -> some View {
-        Button {
-            RHaptic.select()
-            onPick(option)
-            dismiss()
-        } label: {
+        if option.isFree, freeAccess == .subscription {
             HStack(spacing: 12) {
-                VStack(alignment: .leading, spacing: 4) {
-                    // verbatim: a mail domain is a brand, not a translatable
-                    // string, and "gmail.com" must never become "Google Mail".
-                    Text(verbatim: option.displayName)
-                        .font(RFont.display(16, weight: .semibold))
-                        .tracking(-0.3)
-                        .foregroundStyle(option.inStock ? theme.text : theme.text2)
-                    if option.inStock {
-                        StatusPill(text: "Available now")
-                    } else {
-                        StatusPill(text: "Out of stock right now",
-                                   tint: theme.text3, soft: theme.chipBg, dot: false)
+                Button {
+                    RHaptic.select()
+                    onPick(option)
+                    dismiss()
+                } label: {
+                    HStack(spacing: 0) {
+                        rowIdentity(option)
+                        Spacer(minLength: 0)
                     }
+                    .contentShape(.rect)
                 }
-                Spacer(minLength: 0)
+                .pressable(0.985)
+                .disabled(!option.inStock)
+
                 priceTag(option)
             }
             .padding(.horizontal, 16).padding(.vertical, 14)
-            .contentShape(.rect)
+        } else {
+            Button {
+                RHaptic.select()
+                onPick(option)
+                dismiss()
+            } label: {
+                HStack(spacing: 12) {
+                    rowIdentity(option)
+                    Spacer(minLength: 0)
+                    priceTag(option)
+                }
+                .padding(.horizontal, 16).padding(.vertical, 14)
+                .contentShape(.rect)
+            }
+            .pressable(0.985)
+            .disabled(!option.inStock)
         }
-        .pressable(0.985)
-        .disabled(!option.inStock)
+    }
+
+    private func rowIdentity(_ option: EmailDomainOption) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            // verbatim: a mail domain is a brand, not a translatable
+            // string, and "gmail.com" must never become "Google Mail".
+            Text(verbatim: option.displayName)
+                .font(RFont.display(16, weight: .semibold))
+                .tracking(-0.3)
+                .foregroundStyle(option.inStock ? theme.text : theme.text2)
+            if option.inStock {
+                StatusPill(text: "Available now")
+            } else {
+                StatusPill(text: "Out of stock right now",
+                           tint: theme.text3, soft: theme.chipBg, dot: false)
+            }
+        }
     }
 
     /// A bare "Free" implied a daily allowance that no longer exists — one
@@ -183,14 +229,29 @@ struct EmailDomainSheet: View {
     /// says depends solely on the account — whether the user is subscribed
     /// and whether they have spent their one free address. It used to accept
     /// an `EmailDomainOption` and ignore it, which read as a per-domain label.
-    private var entitlementLabel: LocalizedStringKey {
+    private var entitlementLabel: LocalizedStringKey { freeAccess.label }
+
+    private var freeAccess: FreeEmailAccess {
         FreeEmailAccess.resolve(isEntitled: mailStore.isEntitled,
-                                hasUsedFree: state.hasUsedFreeEmail).label
+                                hasUsedFree: state.hasUsedFreeEmail)
     }
 
     @ViewBuilder
     private func priceTag(_ option: EmailDomainOption) -> some View {
-        if option.isFree {
+        if option.isFree, freeAccess == .subscription {
+            // 🔴 A CHIP, NOT A NOUN, AND IT IS THE ONLY REASON THIS ROW IS
+            // SPLIT IN TWO. "Subscription" named a state and offered no way
+            // out of it: tapping the row bought nothing and came back
+            // `subscription_required`. It cannot live inside the row's own
+            // Button — SwiftUI does not deliver taps to a control nested in
+            // another Button's label — which is why `row(_:)` renders this
+            // case as two sibling buttons instead.
+            ChipButton(label: String(localized: "Subscribe"),
+                       active: true, soft: true) {
+                state.intent = .mailSubscription
+                showPaywall = true
+            }
+        } else if option.isFree {
             Text(entitlementLabel)
                 .font(RFont.display(15, weight: .semibold))
                 .foregroundStyle(option.inStock ? theme.text : theme.text3)

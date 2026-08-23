@@ -52,6 +52,11 @@ struct ServiceSheet: View {
     /// so they may legitimately diverge, but they must never drift by accident.
     /// Neither is a ranking: order here is presentation order only.
     private static let popularIds = [
+        // The five services users actually arrive looking for lead, because
+        // this row is a table of contents and these are the names a first-run
+        // user scans for. They are NOT a recommendation and NOT a ranking —
+        // some of them are the hardest routes in the catalog to deliver on.
+        "whatsapp", "telegram", "instagram", "google", "facebook",
         "leboncoin", "deliveroo", "glovo", "whatnot", "walmart",
         "vinted", "wallapop", "subito", "olx", "uber",
         "tiktok", "discord"

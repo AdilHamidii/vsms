@@ -21,6 +21,11 @@ struct EmailSignInScreen: View {
     /// the code screen; we do not treat it as a failure, because it is not one
     /// — the account exists and the user simply never finished.
     var onNeedsConfirmation: (String) -> Void
+    /// The ONE remaining door to sign-up. `AuthWelcomeScreen` used to carry a
+    /// second one beside "Continue with email", where the two overlapped and
+    /// visually collided; it now sends everyone here, so this screen has to
+    /// offer the way on for people who have no account yet.
+    var onCreateAccount: () -> Void
 
     @State private var email = ""
     @State private var password = ""
@@ -80,8 +85,19 @@ struct EmailSignInScreen: View {
                 .scrollBounceBehavior(.basedOnSize)
 
                 BottomBar {
-                    PrimaryButton(label: String(localized: "Sign in"),
-                                  disabled: !canSubmit, action: submit)
+                    VStack(spacing: 10) {
+                        PrimaryButton(label: String(localized: "Sign in"),
+                                      disabled: !canSubmit, action: submit)
+                        Button(action: onCreateAccount) {
+                            Text("New here? Create an account")
+                                .font(RFont.text(13, weight: .medium))
+                                .foregroundStyle(theme.accent2)
+                                .padding(.vertical, 2)
+                                .contentShape(.rect)
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(busy)
+                    }
                 }
             }
         }

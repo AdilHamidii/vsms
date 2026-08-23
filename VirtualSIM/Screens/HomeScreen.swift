@@ -53,6 +53,10 @@ struct HomeScreen: View {
     var onOpenEsim: () -> Void = {}
 
     @State private var appeared = false
+    /// Presented from HERE, not through `state.showMailPaywall`. The root
+    /// sheet is unreachable from any screen under a `fullScreenCover`, and
+    /// this keeps Home on the same pattern as `EmailCodeScreen`.
+    @State private var showMailPaywall = false
 
     var body: some View {
         ScrollView {
@@ -131,6 +135,18 @@ struct HomeScreen: View {
         // own; switching product line is the biggest state change on the
         // screen and should be felt.
         .onChange(of: state.emailMode) { _, _ in RHaptic.select() }
+        // Env objects injected explicitly: sheet content does not reliably
+        // inherit @Observable environment objects — the reason `EnvBundle`
+        // exists at all.
+        .sheet(isPresented: $showMailPaywall) {
+            MailPaywallScreen()
+                .environment(\.theme, theme)
+                .environment(state)
+                .environment(mailStore)
+                .presentationDetents([.large])
+                .presentationDragIndicator(.visible)
+                .presentationBackground(theme.bg)
+        }
     }
 
     /// Confirms credits actually landed after a purchase. Without a visible
@@ -677,6 +693,13 @@ struct HomeScreen: View {
                                 hasUsedFree: state.hasUsedFreeEmail)
     }
 
+    /// StoreKit's own localized monthly price as the CTA subtitle, and nil
+    /// until the products load — the same rule `EmailCodeScreen` follows.
+    private var mailPlanSub: String? {
+        guard let price = mailStore.displayPrice(for: .monthly) else { return nil }
+        return String(localized: "\(price)/mo")
+    }
+
     /// Price in the e-mail hero. "Free" is a word, not a 0 — rendering "0 cr"
     /// reads as a broken price rather than a gift. But it is only "Free" when
     /// the account actually still has its one free address.
@@ -735,6 +758,28 @@ struct HomeScreen: View {
                               sub: String(localized: "Need \(dom.credits - state.balance) more"),
                               icon: RIcon.plus,
                               action: { RHaptic.select(); openCredits() })
+            } else if dom.isFree && freeEmailAccess == .subscription {
+                // The paywall's ONLY entry point used to be a refused order:
+                // the button said "Get email address · Subscription", ran the
+                // whole order path, and came back with `subscription_required`.
+                // Selling the plan before spending the request is both honest
+                // and the only way this line is ever bought on purpose.
+                PrimaryButton(
+                    label: "Get more addresses",
+                    // StoreKit's own localized price, or nothing. A hardcoded
+                    // "$2.99" here is the drift that put $4.99-vs-€5.99 on the
+                    // credit ladder.
+                    sub: mailPlanSub,
+                    icon: RIcon.inbox,
+                    action: {
+                        RHaptic.select()
+                        // Declare the product first, exactly as the refused-
+                        // order path does, so the paywall and anything sized
+                        // from `intent` agree about what is being bought.
+                        state.intent = .mailSubscription
+                        showMailPaywall = true
+                    }
+                )
             } else {
                 PrimaryButton(
                     label: "Get email address",
@@ -749,8 +794,10 @@ struct HomeScreen: View {
                 )
             }
         } else {
+            // No `sub`. "Pick where it lives" wrapped to two mono lines on a
+            // narrow phone and squeezed the label it was meant to support —
+            // and the label already says what the tap does.
             PrimaryButton(label: "Choose a domain",
-                          sub: String(localized: "Pick where it lives"),
                           icon: "envelope.fill",
                           action: { RHaptic.select(); openEmailDomains() })
         }

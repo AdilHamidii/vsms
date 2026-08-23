@@ -19,7 +19,6 @@ struct AuthWelcomeScreen: View {
     @Environment(APIClient.self) private var api
 
     var onEmailSignIn: () -> Void
-    var onCreateAccount: () -> Void
 
     @State private var currentNonce: String?
     @State private var inProgress = false
@@ -152,18 +151,15 @@ struct AuthWelcomeScreen: View {
             .disabled(inProgress)
             .opacity(inProgress ? 0.6 : 1)
 
+            // ⚠️ ONE email door, not two. There used to be a second control
+            // below this — "New here? Create an account" — and the two
+            // overlapped completely: the sign-in screen this opens already
+            // offers creating an account, so the pair asked the user to
+            // classify themselves before anything had been decided, and the
+            // lower one duplicated a path the upper one contains. Do not add
+            // a separate create-account button back to this screen.
             GhostButton(label: String(localized: "Continue with email"), action: onEmailSignIn)
                 .disabled(inProgress)
-
-            Button(action: onCreateAccount) {
-                Text("New here? Create an account")
-                    .font(RFont.text(13, weight: .medium))
-                    .foregroundStyle(theme.accent2)
-                    .padding(.vertical, 4)
-                    .contentShape(.rect)
-            }
-            .buttonStyle(.plain)
-            .disabled(inProgress)
 
             AuthErrorLine(message: error)
 

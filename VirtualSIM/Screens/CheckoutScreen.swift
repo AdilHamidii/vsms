@@ -53,23 +53,11 @@ struct CheckoutScreen: View {
         state.poolRate(for: service, country: country)
     }
 
-    /// Why Real SIM is preselected here. Shown ONLY on measured evidence — the
-    /// same rule the delivery badges follow. It says what was observed, not
-    /// what Real SIM will achieve: we have never sold a premium order on this
-    /// provider, so a rate promise would be unearned.
-    private var tierAdvice: String? {
-        if realSimOnly {
-            return String(localized: "\(service.name) rejects internet numbers, so only Real SIM works here.")
-        }
-        guard premiumCost != nil else { return nil }
-        if country.deliversPoorly {
-            return String(localized: "Standard numbers in \(country.name) have been failing. We recommend Real SIM.")
-        }
-        if service.deliversPoorly {
-            return String(localized: "\(service.name) often rejects standard numbers. We recommend Real SIM.")
-        }
-        return nil
-    }
+    // `tierAdvice` lived here: a sentence recommending Real SIM off our own
+    // delivery record ("Standard numbers in X have been failing"). Removed
+    // 2026-08-22 by the same owner decision that took the badges off — no
+    // own-record claim renders anywhere. `defaultPremium` still preselects
+    // Real SIM where the evidence says so; it just does it silently.
     /// Price of the tier currently selected. Premium is only selectable when
     /// the route carries a premium price, so the fallback never actually
     /// charges standard for a premium pick — it just keeps the receipt sane
@@ -306,23 +294,6 @@ struct CheckoutScreen: View {
                 selected: state.checkoutPremium || realSimOnly,
                 action: { state.checkoutPremium = true })
 
-            if let advice = tierAdvice {
-                HStack(alignment: .top, spacing: 8) {
-                    Image(systemName: "exclamationmark.triangle.fill")
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundStyle(theme.warn)
-                        .padding(.top, 1)
-                    Text(advice)
-                        .font(RFont.text(12, weight: .medium))
-                        .foregroundStyle(theme.text)
-                        .lineSpacing(2)
-                        .fixedSize(horizontal: false, vertical: true)
-                    Spacer(minLength: 0)
-                }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 10)
-                .background(theme.warnSoft, in: .rect(cornerRadius: RRadius.sm))
-            }
         }
     }
 

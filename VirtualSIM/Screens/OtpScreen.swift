@@ -212,6 +212,41 @@ struct OtpScreen: View {
         return max(0, nextCost - state.balance)
     }
 
+    /// The pack this button would land on, resolved exactly the way
+    /// `CreditsSheet` does: the smallest BUYABLE pack that covers the
+    /// shortfall, the largest when nothing does, and the sheet's own default
+    /// (`md`) when there is no shortfall. Resolved here rather than guessed so
+    /// the button and the sheet it opens cannot name different packs.
+    ///
+    /// ⚠️ Only ever a pack StoreKit has actually returned. `visiblePacks`
+    /// mirrors the sheet's own filter: an `optional` pack whose review is
+    /// still pending must not be offered on a button either.
+    private var topUpPack: CreditPack? {
+        guard iap.hasLoadedProducts else { return nil }
+        let buyable = CreditPack.all.filter { iap.has($0) }
+        guard !buyable.isEmpty else { return nil }
+        guard shortfall > 0 else {
+            return buyable.first { $0.id == "md" } ?? buyable.first
+        }
+        return buyable.first { $0.credits >= shortfall } ?? buyable.last
+    }
+
+    /// "+12 credits · $5.49". A bare "Top up credits" asked for money without
+    /// naming an amount or a price, so the only way to learn either was to
+    /// open the sheet.
+    ///
+    /// ⚠️ Falls back to the bare label whenever StoreKit has not answered.
+    /// `IAPStore.displayPrice` returns a hardcoded USD fallback in that case,
+    /// and a US dollar figure shown to a French buyer is exactly the drift
+    /// this repo has already paid for — nothing price-related renders until
+    /// the store has spoken.
+    private var topUpLabel: String {
+        guard let pack = topUpPack else {
+            return String(localized: "Top up credits")
+        }
+        return String(localized: "+\(pack.credits) credits · \(iap.displayPrice(pack))")
+    }
+
     /// The only moment the product has PROVED itself, and until now the app
     /// said nothing here about money.
     ///
@@ -252,7 +287,7 @@ struct OtpScreen: View {
                         Spacer(minLength: 0)
                     }
 
-                    GhostButton(label: String(localized: "Top up credits"),
+                    GhostButton(label: topUpLabel,
                                 icon: RIcon.plus) {
                         RHaptic.select()
                         // Declare the product before opening the sheet — the

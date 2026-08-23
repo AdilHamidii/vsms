@@ -50,14 +50,13 @@ struct AuthFlowScreen: View {
     private var content: some View {
         switch current {
         case .welcome:
-            AuthWelcomeScreen(
-                onEmailSignIn: { push(.signIn) },
-                onCreateAccount: { push(.signUp) })
+            AuthWelcomeScreen(onEmailSignIn: { push(.signIn) })
         case .signIn:
             EmailSignInScreen(
                 onBack: pop,
                 onForgot: { push(.forgot) },
-                onNeedsConfirmation: { email in push(.confirmCode(email: email)) })
+                onNeedsConfirmation: { email in push(.confirmCode(email: email)) },
+                onCreateAccount: { push(.signUp) })
         case .signUp:
             EmailSignUpScreen(
                 onBack: pop,
