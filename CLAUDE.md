@@ -3148,11 +3148,11 @@ It is a starting point for "is this roughly right", never a citation.
   **18.0**, **3** SwiftPM dependencies (TelnyxRTC 4.1.2 → WebRTC 139.0.0,
   Starscream 4.0.8). Re-count sources with
   `find VirtualSIM -name '*.swift' | wc -l` rather than quoting a number.
-  **2.2 is `READY_FOR_SALE` — verified against the ASC API on 2026-08-23.**
-  2.3 exists as a draft (`223625a6-…`, `PREPARE_FOR_SUBMISSION`) with all
-  13 localizations already patched to the corrected listing (no "in and
-  out", no trial, inbound calls in the "not yet" block) via
-  `scripts/asc-release.py listing`; `status 2.3` prints the live state.
+  **2.2 is `READY_FOR_SALE`; 2.3 (build 43) SUBMITTED 2026-08-23 09:55Z —
+  `WAITING_FOR_REVIEW`, submission `22be3a0b-…`, version `223625a6-…`.**
+  All 13 localizations carry the corrected listing (no "in and out", no
+  trial, inbound calls in the "not yet" block). Read the live state with
+  `python3 scripts/asc-release.py status 2.3` — never this line.
   ⚠️ **This line has been wrong about the review state FOUR versions running**,
   each time by describing a submitted build as still in review after it shipped.
   It is a decision error, not a typo: "still in review" is the argument for
@@ -3495,6 +3495,27 @@ Also this day, each verified against live DB state rather than a deploy log:
 Reasoning for each of these lives in the topic section above; this is only an
 index, so "why is it like this" has a date to search for.
 
+- **08-22/23 — 2.3 (build 43), submitted 08-23 09:55Z.** Diagnosed the
+  pack-sales collapse (2.0's number-first onboarding cut `create-order`
+  calls 30/day → 1; then grant 0; then grant 5 covered 49 of 52 first
+  orders so nobody met a paywall) → grant **3**, and
+  `AppState.minDefaultCredits = 3` demotes the bargain bin in every
+  app-made pick. UI: single-column paywall with all six packs + correct
+  preselect; Number store CTA/escape above the tab bar; e-mail code screen
+  sells the next address; honest calling copy ("Taking incoming calls —
+  Not yet"); **every own-record label removed** (owner decision); seven
+  audit items (tierAdvice gone, waiting notice, priced top-up, Popular
+  list, e-mail CTA, one auth door, mail-plan entry points). Store-side:
+  EUR prices on credits.60/150 fixed (ladder had inverted in euros); the
+  line's 3-day trial DELETED after 3 of 3 conversions declined $99.99;
+  swap repriced to 8 credits (≥3× margin); mail subscription ENFORCED
+  (first subscriber within a minute of the 2.2 push). Listing rewritten on
+  all 13 locales (live 2.2 text still promised "in and out" texts and
+  calls). 101 new strings translated; `scripts/asc-release.py`,
+  `scripts/audit-xcstrings.py`, `scripts/asc-fix-eur-pack-prices.py` added.
+  Telegram ops bot overhaul merged to main the same day. Not done: the RC
+  never reached the owner's phone (unreachable); the Number swap's Telnyx
+  half is still unprobed live — the first real swap is the probe.
 - **08-19/20 — 2.2 (build 42): a bug + UX pass, red-teamed.** Four discovery
   agents (client correctness, first-session UX, backend money paths, error
   copy) produced ~30 candidates; 21 were fixed, then an adversarial pass broke
