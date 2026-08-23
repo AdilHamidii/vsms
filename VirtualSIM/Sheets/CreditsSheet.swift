@@ -4,13 +4,13 @@ import SwiftUI
 ///
 /// ── What the 2026-08 audit found here ────────────────────────────────────
 ///
-/// **It never said what a credit BUYS.** The ladder led with credits and a
-/// per-credit price, which answers "is this good value?" — a question nobody
-/// asked. The question they arrive with is *"how many verifications is that?"*,
-/// and the sheet had no answer anywhere on it. Each row now LEADS with that
-/// figure, derived from real route prices, with credits and unit price demoted
-/// to a secondary line. When it cannot be derived honestly (no catalog, or a
-/// non-SMS purchase) it is simply absent — never estimated.
+/// **The "≈ N verifications" per-row estimate is GONE (owner decision,
+/// 2026-08-23).** The 08-22 audit added it to answer "how many verifications
+/// is that?"; the owner cut it the next day — it was derived from a catalog
+/// median that moves hourly, so the same pack quoted different counts on
+/// different days, with the confidence of a printed figure. Rows carry the
+/// exact credit count and per-credit price only. Do not reintroduce a derived
+/// count here without the owner.
 ///
 /// **It never said what the user was buying.** They tap "Buy credits · Need 4
 /// more" on a specific number and land on a generic pack list, so the purchase
@@ -73,37 +73,9 @@ struct CreditsSheet: View {
     @State private var restoreNote: Note?
     @State private var restoreTask: Task<Void, Never>?
 
-    /// Credits one VERIFICATION costs, and where that figure came from. Computed
-    /// ONCE in `.task` rather than as a computed property: `AppState` is
-    /// `@Observable`, so a property that walks ~9,000 routes would be
-    /// re-evaluated on every body evaluation of every view that reads it —
-    /// the exact trap the eSIM map hit.
-    @State private var unit: UnitPrice = .unknown
-
     private struct Note: Equatable {
         let text: String
         let ok: Bool
-    }
-
-    /// Where the "one verification costs N credits" figure came from. The basis
-    /// is stated to the user, because a bare "≈ 3 verifications" with no stated
-    /// basis is the same unearned confidence as a seeded success rate.
-    private enum UnitPrice: Equatable {
-        /// No catalog, or a product credits do not price per-verification —
-        /// eSIM, e-mail, and the rented line, which credits cannot buy at all.
-        case unknown
-        /// The exact route the user is short for.
-        case route(credits: Int, service: String, country: String)
-        /// Median of every active priced route in the catalog.
-        case median(credits: Int)
-
-        var credits: Int? {
-            switch self {
-            case .unknown:               nil
-            case .route(let c, _, _):    c
-            case .median(let c):         c
-            }
-        }
     }
 
     /// The ladder AS RENDERED, and the only list any consumer below may read.
@@ -219,7 +191,6 @@ struct CreditsSheet: View {
         .background(theme.bg)
         .task {
             preselectForNeed()
-            deriveUnit()
             withAnimation(RMotion.content) { appeared = true }
             await iap.loadProducts()
             // Also here, not only in `onChange(of: productsLoaded)`: products
@@ -443,7 +414,6 @@ struct CreditsSheet: View {
     /// checkout with another's route.
     private var footnote: some View {
         VStack(alignment: .leading, spacing: 6) {
-            basisLine
             Group {
                 if state.intent == .sms {
                     Text("No code in 8 minutes → credits back · Credits never expire")
@@ -463,29 +433,6 @@ struct CreditsSheet: View {
     /// figure is a number with no provenance — and a number with no provenance
     /// is what the delivery badges spent a year unlearning.
     @ViewBuilder
-    private var basisLine: some View {
-        switch unit {
-        case .unknown:
-            EmptyView()
-        // ⚠️ NO "totals include the N credits you already have" — the rows show
-        // what each PACK adds, not a total, so that sentence would be describing
-        // a figure that is no longer on screen. It was true of the old
-        // balance-inclusive rows and became false with them.
-        // `.route` is only ever derived when `needed > 0` (see `deriveUnit`),
-        // and that is exactly when `contextLine` is on screen stating the same
-        // route and the same price. Saying it twice on a six-row sheet costs a
-        // row's worth of height for nothing.
-        case .route:
-            EmptyView()
-        case .median(let credits):
-            Text("A typical verification costs \(credits) credits. Prices vary by service and country.")
-                .font(RFont.text(12))
-                .foregroundStyle(theme.text2)
-                .lineSpacing(2)
-                .fixedSize(horizontal: false, vertical: true)
-        }
-    }
-
     /// 🔴 **ONE FULL-WIDTH COLUMN, AND ALL SIX ROWS MUST FIT AT REST.**
     ///
     /// It was briefly a two-column grid of half-width tiles, because as rows
@@ -508,7 +455,6 @@ struct CreditsSheet: View {
             ForEach(visiblePacks) { p in
                 PackRow(pack: p,
                         active: selected == p.id,
-                        verifications: verifications(from: p),
                         recommended: recommendedId == p.id,
                         unavailable: isMissing(p),
                         displayPrice: iap.displayPrice(p),
@@ -532,24 +478,6 @@ struct CreditsSheet: View {
     /// honest figure to give.
     ///
     /// ⚠️ Not "numbers". Since the rented line shipped, a "number" is a
-    /// different product that credits cannot buy at all — it is subscription
-    /// only — so counting credits in numbers advertises the one thing they do
-    /// not get you.
-    ///
-    /// ⚠️ It used to be `(balance + p.credits) / u` — the total after buying —
-    /// and that made the row unreadable for anyone holding a real balance. At
-    /// 99,989 credits the five packs rendered as 16665 / 16666 / 16669 / 16674 /
-    /// 16689: the most prominent element on every row was a near-identical
-    /// five-digit number, and the difference between the $2.99 and the $5.99
-    /// pack read as ONE more number. Correct arithmetic, useless comparison.
-    ///
-    /// It degraded gracefully at a zero balance, which is why it shipped — the
-    /// figure only collapses once the balance dwarfs the pack.
-    private func verifications(from p: CreditPack) -> Int? {
-        guard let u = unit.credits, u > 0 else { return nil }
-        return p.credits / u
-    }
-
     // MARK: - Errors
 
     /// A retry that actually retries the thing that failed. "Couldn't load" and
@@ -720,40 +648,6 @@ struct CreditsSheet: View {
         selected = recommendedId ?? selected
     }
 
-    /// Resolve what one VERIFICATION costs.
-    ///
-    /// Prefers the exact route the user is short for; falls back to the median
-    /// of every active priced route. Both are our own live retail prices, not
-    /// seed data — and when neither exists (an offline launch keeps
-    /// `routes == []`) the answer is nil and the sheet says nothing rather than
-    /// guessing. Non-SMS purchases get no figure at all: the unit is the wrong
-    /// noun for an eSIM plan or a mailbox, and inventing a per-unit price for
-    /// them would be the same overclaim one product line over.
-    ///
-    /// ⚠️ The `intent == .sms` guard also keeps credits away from the RENTED
-    /// LINE, which is subscription-only and never touches the credit wallet.
-    /// Quoting any credit figure against it would advertise a way to buy it
-    /// that does not exist.
-    private func deriveUnit() {
-        guard state.intent == .sms else { unit = .unknown; return }
-
-        if needed > 0, let cost = routeCost, cost > 0 {
-            unit = .route(credits: cost,
-                          service: state.configuringService.name,
-                          country: state.configuringCountry.name)
-            return
-        }
-
-        var priced: [Int] = []
-        priced.reserveCapacity(1024)
-        for r in state.routes where r.status == "active" {
-            if let c = r.retailCredits, c > 0 { priced.append(c) }
-        }
-        guard !priced.isEmpty else { unit = .unknown; return }
-        priced.sort()
-        unit = .median(credits: priced[priced.count / 2])
-    }
-
     private func buy() async {
         purchasing = true
         defer { purchasing = false }
@@ -818,8 +712,6 @@ private struct PackRow: View {
     @Environment(\.theme) private var theme
     let pack: CreditPack
     let active: Bool
-    /// Verifications this pack buys ON ITS OWN. nil = no honest figure.
-    let verifications: Int?
     /// This is the smallest pack that clears the current shortfall.
     let recommended: Bool
     /// StoreKit has answered and does not carry this product.
@@ -912,39 +804,17 @@ private struct PackRow: View {
             .minimumScaleFactor(0.7)
     }
 
-    /// ONE line, and it is the answer to "how many verifications is that?".
-    ///
     /// ⚠️ NEVER print the credit count here — the headline already says it, and
     /// this line printing "5 credits" directly under "+5 credits" is the
     /// duplication this row has already shipped once, on the app's only revenue
     /// screen.
-    ///
-    /// ⚠️ "verifications", NEVER "numbers". Since the rented line shipped,
-    /// "number" is the name of a DIFFERENT product — one that credits cannot
-    /// buy at all, because it is subscription only. Saying "≈ 25 numbers" on the
-    /// credit paywall promises exactly the thing credits do not get you.
-    ///
-    /// `n >= 1` rather than `verifications != nil`: `verifications(from:)`
-    /// returns 0, not nil, when a pack cannot fund a single verification, and
-    /// `.some(0)` satisfies a nil-check. At the live median of 6 credits that is
-    /// the $2.99 entry pack, which gets the short honest form instead — it is
-    /// what stops someone buying the entry pack twice.
     @ViewBuilder
     private var secondary: some View {
-        HStack(spacing: 6) {
-            if let n = verifications, n >= 1 {
-                Text(n == 1 ? "≈ 1 verification" : "≈ \(n) verifications")
-                Text(verbatim: "·")
-                    .foregroundStyle(theme.text3)
-            } else if verifications == 0 {
-                Text("Under 1 verification")
-                Text(verbatim: "·")
-                    .foregroundStyle(theme.text3)
-            }
-            // No honest verification figure — say nothing rather than estimate.
-            // The per-credit price is exact either way and always renders.
-            Text(verbatim: displayPerCredit)
-        }
+        // The per-credit price only: exact, and the same basis on every row.
+        // The "≈ N verifications" estimate that used to lead this line was
+        // removed 2026-08-23 (owner decision) — it was derived from a catalog
+        // median that moves hourly, i.e. a promise the server never made.
+        Text(verbatim: displayPerCredit)
         .font(RFont.text(14))
         .foregroundStyle(theme.text2)
         .lineLimit(1)
