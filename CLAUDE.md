@@ -510,9 +510,16 @@ cannot tell you:
   from `routes`, never from a numberless order row. If you ever need the
   truth per order, it is in the function logs, not the column.
 - **A trial is `price_milli = 0` on a `.yearly` product in state active/grace.**
-  There is no offer-type column; the yearly is the only product with a trial,
-  so this heuristic is exact today and wrong the day a $0 promo ships on a
-  monthly. `/trials`, `trial_soon` and `trial_off` all share it.
+  There is no offer-type column; a yearly is the only kind of product with a
+  trial, so this heuristic is exact today and wrong the day a $0 promo ships on
+  a monthly. `/trials`, `trial_soon` and `trial_off` all share it.
+  **`line.yearly`'s 3-day trial was REMOVED from ASC on 2026-08-25** (owner
+  decision — 10 line trials since 08-14, 0 conversions, 6 of 6 billing
+  attempts failed in grace; verified via `GET /v1/subscriptions/6798759539/
+  introductoryOffers` = empty). The only trial left is `mail.yearly`'s
+  3-day one, so a NEW `price_milli = 0` yearly row should only ever be mail;
+  a new $0 `line.yearly` row after this date means the trial came back or
+  something is wrong.
 - **"Today" is since midnight Paris**, not UTC — `ops_now` does
   `date_trunc('day', now() at time zone 'Europe/Paris') at time zone 'Europe/Paris'`.
 - **Every count a formatter prints must be computed in SQL, not over the rows
@@ -3205,8 +3212,9 @@ It is a starting point for "is this roughly right", never a citation.
   2026-08-10; 174 of 175 territories live). Apple/MIIT forbids CallKit in apps
   sold on the China App Store, and 2.0 ships CallKit. Re-adding China requires
   gating CallKit off by storefront first — do not re-tick it casually.
-- **Signup grant: 3 credits — SET 2026-08-22 16:58Z (owner decision).**
-  Reason, measured the same day: at 5 credits, **49 of 52 first orders
+- **Signup grant: 2 credits — SET 2026-08-25 (owner decision), verified by
+  read-back of `app_config.signup_bonus_credits`.** It was 3 from 08-22 16:58Z.
+  Reason for the 08-22 cut from 5, measured that day: at 5 credits, **49 of 52 first orders
   (Aug 20–22) cost ≤ 5**, so new users never met a paywall and pack sales
   went to ~0 while orders recovered; 27 of 28 buyers ever bought BEFORE
   their first order, so the grant must sit below the median route (6 cr).
