@@ -1151,6 +1151,35 @@ domain) and genuinely runs dry — hotmail.com measured **1,028 available for
 google.com and TWO for discord.com** in one sweep. `email-domains` quotes live at
 checkout; `create-email-order` refuses when `count` is 0. Never cache it.
 
+### Per-domain e-mail delivery IS monitored (2026-08-26)
+
+🔴 **THE PAID gmail.com TIER HAS DELIVERED NOTHING SINCE ~2026-08-10 AND
+NOTHING PAGED.** Measured 2026-08-26 over the trailing 14 days: gmail.com **30
+orders / 0 codes**, against outlook.com **58 of 110** and hotmail.com **16 of
+28** in the same window. The free tiers delivering normally is what makes it
+the domain pool rather than the users or a HeroSMS outage.
+
+Nothing watched this: `app_config.email_expiry_heartbeat` proves only that the
+sweep is alive, and there has never been a delivery check on this line at all.
+`email-domain-<domain>` (migration `20260826140000`, in the companion
+`watchdog_delivery_checks()`) pages when a domain has **≥ 8 orders in 14 days
+with ZERO codes while at least one other domain delivered in the same window**.
+Three details are load-bearing:
+- **The cross-domain condition is the whole design.** Without it a total
+  HeroSMS failure would page here three more times on top of the checks that
+  already cover it, and alert fatigue on the one channel is how the next real
+  outage gets missed.
+- **`code is not null` is the authority**, never `status = 'received'` — the
+  same rule as the SMS side's `otp is not null`. Verified 2026-08-26: the two
+  predicates agree on every e-mail order in the window, so this is correctness
+  insurance rather than a behavioural difference today.
+- **One check name per domain** (`email-domain-gmail.com`), so each alerts and
+  recovers on its own; its Telegram copy comes from the `email-domain-` prefix
+  branch in `copyFor()` in `_shared/tgAlert.ts`, next to the `-float` one, and
+  a fixed `WATCHDOG_COPY` key could never match it.
+- Orders younger than **1 hour** are excluded: the provider window is ~21
+  minutes, so a fresh order has not failed, it is waiting.
+
 **The free tier is the SCARCEST inventory**, two to three orders of magnitude
 below gmail/icloud. It is also the only thing with no credit gate, so
 `begin_email_order` enforces **N free per user per UTC day**, live in
@@ -1236,6 +1265,27 @@ throttle, because the free-domain pool is scarce and shared and one looping
 subscriber could drain it for every user. **`gmail.com` is excluded from all
 of this** — it is the 1-credit paid tier for everyone, subscriber or not,
 unconditionally and unchanged either way.
+
+🔴 **THE LIFETIME ALLOWANCE IS TOMBSTONED — `public.email_free_grants`
+(`20260826100000`) — because counting `email_orders` COULD NOT HOLD IT.**
+`email_orders.user_id` is `ON DELETE CASCADE`, so Delete Account erased the
+only record that the free address had been spent and the next sign-in
+re-armed it; one Apple identity did exactly that **55 times** (found
+2026-08-26 via `signup_grants.grant_count`, which caught it only because the
+CREDIT grant is tombstoned and the EMAIL grant was not). The table has **no
+foreign key to `auth.users`**, is keyed on `md5(lower(email))` AND
+`md5(normalize_email(email))` — both checked, exactly as `signup_grants` —
+and the gate now refuses on `greatest(per-user order count, tombstone
+used_count)`. The order count is kept because it is authoritative *within* an
+account and needs no address; the tombstone is the half that survives
+deletion. It **fails open** on an address that cannot be resolved or
+normalized (same policy as the other three grants), and writes nothing in
+that case. Residual, stated plainly: a user with ten real mailboxes still
+gets ten free addresses — a cost floor, not a wall. Only the non-subscriber
+lifetime branch reads or writes it; the subscriber daily cap, the pre-flip
+per-day branch and the gmail paid path are untouched. Behavioural checks:
+`scripts/verify-email-free-tombstone.sql` (6 groups in a rolled-back
+transaction).
 
 `has_email_subscription(uuid)` is the entitlement check: `state in ('active',
 'grace') and greatest(expires_at, grace_expires_at) > now()` — `greatest`, not
@@ -1400,10 +1450,100 @@ that as untested, not working.
 
 🔴 **NOTHING HAS EVER BEEN SETTLED FROM PROVIDER EVIDENCE — NOT ONCE.**
 `app_config.telnyx_cdr_heartbeat` reads `{records: 0, settled: 0}` after
-walking 4 pages (re-checked 2026-08-19), and every historical `line_calls` row
-closed `hangup_cause = 'no_cdr'`. `sync-telnyx-cdr` runs; it has never matched
-a single detail record. The detail-records query has already been wrong twice
-(see the CDR section); **assume a third cause before assuming provider lag.**
+walking 4 pages (re-checked 2026-08-26), and every historical `line_calls` row
+closed `hangup_cause` `no_cdr` / `no_cdr_full`. `sync-telnyx-cdr` runs; it has
+never matched a single detail record **up to 2026-08-26**, when the cause was
+finally probed rather than guessed and fixed — see the ✅ block below. The
+query had by then been wrong **three** times over (window filter, id field
+names, duration field names), which is the whole lesson: **assume another cause
+before assuming provider lag, and probe rather than re-read the docs** — the
+documented window filter turned out to be dead too.
+
+**The watchdog now catches this, and it did not before** — the pre-existing
+`sync-telnyx-cdr` check only tests the heartbeat's `updated_at`, so a sweep
+that runs forever and matches nothing stayed green forever. `cdr-never-matched`
+(migration `20260826140000`, in the companion `watchdog_delivery_checks()`)
+pages while provider-reached calls exist in the last 30 days and NO call in all
+history has ever been settled from a detail record. Its recovery signal is our
+own rows, not the heartbeat: the heartbeat is per-run and overwritten every ten
+minutes, whereas a CDR-settled call is exactly one that does NOT carry a
+`no_cdr%` hangup cause, since those three values are written only by the
+backstop.
+
+**`probe-telnyx-connection` gained a second mode for diagnosing it:**
+`POST {"probe":"cdr","session_ids":[…],"days":30}` (same cron-secret gate,
+still read-only, writes nothing). It sweeps every window-filter shape × every
+plausible `record_type`, looks each session id up under five filter keys in
+both cases, asks Telnyx to 400 on an invalid record type, and — the part the
+heartbeat cannot give — reports **`raw_rows` alongside `normalised`** per cell.
+`normaliseCallRecord` returns null for a row carrying none of
+`call_session_id`/`session_id`/`call_leg_id`/`leg_id`, and the caller drops
+those silently, so `records: 0` cannot today distinguish "Telnyx returned
+nothing" from "Telnyx returned rows whose id fields we do not read".
+
+✅ **THE CAUSE IS KNOWN, MEASURED AND FIXED (2026-08-26).** The probe was run
+against the live account and answered all five candidates at once. **THREE
+independent defects**, each alone sufficient to settle nothing, none of which
+threw, all now fixed in `_shared/telnyx.ts` + `sync-telnyx-cdr`:
+
+1. 🔴 **THE WINDOW FILTER WAS DEAD, AND THE LADDER THAT CHOSE IT IS THE REAL
+   BUG.** Measured over 30 days of real calls:
+
+   | shape | HTTP | rows |
+   |---|---|---|
+   | `filter[date_range]=last_30_days` | 200 | **43 webrtc / 50 sip-trunking** |
+   | no window at all | 200 | **43 / 50** |
+   | `filter[start_time][gte]/[lte]` ← what we sent | 200 | **0, every type** |
+   | `filter[created_at][gte]/[lt]` (the spec's own) | 200 | **0, every type** |
+   | `filter[date_range][start_time]/[end_time]` | 400 | `No FilterType with name end_time` |
+
+   The ladder accepted a **200 as proof a shape works** and cached the index in
+   `app_config.telnyx_cdr_shape`. It locked onto `filter[start_time]` on
+   2026-08-06 and asked a dead filter for twenty days. **The ladder and the
+   cache are deleted**; the window is the single proven `last_30_days`.
+   ⚠️ Note the SPEC-documented `filter[created_at]` is *also* dead here — so
+   "read the docs harder" would have produced the same outage a third time.
+   **On this API a 200 is not evidence. Only rows are.** Fourth instance of
+   this exact silent-no-op-on-200 in this adapter.
+2. 🔴 **WE MATCHED ON THE WRONG UUID.** A `webrtc` record carries BOTH
+   `session_id` (`5ea3db0a-…`, the SDK's own) and **`telnyx_session_id`**
+   (`475d4f74-…`, the one `line_calls` stores). `normaliseCallRecord` read
+   `call_session_id ?? session_id`, so it normalised 43 of 43 webrtc rows onto
+   an id that can never match, and dropped all 50 `sip-trunking` rows (they
+   carry no `session_id` at all). Now reads `telnyx_session_id` /
+   `telnyx_leg_id` first, old keys as fallbacks.
+3. 🔴 **THE DURATION FIELD NAMES WERE ALL WRONG TOO.** The real fields are
+   `call_sec` and `billed_sec`; not one of the four documented names
+   (`billed_duration_secs`, `billed_seconds`, `duration_secs`,
+   `duration_millis`) exists on a live record — so even a correctly matched
+   record would have had `billedSeconds: null` and been skipped as unmatched.
+
+**Two behaviours that follow, both decisions rather than mechanics:**
+- 🔴 **ONE CALL WRITES TWO RECORDS AND THEY COST DIFFERENT AMOUNTS.** The
+  2026-08-24 call: `webrtc` 249s/$0.010 and `sip-trunking` 249s/$0.025, same
+  `telnyx_session_id`. Both are real charges, so wholesale is **$0.035** and
+  taking either alone understates it by 29% or 71%. `mergeCallRecords` joins
+  them per session, **sums the costs**, and prefers the `sip-trunking` record
+  for everything else — it is the only one carrying `hangup_cause` and
+  `answered_at`. Without the merge the same call would settle twice.
+- **WE SETTLE ON `call_sec` (249s), NOT `billed_sec` (300s).** Telnyx bills in
+  60-second increments; we sell 100 minutes of *talking*. Rounding a user's
+  meter up to the provider's billing granularity would charge them 51 seconds
+  they did not use — their rounding is their cost model, not our product.
+  Their figure is kept as `providerBilledSeconds` for margin work.
+
+⚠️ **`page[size]` is capped at 50 in the spec and we sent 250.** Tolerated in
+practice (the probe got the same 43 rows either way), now clamped anyway.
+
+⚠️ **THE FIRST RUN AFTER THE FIX WILL SETTLE NOTHING, AND THAT IS NOT A
+FAILURE.** The 11 historical calls were already written off by the backstop, so
+`allowance_settled = true` hides them from the pending query. Proof of the fix
+is `raw_rows > 0` **and** `records > 0` in `telnyx_cdr_heartbeat` plus a
+`telnyx_cdr_probe.parsed.sessionId` that exists in `line_calls`; real
+settlement needs a new call. Assertions are in
+`scripts/verify-cdr-email-watchdog.sql`. The heartbeat now reports **`raw_rows`
+alongside `records`**, because "Telnyx returned nothing" and "we discarded
+everything Telnyx returned" were indistinguishable for twenty days.
 
 ⚠️ **This is the open defect underneath the call-billing rules — treat the
 6-hour `settle_stale_calls` backstop as the ONLY settlement path, because it
@@ -3039,7 +3179,7 @@ for essentially every hidden route.
 - **A one-line refactor that changes a watchdog threshold is a monitoring outage.** Rebuilding `run_watchdog` for unrelated coverage silently narrowed the delivery check from 24h/≥10 to 6h/≥8 **and deleted its second branch** (≥20 conclusive at <10%). Measured: the max conclusive orders in ANY 6h window over 30 days is 8, against a gate of 8 — the check became effectively unreachable, leaving zero delivery-outcome coverage. When you re-create a function from `pg_get_functiondef`, diff it against the prior definition clause by clause; the dump is also **truncated** by most tooling, which is how a nonexistent `url` column on `net._http_response` got invented in the same rewrite.
 - **A constant duplicated across files WILL drift.** `MAX_WHOLESALE_CENTS` lives in three sync functions (and as `MAX_ORDER_COST_USD` in `poll-active-orders`, and as `LOW_BALANCE_USD` in `_shared/opsFormat.ts`). Changing it in one place on 2026-07-27 stripped 1,432 routes of their carrier pin and premium price, and left the digest warning at $20 while the pager fired at $37.50. Same for `CREDIT_DIVISOR` (the SMSPVA 0.05 is **two** copies — `sync-prices` and `sync-smspva-operators` — and `sync-herosms` carries a deliberately DIFFERENT 0.025, so "consolidating" the three into one constant would silently reprice a whole provider) and `ESIM_MARGIN`/`CREDIT_VALUE_USD` (two each). `MAX_WHOLESALE_CENTS`'s three syncs are now `sync-prices`, `sync-smspva-operators` and `sync-herosms`. Change them in one commit or consolidate them into `_shared/`.
 - **Deleting an IAP receipt to force StoreKit redelivery can eat the payment.** `iap-verify` used to delete the row when `wallet_credit` failed, assuming StoreKit would retry. But the client runs **two** paths into that endpoint (`Transaction.updates` and the `Transaction.unfinished` sweep), so a concurrent duplicate may already have been answered `already_credited` and called `finish()` — retiring the transaction forever. It now zeroes `granted_credits` (keeping both the audit trail and the replay guard), and the duplicate branch refuses to confirm a receipt that has no matching `wallet_transactions` row.
-- **EVERY credit grant is farmable through account deletion unless it is tombstoned OUTSIDE the `auth.users` cascade.** This is the single most repeated money bug in this codebase — it has now been found three times, once per grant. Everything user-scoped cascades, so delete → sign in again erases our only record and mints the grant afresh. Apple *mandates* the Delete Account button, so this is not an edge case. The three grants and their tombstones: **signup +3** → `signup_grants` (hash of the email); **referral +2** → `signup_grants.referral_redeemed_at` (same key); **IAP purchases** → `public.iap_grants` (keyed on Apple's `transaction_id`). Each tombstone table must have **no foreign key to `auth.users`** — a reference there is precisely what deletes the row with the account. The email hash works because Apple's private-relay address is stable per (user, app), so it survives deletion while storing no address; all three fail **open** on a null email, because a missed grant on a real signup costs more than a rare duplicate. **If you add a fourth grant, it needs a tombstone in the same commit.**
+- **EVERY grant is farmable through account deletion unless it is tombstoned OUTSIDE the `auth.users` cascade.** This is the single most repeated money bug in this codebase — it has now been found **four** times, once per grant. Everything user-scoped cascades, so delete → sign in again erases our only record and mints the grant afresh. Apple *mandates* the Delete Account button, so this is not an edge case. The four grants and their tombstones: **signup credits** → `signup_grants` (hash of the email); **referral +2** → `signup_grants.referral_redeemed_at` (same key); **IAP purchases** → `public.iap_grants` (keyed on Apple's `transaction_id`); **the temp-e-mail lifetime free address** → `public.email_free_grants` (same two email hashes, added 2026-08-26 — see the temp-e-mail subscription section). ⚠️ **The fourth is the proof the rule needs restating rather than trusting: it is not denominated in credits, so nobody read it as a "grant", and it shipped counting `email_orders` rows that cascade — farmed 55 times from one identity before it was caught.** A grant is anything we hand out once per person. Each tombstone table must have **no foreign key to `auth.users`** — a reference there is precisely what deletes the row with the account. The email hash works because Apple's private-relay address is stable per (user, app), so it survives deletion while storing no address; all four fail **open** on a null email, because a missed grant on a real signup costs more than a rare duplicate. **If you add a fifth grant, it needs a tombstone in the same commit.**
 
   ⚠️ **THAT RELAY-STABILITY ARGUMENT IS NO LONGER THE WHOLE GUARANTEE (2026-08-18).** Email + password signup means the key can be an address the USER picks, which costs nothing to re-roll. Two things now hold it up, and neither is sufficient alone: `signup_grants.email_hash_norm` (md5 of `public.normalize_email`, which strips plus-tags everywhere and dots on gmail only) and the fact that the grant is paid on **confirmation** rather than at INSERT, so the mailbox must actually receive mail. **Both keys are checked and written; the legacy `email_hash` stays the primary key** because 8 of the 517 tombstones belong to deleted accounts whose address is unrecoverable — rewriting the key would have dropped exactly the rows doing the most work. State the residual honestly: a user with ten real mailboxes still gets ten grants. That is a cost floor, and it is LOWER than Apple's — price the grant accordingly (it is 0 today). See `20260818160000_email_signup_normalized_tombstone.sql` and `scripts/verify-signup-grant.sql`.
 - **APNs `aps-environment` is `production`** in the entitlements file (flipped for archiving; set `APNS_ENV=production` secret to match). Flip back to `development` if you need to test push against a dev-token build from Xcode.

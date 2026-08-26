@@ -769,6 +769,9 @@ export interface TelnyxCallRecord {
   sessionId: string | null;
   legId: string | null;
   billedSeconds: number | null;
+  /** Telnyx's own rounded-up figure (`billed_sec`), recorded for margin work
+   *  and NEVER used for the allowance — see normaliseCallRecord. */
+  providerBilledSeconds: number | null;
   costCents: number | null;
   /** The EXACT amount. `costCents` rounds a $0.004 leg to 0, which is what
    *  made per-message cost recording useless — see line_messages.
@@ -776,6 +779,8 @@ export interface TelnyxCallRecord {
   costUsd: number | null;
   hangupCause: string | null;
   direction: string | null;
+  /** `webrtc` / `sip-trunking` / … — decides which record wins in a merge. */
+  recordType: string | null;
   raw: Record<string, unknown>;
 }
 
@@ -795,18 +800,49 @@ function firstNumber(o: Record<string, unknown>, keys: string[]): number | null 
 export function normaliseCallRecord(
   r: Record<string, unknown>,
 ): TelnyxCallRecord | null {
-  const sessionId = (r.call_session_id ?? r.session_id ?? null) as string | null;
-  const legId = (r.call_leg_id ?? r.leg_id ?? null) as string | null;
+  // 🔴 `telnyx_session_id` FIRST, AND `session_id` IS A TRAP. Measured against
+  // live records 2026-08-26 (probe-telnyx-connection, mode "cdr"): a `webrtc`
+  // record carries BOTH, and they are different uuids —
+  //   telnyx_session_id: 475d4f74-9fc8-11f1-9a10-1273ee35360b  ← ours
+  //   session_id:        5ea3db0a-c658-4494-8901-d0847b03cbdf  ← the SDK's own
+  // This function used to read `call_session_id ?? session_id`, so it
+  // normalised 43 of 43 webrtc rows onto the WRONG uuid and the exact-string
+  // match in sync-telnyx-cdr could never succeed. `sip-trunking` records carry
+  // no `session_id` at all and were dropped outright, 0 of 50.
+  //
+  // The old keys are kept as fallbacks but ranked LAST: they are what the
+  // documentation describes, they cost nothing, and nothing observed so far
+  // uses them.
+  const sessionId = (r.telnyx_session_id ?? r.call_session_id ?? r.session_id ?? null) as string | null;
+  // `id` is the LEG on both record types (webrtc and sip-trunking both had
+  // id === telnyx_leg_id), which is why it is an acceptable fallback here and
+  // would be wrong as a session fallback above.
+  const legId = (r.telnyx_leg_id ?? r.call_leg_id ?? r.leg_id ?? r.id ?? null) as string | null;
   if (!sessionId && !legId) return null;
 
-  // Prefer an explicit billed figure; fall back to a duration, in whichever
-  // unit it arrives in. Milliseconds are rounded UP to the second so a
-  // sub-second call still costs the user something rather than nothing.
-  let billed = firstNumber(r, ["billed_duration_secs", "billed_seconds", "duration_secs"]);
+  // ⚠️ `call_sec` and `billed_sec` are the REAL field names — none of the four
+  // documented ones below appears on a live record, so even a correctly
+  // matched record used to normalise to `billedSeconds: null` and be skipped
+  // as unmatched. Three separate defects had to line up for a settlement, and
+  // all three were present.
+  //
+  // 🔴 WE SETTLE ON `call_sec`, NOT `billed_sec`, AND THAT IS A PRODUCT
+  // DECISION. Telnyx bills in 60-second increments — the 2026-08-24 call ran
+  // 249s and billed 300s — but the allowance we sell is 100 MINUTES OF TALKING,
+  // and rounding a user's meter up to the provider's billing granularity would
+  // charge them 51 seconds they did not use. Their rounding is their cost
+  // model, not our product. `providerBilledSeconds` carries their figure for
+  // margin work, so nothing is lost; `costUsd` is unaffected either way.
+  let billed = firstNumber(r, [
+    "call_sec",
+    "billed_duration_secs", "billed_seconds", "duration_secs",
+  ]);
   if (billed == null) {
     const ms = firstNumber(r, ["duration_millis", "duration_ms"]);
     if (ms != null) billed = Math.ceil(ms / 1000);
   }
+  // Their rounded figure, recorded and never used for the allowance.
+  const providerBilled = firstNumber(r, ["billed_sec", "billed_duration_secs"]);
 
   const costRaw = r.cost ?? r.total_cost ?? null;
   let costCents: number | null = null;
@@ -828,42 +864,108 @@ export function normaliseCallRecord(
     sessionId,
     legId,
     billedSeconds: billed,
+    providerBilledSeconds: providerBilled,
     costCents,
     costUsd,
     hangupCause: (r.hangup_cause ?? r.cause ?? null) as string | null,
     direction: (r.direction ?? null) as string | null,
+    recordType: (r.record_type ?? null) as string | null,
     raw: r,
   };
 }
 
-/** The time-window filter shapes, most-likely first.
+/** One call, assembled from every record that describes it.
  *
- *  🔴 MEASURED, NOT ASSUMED — and the docs-written one is WRONG. The first
- *  production run of `sync-telnyx-cdr` returned
- *  **400 `No FilterType with name end_time was found.`** against
- *  `filter[date_range][start_time]/[end_time]`, which is exactly the shape the
- *  documentation implies. That error is also the clue to the right answer: it
- *  names `end_time` as the unknown filter and NOT `start_time`, so `start_time`
- *  parses as a real FilterType and the `[gte]`/`[lte]` form is the candidate.
+ *  🔴 A WebRTC→PSTN call writes TWO records with the SAME `telnyx_session_id`
+ *  and DIFFERENT costs — measured live on the 2026-08-24 call:
  *
- *  Rather than guess again, the caller walks this ladder until one shape
- *  returns 200 and records the winning index. One production run answers what
- *  a second reading of the documentation cannot — the same discipline as
- *  5sim's `fetch_faults` histogram, which settled the 403-vs-429 question on
- *  its first run after weeks of speculation.
+ *  | record_type  | call_sec | billed_sec | cost   | hangup_cause    |
+ *  |--------------|----------|------------|--------|-----------------|
+ *  | webrtc       | 249      | 300        | $0.010 | (absent)        |
+ *  | sip-trunking | 249      | 300        | $0.025 | NORMAL_CLEARING |
  *
- *  The last entry is deliberately EMPTY: no window at all, bounded by page
- *  size. The caller matches records against its own pending set anyway, so an
- *  unfiltered page is degraded but correct — far better than settling nothing
- *  because we cannot name a date field. */
-const CDR_WINDOW_SHAPES: Array<(s: string, u: string) => Record<string, string>> = [
-  (s, u) => ({ "filter[start_time][gte]": s, "filter[start_time][lte]": u }),
-  (s, u) => ({ "filter[created_at][gte]": s, "filter[created_at][lte]": u }),
-  (s, u) => ({ "filter[date_range][start_time]": s, "filter[date_range][end_time]": u }),
-  () => ({}),
-];
+ *  Both are real charges — the WebRTC leg and the PSTN leg — so the wholesale
+ *  cost of that call is **$0.035**, and taking either record alone understates
+ *  it (by 71% or by 29%). Costs are therefore SUMMED across the pair.
+ *
+ *  Everything else is taken from the `sip-trunking` record where it exists: it
+ *  is the only one carrying `hangup_cause` and `answered_at`. Duration is the
+ *  max, which is a no-op while both agree and fails toward over-billing rather
+ *  than under-billing if they ever diverge — the standing rule for this table
+ *  (an over-charge is bounded, visible in the ledger and refundable by hand;
+ *  an under-charge is unbounded, invisible and repeatable).
+ *
+ *  Without this merge the same call would settle twice against the allowance,
+ *  once per record type — `settle_call_claim`'s row lock makes the second a
+ *  no-op today, but that is a guard being leaned on, not a design. */
+export function mergeCallRecords(records: TelnyxCallRecord[]): TelnyxCallRecord[] {
+  const byKey = new Map<string, TelnyxCallRecord>();
+  for (const r of records) {
+    const key = r.sessionId ?? r.legId;
+    if (!key) continue;
+    const prev = byKey.get(key);
+    if (!prev) { byKey.set(key, { ...r }); continue; }
 
-export const CDR_SHAPE_COUNT = CDR_WINDOW_SHAPES.length;
+    // Prefer the sip-trunking record as the base — hangup_cause / answered_at.
+    const base = r.recordType === "sip-trunking" ? { ...r } : { ...prev };
+    const other = r.recordType === "sip-trunking" ? prev : r;
+
+    base.billedSeconds = Math.max(base.billedSeconds ?? 0, other.billedSeconds ?? 0) || null;
+    base.providerBilledSeconds =
+      Math.max(base.providerBilledSeconds ?? 0, other.providerBilledSeconds ?? 0) || null;
+    // Summed, not maxed. Both legs are billed.
+    base.costUsd = (base.costUsd ?? 0) + (other.costUsd ?? 0) || null;
+    base.costCents = base.costUsd == null ? null : Math.round(base.costUsd * 100);
+    base.hangupCause = base.hangupCause ?? other.hangupCause;
+    base.legId = base.legId ?? other.legId;
+    base.sessionId = base.sessionId ?? other.sessionId;
+    byKey.set(key, base);
+  }
+  return [...byKey.values()];
+}
+
+/** 🔴 THE WINDOW FILTER IS `filter[date_range]=last_30_days`, IT IS THE ONLY
+ *  ONE PROVEN TO RETURN ROWS, AND THE LADDER THAT USED TO LIVE HERE IS GONE.
+ *
+ *  Settled by probe on 2026-08-26 (`probe-telnyx-connection`, mode "cdr"),
+ *  against a month of real calls on the live account:
+ *
+ *  | shape                                   | HTTP | rows |
+ *  |-----------------------------------------|------|------|
+ *  | `filter[date_range]=last_30_days`       | 200  | **43 webrtc / 50 sip-trunking** |
+ *  | no window at all                        | 200  | **43 / 50** |
+ *  | `filter[start_time][gte]/[lte]`         | 200  | **0 on every record type** |
+ *  | `filter[created_at][gte]/[lt]`          | 200  | **0 on every record type** |
+ *  | `filter[date_range][start_time]/[end_…]`| 400  | `No FilterType with name end_time was found` |
+ *
+ *  🔴 THE LADDER IS DELETED BECAUSE IT IS THE BUG, NOT THE FIX. It accepted a
+ *  **200 as proof a shape works**, cached the winning index in
+ *  `app_config.telnyx_cdr_shape`, and `filter[start_time][gte]` answers 200
+ *  and matches nothing — so it locked onto a dead filter on 2026-08-06 and
+ *  settled zero records for twenty days while reporting success every ten
+ *  minutes. That is the same silent-no-op-on-200 this adapter has now hit
+ *  FOUR times (`messaging_profile_id`, `features.sms.international_inbound`,
+ *  `outbound_voice_profile_id`, and this). **On this API a 200 is not
+ *  evidence. Only rows are.**
+ *
+ *  ⚠️ DO NOT "IMPROVE" THIS INTO A NARROWER BUCKET WITHOUT PROBING IT FIRST.
+ *  `last_30_days` is the only value observed to work; Telnyx documents no enum
+ *  we could confirm, and an unproven bucket would fail in exactly the way that
+ *  caused this outage — 200, zero rows, indistinguishable from a quiet hour.
+ *  Thirty days of records is ~50 rows at current volume and is bounded by
+ *  `maxPages` regardless, so there is nothing to win here and a repeat of a
+ *  twenty-day silent outage to lose.
+ *
+ *  The caller matches records against its own pending set, so a window wider
+ *  than the lookback is harmless: it costs a few extra rows per page, never a
+ *  wrong settlement. */
+const CDR_DATE_RANGE = "last_30_days";
+
+/** Telnyx caps `page[size]` at 50. We sent 250 for twenty days; it was
+ *  tolerated rather than fatal (the probe got the same 43 rows either way),
+ *  but an over-max value is one API revision away from becoming a 400 or a
+ *  silent empty page, which is the failure this file exists to avoid. */
+const CDR_MAX_PAGE_SIZE = 50;
 
 /** 🔴 `record_type: "call"` IS NOT A THING — measured, not assumed. The second
  *  probe run returned **400 `No matching record type was found matching given
@@ -880,7 +982,13 @@ export const CDR_SHAPE_COUNT = CDR_WINDOW_SHAPES.length;
  *  Reads are free and there are only a handful of types, so merging removes
  *  the guess entirely. Which types actually carry our legs becomes an
  *  observation once a real call happens — `telnyx_cdr_probe` records the raw
- *  shape of the first record seen. */
+ *  shape of the first record seen.
+ *
+ *  ✅ OBSERVED 2026-08-26: `webrtc` and `sip-trunking` both carry our calls —
+ *  the SAME call, one record each, joined by `telnyx_session_id`. See
+ *  `mergeCallRecords`. `call-control` and `conference` returned zero rows and
+ *  are kept because they cost one request each and a future call-control leg
+ *  would otherwise be invisible. */
 const CDR_RECORD_TYPES = [
   "webrtc",        // a credential connection is a WebRTC endpoint
   "sip-trunking",  // the PSTN leg of an outbound call
@@ -888,7 +996,7 @@ const CDR_RECORD_TYPES = [
   "conference",
 ] as const;
 
-/** Call detail records since `sinceISO`.
+/** Call detail records for the fixed 30-day window.
  *
  *  ⚠️ PAGINATED. The first version fetched page one and stopped, which reads as
  *  "there were only 100 records" — so on any busy window the oldest calls
@@ -899,102 +1007,101 @@ const CDR_RECORD_TYPES = [
  *
  *  Bounded at `maxPages` because the edge runtime dies at ~150s. Hitting the
  *  cap is reported through `truncated` rather than swallowed, so the caller can
- *  say so instead of quietly under-settling. */
+ *  say so instead of quietly under-settling.
+ *
+ *  🔴 `sinceISO`/`untilISO` ARE NO LONGER SENT TO TELNYX and are kept only for
+ *  the caller's own bookkeeping. There is no window-shape ladder any more and
+ *  no cached "winning shape": both were the bug — see `CDR_DATE_RANGE`. The
+ *  window is `last_30_days`, always, and the caller matches against its own
+ *  pending set, so a wider window costs rows and never correctness.
+ *
+ *  Records are MERGED per call before returning (`mergeCallRecords`): a
+ *  WebRTC→PSTN call writes one `webrtc` and one `sip-trunking` record with the
+ *  same `telnyx_session_id` and different costs. */
 export async function fetchCallDetailRecords(opts: {
   sinceISO: string;
   untilISO: string;
   pageSize?: number;
   maxPages?: number;
-  /** Last known-good index from `app_config.telnyx_cdr_shape`. Tried first, so
-   *  the steady state is one request rather than a ladder walk. */
-  preferShape?: number;
 }): Promise<
   | {
       records: TelnyxCallRecord[]; pages: number; truncated: boolean;
-      shape: number; types: string[];
+      /** Kept in the return shape so the heartbeat keeps its field, but it is
+       *  now a constant: there is one window shape and it is proven. */
+      shape: string; types: string[];
+      /** Rows Telnyx returned BEFORE normalisation and merging. The gap
+       *  between this and `records.length` is what twenty days of silent
+       *  failure looked like, and it is now visible in the heartbeat. */
+      rawRows: number;
     }
   | TelnyxFault
 > {
-  const size = Math.min(opts.pageSize ?? 250, 250);
+  const size = Math.min(opts.pageSize ?? CDR_MAX_PAGE_SIZE, CDR_MAX_PAGE_SIZE);
   const maxPages = Math.max(opts.maxPages ?? 8, 1);
 
-  const order = [...CDR_WINDOW_SHAPES.keys()];
-  const preferred = opts.preferShape;
-  if (preferred != null && preferred >= 0 && preferred < order.length) {
-    order.splice(order.indexOf(preferred), 1);
-    order.unshift(preferred);
-  }
-
-  let lastFault: TelnyxFault | null = null;
-  const seen = new Set<string>();
-  const merged: TelnyxCallRecord[] = [];
+  const collected: TelnyxCallRecord[] = [];
   const workingTypes: string[] = [];
-  let usedShape = -1;
   let pagesRead = 0;
+  let rawRows = 0;
   let truncated = false;
+  let sawOk = false;
+  let lastFault: TelnyxFault | null = null;
 
-  for (const shape of order) {
-    const windowParams = CDR_WINDOW_SHAPES[shape](opts.sinceISO, opts.untilISO);
-    let shapeWorked = false;
-
-    for (const recordType of CDR_RECORD_TYPES) {
-      for (let page = 1; page <= maxPages; page++) {
-        const params = new URLSearchParams({
-          "filter[record_type]": recordType,
-          ...windowParams,
-          "page[size]": String(size),
-          "page[number]": String(page),
-        });
-        const r = await call<Record<string, unknown>[]>("GET", `/detail_records?${params}`);
-        if (faultOf(r)) {
-          lastFault = r;
-          // A 400 means these PARAMETERS are wrong — either the window shape or
-          // this record type. Move on. Anything else (auth, rate limit,
-          // transport) will fail identically for every combination and would
-          // just burn the request budget.
-          if (r.status !== 400) {
-            return merged.length > 0
-              ? { records: merged, pages: pagesRead, truncated: true,
-                  shape: usedShape, types: workingTypes }
-              : r;
-          }
-          break;
+  for (const recordType of CDR_RECORD_TYPES) {
+    for (let page = 1; page <= maxPages; page++) {
+      const params = new URLSearchParams({
+        "filter[record_type]": recordType,
+        "filter[date_range]": CDR_DATE_RANGE,
+        "page[size]": String(size),
+        "page[number]": String(page),
+      });
+      const r = await call<Record<string, unknown>[]>("GET", `/detail_records?${params}`);
+      if (faultOf(r)) {
+        lastFault = r;
+        // A 400 means THIS record type is not valid on this account — the
+        // window is fixed and proven, so it cannot be the window. Move to the
+        // next type. Anything else (auth, rate limit, transport) will fail
+        // identically for every type and would just burn the request budget.
+        if (r.status !== 400) {
+          return collected.length > 0
+            ? { records: mergeCallRecords(collected), pages: pagesRead,
+                truncated: true, shape: CDR_DATE_RANGE, types: workingTypes, rawRows }
+            : r;
         }
-        // A 200 proves the window shape parses, whatever this record type
-        // returned. That is the fact worth caching.
-        shapeWorked = true;
-        usedShape = shape;
-        if (!workingTypes.includes(recordType)) workingTypes.push(recordType);
-        pagesRead++;
-
-        const rows = Array.isArray(r) ? r : [];
-        for (const x of rows) {
-          const rec = normaliseCallRecord(x as Record<string, unknown>);
-          // De-duplicated across record types: one call can legitimately
-          // appear in more than one, and settling the same session twice would
-          // be double-counting against the allowance.
-          if (!rec) continue;
-          const key = rec.sessionId ?? rec.legId ?? "";
-          if (key && seen.has(key)) continue;
-          if (key) seen.add(key);
-          merged.push(rec);
-        }
-        // A short page is the last page. Telnyx's meta block is not relied on:
-        // this file's standing rule is that an undocumented field is a guess.
-        if (rows.length < size) break;
-        if (page === maxPages) truncated = true;
+        break;
       }
-    }
+      sawOk = true;
+      if (!workingTypes.includes(recordType)) workingTypes.push(recordType);
+      pagesRead++;
 
-    if (shapeWorked) {
-      return { records: merged, pages: pagesRead, truncated, shape: usedShape,
-               types: workingTypes };
+      const rows = Array.isArray(r) ? r : [];
+      rawRows += rows.length;
+      for (const x of rows) {
+        const rec = normaliseCallRecord(x as Record<string, unknown>);
+        // Dropped records are NOT silent any more — `rawRows` above counts what
+        // arrived, so `rawRows > records.length` is legible in the heartbeat
+        // instead of reading as "Telnyx returned nothing". That ambiguity is
+        // precisely what hid the wrong-id-field half of this bug.
+        if (!rec) continue;
+        collected.push(rec);
+      }
+      // A short page is the last page. Telnyx's meta block is not relied on:
+      // this file's standing rule is that an undocumented field is a guess.
+      if (rows.length < size) break;
+      if (page === maxPages) truncated = true;
     }
   }
 
-  return lastFault ?? {
-    telnyxFault: true, type: "TRANSPORT_ERROR", status: 400,
-    detail: "no working detail_records filter shape",
+  if (!sawOk) {
+    return lastFault ?? {
+      telnyxFault: true, type: "TRANSPORT_ERROR", status: 400,
+      detail: "no detail_records record type answered",
+    };
+  }
+
+  return {
+    records: mergeCallRecords(collected),
+    pages: pagesRead, truncated, shape: CDR_DATE_RANGE, types: workingTypes, rawRows,
   };
 }
 

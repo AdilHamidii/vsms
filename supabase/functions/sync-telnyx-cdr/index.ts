@@ -8,12 +8,30 @@
 // every call against the client's own reported duration — a number produced by
 // software we do not control, on a device that can be killed mid-call.
 //
-// ⚠️ **THIS AND ITS ADAPTER ARE UNPROVEN.** No call has ever been placed on
-// this account, so the record shape below is read off the documentation. The
-// first real run is the probe: it writes the raw shape of the first record it
-// sees into `app_config.telnyx_cdr_probe` and every fault into
-// `telnyx_cdr_faults`, so one production run answers what a second reading of
-// the docs cannot. **Read those two keys before trusting any figure here.**
+// ⚠️ **IT MATCHED NOTHING FOR TWENTY DAYS AND REPORTED SUCCESS THE WHOLE TIME.**
+// From 2026-08-06 to 2026-08-26 this function ran every ten minutes, wrote a
+// healthy heartbeat, and settled ZERO records, so every call in the product's
+// history was billed its flat reservation by the six-hour `settle_stale_calls`
+// backstop — a fallback documented as rare, silently made universal.
+//
+// THREE independent defects, all of which had to be fixed for one settlement,
+// each of which alone was sufficient to settle nothing, and none of which threw:
+//   1. the window filter `filter[start_time][gte]` returns **200 with zero
+//      rows** on this endpoint. The old ladder scored a 200 as "this shape
+//      works" and cached it. Now `filter[date_range]=last_30_days`, probed.
+//   2. `normaliseCallRecord` read `session_id` — the SDK's own uuid — where our
+//      ids live in `telnyx_session_id`. 43 of 43 webrtc rows normalised onto an
+//      id that can never match; 50 sip-trunking rows were dropped entirely.
+//   3. the billed-duration field is `call_sec` / `billed_sec`; none of the four
+//      documented names exists on a live record, so a matched record would
+//      still have had `billedSeconds: null` and been skipped as unmatched.
+//
+// All three were found by `probe-telnyx-connection` mode "cdr" on 2026-08-26,
+// after two earlier rounds of guessing from the documentation. `raw_rows` is
+// now reported next to `records` precisely so defect 2 can never be silent
+// again. `telnyx_cdr_probe` still records the raw shape of the first record
+// seen and `telnyx_cdr_faults` every fault. **Read those keys before trusting
+// any figure here.**
 //
 // Cron-gated: deploy with `--no-verify-jwt`.
 
@@ -60,18 +78,21 @@ Deno.serve(async (req) => {
   }
   const waiting = (pending ?? []).length;
 
-  // The last shape that worked. Without it every run re-walks the ladder from
-  // the top and pays for the wrong guesses again.
-  const { data: shapeRow } = await sb.from("app_config")
-    .select("value").eq("key", "telnyx_cdr_shape").maybeSingle();
-  const preferShape = typeof (shapeRow?.value as { index?: number } | null)?.index === "number"
-    ? (shapeRow!.value as { index: number }).index
-    : undefined;
-
+  // 🔴 THE SHAPE CACHE IS GONE, AND ITS REMOVAL IS THE FIX. This used to read
+  // `app_config.telnyx_cdr_shape` for "the last window filter that worked" and
+  // try it first. It cached index 0 — `filter[start_time][gte]` — on
+  // 2026-08-06 because that shape returns **HTTP 200 with zero rows**, which
+  // the ladder scored as success. So the poller asked a dead filter for twenty
+  // days, settled nothing, and wrote a healthy heartbeat every ten minutes.
+  //
+  // The window is now the single proven `filter[date_range]=last_30_days`
+  // (see CDR_DATE_RANGE in _shared/telnyx.ts), so there is nothing to cache and
+  // no ladder to re-walk. **The stale `telnyx_cdr_shape` key is now read by
+  // nobody and can be deleted** — it is left alone here rather than deleted on
+  // the fly, because a sweep silently rewriting config keys is its own trap.
   const fetched = await fetchCallDetailRecords({
     sinceISO: since.toISOString(),
     untilISO: until.toISOString(),
-    preferShape,
   });
 
   if (faultOf(fetched)) {
@@ -108,20 +129,19 @@ Deno.serve(async (req) => {
     );
   }
 
-  const { records, pages, truncated, shape, types } = fetched;
+  const { records, pages, truncated, shape, types, rawRows } = fetched;
 
-  // Remember the window shape that parsed, so the steady state does not re-walk
-  // the ladder and pay for the wrong guesses again. The record TYPES are
-  // recorded but never cached as a filter: every valid one is queried on every
-  // run, because no call has ever been placed here and locking onto whichever
-  // type happened to answer first would settle nothing forever while reporting
-  // success. See CDR_RECORD_TYPES.
-  if (preferShape !== shape) {
-    await sb.from("app_config").upsert({
-      key: "telnyx_cdr_shape",
-      value: { index: shape, types, at: until.toISOString() },
-    }, { onConflict: "key" });
-    console.log(JSON.stringify({ telnyx_cdr_shape_found: shape, types }));
+  // ⚠️ ROWS ARRIVED BUT NONE SURVIVED NORMALISATION. That is the second half of
+  // the 2026-08-26 bug — `normaliseCallRecord` was reading `session_id` (the
+  // SDK's own uuid) instead of `telnyx_session_id` (ours), so 43 webrtc rows
+  // normalised onto ids that can never match and 50 sip-trunking rows were
+  // dropped outright. Both looked identical to "Telnyx returned nothing".
+  // Never let that be silent again: it is a fault, not a quiet hour.
+  if (rawRows > 0 && records.length === 0) {
+    console.error(JSON.stringify({
+      alert: "telnyx_cdr_all_dropped", rawRows, types,
+      detail: "detail records returned but none carried a readable id — check normaliseCallRecord's field names against a raw row",
+    }));
   }
 
   // ⚠️ NEVER SILENT. A truncated page walk looks exactly like "there were only
@@ -208,6 +228,12 @@ Deno.serve(async (req) => {
     value: {
       at: until.toISOString(),
       records: records.length,
+      // What Telnyx actually returned, before normalisation and merging.
+      // `raw_rows > 0` with `records: 0` is a live defect, not a quiet hour —
+      // the distinction the old heartbeat could not express.
+      raw_rows: rawRows,
+      window: shape,
+      types,
       pending: (pending ?? []).length,
       settled, unmatched, failed, pages, truncated,
     },
@@ -216,6 +242,9 @@ Deno.serve(async (req) => {
   return json({
     ok: true,
     records: records.length,
+    raw_rows: rawRows,
+    window: shape,
+    types,
     pending: (pending ?? []).length,
     settled, unmatched, failed, pages, truncated,
   });

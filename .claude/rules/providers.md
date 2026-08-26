@@ -415,6 +415,57 @@ at all — 35 keys, none of them a cost. This is the SMSPool eSIM trap exactly
 `phone_lines.monthly_cost_cents`; `activate_line_claim` already takes it. There
 is no way to recover it afterwards.
 
+## Telnyx detail records (`GET /v2/detail_records`) — probed 2026-08-26
+
+🔴 **THREE THINGS ABOUT THIS ENDPOINT ARE NOT WHAT THE DOCUMENTATION SAYS, AND
+BELIEVING THE DOCS COST TWENTY DAYS OF UNSETTLED CALL BILLING.** All measured
+with `probe-telnyx-connection` mode `"cdr"` against a month of real calls.
+
+**1. The only window filter that returns rows is `filter[date_range]=last_30_days`.**
+
+| shape | HTTP | rows |
+|---|---|---|
+| `filter[date_range]=last_30_days` | 200 | **43 webrtc / 50 sip-trunking** |
+| no window at all | 200 | **43 / 50** |
+| `filter[start_time][gte]/[lte]` | 200 | **0 on every record type** |
+| `filter[created_at][gte]/[lt]` ← the spec's own | 200 | **0 on every record type** |
+| `filter[date_range][start_time]/[end_time]` | 400 | `No FilterType with name end_time was found` |
+
+An unrecognised filter is **accepted and silently matches nothing** (the filter
+object is `additionalProperties: true`). So a 200 proves only that the request
+parsed. **On this endpoint a 200 is not evidence; only rows are.** Do not
+"optimise" to a narrower bucket without probing it — an unproven value fails as
+200-with-zero-rows, indistinguishable from a quiet hour, which is exactly the
+outage. `page[size]` caps at **50**.
+
+**2. ONE CALL WRITES TWO RECORDS, WITH DIFFERENT COSTS.** A WebRTC→PSTN call
+appears once as `webrtc` and once as `sip-trunking`, joined by
+`telnyx_session_id`:
+
+| record_type | call_sec | billed_sec | cost | hangup_cause |
+|---|---|---|---|---|
+| webrtc | 249 | 300 | $0.010 | *(absent)* |
+| sip-trunking | 249 | 300 | $0.025 | `NORMAL_CLEARING` |
+
+Both legs are billed, so the wholesale cost is the **sum** ($0.035); either
+record alone understates it. Only `sip-trunking` carries `hangup_cause` and
+`answered_at`. `mergeCallRecords` in `_shared/telnyx.ts` does the join —
+without it the same call settles twice. `record_type: "call"` is still a 400;
+`call-control` and `conference` return nothing today.
+
+**3. THE FIELD NAMES ARE NOT THE DOCUMENTED ONES.**
+- ids: **`telnyx_session_id`** and **`telnyx_leg_id`** (= `id`). A `webrtc`
+  record ALSO carries `session_id`, which is a **different, SDK-internal uuid**
+  and matches nothing of ours — reading it was half the outage. `sip-trunking`
+  has no `session_id` at all.
+- duration: **`call_sec`** (connected) and **`billed_sec`** (Telnyx's 60-second
+  rounding). None of `billed_duration_secs` / `billed_seconds` / `duration_secs`
+  / `duration_millis` exists on a live record.
+- cost: `cost` as a **string** (`"0.025"`), plus `rate`, `currency`.
+
+Ids are lowercase; `UUID.uuidString` is uppercase, so anything comparing them
+must lowercase (the standing trap for `sync-telnyx-cdr`).
+
 **Two request shapes that fail if you write them from the docs:**
 - `POST /v2/messaging_profiles` **requires `whitelisted_destinations`** (e.g.
   `["US","CA"]`) or returns **40331 `Missing whitelisted destinations`**.

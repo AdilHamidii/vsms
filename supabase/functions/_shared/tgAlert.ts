@@ -157,6 +157,10 @@ export const WATCHDOG_COPY: Record<string, WatchdogCopy> = {
     what: (d) => `SMS delivery is well below baseline. ${esc(d)}`,
     action: "Compare per-provider rates with /delivery; the baseline on settled orders is ~73%.",
   },
+  // NOTE: `email-domain-<domain>` has NO entry here and must not gain one — it
+  // is generated per domain in SQL (one check name per pool, so each alerts and
+  // recovers independently), and a fixed key could never match. Its copy lives
+  // in copyFor() below, next to the `-float` prefix it mirrors.
 
   // ── Lines: the rented second-number product. ─────────────────────────────
   "reclaim-lapsed-lines": {
@@ -178,6 +182,11 @@ export const WATCHDOG_COPY: Record<string, WatchdogCopy> = {
     group: "Lines", sev: "🟠",
     what: (d) => `Call minutes are not being settled. ${esc(d)}`,
     action: "Check relay-sync-telnyx-cdr — without a CDR every call bills its full reservation via the 6h backstop.",
+  },
+  "cdr-never-matched": {
+    group: "Lines", sev: "🔴",
+    what: (d) => `Call minutes have NEVER been settled from Telnyx. ${esc(d)}`,
+    action: "This is an outcome check, not a heartbeat — sync-telnyx-cdr runs fine and matches nothing. Run probe-telnyx-connection with {\"probe\":\"cdr\"} and read raw_rows vs normalised before changing any filter.",
   },
   "telnyx-webhook": {
     group: "Lines", sev: "🔴",
@@ -213,12 +222,21 @@ export const WATCHDOG_COPY: Record<string, WatchdogCopy> = {
   },
 };
 
-/** `{provider}-float` is generated per provider in SQL, so a provider added
- *  later has no entry above. Fall back to the same Money/🟠 shape rather than
- *  to the generic Jobs default. */
+/** `{provider}-float` and `email-domain-{domain}` are generated per provider /
+ *  per domain in SQL, so neither can have a fixed entry above. Fall back to
+ *  their real copy rather than to the generic Jobs default. */
 function copyFor(check: string): WatchdogCopy {
   const known = WATCHDOG_COPY[check];
   if (known) return known;
+  if (check.startsWith("email-domain-")) {
+    const d0 = check.slice("email-domain-".length);
+    return {
+      group: "Delivery", sev: "🔴",
+      what: (d) => `The ${esc(d0)} address pool has stopped delivering. ${esc(d)}`,
+      action:
+        "It only fires while ANOTHER domain is still delivering, so this is the pool, not HeroSMS — check live stock via email-domains, then either wait it out or drop the domain from PRICING in create-email-order AND email-domains (both copies).",
+    };
+  }
   if (check.endsWith("-float")) {
     const p = check.slice(0, -"-float".length);
     return {
