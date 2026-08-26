@@ -62,6 +62,20 @@ Deno.serve(async (req) => {
   const until = new Date();
   const since = new Date(until.getTime() - LOOKBACK_MINUTES * 60_000);
 
+  // The pending window defaults to 24h — a cron sweep only ever needs to see
+  // recent claims. `lookback_hours` widens it for RECOVERY: re-open mis-settled
+  // rows (clear allowance_settled) and invoke with a window that reaches them,
+  // so the correction runs through this exact settlement path instead of
+  // hand-written UPDATEs. Cron-secret-gated like everything else here; clamped
+  // so a typo cannot turn into an unbounded scan. First used 2026-08-26 to
+  // re-settle the 11 calls the no-CDR era billed at a flat 120s.
+  let pendingLookbackHours = 24;
+  try {
+    const body = await req.json().catch(() => ({}));
+    const lb = Number((body as { lookback_hours?: unknown }).lookback_hours);
+    if (Number.isFinite(lb)) pendingLookbackHours = Math.min(Math.max(lb, 1), 720);
+  } catch { /* no body — the cron relay sends {} */ }
+
   // How many calls are actually waiting on a CDR. Read FIRST, because it
   // decides whether a fetch failure is an incident or a non-event: with
   // nothing to settle, an unreachable CDR endpoint costs exactly nothing, and
@@ -70,7 +84,7 @@ Deno.serve(async (req) => {
   const { data: pending, error: pendErr } = await sb.from("line_calls")
     .select("id, provider_call_session_id, provider_call_leg_id, peer_e164")
     .eq("allowance_settled", false)
-    .gte("created_at", new Date(until.getTime() - 24 * 60 * 60_000).toISOString())
+    .gte("created_at", new Date(until.getTime() - pendingLookbackHours * 60 * 60_000).toISOString())
     .limit(MAX_SETTLE);
   if (pendErr) {
     console.error(JSON.stringify({ alert: "telnyx_cdr_pending_failed", detail: pendErr.message }));

@@ -19,18 +19,23 @@ import {
 
 interface Body { service_id: string; domain: string; }
 
-/** The four we resell, and what we charge. Anything else is refused outright:
- *  the provider also lists 19 Yandex TLDs that no Western site accepts, and
- *  selling them would be selling a guaranteed failure. */
+/** The domains we resell, and what we charge. Anything else is refused
+ *  outright: the provider also lists 19 Yandex TLDs that no Western site
+ *  accepts, and selling them would be selling a guaranteed failure. */
 // icloud.com REMOVED 2026-07-31 (owner decision): issuing throwaway addresses on
 // Apple's own consumer domain, from an app on Apple's store, is an avoidable
 // review risk for a tier that earned nothing. This map is the ENFORCEMENT — the
 // guard below rejects any domain absent from it with `domain_unavailable`, so
 // removing the key is sufficient and no separate blocklist is needed. Existing
-// icloud.com orders already in flight are unaffected; only new ones are refused.
-// Keep in lockstep with email-domains' copy.
+// orders already in flight are unaffected; only new ones are refused.
+// gmail.com REMOVED 2026-08-26 (owner decision): the HeroSMS gmail pool stopped
+// delivering ~2026-08-10 — 1 code in its last 36 orders, 0 of the last 23,
+// while outlook/hotmail delivered normally in the same window. It was the only
+// paid tier (1 credit) and every failure charge-and-refunded, so users paid,
+// failed, retried. Re-add the key when the `email-domain-gmail.com` watchdog
+// evidence says the pool delivers again — the removal IS the enforcement, same
+// as icloud. Keep in lockstep with email-domains' copy.
 const PRICING: Record<string, number> = {
-  "gmail.com": 1,
   "outlook.com": 0,
   "hotmail.com": 0,
 };

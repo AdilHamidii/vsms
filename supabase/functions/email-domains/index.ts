@@ -16,8 +16,10 @@ interface Body { service_id: string; }
 
 /** Keep in lockstep with create-email-order's PRICING — it is the gate that
  *  actually charges, this is only what the picker renders. */
+// gmail.com REMOVED 2026-08-26 (owner decision) — its HeroSMS pool delivered
+// 1 code in 36 orders since ~08-10 while the free pair delivered normally.
+// See create-email-order's copy for the full note; change both together.
 const PRICING: Record<string, number> = {
-  "gmail.com": 1,
   "outlook.com": 0,
   "hotmail.com": 0,
 };
@@ -39,7 +41,7 @@ const PRICING: Record<string, number> = {
  *  store, is an avoidable review risk for a tier that earned nothing. Removing
  *  it from PRICING is also the enforcement: create-email-order rejects any
  *  domain missing from its own copy of the map with `domain_unavailable`. */
-const ORDER = ["outlook.com", "hotmail.com", "gmail.com"];
+const ORDER = ["outlook.com", "hotmail.com"];
 
 Deno.serve(async (req) => {
   const cors = handleCors(req); if (cors) return cors;

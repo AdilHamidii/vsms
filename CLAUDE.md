@@ -1064,26 +1064,36 @@ divisor (150 credits × $0.025).
 
 ### Temporary EMAIL addresses — the third product line (2026-07-30)
 
-Temp mailboxes on three real consumer domains, from HeroSMS. **outlook.com and
-hotmail.com are FREE and are the DEFAULT; gmail.com costs 1 credit** (7.5× at
-$0.04 wholesale, clearing `MIN_MARGIN = 6.0`, so no pricing constant changed).
+Temp mailboxes on TWO real consumer domains, from HeroSMS — **outlook.com and
+hotmail.com, both FREE**. There is no paid tier on sale as of 2026-08-26.
+
+**gmail.com was REMOVED 2026-08-26 (owner decision)** — its HeroSMS pool
+stopped delivering ~2026-08-10: 1 code in its last 36 orders, 0 of the last 23,
+while the free pair delivered normally in the same window (outlook 53%, hotmail
+57%), so it was the pool, not the users. It was the only paid tier (1 credit at
+7.5× margin) and every failure charge-and-refunded, so users paid, failed and
+retried. Re-add the key only when the `email-domain-gmail.com` watchdog
+evidence says the pool delivers again. (2.3's `MailPaywallScreen` copy still
+names gmail's 1-credit price — stale copy, cosmetic, next release.)
 
 **icloud.com was REMOVED 2026-07-31 (owner decision)** — handing out throwaway
 addresses on Apple's own consumer domain, from an app distributed on Apple's
 store, is an avoidable review risk for a tier that earned nothing. It had **zero
-orders ever**, so nothing was stranded. The removal is enforced by deleting the
-key from `PRICING`: `create-email-order` rejects any domain absent from that map
-with `domain_unavailable`, so no separate blocklist exists. **`PRICING` is
-duplicated in `create-email-order` and `email-domains` — change both together**
-(this file's own standing warning about duplicated constants).
+orders ever**, so nothing was stranded. Both removals are enforced the same
+way: deleting the key from `PRICING` — `create-email-order` rejects any domain
+absent from that map with `domain_unavailable`, so no separate blocklist
+exists. **`PRICING` is duplicated in `create-email-order` and `email-domains` —
+change both together** (this file's own standing warning about duplicated
+constants).
 
 **Render order is FREE first**, reversing the original "paid first" rule. That
 rule existed because the free pair is the scarcest inventory and leading with it
 risks a picker whose top row reads "Out of stock" — but the client defaults to
 `first(where: { $0.inStock })`, so an empty outlook.com already falls through to
-hotmail.com and then gmail.com. Free-first is correct because e-mail exists to
-**acquire users, not to earn**: the paid tier is 1 credit against an SMS median
-of 16.
+hotmail.com. (Since the 2026-08-26 gmail removal both remaining domains are
+free, so "free first" is vacuously true; the rule matters again the day a paid
+tier returns.) E-mail exists to **acquire users, not to earn** — the mail
+subscription, not a per-address price, is its monetization.
 
 **It is a SECOND protocol on the same HeroSMS account**, sharing only the key and
 the balance — see `_shared/heromail.ts`:
@@ -1153,18 +1163,23 @@ checkout; `create-email-order` refuses when `count` is 0. Never cache it.
 
 ### Per-domain e-mail delivery IS monitored (2026-08-26)
 
-🔴 **THE PAID gmail.com TIER HAS DELIVERED NOTHING SINCE ~2026-08-10 AND
-NOTHING PAGED.** Measured 2026-08-26 over the trailing 14 days: gmail.com **30
-orders / 0 codes**, against outlook.com **58 of 110** and hotmail.com **16 of
-28** in the same window. The free tiers delivering normally is what makes it
-the domain pool rather than the users or a HeroSMS outage.
+🔴 **THE PAID gmail.com TIER DELIVERED NOTHING FROM ~2026-08-10 AND NOTHING
+PAGED — which is why the tier was removed from sale on 2026-08-26** (see the
+removal note above). Measured 2026-08-26 over the trailing 14 days: gmail.com
+**30 orders / 0 codes**, against outlook.com **58 of 110** and hotmail.com
+**16 of 28** in the same window. The free tiers delivering normally is what
+made it the domain pool rather than the users or a HeroSMS outage.
 
 Nothing watched this: `app_config.email_expiry_heartbeat` proves only that the
-sweep is alive, and there has never been a delivery check on this line at all.
-`email-domain-<domain>` (migration `20260826140000`, in the companion
-`watchdog_delivery_checks()`) pages when a domain has **≥ 8 orders in 14 days
-with ZERO codes while at least one other domain delivered in the same window**.
-Three details are load-bearing:
+sweep is alive, and there had never been a delivery check on this line at all.
+`email-domain-<domain>` (migration `20260826140000`, amended `20260826150000`,
+in the companion `watchdog_delivery_checks()`) pages when a domain has **≥ 8
+orders in 14 days with ZERO codes while at least one other domain delivered in
+the same window, AND its most recent order is within 72 hours** — the last
+condition (the `20260826150000` amendment) makes the check go quiet on its own
+within three days of a domain being pulled from `PRICING`, instead of paging
+6-hourly about a decision already taken until the old orders age out of the
+window. Details that are load-bearing:
 - **The cross-domain condition is the whole design.** Without it a total
   HeroSMS failure would page here three more times on top of the checks that
   already cover it, and alert fatigue on the one channel is how the next real
@@ -1263,8 +1278,9 @@ gets unlimited free-domain addresses under a SHARED-inventory daily cap,
 `app_config.email_sub_daily_cap` (default **25**) — a stated hard stop, not a
 throttle, because the free-domain pool is scarce and shared and one looping
 subscriber could drain it for every user. **`gmail.com` is excluded from all
-of this** — it is the 1-credit paid tier for everyone, subscriber or not,
-unconditionally and unchanged either way.
+of this** — it was the 1-credit paid tier for everyone, subscriber or not,
+until it was **removed from sale on 2026-08-26** (dead pool — see the removal
+note above); the exclusion rule stands if it ever returns.
 
 🔴 **THE LIFETIME ALLOWANCE IS TOMBSTONED — `public.email_free_grants`
 (`20260826100000`) — because counting `email_orders` COULD NOT HOLD IT.**
@@ -1448,16 +1464,31 @@ on every outbound call, until 2026-08-19. Durations of 6s / 2s / 23s are what
 "connected but silent" looks like. Nobody has reported hearing audio; treat
 that as untested, not working.
 
-🔴 **NOTHING HAS EVER BEEN SETTLED FROM PROVIDER EVIDENCE — NOT ONCE.**
-`app_config.telnyx_cdr_heartbeat` reads `{records: 0, settled: 0}` after
-walking 4 pages (re-checked 2026-08-26), and every historical `line_calls` row
-closed `hangup_cause` `no_cdr` / `no_cdr_full`. `sync-telnyx-cdr` runs; it has
-never matched a single detail record **up to 2026-08-26**, when the cause was
-finally probed rather than guessed and fixed — see the ✅ block below. The
-query had by then been wrong **three** times over (window filter, id field
-names, duration field names), which is the whole lesson: **assume another cause
-before assuming provider lag, and probe rather than re-read the docs** — the
-documented window filter turned out to be dead too.
+✅ **PROVIDER-EVIDENCE SETTLEMENT WORKS AS OF 2026-08-26 — six calls settled
+from real detail records the same day the fix landed.** For the twenty days
+before that, NOTHING had ever settled from provider evidence: the heartbeat
+read `{records: 0, settled: 0}` while every `line_calls` row closed
+`no_cdr` / `no_cdr_full` via the 6h backstop. The query had been wrong
+**three** times over (window filter, id field names, duration field names),
+which is the whole lesson: **assume another cause before assuming provider
+lag, and probe rather than re-read the docs** — the documented window filter
+turned out to be dead too. See the ✅ three-defects block below.
+
+**The 11 mis-billed historical rows were corrected on 2026-08-26** through the
+production settlement path, not hand-written UPDATEs: `allowance_settled` was
+cleared on all 11 and `sync-telnyx-cdr` invoked with its new
+**`lookback_hours`** body param (cron-gated, clamped 1–720, default 24 — the
+standing recovery tool for re-settling re-opened rows the 24h pending window
+cannot see). Six matched real CDRs and re-settled — the 248s call went
+`billed_seconds` 120 → **249** / cost **$0.035** / `NORMAL_CLEARING`; four ~1s
+calls went 120 → 1–2s; the 18s call 120 → 18 — and the allowance meters moved
+by exactly the sum of the deltas (verified: 1200 → 854, 120 → 18). The other
+five carry session ids but **Telnyx holds no CDR for them** (dials that never
+truly connected); the hourly stale backstop re-closes those at the flat
+reservation, which is the documented over-bill-rather-than-under-bill policy
+and unchanged. This exercise also proved `mergeCallRecords` +
+`settle_call_claim` end to end in production. `cdr-never-matched` cleared the
+moment the first row settled, exactly as designed.
 
 **The watchdog now catches this, and it did not before** — the pre-existing
 `sync-telnyx-cdr` check only tests the heartbeat's `updated_at`, so a sweep
@@ -3982,15 +4013,16 @@ mail-subscription conversion estimate should be discounted against). Recorded
 as a measurement with its date, not as a recommendation.
 
 ⚠️ **A subscriber's "unlimited" free addresses still depend on free-domain
-stock that runs dry, and it is undecided whether subscribers get a gmail
-fallback when it does.** The free tier (`outlook.com`/`hotmail.com`) is the
-scarcest inventory in the catalog — measured as low as **two available** for
-a domain in one sweep (see "There is no catalog to sync" above) — and that is
-unrelated to and unfixed by paying $2.99/month. A subscriber who hits a dry
-free domain today gets exactly the same `domain_unavailable` refusal a
-non-subscriber gets; whether that should instead fall back to the 1-credit
-gmail tier for subscribers only, and how that would be priced against the
-subscription itself, has not been decided.
+stock that runs dry, and there is now NO paid fallback at all.** The free tier
+(`outlook.com`/`hotmail.com`) is the scarcest inventory in the catalog —
+measured as low as **two available** for a domain in one sweep (see "There is
+no catalog to sync" above) — and that is unrelated to and unfixed by paying
+$2.99/month. A subscriber who hits a dry free domain gets exactly the same
+`domain_unavailable` refusal a non-subscriber gets. The old open question
+("fall back to the 1-credit gmail tier for subscribers?") is moot since
+gmail.com was removed from sale on 2026-08-26 for delivering nothing — if a
+paid tier ever returns, the fallback question returns with it. As of 2026-08-26
+the mail subscription's ENTIRE inventory is the two free domains.
 
 ⚠️ **`revenue_snapshot` counts credit packs only, and now omits TWO
 subscription revenue streams, not one.** This is pre-existing for the line

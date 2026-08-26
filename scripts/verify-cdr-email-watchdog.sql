@@ -98,7 +98,8 @@ begin
        and created_at <  now() - interval '1 hour'
        and user_id <> '825688de-6117-4251-9f90-93b83b41b572'
      group by domain
-    having count(*) >= 8 and count(*) filter (where code is not null) = 0) d;
+    having count(*) >= 8 and count(*) filter (where code is not null) = 0
+       and max(created_at) >= now() - interval '72 hours') d;
 
   select array_agg(domain) into alive from (
     select domain from email_orders
@@ -182,6 +183,7 @@ begin
      and user_id <> '825688de-6117-4251-9f90-93b83b41b572'
    group by domain
   having count(*) >= 8 and count(*) filter (where code is not null) = 0
+     and max(created_at) >= now() - interval '72 hours'
    limit 1;
 
   if dead is null then
