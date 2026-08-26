@@ -163,3 +163,6 @@ verify_jwt = false
 
 [functions.sync-line-voice]
 verify_jwt = false
+
+[functions.probe-telnyx-connection]
+verify_jwt = false

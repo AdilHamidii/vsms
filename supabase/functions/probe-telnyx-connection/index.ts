@@ -1,9 +1,10 @@
 // probe-telnyx-connection — READ-ONLY diagnostic. Cron-secret gated.
 //
-// TWO modes. Both are GETs against Telnyx and write nothing anywhere.
+// THREE modes. All are GETs against Telnyx and none of them spends money.
 //
 //  1. GET  ?connection_id=<digits>          — the credential-connection probe
 //  2. POST {"probe":"cdr", …}               — the detail-record probe
+//  3. POST {"probe":"coverage"}             — the country-catalogue probe
 //
 // The API key never leaves the platform: this runs edge-side. Mode 1 returns a
 // projection. Mode 2 returns RAW response bodies (truncated) on purpose — the
@@ -85,9 +86,40 @@
 // spec and `sync-telnyx-cdr` sends **250**. An over-max page size that returns
 // 200-and-empty would produce exactly the symptom we have.
 //
-// NOTHING HERE IS CACHED AND NOTHING IS WRITTEN. Read the result, then change
-// `_shared/telnyx.ts` on the strength of it.
+// ── Mode 3: why it exists ───────────────────────────────────────────────────
+// The rentable-number line sells from a hardcoded 7-Canadian-city list, and
+// `_shared/telnyx.ts::searchNumbers` hardcodes BOTH
+// `filter[phone_number_type]=local` AND `filter[features][]=sms,voice`. On a
+// country whose local numbers carry voice but no SMS that filter returns zero
+// rows, which every caller reads as "out of stock" — a SILENT FALSE STOCKOUT,
+// not a provider fact. Nothing in the repo has ever called
+// `GET /v2/requirements`, and `regulatory_requirements` in a search result is
+// always null and means nothing (it cost $3.83 to learn that).
+//
+// So three questions, each with a cell that separates it from the others:
+//
+//   (i)   WHAT DOES EACH COUNTRY ACTUALLY SUPPORT? → `/v2/country_coverage`,
+//         list plus a per-country detail attempt, so we learn which shape
+//         exists rather than assuming one.
+//   (ii)  WHICH COUNTRIES NEED DOCUMENTS? → `/v2/requirements?…&action=ordering`
+//         per sample country. Empty ⇒ orderable with no paperwork. This is the
+//         reliable pre-purchase source; the search endpoint is not.
+//   (iii) THE FALSIFIER: GB (and DE) local searched three ways — no features
+//         filter, `voice` only, and the `sms+voice` pair we hardcode today. If
+//         (c) is empty while (a)/(b) are not, the false stockout is PROVEN
+//         rather than argued.
+//
+// Plus two controls, because on this API a 200 is not evidence (documented
+// three times already): a nonsense country code, which says whether a bad
+// filter is silently accepted, and `/v2/requirement_groups`, which says
+// whether the pre-verification path we would need even has an entity yet.
+//
+// NOTHING IS CACHED and nothing Telnyx-side is written. Mode 3 upserts its own
+// result into `app_config.telnyx_coverage_probe` for one reason only: the
+// response is far larger than `net._http_response` will retain, and a probe
+// nobody can read is not a probe. Same shape as `telnyx_cdr_probe`.
 import { corsHeaders } from "../_shared/cors.ts";
+import { admin } from "../_shared/supabaseAdmin.ts";
 
 const TELNYX = "https://api.telnyx.com/v2";
 
@@ -195,6 +227,129 @@ async function probe(key: string, params: Record<string, string>, budget: { left
   return out;
 }
 
+// ── Mode 3 plumbing ─────────────────────────────────────────────────────────
+
+/** The sample set. US/CA/PR are the NANP catalogue we already sell or could;
+ *  GB/FR/DE/NL/PL/AU are the "voice-only?" candidates the plan turns on. */
+const COVERAGE_COUNTRIES = ["US", "CA", "GB", "FR", "DE", "NL", "PL", "AU", "PR"] as const;
+
+/** Cap on mode-3 requests. The whole sweep is ~28; anything past this is a
+ *  loop bug, and a runaway sweep reads as a hang at the ~150s edge kill. */
+const MAX_COVERAGE_REQUESTS = 34;
+
+interface Get {
+  url: string;
+  http: number;
+  /** Length of `data` when the body parses to `{data: [...]}`. */
+  rows?: number | null;
+  /** Key names of the first row — the fastest way to see a shape we guessed. */
+  first_row_keys?: string[];
+  /** Parsed `data`, kept only where the caller asked for it. */
+  data?: unknown;
+  /** Verbatim, truncated. A 4xx here names the parameter that is wrong. */
+  body?: string;
+}
+
+/** Telnyx rate-limits this account. The first run of mode 3 fired ~28 requests
+ *  back to back and took **429 on four of the nine requirement reads** — which
+ *  is indistinguishable from "this country has no requirements" unless the
+ *  status is read, and reading a 429 as zero documents would mark a country
+ *  sellable that needs paperwork. Space them out; the whole sweep is still well
+ *  inside the ~150s edge kill. */
+const COVERAGE_SPACING_MS = 400;
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/** One GET, budgeted. Returns the parsed `data` only when `keep` is set —
+ *  everything else is reduced to counts and key names so the result stays
+ *  readable and storable. */
+async function get(
+  key: string,
+  path: string,
+  budget: { left: number },
+  keep = false,
+): Promise<Get> {
+  const url = `${TELNYX}${path}`;
+  if (budget.left <= 0) return { url, http: 0, body: "request budget exhausted" };
+  budget.left--;
+  await sleep(COVERAGE_SPACING_MS);
+
+  let res: Response;
+  try {
+    res = await fetch(url, { headers: { Authorization: `Bearer ${key}` } });
+  } catch (e) {
+    return { url, http: 0, body: `transport: ${String(e)}` };
+  }
+  const text = await res.text();
+  if (!res.ok) return { url, http: res.status, body: trunc(text, 900) };
+
+  let data: unknown = null;
+  try {
+    data = (JSON.parse(text) as { data?: unknown }).data ?? null;
+  } catch {
+    return { url, http: res.status, body: trunc(text, 900) };
+  }
+  const rows = Array.isArray(data) ? data.length : null;
+  const out: Get = { url, http: res.status, rows };
+  if (Array.isArray(data) && data.length > 0 && typeof data[0] === "object" && data[0]) {
+    out.first_row_keys = Object.keys(data[0] as Record<string, unknown>).sort();
+  }
+  if (keep) out.data = data;
+  return out;
+}
+
+/** 🔴 `/v2/requirements` returns ONE row per (country, phone_number_type,
+ *  action) — a requirement *set* — and the individual documents live in that
+ *  row's `requirement_types[]`. So `data.length` is 0 or 1 and is NOT the
+ *  document count; the first run of this probe slimmed the outer row and got a
+ *  field of nulls. Measured shape of the outer row: `{id, country_code,
+ *  phone_number_type, action, locality, requirement_types, record_type,
+ *  version, effective_start_at/end_at, created_at, updated_at}`.
+ *
+ *  Entries are kept VERBATIM apart from truncating long prose, because their
+ *  own shape is not something to guess a second time. */
+function slimRequirementType(t: unknown): unknown {
+  if (!t || typeof t !== "object") return t;
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(t as Record<string, unknown>)) {
+    out[k] = typeof v === "string" && v.length > 180 ? trunc(v, 180) : v;
+  }
+  return out;
+}
+
+/** Three-way search on ONE (country, type): no features filter, voice only,
+ *  and the sms+voice pair `searchNumbers` hardcodes today. The gap between the
+ *  first two and the third IS the false stockout. */
+async function featureTriplet(
+  key: string,
+  country: string,
+  budget: { left: number },
+): Promise<Record<string, Get & { first_row_features?: unknown; first_row_cost?: unknown }>> {
+  const base =
+    `/available_phone_numbers?filter[country_code]=${country}` +
+    `&filter[phone_number_type]=local&filter[limit]=3`;
+  const cells: Record<string, string> = {
+    a_no_features_filter: base,
+    b_voice_only: `${base}&filter[features][]=voice`,
+    "c_sms_and_voice(what_we_send_today)": `${base}&filter[features][]=sms&filter[features][]=voice`,
+  };
+  const out: Record<string, Get & { first_row_features?: unknown; first_row_cost?: unknown }> = {};
+  for (const [name, path] of Object.entries(cells)) {
+    const keep = name === "a_no_features_filter";
+    const r = await get(key, path, budget, keep) as
+      Get & { first_row_features?: unknown; first_row_cost?: unknown };
+    if (keep && Array.isArray(r.data) && r.data.length > 0) {
+      const row = r.data[0] as Record<string, unknown>;
+      r.first_row_features = row.features ?? null;
+      r.first_row_cost = row.cost_information ?? null;
+      // The full row list is noise once its two interesting fields are lifted.
+      r.data = undefined;
+    }
+    out[name] = r;
+  }
+  return out;
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   const secret = Deno.env.get("CRON_SECRET");
@@ -295,6 +450,117 @@ Deno.serve(async (req) => {
         "raw_rows > 0 with normalised = 0 means Telnyx IS returning records and " +
         "normaliseCallRecord is discarding them — fix the id field names, not the filter.",
     });
+  }
+
+  // ── Mode 3: the country-catalogue probe ───────────────────────────────────
+  if (body.probe === "coverage") {
+    const budget = { left: MAX_COVERAGE_REQUESTS };
+
+    // (1) The whole coverage table, once. We keep only the row count, the key
+    //     names (the shape is guessed nowhere else in this repo) and the rows
+    //     for the sample countries — the full table is hundreds of rows.
+    //     ⚠️ `data` here is an OBJECT, not an array — measured, not assumed —
+    //     so `rows` is null and the useful figure is the key count.
+    const listed = await get(key, `/country_coverage`, budget, true);
+    const listObj = (listed.data && typeof listed.data === "object" && !Array.isArray(listed.data))
+      ? listed.data as Record<string, unknown>
+      : null;
+    const coverage_list = {
+      http: listed.http,
+      data_kind: Array.isArray(listed.data) ? "array" : listed.data === null ? "null" : typeof listed.data,
+      entry_count: listObj ? Object.keys(listObj).length : (listed.rows ?? null),
+      first_entry_key: listObj ? Object.keys(listObj)[0] ?? null : null,
+      first_entry_field_keys: listObj && typeof Object.values(listObj)[0] === "object"
+        ? Object.keys(Object.values(listObj)[0] as Record<string, unknown>).sort()
+        : (listed.first_row_keys ?? null),
+      body: listed.body ?? null,
+    };
+
+    // The per-country detail endpoint EXISTS and returns the richer shape,
+    // keyed by the country's full NAME rather than its code.
+    const coverage_detail: Record<string, Get> = {};
+    for (const cc of COVERAGE_COUNTRIES) {
+      coverage_detail[cc] = await get(key, `/country_coverage/countries/${cc}`, budget, true);
+    }
+
+    // (2) Ordering requirements per sample country. EMPTY IS THE WHOLE ANSWER:
+    //     zero rows ⇒ no documents ⇒ orderable today. A fault is NOT empty and
+    //     must never be read as one.
+    const requirements: Record<string, unknown> = {};
+    for (const cc of COVERAGE_COUNTRIES) {
+      const r = await get(
+        key,
+        `/requirements?filter[country_code]=${cc}` +
+          `&filter[phone_number_type]=local&filter[action]=ordering`,
+        budget,
+        true,
+      );
+      const rows = Array.isArray(r.data) ? r.data as Record<string, unknown>[] : [];
+      // Flatten every set's documents. `sets` is 0 or 1; `document_count` is
+      // the number that decides sellability, and a non-200 leaves BOTH null so
+      // a failed read can never be mistaken for "no documents".
+      const docs = rows.flatMap((row) =>
+        Array.isArray(row.requirement_types) ? row.requirement_types : []
+      );
+      requirements[cc] = {
+        http: r.http,
+        sets: r.rows ?? null,
+        document_count: r.http === 200 ? docs.length : null,
+        set_keys: r.first_row_keys ?? null,
+        requirement_types: docs.slice(0, 12).map(slimRequirementType),
+        body: r.body ?? null,
+      };
+    }
+
+    // (3) THE FALSIFIER. GB is the country the plan names; DE is the one the
+    //     portal and Telnyx's own marketing disagree about, so it settles a
+    //     second question for three more requests.
+    const falsifier = {
+      GB_local: await featureTriplet(key, "GB", budget),
+      DE_local: await featureTriplet(key, "DE", budget),
+      US_local_control: await get(
+        key,
+        `/available_phone_numbers?filter[country_code]=US&filter[phone_number_type]=local&filter[limit]=3`,
+        budget,
+      ),
+    };
+
+    // (4) Does the pre-verification path exist as an entity on this account?
+    const requirement_groups = await get(key, `/requirement_groups`, budget, true);
+
+    // (5) The control this API has earned: a nonsense country code. If it 200s
+    //     with rows, no filter on this endpoint can be trusted at all.
+    const nonsense_country = await get(
+      key,
+      `/available_phone_numbers?filter[country_code]=ZZ&filter[limit]=1`,
+      budget,
+    );
+
+    const result = {
+      mode: "coverage",
+      at: new Date().toISOString(),
+      countries: COVERAGE_COUNTRIES,
+      requests_used: MAX_COVERAGE_REQUESTS - budget.left,
+      coverage_list,
+      coverage_detail,
+      requirements,
+      falsifier,
+      requirement_groups,
+      nonsense_country,
+      note:
+        "requirements.rows === 0 means no documents. A non-200 is NOT zero. " +
+        "In `falsifier`, cell (c) empty while (a)/(b) are not proves the " +
+        "hardcoded sms+voice filter is manufacturing a false stockout.",
+    };
+
+    // Persist it: the response is larger than `net._http_response` retains, and
+    // a probe whose output cannot be read afterwards settles nothing.
+    const { error: writeErr } = await admin().from("app_config").upsert({
+      key: "telnyx_coverage_probe",
+      value: result,
+    });
+
+    return Response.json({ ...result, stored: writeErr ? `error: ${writeErr.message}` : true });
   }
 
   // ── Mode 1: the credential-connection probe ───────────────────────────────

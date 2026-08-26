@@ -516,6 +516,122 @@ around 10DLC or toll-free verification. A multi-country catalogue was
 investigated on 2026-08-05 and is closed — do not re-open it on the strength of
 the search endpoint's null field.
 
+## Telnyx country coverage + requirements — probed 2026-08-26
+
+Measured with `probe-telnyx-connection` mode `"coverage"` (read-only, 28 GETs,
+spends nothing; full result in `app_config.telnyx_coverage_probe`). It answers
+what the 2026-08-05 sweep below could not, and **it overturns that sweep's
+conclusion that non-NANP countries have no inventory** — they have inventory,
+we were filtering it away.
+
+🔴 **THE FALSE STOCKOUT IS PROVEN, AND IT IS A 400, NOT AN EMPTY LIST.**
+`searchNumbers` hardcodes `filter[features][]=sms` + `filter[features][]=voice`
+(`_shared/telnyx.ts`). On GB and DE local, searched three ways with everything
+else identical:
+
+| cell | GB local | DE local |
+|---|---|---|
+| (a) no features filter | 200, **3 rows** | 200, **3 rows** |
+| (b) `features[]=voice` | 200, **3 rows** | 200, **3 rows** |
+| (c) `features[]=sms&features[]=voice` ← what we send today | **400 `10015`** | **400 `10015`** |
+
+`10015 "No coverage found in the specified country based on the provided search
+parameters"`. So the request does not come back empty — it FAILS, and
+`searchNumbers` returns a `TelnyxFault`, which `search-line-numbers` renders as
+`provider_unreachable` / `no_numbers_available`. **A country we ourselves made
+unsearchable reads as a Telnyx outage.** Cell (a)'s first GB and DE row both
+quote **$1.00 upfront + $1.00/month USD** — the same price as US and CA, in the
+same currency.
+
+**`GET /v2/country_coverage`** — 200, and `data` is an **OBJECT keyed by full
+country NAME** (`"Afghanistan"`, `"United Kingdom"`), not an array and not
+keyed by ISO code. **247 entries.** Per-entry keys: `code`, `features`,
+`international_sms`, `inventory_coverage`, `local`, `mobile`, `national`,
+`numbers`, `p2p`, `phone_number_type`, `quickship`, `region`, `reservable`,
+`toll_free`. Each number-type block (`local`/`mobile`/`national`/`toll_free`/
+`shared_cost`) is `{features[], p2p, quickship, reservable, international_sms,
+full_pstn_replacement}`, and an **empty `{}` means that type does not exist**
+there (US `mobile` and `national` are both `{}`).
+
+**`GET /v2/country_coverage/countries/{XX}` EXISTS** (200 for all 9 probed) and
+returns the same richer per-country object — also keyed by country name. Use
+it; there is no need to scan the 247-entry list.
+
+**Capabilities by country, `local` unless stated** (measured, not documented):
+
+| | local features | mobile | reservable |
+|---|---|---|---|
+| **US** | hd_voice, **sms**, **mms**, **international_sms**, voice, local_calling, fax, emergency | — | ✅ |
+| **CA** | **sms**, **mms**, voice, local_calling, fax, emergency | — | ✅ |
+| **PR** | **sms**, **mms**, **international_sms**, voice, local_calling, fax, emergency | — | ✅ |
+| GB | voice, local_calling, fax, emergency — **no sms** | voice, local_calling, fax, **sms** | ✅ |
+| FR | fax, voice, local_calling, emergency — **no sms** | *(none)* | ✅ |
+| DE | fax, voice, **hd_voice**, local_calling, emergency — **no sms** | *(none)* | ✅ |
+| NL | hd_voice, voice, local_calling, fax, emergency — **no sms** | voice, local_calling, fax, **sms** | ✅ |
+| PL | voice, local_calling, fax, emergency — **no sms** | voice, local_calling, fax, **sms** | ✅ |
+| AU | fax, local_calling, hd_voice, emergency, voice — **no sms** | local_calling, hd_voice, **sms**, emergency, voice | ✅ |
+
+**DE local genuinely has no SMS — settled.** The portal was right and the
+marketing claim is not about `local`. Note four of these countries carry SMS on
+**mobile**, which is a different `phone_number_type` and a separate (usually
+heavier) requirement set — do not read "GB has SMS" off the country-level
+`features` roll-up, which unions all types.
+
+🔴 **`GET /v2/requirements` RETURNS ONE ROW PER (country, type, action) — A
+REQUIREMENT *SET* — AND `data.length` IS NOT THE DOCUMENT COUNT.** The documents
+live in that row's `requirement_types[]`. The first run of this probe slimmed
+the outer row and got a field of nulls. Outer keys: `id`, `country_code`,
+`phone_number_type`, `action`, `locality`, `requirement_types`, `record_type`,
+`version`, `effective_start_at/end_at`. So the sellability test is
+**`sets === 0` OR `requirement_types` empty**, never `rows === 0` alone.
+
+`filter[country_code]=XX&filter[phone_number_type]=local&filter[action]=ordering`:
+
+| country | sets | documents |
+|---|---|---|
+| **US** | 0 | **0 — no paperwork** |
+| **CA** | 0 | **0 — no paperwork** |
+| **PR** | 0 | **0 — no paperwork** |
+| AU | 1 | **3** — national address, contact info, local proof of address |
+| FR | 1 | 4 |
+| NL | 1 | 5 |
+| PL | 1 | 5 |
+| GB | 1 | 6 |
+| DE | 1 | 6 (incl. a **BNetzA registration form** and an address matching the DID's area code) |
+
+Every non-NANP set includes an **in-country physical address** and most a
+**local government ID or company registration**; DE, NL and PL additionally
+demand the address **match the number's area code**. Each entry carries
+`{id, name, type ('document'|'textual'|'address'), description, example,
+acceptance_criteria}`.
+
+⚠️ **A 429 IS NOT ZERO REQUIREMENTS, AND THE FIRST RUN TOOK FOUR OF THEM.**
+Firing ~28 requests back to back rate-limited NL/PL/AU/PR, and a 429 read as an
+empty result would mark a documented country sellable. The probe now spaces
+calls 400 ms apart and reports `document_count: null` on any non-200. **Any
+sync writing sellability must do the same — leave the flag untouched on a
+fault, never write `requirements_empty = true` from a failed read.**
+
+**`GET /v2/requirement_groups` → 200, `data: []`.** The endpoint exists and the
+account holds **zero** groups, so the pre-verification path is available in
+principle and unstarted in practice. Filing one is an owner action; nothing in
+the code creates one.
+
+✅ **CONTROL: a nonsense country code is REJECTED, not silently accepted.**
+`filter[country_code]=ZZ` → **400 `10015`**, the same error as cell (c). So on
+`available_phone_numbers` a bad filter fails loudly — unlike
+`detail_records`, where an unknown filter is accepted and matches nothing.
+**The two endpoints behave oppositely; do not generalise either one.** It also
+means a 400 `10015` cannot distinguish "bad country" from "no stock matching
+these filters" — only re-searching without the filter separates them.
+
+**What this changes:** the 2026-08-05 conclusion "the other 86 requirement-free
+codes have no inventory at all" was measured through the `sms+voice` filter and
+is unsafe. GB/FR/DE/NL/PL/AU all hold reservable local stock at $1/month. They
+are still **not sellable** — every one of them needs end-user documents — but
+the blocker is regulatory, not inventory, and a Requirement Group is the thing
+that would move them.
+
 ## The definitive sellable catalogue (exhaustive sweep, 2026-08-05)
 
 228 ISO codes → **138 carry ordering requirements** (fetched from
@@ -532,8 +648,15 @@ without paperwork is NANP (+1):**
 | CD DR Congo | mobile | 27.00 | 27.00 | ❌ voice only |
 | BW Botswana | toll_free | 40.00 | 40.00 | ❌ voice only |
 
-The other **86** requirement-free codes have **no inventory at all**. CD and BW
-are voice-only and cost 3–5× the retail price, so they are unsellable.
+CD and BW are voice-only and cost 3–5× the retail price, so they are
+unsellable.
+
+⚠️ **This sweep's "the other 86 requirement-free codes have no inventory at
+all" is RETRACTED — it was measured through the `sms+voice` filter that
+returns 400 on any voice-only country** (see the 2026-08-26 probe above). The
+requirement half of the sweep still holds and is confirmed independently: only
+US/CA/PR/VI order without documents. **Re-sweep inventory without a features
+filter before quoting a stock figure for any non-NANP country.**
 
 ⚠️ **PR and VI are US area codes, not extra markets.** They are +1/NANP, so US
 carrier rules — including 10DLC — apply to them exactly as to any US number.
