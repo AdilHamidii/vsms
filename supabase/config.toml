@@ -166,3 +166,6 @@ verify_jwt = false
 
 [functions.probe-telnyx-connection]
 verify_jwt = false
+
+[functions.sync-line-countries]
+verify_jwt = false

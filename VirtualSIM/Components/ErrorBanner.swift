@@ -179,6 +179,9 @@ struct ErrorBanner: View {
         // not a fault. Blocking treatment would offer "Check your orders",
         // which is not where lines live.
         "lines_paused", "line_exists", "line_limit_reached", "number_taken",
+        // "we don't sell here yet" — the alternative (another country) is
+        // literally the list already on screen, and nothing was spent.
+        "country_not_sellable",
         // The line's SEND failures. Blocking treatment renders "Check your
         // orders", whose action does `flow = nil` + `tab = .orders` — so a
         // failed text closed the conversation, DISCARDED the composer draft,

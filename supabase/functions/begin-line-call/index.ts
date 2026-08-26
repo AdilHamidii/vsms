@@ -79,12 +79,12 @@ Deno.serve(async (req) => {
   //
   // Normalising server-side as well as on the client is deliberate: a shipped
   // build cannot be fixed, and this is the last point before we spend the
-  // user's allowance. NANP is the right default because the sellable catalogue
-  // is US/CA only (both +1); `country_code` is asserted against that below so
-  // this cannot silently misdial if a non-NANP country is ever sold.
-  const normalized = toE164(to);
-  if (!normalized) return json({ error: "bad_number" }, { status: 400 });
-
+  // user's allowance.
+  //
+  // ⚠️ NORMALISATION MOVED BELOW THE LINE LOOKUP (2026-08-26). The +1 default
+  // for a bare national number is only correct for a NANP line, and the
+  // catalogue is no longer US/CA only — so `toE164` needs the line's country,
+  // which we do not have until `resolveCallerLine` has run.
   const sb = admin();
 
   // The caller's own line, read server-side. A line id is a resource selector
@@ -100,11 +100,11 @@ Deno.serve(async (req) => {
     sb, userId, body.line_id, undefined, "id, e164, status, country_code");
   if (!line) return json({ error: "line_unavailable" }, { status: 409 });
 
-  // The NANP assumption above, made explicit. Every number we can sell without
-  // regulatory paperwork is +1 (US/CA/PR/VI), so defaulting a bare 10-digit
-  // string to +1 is correct today — but it is an ASSUMPTION, and the moment a
-  // non-NANP line is sold it becomes a silent misdial to the wrong country.
-  // Refuse loudly instead, rather than letting the default rot into a bug.
+  // The NANP assumption, made explicit. Defaulting a bare 10-digit string to
+  // +1 is correct for a +1 line and a silent misdial to the wrong country for
+  // any other. `toE164` enforces the same rule below; this branch exists so the
+  // refusal is LOGGED with the country that caused it — a bare `bad_number`
+  // from a non-NANP line is otherwise indistinguishable from a typo.
   const cc = (line as { country_code?: string }).country_code;
   if (direction === "outbound" && !assumesNanp(cc) && !to.trim().startsWith("+")) {
     console.error(JSON.stringify({
@@ -113,6 +113,16 @@ Deno.serve(async (req) => {
     }));
     return json({ error: "bad_number" }, { status: 400 });
   }
+
+  // ⚠️ The line's country is passed for OUTBOUND only. An inbound peer's format
+  // says nothing about where our own number lives, and this path must never
+  // refuse: the call is already happening, and refusing would discard the only
+  // record of it — the exact gap that left inbound calls unrecorded and
+  // unmatchable by `sync-telnyx-cdr`.
+  const normalized = direction === "outbound"
+    ? toE164(to, { lineCountry: cc ?? null })
+    : toE164(to);
+  if (!normalized) return json({ error: "bad_number" }, { status: 400 });
 
   // Calling is gated harder than inbound SMS, and identically to
   // `mint-line-token`: `past_due` keeps INBOUND working because the user cannot

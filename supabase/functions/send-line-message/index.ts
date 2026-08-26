@@ -95,18 +95,18 @@ Deno.serve(async (req) => {
   // than asking someone to rebuild it. Delete both together, never the flag
   // alone — the `canSendTo` guard further down is still the right refusal for a
   // cross-border send and must survive this being switched back on.
+  // ⚠️ NO `line_has_no_sms` BRANCH HERE, DELIBERATELY. A country whose local
+  // numbers cannot do SMS (GB, DE, FR, NL, PL, AU — measured 2026-08-26) is
+  // exactly the case that reason would name, but answering it requires reading
+  // the caller's line, i.e. a database round trip on a path that refuses
+  // unconditionally one line below. Building it would also be a code path that
+  // contradicts the retirement: it can only ever be reached by deleting the
+  // flag. If outbound SMS is ever switched back on, add the check immediately
+  // after `resolveCallerLine` — where the line's `country_code` is already in
+  // hand and `line_country_catalog.supports_sms` is one lookup away — not here.
   if (OUTBOUND_SMS_RETIRED) {
     return json({ error: "outbound_sms_retired" }, { status: 409 });
   }
-
-  // 🔴 THIS ENDPOINT HAD NO NUMBER VALIDATION AT ALL — only the emergency check
-  // above. Replies happened to work because the peer arrives from an inbound
-  // webhook already in E.164; a user typing a NEW recipient sent whatever they
-  // typed straight to the provider, spent a segment of their allowance on it,
-  // and got back a failure whose reason we then discarded. Same defect as the
-  // dialer, one product surface over.
-  const recipient = toE164(to);
-  if (!recipient) return json({ error: "bad_number" }, { status: 400 });
 
   const sb = admin();
 
@@ -122,9 +122,10 @@ Deno.serve(async (req) => {
     sb, userId, body.line_id, undefined, "id, e164, status, country_code");
   if (!line) return json({ error: "line_unavailable" }, { status: 409 });
 
-  // `toE164` defaults a bare 10-digit string to +1, which is right while the
-  // catalogue is US/CA only. Assert it rather than letting the assumption rot
-  // into a silent misdial the day a non-NANP number is sold.
+  // `toE164` defaults a bare national string to +1 only for a +1 line. Assert
+  // it here as well so the refusal is LOGGED with the country that caused it —
+  // a bare `bad_number` from a non-NANP line is otherwise indistinguishable
+  // from a typo.
   const cc = (line as { country_code?: string }).country_code;
   if (!assumesNanp(cc) && !to.startsWith("+")) {
     console.error(JSON.stringify({
@@ -133,6 +134,18 @@ Deno.serve(async (req) => {
     }));
     return json({ error: "bad_number" }, { status: 400 });
   }
+
+  // 🔴 THIS ENDPOINT HAD NO NUMBER VALIDATION AT ALL — only the emergency check
+  // near the top. Replies happened to work because the peer arrives from an
+  // inbound webhook already in E.164; a user typing a NEW recipient sent
+  // whatever they typed straight to the provider, spent a segment of their
+  // allowance on it, and got back a failure whose reason we then discarded.
+  // Same defect as the dialer, one product surface over.
+  //
+  // ⚠️ Normalised BELOW the line lookup (2026-08-26), because the +1 default is
+  // only correct for a NANP line and the catalogue is no longer US/CA only.
+  const recipient = toE164(to, { lineCountry: cc ?? null });
+  if (!recipient) return json({ error: "bad_number" }, { status: 400 });
 
   // 🔴 REFUSE A SEND WE KNOW THE CARRIER WILL REJECT.
   //

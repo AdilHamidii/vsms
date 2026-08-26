@@ -167,7 +167,10 @@ final class SubscriptionStore {
     /// from the shared listener at any moment, including on a later launch —
     /// knows which number to provision. Nil means "we did not initiate this",
     /// which is the renewal case and is handled server-side by ASSN.
-    private var pending: (phoneNumber: String, city: String, monthlyCents: Int?)?
+    /// `country` rides along so `verify-line-subscription` orders in the
+    /// SAME country the reservation was quoted in. Optional — the server
+    /// defaults it, and a shipped build sends none.
+    private var pending: (phoneNumber: String, city: String, monthlyCents: Int?, country: String?)?
 
     func attach(api: APIClient, iap: IAPStore) {
         self.apiClient = api
@@ -305,7 +308,8 @@ final class SubscriptionStore {
     /// refuse — Telnyx float, an existing line, a paused product — has to
     /// happen before Apple takes money, because an Apple refund is the one
     /// money path we cannot drive.
-    func purchase(phoneNumber: String, city: String, monthlyCents: Int?) async -> Bool {
+    func purchase(phoneNumber: String, city: String, monthlyCents: Int?,
+                  country: String? = nil) async -> Bool {
         guard !isPurchasing else { return false }
         // The SELECTED product, not the monthly. Buying anything other than the
         // plan shown next to the button is the worst bug this screen could have.
@@ -314,7 +318,7 @@ final class SubscriptionStore {
             return false
         }
         isPurchasing = true
-        pending = (phoneNumber, city, monthlyCents)
+        pending = (phoneNumber, city, monthlyCents, country)
         defer { isPurchasing = false }
 
         do {
@@ -430,7 +434,8 @@ final class SubscriptionStore {
                 signedTransaction: result.jwsRepresentation,
                 phoneNumber: want.phoneNumber,
                 city: want.city,
-                monthlyCents: want.monthlyCents)
+                monthlyCents: want.monthlyCents,
+                country: want.country)
             guard res.ok else {
                 lastError = String(localized: "Your subscription went through but we couldn't set the number up. Contact support, and don't buy again.")
                 return false

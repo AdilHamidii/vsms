@@ -35,7 +35,7 @@ struct LineStoreScreen: View {
     /// `HomeScreen(onOpenEsim:)`.
     var onOpenSms: () -> Void
 
-    private enum Step: Hashable { case intro, city, number }
+    private enum Step: Hashable { case intro, country, city, number }
 
     /// Opens on the pitch. The one exception is the screenshot harness, whose
     /// `lineStore` frame has always been the city list — the App Store
@@ -55,9 +55,10 @@ struct LineStoreScreen: View {
     var body: some View {
         ZStack {
             switch step {
-            case .intro:  introStep.transition(pushTransition)
-            case .city:   cityStep.transition(pushTransition)
-            case .number: numberStep.transition(pushTransition)
+            case .intro:   introStep.transition(pushTransition)
+            case .country: countryStep.transition(pushTransition)
+            case .city:    cityStep.transition(pushTransition)
+            case .number:  numberStep.transition(pushTransition)
             }
         }
         .background(theme.bg)
@@ -67,6 +68,11 @@ struct LineStoreScreen: View {
         // up" was. Nothing on the city step needs the network at all.
         .task {
             withAnimation(RMotion.content) { appeared = true }
+            // The country catalogue. Swallows its own failure and keeps the
+            // seeded two — see `AppState.loadLineCountries`. Fired here rather
+            // than on entering the country step so the step can decide whether
+            // to exist at all before the user reaches it.
+            await state.loadLineCountries(using: LineAPI(client: api))
             // Loads the product the city step's `priceNote` reads — and the
             // reason that note renders nothing until this returns. Also keeps
             // the product warm for the paywall: the store is the app's first
@@ -123,8 +129,10 @@ struct LineStoreScreen: View {
 
                     Spacer(minLength: 24)
 
-                    PrimaryButton(label: String(localized: "Choose a city")) {
-                        go(to: .city, forward: true)
+                    PrimaryButton(label: showsCountryStep
+                                  ? String(localized: "Choose a country")
+                                  : String(localized: "Choose a city")) {
+                        go(to: showsCountryStep ? .country : .city, forward: true)
                     }
                     .riseIn(appeared, index: 2)
 
@@ -150,7 +158,160 @@ struct LineStoreScreen: View {
         }
     }
 
-    // MARK: - Step 2 · city
+    // MARK: - Step 2 · country
+    //
+    // Renders from `LineCountry.seeded` before any network call, then from
+    // `line_country_menu`.
+
+    /// Only sellable countries count toward "is there a choice here". A screen
+    /// listing one buyable country and eleven grayed ones is a wall of "no"
+    /// standing between the user and the only thing they can actually do — so
+    /// with a single sellable country the step is skipped entirely and the
+    /// grayed rows are simply not shown anywhere.
+    private var sellableCountries: [LineCountry] {
+        state.lineCountries.filter(\.isAvailable)
+    }
+
+    private var showsCountryStep: Bool { sellableCountries.count > 1 }
+
+    /// Available first, then A–Z by the name the reader actually sees. Sorting
+    /// by the server's English `country_name` would scramble the order on
+    /// every non-English locale.
+    private var sortedCountries: [LineCountry] {
+        state.lineCountries.sorted {
+            if $0.isAvailable != $1.isAvailable { return $0.isAvailable }
+            return $0.displayName.localizedCaseInsensitiveCompare($1.displayName) == .orderedAscending
+        }
+    }
+
+    private var countryStep: some View {
+        VStack(spacing: 0) {
+            backHeader(title: "Where should it be?", subtitle: nil, back: .intro)
+            ScrollView {
+                VStack(alignment: .leading, spacing: 0) {
+                    countryList
+                    priceNote.padding(.top, 14)
+                }
+                .padding(.horizontal, 20)
+                .padding(.bottom, 120)
+            }
+        }
+    }
+
+    private var countryList: some View {
+        Card(elevation: .flat) {
+            VStack(spacing: 0) {
+                ForEach(Array(sortedCountries.enumerated()), id: \.element.id) { i, country in
+                    countryRow(country)
+                    if i < sortedCountries.count - 1 { RowRule(inset: 16) }
+                }
+            }
+        }
+    }
+
+    /// Flag, name, and what the number can DO.
+    ///
+    /// The capability strip is the whole point of showing unsellable countries
+    /// at all: a voice-only country is an honest "call out" line, and a user
+    /// who buys one expecting texts is a refund. Green means supported, GRAY
+    /// means not — never red. Red is an error, and a number that simply does
+    /// not carry MMS is not an error.
+    private func countryRow(_ country: LineCountry) -> some View {
+        Button {
+            select(country)
+        } label: {
+            HStack(spacing: 12) {
+                Text(verbatim: country.flag).font(.system(size: 20))
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(verbatim: country.displayName)
+                        .font(RFont.display(16, weight: .semibold))
+                        .tracking(-0.3)
+                        .foregroundStyle(theme.text)
+                        .lineLimit(1)
+                    if !country.isAvailable {
+                        Text("Not available yet")
+                            .font(RFont.text(12))
+                            .foregroundStyle(theme.text3)
+                    }
+                }
+                Spacer(minLength: 8)
+                capabilityStrip(country)
+                if country.isAvailable {
+                    Image(systemName: RIcon.chev)
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(theme.text3)
+                }
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 13)
+            .contentShape(.rect)
+        }
+        .buttonStyle(PressScaleStyle())
+        .opacity(country.isAvailable ? 1 : 0.45)
+        .disabled(!country.isAvailable)
+        .accessibilityHint(country.isAvailable ? Text("") : Text(unavailableHint(country)))
+    }
+
+    /// Four glyphs, always all four, in a fixed order. A strip that only shows
+    /// what IS supported reads as a feature list and hides the absence — which
+    /// is the thing the buyer needs to see.
+    private func capabilityStrip(_ country: LineCountry) -> some View {
+        HStack(spacing: 9) {
+            capabilityIcon("phone.fill", on: country.canVoice,
+                           label: String(localized: "Calls"))
+            capabilityIcon("message.fill", on: country.canSms,
+                           label: String(localized: "Texts"))
+            capabilityIcon("photo.fill", on: country.canMms,
+                           label: String(localized: "Picture messages"))
+            capabilityIcon("cross.case.fill", on: country.canEmergency,
+                           label: String(localized: "Emergency calls"))
+        }
+    }
+
+    private func capabilityIcon(_ symbol: String, on: Bool, label: String) -> some View {
+        Image(systemName: symbol)
+            .font(.system(size: 12, weight: .semibold))
+            // `live` is the semantic success green, and that is exactly the
+            // claim being made here: this works. Absence is `text3`, the same
+            // muted ink every other "nothing to report" uses.
+            .foregroundStyle(on ? theme.live : theme.text3)
+            .opacity(on ? 1 : 0.55)
+            .accessibilityLabel(Text(verbatim: label))
+            .accessibilityValue(on ? Text("Supported") : Text("Not supported"))
+    }
+
+    /// The machine key becomes a sentence HERE, never on the server. Anything
+    /// unrecognised falls back to the vaguer line rather than rendering a raw
+    /// key — an untranslated `documents_required` on a French phone is worse
+    /// than saying less.
+    private func unavailableHint(_ country: LineCountry) -> LocalizedStringKey {
+        switch country.sellReason {
+        case "documents_required": "Requires local registration we don't support yet"
+        default:                   "Coming soon"
+        }
+    }
+
+    /// Picking a country invalidates everything downstream.
+    ///
+    /// The city list, the offers and any hold all describe the PREVIOUS
+    /// country, and leaving them in place would show Toronto under a Polish
+    /// flag for as long as the search takes. Cleared first, loaded second.
+    private func select(_ country: LineCountry) {
+        state.lineCountry = country.countryCode
+        state.lineCity = nil
+        state.lineCities = []
+        state.lineOffers = []
+        state.lineOffer = nil
+        state.lineReservation = nil
+        state.lineUnavailableReason = nil
+        go(to: .city, forward: true)
+        Task {
+            await state.loadLineNumbers(using: LineAPI(client: api),
+                                        country: country.countryCode)
+        }
+    }
+
+    // MARK: - Step 3 · city
     //
     // Renders with zero network dependency: the city list is seeded and only
     // replaced once a search has run. See `LineCity.seeded`.
@@ -161,10 +322,21 @@ struct LineStoreScreen: View {
             // `SectionHeader` — printing "Where should it be?" twice, once as
             // a heading and once as a section label, is the shape this screen
             // just got rid of.
-            backHeader(title: "Where should it be?", subtitle: nil, back: .intro)
+            backHeader(title: "Which city?", subtitle: countryLabel,
+                       back: showsCountryStep ? .country : .intro)
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
-                    cityList
+                    // A country with no curated localities sells country-wide,
+                    // and an empty list mid-load must not render as "nowhere".
+                    if state.lineCities.isEmpty {
+                        if state.isLoadingLineNumbers {
+                            rowSkeleton
+                        } else {
+                            countryWide
+                        }
+                    } else {
+                        cityList
+                    }
                     priceNote.padding(.top, 14)
                     usSoon.padding(.top, 16)
                 }
@@ -298,6 +470,60 @@ struct LineStoreScreen: View {
         }
     }
 
+    /// The country the user is shopping in, for the city step's subtitle.
+    /// Reads the SEARCH's answer first — it is what the stock on screen came
+    /// from — and the catalogue row only as a fallback.
+    private var countryLabel: String? {
+        guard let iso = state.lineCountry else { return nil }
+        if let c = state.lineSearchCountry, c.countryCode == iso { return c.displayName }
+        return state.lineCountries.first { $0.countryCode == iso }?.displayName
+            ?? Locale.current.localizedString(forRegionCode: iso)
+    }
+
+    /// Same height and rhythm as the rows it stands in for, without the
+    /// outer padding `numberSkeleton` applies — this one sits inside a stack
+    /// that is already inset.
+    private var rowSkeleton: some View {
+        VStack(spacing: 8) {
+            ForEach(0..<4, id: \.self) { i in
+                RoundedRectangle(cornerRadius: 16)
+                    .fill(theme.elev)
+                    .frame(height: 52)
+                    .opacity(1 - Double(i) * 0.18)
+            }
+        }
+        .transition(.opacity)
+    }
+
+    /// Some countries have no curated cities — the server sells country-wide.
+    /// One honest row beats an empty list, which reads as "sold out".
+    private var countryWide: some View {
+        Card(elevation: .flat) {
+            Button {
+                Task {
+                    go(to: .number, forward: true)
+                    await state.loadLineNumbers(using: LineAPI(client: api))
+                }
+            } label: {
+                HStack(spacing: 12) {
+                    Text(countryLabel.map { String(localized: "Anywhere in \($0)") }
+                         ?? String(localized: "Anywhere available"))
+                        .font(RFont.display(16, weight: .semibold))
+                        .tracking(-0.3)
+                        .foregroundStyle(theme.text)
+                    Spacer(minLength: 8)
+                    Image(systemName: RIcon.chev)
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(theme.text3)
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 15)
+                .contentShape(.rect)
+            }
+            .buttonStyle(PressScaleStyle())
+        }
+    }
+
     /// What this costs, stated on the city step.
     ///
     /// ⚠️ **THIS REVERSES AN EARLIER OWNER DECISION** (2026-08-06: "there is
@@ -389,9 +615,28 @@ struct LineStoreScreen: View {
 
     // MARK: - Step 3 · number
 
+    /// What the store currently knows about the country being shopped. The
+    /// search's own answer wins: it describes the stock on screen, and it is
+    /// present even when `line_country_menu` could not be read.
+    private var currentCountry: LineCountry? {
+        guard let iso = state.lineCountry else { return nil }
+        if let c = state.lineSearchCountry, c.countryCode == iso { return c }
+        return state.lineCountries.first { $0.countryCode == iso }
+    }
+
+    /// TRUE only on a positive `supports_sms = false`. A missing field is "we
+    /// do not know", and a "calls only" warning printed over a number that can
+    /// text is its own kind of lie — one that costs a sale rather than a
+    /// refund, but a lie either way.
+    private var isVoiceOnly: Bool {
+        guard let c = currentCountry else { return false }
+        return c.supportsSms == false && c.supportsVoice != false
+    }
+
     private var numberStep: some View {
         VStack(spacing: 0) {
             backHeader(title: "Pick your number", subtitle: cityLabel, back: .city)
+            if isVoiceOnly { voiceOnlyNotice }
             if state.isLoadingLineNumbers, state.lineOffers.isEmpty {
                 numberSkeleton
             } else if state.lineOffers.isEmpty {
@@ -400,6 +645,32 @@ struct LineStoreScreen: View {
                 numberList
             }
         }
+    }
+
+    /// Carried on the number step AND on checkout, deliberately twice.
+    ///
+    /// A user who picks a voice-only country and discovers it after paying is
+    /// an Apple refund and, on this product, a `CONSUMPTION_REQUEST` — the
+    /// same failure the "Not yet" ledger rows exist to prevent. `warnSoft` and
+    /// not `failSoft`: it is a property of the number, not a fault.
+    private var voiceOnlyNotice: some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(theme.warn)
+                .padding(.top, 1)
+            Text("Calls only. This number can't send or receive texts.")
+                .font(RFont.text(12, weight: .medium))
+                .foregroundStyle(theme.text)
+                .lineSpacing(2)
+                .fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
+        .background(theme.warnSoft, in: .rect(cornerRadius: RRadius.sm))
+        .padding(.horizontal, 20)
+        .padding(.bottom, 10)
     }
 
     /// Shared by steps 2 and 3, so the two inner pages cannot drift apart in
@@ -538,8 +809,13 @@ struct LineStoreScreen: View {
                 .foregroundStyle(theme.text2)
                 .multilineTextAlignment(.center)
                 .fixedSize(horizontal: false, vertical: true)
-            GhostButton(label: "Try another city", fillsWidth: false) {
-                go(to: .city, forward: false)
+            // A refused COUNTRY cannot be fixed by another city, so the escape
+            // has to point one step further back.
+            GhostButton(label: state.lineUnavailableReason == .countryNotSellable
+                        ? "Try another country" : "Try another city",
+                        fillsWidth: false) {
+                go(to: state.lineUnavailableReason == .countryNotSellable && showsCountryStep
+                   ? .country : .city, forward: false)
             }
             .padding(.top, 8)
         }
@@ -552,6 +828,7 @@ struct LineStoreScreen: View {
         switch state.lineUnavailableReason {
         case .paused:  "Second numbers are unavailable"
         case .noStock: "No numbers here right now"
+        case .countryNotSellable: "We don't sell numbers here yet"
         default:       "We couldn't load any numbers"
         }
     }
@@ -560,6 +837,7 @@ struct LineStoreScreen: View {
         switch state.lineUnavailableReason {
         case .paused:  "We've paused new numbers while we make some improvements. Check back soon."
         case .noStock: "Stock moves through the day. Another city will have some."
+        case .countryNotSellable: "We're working on this country. Another one is ready now."
         default:       "Check your connection and try again."
         }
     }

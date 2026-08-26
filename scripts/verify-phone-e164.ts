@@ -47,6 +47,35 @@ eq("11 digits not NANP", toE164("44054003316"), null);
 eq("E.164 country code 0", toE164("+05540033160"), null);
 eq("E.164 too long", toE164("+1234567890123456"), null);
 
+// ── The line's country decides whether a BARE number may be defaulted ─────
+//
+// The catalogue is no longer US/CA only: voice-only countries (GB, DE, FR, NL,
+// PL, AU) are sellable once the catalog says so. A GB line whose owner types
+// their own national number must get NOTHING back — `+1` + those digits is a
+// plausible-looking North American number belonging to a stranger, and we
+// cannot infer GB from the digits because `+44` is not in them.
+eq("GB line, bare NANP-shaped", toE164("2045551234", { lineCountry: "GB" }), null);
+eq("GB line, GB national", toE164("07911123456", { lineCountry: "GB" }), null);
+eq("NL line, bare national", toE164("612345678", { lineCountry: "NL" }), null);
+
+// An already-qualified number is unaffected by the line's country — the caller
+// said exactly what they meant, and refusing it would break international
+// calling, which is a paid feature.
+eq("GB line, E.164 GB", toE164("+442071838750", { lineCountry: "GB" }), "+442071838750");
+eq("US line, E.164 GB", toE164("+442071838750", { lineCountry: "US" }), "+442071838750");
+eq("no country, E.164 GB", toE164("+442071838750"), "+442071838750");
+eq("GB line, E.164 NANP", toE164("+14054003316", { lineCountry: "GB" }), "+14054003316");
+
+// A NANP line, and a line whose country column was never populated, both keep
+// the default — the second is what every row predating `country_code` looks
+// like, and refusing there would break existing lines.
+eq("US line, bare national", toE164("4054003316", { lineCountry: "US" }), "+14054003316");
+eq("CA line, bare national", toE164("4054003316", { lineCountry: "ca" }), "+14054003316");
+eq("null country, bare national", toE164("4054003316", { lineCountry: null }), "+14054003316");
+eq("empty country, bare national", toE164("4054003316", { lineCountry: "" }), "+14054003316");
+eq("no opts, bare national", toE164("4054003316"), "+14054003316");
+eq("PR line, 11-digit", toE164("14054003316", { lineCountry: "PR" }), "+14054003316");
+
 // ── The NANP assumption guard ─────────────────────────────────────────────
 eq("US assumes NANP", assumesNanp("US"), true);
 eq("CA assumes NANP", assumesNanp("CA"), true);

@@ -4324,6 +4324,12 @@
         }
       }
     },
+    "Anywhere available": {
+      "extractionState": "manual"
+    },
+    "Anywhere in %@": {
+      "extractionState": "manual"
+    },
     "Appearance": {
       "extractionState": "manual",
       "localizations": {
@@ -5616,6 +5622,9 @@
           }
         }
       }
+    },
+    "Calls only. This number can't send or receive texts.": {
+      "extractionState": "manual"
     },
     "Calls you make and receive on this number appear here.": {
       "localizations": {
@@ -11213,6 +11222,9 @@
           }
         }
       }
+    },
+    "Emergency calls": {
+      "extractionState": "manual"
     },
     "End call": {
       "localizations": {
@@ -18414,6 +18426,9 @@
         }
       }
     },
+    "Not available yet": {
+      "extractionState": "manual"
+    },
     "Not enough credits. Tap Top up to buy more.": {
       "localizations": {
         "de": {
@@ -18574,6 +18589,9 @@
           }
         }
       }
+    },
+    "Not supported": {
+      "extractionState": "manual"
     },
     "Not tested": {
       "extractionState": "stale",
@@ -21178,6 +21196,9 @@
         }
       }
     },
+    "Picture messages": {
+      "extractionState": "manual"
+    },
     "Pink": {
       "localizations": {
         "de": {
@@ -23246,6 +23267,9 @@
           }
         }
       }
+    },
+    "Requires local registration we don't support yet": {
+      "extractionState": "manual"
     },
     "Resend in %llds": {
       "localizations": {
@@ -26704,6 +26728,9 @@
         }
       }
     },
+    "Supported": {
+      "extractionState": "manual"
+    },
     "System": {
       "localizations": {
         "de": {
@@ -27389,6 +27416,9 @@
           }
         }
       }
+    },
+    "Texts": {
+      "extractionState": "manual"
     },
     "Texts left": {
       "extractionState": "stale",
@@ -29152,6 +29182,9 @@
         }
       }
     },
+    "This country isn't available yet. Pick another one.": {
+      "extractionState": "manual"
+    },
     "This credit pack isn't available right now. Please try again later.": {
       "localizations": {
         "de": {
@@ -30735,6 +30768,9 @@
           }
         }
       }
+    },
+    "Try another country": {
+      "extractionState": "manual"
     },
     "Try another number": {
       "extractionState": "manual",
@@ -32672,6 +32708,9 @@
         }
       }
     },
+    "We don't sell numbers here yet": {
+      "extractionState": "manual"
+    },
     "We hand you a real, working e-mail address": {
       "localizations": {
         "de": {
@@ -32993,6 +33032,9 @@
           }
         }
       }
+    },
+    "We're working on this country. Another one is ready now.": {
+      "extractionState": "manual"
     },
     "We've paused data plans while we make some improvements. Any eSIM you already bought keeps working. Find it under My eSIMs.": {
       "extractionState": "manual",
@@ -33434,6 +33476,9 @@
           }
         }
       }
+    },
+    "Which city?": {
+      "extractionState": "manual"
     },
     "With Apple, there's no password to make and your email can stay hidden": {
       "localizations": {

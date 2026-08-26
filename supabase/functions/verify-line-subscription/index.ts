@@ -33,6 +33,11 @@ import {
 } from "../_shared/telnyx.ts";
 import { provisionLineVoice } from "../_shared/lineVoice.ts";
 import { sendMessage, esc } from "../_shared/telegram.ts";
+import { sellableCountry, catalogFaultOf } from "../_shared/lineCatalog.ts";
+import { NANP } from "../_shared/phone.ts";
+
+/** Shipped 2.3 sends no country. Defaults on BOTH null and absent. */
+const DEFAULT_COUNTRY = "CA";
 
 /** Telnyx number orders are asynchronous: `pending` → `success`, measured under
  *  5s. Poll rather than trusting a webhook — a webhook outage must not strand a
@@ -70,6 +75,8 @@ Deno.serve(async (req) => {
     signed_transaction?: string;
     phone_number?: string;
     city?: string;
+    country?: string | null;
+    number_type?: string | null;
     /** @deprecated Accepted and IGNORED. This is a COST, and a client-supplied
      *  cost is the same category of mistake as a client-supplied price — it is
      *  re-quoted by `quoteMonthlyCents`. Kept in the shape so shipped builds
@@ -80,6 +87,8 @@ Deno.serve(async (req) => {
 
   const jws = body.signed_transaction ?? "";
   const wanted = body.phone_number ?? "";
+  const country = (body.country ?? DEFAULT_COUNTRY).toUpperCase();
+  const numberType = body.number_type ?? "local";
   if (!jws || !wanted) return json({ error: "bad_request" }, { status: 400 });
 
   const sb = admin();
@@ -153,8 +162,8 @@ Deno.serve(async (req) => {
   const { data: begun, error: beginErr } = await sb.rpc("begin_line_rental", {
     p_user: userId,
     p_e164: wanted,
-    p_country: "CA",
-    p_number_type: "local",
+    p_country: country,
+    p_number_type: numberType,
     p_original_tx: tx.originalTransactionId,
     p_product: tx.productId,
   });
@@ -175,11 +184,39 @@ Deno.serve(async (req) => {
   }
   const lineId = String(begun.line_id);
 
+  // ── 3b. The country gate, RE-CHECKED after the JWS and before the buy ────
+  //
+  // `reserve-line-number` already checked this before the paywall, but minutes
+  // can pass between the reservation and the purchase and Apple has the money
+  // by the time we get here. Refusing and paging beats ordering a number that
+  // arrives `requirement-info-pending` — bought, unusable, billing us $1/month
+  // and unrefundable from our side. That is the $3.83 GB lesson with a $9.99
+  // subscription attached to it.
+  //
+  // Fails CLOSED, like every other reader: unreadable and stale both refuse.
+  const sellable = await sellableCountry(sb, country, numberType);
+  if (catalogFaultOf(sellable)) {
+    console.error(JSON.stringify({
+      alert: "line_country_not_sellable_at_purchase",
+      user: userId, tx: tx.originalTransactionId, country,
+      number_type: numberType, reason: sellable.reason, detail: sellable.detail,
+    }));
+    await failLine(sb, lineId, "country_not_sellable", userId,
+                   tx.originalTransactionId);
+    return json({ error: "country_not_sellable" }, { status: 409 });
+  }
+
   // ── 4. Buy it ────────────────────────────────────────────────────────────
   // `customer_reference` is set to the line id, and that single field is what
   // makes orphan reconciliation possible later: a number we own with no live
   // line pointing at it is otherwise invisible until the invoice.
-  const order = await orderNumber(wanted, lineId);
+  //
+  // `requirementGroupId` is non-null only for a country selling under an
+  // APPROVED pre-verified bundle; for US/CA it is null and the request body is
+  // byte-identical to the shape that has always worked.
+  const order = await orderNumber(wanted, lineId, {
+    requirementGroupId: sellable.requirementGroupId,
+  });
   if (faultOf(order)) {
     await failLine(sb, lineId, `order_${order.type}`, userId, tx.originalTransactionId);
     return json({ error: "provision_failed" }, { status: 502 });
@@ -207,11 +244,28 @@ Deno.serve(async (req) => {
     const n = st.numbers[0];
     // ⚠️ `requirement-info-pending` means BOUGHT AND UNUSABLE pending
     // regulatory documents. It reads like progress and is a dead end — this is
-    // what cost $3.83 on a GB number. CA/US need no documents, so seeing it
-    // here means something changed and the number must be released, not waited
-    // on.
+    // what cost $3.83 on a GB number. Our catalog said this country needs no
+    // documents, so seeing it here means the catalog is WRONG, and the number
+    // must be released, not waited on.
     if (n?.status === "requirement-info-pending") {
       await releaseIfPossible(wanted);
+      // ── Self-healing ─────────────────────────────────────────────────────
+      // Telnyx's refusal is EVIDENCE and it beats our own probe. Blocking the
+      // country here means the NEXT user does not walk into the same wall and
+      // pay $9.99 to find it. `refresh_line_country_sellability()` preserves a
+      // row already blocked for `order_rejected` rather than re-opening it, so
+      // this survives the nightly sync and clears only when a real reason
+      // replaces it. Best-effort: the purchase is already lost either way, so
+      // a failed write must not change the answer to the user.
+      const { error: blockErr } = await sb.from("line_country_catalog")
+        .update({ sell_state: "blocked", sell_reason: "order_rejected" })
+        .eq("country_code", country).eq("number_type", numberType);
+      if (blockErr) {
+        console.error(JSON.stringify({
+          alert: "line_catalog_selfheal_failed", country,
+          number_type: numberType, detail: blockErr.message,
+        }));
+      }
       await failLine(sb, lineId, "requirements_pending", userId, tx.originalTransactionId);
       return json({ error: "provision_failed" }, { status: 502 });
     }
@@ -279,7 +333,8 @@ Deno.serve(async (req) => {
     // handed back by the client from the reserve step: a client-supplied COST,
     // the same category of mistake as a client-supplied price, and one that
     // makes the whole line look more profitable than it is.
-    p_monthly_cost_cents: await quoteMonthlyCents(e164),
+    p_monthly_cost_cents: await quoteMonthlyCents(e164, country, numberType,
+                                                  sellable.features),
     p_order_id: order.orderId,
   });
   if (actErr || activated !== true) {
@@ -345,18 +400,40 @@ async function releaseIfPossible(e164: string) {
  *  (country, area code) and measured flat at $1.00 for every US/CA local
  *  number probed, so a sibling number's quote IS this number's cost.
  *
- *  Falls back to that measured rate rather than to null: an unknown cost
+ *  ⚠️ THE COUNTRY IS THE LINE'S, NOT THE LITERAL `"CA"` THIS USED TO SEND.
+ *  Area-code extraction is a NANP concept and the +1 prefix cannot tell US
+ *  from CA — outside NANP there is no area code at all, so the re-quote is
+ *  country-wide (optionally narrowed by nothing, which is correct: every
+ *  number in a non-NANP country we sell is quoted at one flat rate today, and
+ *  a wrong narrowing would return zero rows and silently take the fallback).
+ *
+ *  `features` comes from the catalog for the same reason every other search
+ *  does: a hardcoded `sms+voice` returns 400 `10015` on a voice-only country,
+ *  which here would silently record the fallback as the cost.
+ *
+ *  Falls back to the measured NANP rate rather than to null: an unknown cost
  *  recorded as nothing reads as a free number and would flatter every margin
- *  reading over this table. */
-async function quoteMonthlyCents(e164: string): Promise<number> {
+ *  reading over this table. ⚠️ That fallback is a NANP fact — outside NANP it
+ *  is a guess, and it is knowingly accepted here because the number is ALREADY
+ *  BOUGHT and a recorded guess beats a recorded zero. The place to refuse an
+ *  unquoted non-NANP cost is `withinWholesaleCeiling`, before the purchase. */
+async function quoteMonthlyCents(
+  e164: string, country: string, numberType: string, features: string[],
+): Promise<number> {
   const FALLBACK = 100;
   try {
-    const digits = e164.replace(/\D/g, "");
-    // NANP: +1 then a 3-digit area code. Anything else is not a market we
-    // sell, so do not pretend to price it.
-    if (!digits.startsWith("1") || digits.length < 11) return FALLBACK;
-    const areaCode = digits.slice(1, 4);
-    const r = await searchNumbers({ country: "CA", areaCode, limit: 1 });
+    const cc = country.toUpperCase();
+    if (NANP.has(cc)) {
+      const digits = e164.replace(/\D/g, "");
+      if (!digits.startsWith("1") || digits.length < 11) return FALLBACK;
+      const areaCode = digits.slice(1, 4);
+      const r = await searchNumbers({
+        country: cc, numberType, areaCode, limit: 1, features,
+      });
+      if (faultOf(r) || r.length === 0 || !r[0].costKnown) return FALLBACK;
+      return r[0].monthlyCents;
+    }
+    const r = await searchNumbers({ country: cc, numberType, limit: 1, features });
     if (faultOf(r) || r.length === 0 || !r[0].costKnown) return FALLBACK;
     return r[0].monthlyCents;
   } catch {

@@ -176,9 +176,10 @@ export const COMMANDS: CommandSpec[] = [
   {
     name: "lines",
     mutates: true,
-    args: "on|off",
-    summary: "Live second numbers — or put them on/off sale",
-    help: "<code>/lines</code> lists them · <code>/lines off</code> stops NEW rentals only.",
+    args: "countries|on|off",
+    summary: "Second numbers: the fleet, the countries, on/off sale",
+    help: "<code>/lines</code> lists them · <code>/lines countries</code> what we can " +
+      "sell where, with wholesale · <code>/lines off</code> stops NEW rentals only.",
     group: "Lines",
   },
   {

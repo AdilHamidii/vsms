@@ -21,11 +21,19 @@
 //
 // ── The new number matches the old one's area code, deliberately ──────────
 //
-// Nobody wants a Vancouver number to become a Halifax one. Searching the old
-// number's own area code also means this function needs no copy of the
-// city→codes map, which already exists twice (`search-line-numbers` and
-// `reserve-line-number`) and is exactly the kind of duplicated constant this
-// repo has watched drift.
+// Nobody wants a Vancouver number to become a Halifax one. Inside NANP the old
+// number's own area code says which pool to search, so this function needs no
+// locality lookup at all.
+//
+// ⚠️ OUTSIDE NANP THERE IS NO AREA CODE TO EXTRACT. A `+44` number carries no
+// three-digit field that means "London", so the line's stored `locality` is the
+// only handle on where it came from — and when that is absent (an older row, or
+// an Apple-billed line, which does not stamp it) the search is country-wide.
+// Country-wide is a degradation, never a country change.
+//
+// 🔴 SAME-COUNTRY IS AN INVARIANT. A swap replaces a number; it never moves a
+// user to a different country. Everything below derives the country from
+// `phone_lines.country_code` and nothing may take it from a request.
 
 import { handleCors, json } from "../_shared/cors.ts";
 import { admin, callerUserId } from "../_shared/supabaseAdmin.ts";
@@ -34,6 +42,11 @@ import {
   attachMessagingProfile, releaseNumber, getBalance, faultOf,
 } from "../_shared/telnyx.ts";
 import { provisionLineVoice } from "../_shared/lineVoice.ts";
+import {
+  searchProfileFor, localitiesFor, loadLineCatalogConfig,
+  withinWholesaleCeiling,
+} from "../_shared/lineCatalog.ts";
+import { NANP } from "../_shared/phone.ts";
 
 /** Same headroom as the rental path, and for the same reason: a number must
  *  not be bought with too little left behind it to carry its own traffic. */
@@ -41,9 +54,10 @@ const BALANCE_BUFFER_CENTS = 50;
 const ORDER_POLL_ATTEMPTS = 10;
 const ORDER_POLL_MS = 1500;
 
-/** `+14165551234` -> `416`. Null for anything that is not NANP — every number
- *  we sell is US/CA today, and guessing an area code for a format we do not
- *  recognise would search the wrong pool. */
+/** `+14165551234` -> `416`. Null for anything that is not NANP — an area code
+ *  is a NANP concept, and guessing one out of a format we do not recognise
+ *  would search the wrong pool. Callers must only ask this of a +1 line; a
+ *  non-NANP line uses its stored `locality` instead. */
 function areaCodeOf(e164: string | null): string | null {
   if (!e164) return null;
   const m = /^\+1(\d{3})\d{7}$/.exec(e164);
@@ -82,23 +96,56 @@ Deno.serve(async (req) => {
   // type by parsing this argument, and a runtime-built string collapses it to
   // `GenericStringError` — every field access then fails to type-check.
   const { data: line, error: lineErr } = await sb.from("phone_lines")
-    .select("id, user_id, status, e164, provider_number_id, provider_connection_id, provider_credential_id, provider_voice_profile_id")
+    .select("id, user_id, status, e164, country_code, number_type, locality, provider_number_id, provider_connection_id, provider_credential_id, provider_voice_profile_id")
     .eq("id", lineId).maybeSingle();
   if (lineErr) return json({ error: "server_error" }, { status: 500 });
   if (!line || line.user_id !== userId) {
     return json({ error: "line_unavailable" }, { status: 404 });
   }
 
-  const area = areaCodeOf(line.e164 as string | null);
-  if (!area) {
+  // ⚠️ The country is the LINE'S, never a request field and never the literal
+  // "CA" this used to send. `country_code` is nullable on rows that predate it,
+  // and CA is the only country ever sold on this path, so it is the fallback.
+  const country = String(line.country_code ?? "CA").toUpperCase();
+  const numberType = String(line.number_type ?? "local");
+
+  const area = NANP.has(country) ? areaCodeOf(line.e164 as string | null) : null;
+  if (NANP.has(country) && !area) {
     console.error(JSON.stringify({
       alert: "line_swap_unparseable_number", line: lineId, e164: line.e164,
     }));
     return json({ error: "swap_unavailable" }, { status: 409 });
   }
 
-  // ── Stock and float, both before the charge ──────────────────────────────
-  const found = await searchNumbers({ country: "CA", areaCode: area, limit: 8 });
+  // Outside NANP the line's stored locality is the only handle on where the
+  // number came from. Absent (an older row, or an Apple-billed line, which does
+  // not stamp it) means a country-wide search — a degradation, never a country
+  // change.
+  let localityFilter: string | null = null;
+  let adminAreaFilter: string | null = null;
+  if (!area && line.locality) {
+    const rows = await localitiesFor(sb, country, numberType);
+    const match = rows.find((l) => l.id === String(line.locality));
+    localityFilter = match?.locality ?? null;
+    adminAreaFilter = match?.adminArea ?? null;
+  }
+
+  // ── Stock, ceiling and float, all before the charge ──────────────────────
+  // ⚠️ Features come from the catalog, and `[]` (no filter) on any doubt. A
+  // hardcoded `sms+voice` returns 400 `10015` on a voice-only country, which
+  // `classifyTelnyxFault` maps to TRANSPORT_ERROR — so a swap on a perfectly
+  // healthy GB line would read as a Telnyx outage. Unlike the sellers, a swap
+  // is NOT gated on sellability: it keeps an existing paying line alive, and
+  // refusing it because the country's regulatory status moved after the sale
+  // would strand exactly the subscriber this feature exists to retain.
+  const cfg = await loadLineCatalogConfig(sb);
+  const profile = await searchProfileFor(sb, country, numberType);
+  const found = await searchNumbers({
+    country, numberType, limit: 8, features: profile.features,
+    ...(area ? { areaCode: area } : {}),
+    ...(localityFilter ? { locality: localityFilter } : {}),
+    ...(adminAreaFilter ? { administrativeArea: adminAreaFilter } : {}),
+  });
   if (faultOf(found)) {
     // A stockout is the user's problem to retry; anything else is ours, and
     // must not be dressed up as "no numbers" — that sends them back into the
@@ -107,12 +154,28 @@ Deno.serve(async (req) => {
       return json({ error: "no_numbers_available" }, { status: 409 });
     }
     console.error(JSON.stringify({
-      alert: "line_swap_provider_fault", line: lineId, fault: found.type,
+      alert: "line_swap_provider_fault", line: lineId, country,
+      fault: found.type,
     }));
     return json({ error: "provider_unreachable" }, { status: 502 });
   }
   const offer = found[0];
   if (!offer) return json({ error: "no_numbers_available" }, { status: 409 });
+
+  // The wholesale ceiling, before the credits move. Refusing here costs the
+  // user nothing; refusing after `begin_line_swap` means charging for a number
+  // we then hand back.
+  const ceiling = withinWholesaleCeiling(offer, cfg, country);
+  if (!ceiling.ok) {
+    console.error(JSON.stringify({
+      alert: "line_wholesale_ceiling", context: "swap", reason: ceiling.reason,
+      line: lineId, country, number: offer.phoneNumber,
+      monthly_cents: offer.monthlyCents, upfront_cents: offer.upfrontCents,
+      currency: offer.currency, cost_known: offer.costKnown,
+    }));
+    return json({ error: "line_wholesale_ceiling", reason: ceiling.reason },
+                { status: 409 });
+  }
 
   const unknownCostPad = offer.costKnown ? 0 : offer.monthlyCents;
   const needCents = offer.upfrontCents + offer.monthlyCents +
@@ -168,7 +231,9 @@ Deno.serve(async (req) => {
   // ── Buy the replacement ──────────────────────────────────────────────────
   // `customer_reference` is the line id, matching the rental path — it is what
   // makes a number with no live line pointing at it findable later.
-  const order = await orderNumber(offer.phoneNumber, lineId);
+  const order = await orderNumber(offer.phoneNumber, lineId, {
+    requirementGroupId: profile.requirementGroupId,
+  });
   if (faultOf(order)) {
     return await refund(`order_${order.type}`, 502, "provider_unreachable");
   }

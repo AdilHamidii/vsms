@@ -227,6 +227,13 @@ enum APIError: Error, LocalizedError {
                 // release a line, so the copy must name the only real action.
                 case "line_limit_reached":
                     return String(localized: "You've reached the most numbers you can hold at once. Release one to rent another.")
+                // The country catalogue refused this country outright — it is
+                // not probed, needs end-user documents, or was blocked. Says
+                // "not yet" and nothing about WHY: the reason is a regulatory
+                // fact about our supplier, not something the user can act on,
+                // and naming documents would read as "send us your passport".
+                case "country_not_sellable":
+                    return String(localized: "This country isn't available yet. Pick another one.")
                 case "line_exists":
                     return String(localized: "You already have a second number. You can only have one at a time.")
                 case "number_taken":

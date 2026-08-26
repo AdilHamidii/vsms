@@ -34,6 +34,35 @@ struct LineAPI {
         )
     }
 
+    // MARK: - Where we can sell
+
+    /// Every country in the catalogue, sellable or not.
+    ///
+    /// Reads the `line_country_menu` VIEW, never `line_country_catalog` — the
+    /// table carries wholesale samples and the regulatory requirement summary,
+    /// which is a compliance record and must never reach a device. Columns are
+    /// named explicitly for the same reason `voiceRates()` names its own: a
+    /// column added to the view later cannot leak by accident.
+    ///
+    /// Unsellable countries are returned deliberately. The picker shows them
+    /// grayed rather than hiding them, so "not yet" is visible instead of
+    /// looking like a country we have never heard of.
+    ///
+    /// `number_type=eq.local` because that is the only type the store sells;
+    /// a country's toll-free row has different capabilities and would render
+    /// as a duplicate.
+    func countries() async throws -> [LineCountry] {
+        try await client.request(
+            .get, path: "rest/v1/line_country_menu",
+            query: [URLQueryItem(name: "select",
+                                 value: "country_code,country_name,number_type,supports_voice," +
+                                        "supports_sms,supports_mms,supports_emergency," +
+                                        "available,sell_reason,has_localities"),
+                    URLQueryItem(name: "number_type", value: "eq.local"),
+                    URLQueryItem(name: "order", value: "country_name.asc")]
+        )
+    }
+
     // MARK: - The line itself
 
     /// Every column of `my_line`, which is already the safe projection. RLS
@@ -75,10 +104,15 @@ struct LineAPI {
     ///
     /// Cheap enough to call on every city tap: it buys nothing and charges
     /// nothing.
-    func availability(city: String?) async throws -> LineAvailability {
-        struct Body: Encodable { let city: String? }
+    ///
+    /// `country` is OPTIONAL and omitted by default: the server defaults it to
+    /// the launch market, so an old client and a new one ask the same question.
+    /// Sending it is what makes the country picker mean anything.
+    func availability(city: String?, country: String? = nil) async throws -> LineAvailability {
+        struct Body: Encodable { let city: String?; let country: String? }
         return try await client.request(
-            .post, path: "functions/v1/search-line-numbers", body: Body(city: city)
+            .post, path: "functions/v1/search-line-numbers",
+            body: Body(city: city, country: country)
         )
     }
 
@@ -90,11 +124,14 @@ struct LineAPI {
     /// a paused product. That refusal has to happen now: once StoreKit takes
     /// the money, the only remedy left is an Apple refund, which is the one
     /// money path this app cannot drive.
-    func reserve(city: String, phoneNumber: String) async throws -> LineReservationQuote {
-        struct Body: Encodable { let city: String; let phone_number: String }
+    func reserve(city: String, phoneNumber: String,
+                 country: String? = nil) async throws -> LineReservationQuote {
+        struct Body: Encodable {
+            let city: String; let phone_number: String; let country: String?
+        }
         return try await client.request(
             .post, path: "functions/v1/reserve-line-number",
-            body: Body(city: city, phone_number: phoneNumber)
+            body: Body(city: city, phone_number: phoneNumber, country: country)
         )
     }
 
@@ -108,18 +145,19 @@ struct LineAPI {
     /// the number resource has no price field at all.
     func verifySubscription(
         signedTransaction: String, phoneNumber: String,
-        city: String, monthlyCents: Int?
+        city: String, monthlyCents: Int?, country: String? = nil
     ) async throws -> LineProvisionResult {
         struct Body: Encodable {
             let signed_transaction: String
             let phone_number: String
             let city: String
             let monthly_cents: Int?
+            let country: String?
         }
         return try await client.request(
             .post, path: "functions/v1/verify-line-subscription",
             body: Body(signed_transaction: signedTransaction, phone_number: phoneNumber,
-                       city: city, monthly_cents: monthlyCents)
+                       city: city, monthly_cents: monthlyCents, country: country)
         )
     }
 
@@ -170,11 +208,14 @@ struct LineAPI {
     /// This is the ONLY route to a second number: Apple permits one active
     /// subscription per group, so the subscription path is capped at one line
     /// per user by construction.
-    func rentWithCredits(phoneNumber: String, city: String) async throws -> LineProvisionResult {
-        struct Body: Encodable { let phone_number: String; let city: String }
+    func rentWithCredits(phoneNumber: String, city: String,
+                         country: String? = nil) async throws -> LineProvisionResult {
+        struct Body: Encodable {
+            let phone_number: String; let city: String; let country: String?
+        }
         return try await client.request(
             .post, path: "functions/v1/rent-line-credits",
-            body: Body(phone_number: phoneNumber, city: city)
+            body: Body(phone_number: phoneNumber, city: city, country: country)
         )
     }
 

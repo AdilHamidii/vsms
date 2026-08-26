@@ -278,6 +278,82 @@ struct LineVoiceToken: Codable, Hashable {
 
 // MARK: - Buying one
 
+/// A country we can sell a number in, from the `line_country_menu` VIEW.
+///
+/// 🔴 **`available == nil` RENDERS AS UNAVAILABLE.** Every field here is
+/// optional so the shipped build decodes a server that does not publish the
+/// view yet — but "we could not read whether this sells" must never become
+/// "sell it". Fail closed on the client exactly as `refresh_line_country_
+/// sellability()` does on the server; the two halves of a gate that disagree
+/// are worse than no gate.
+///
+/// The capability booleans are optional for the same reason and are read the
+/// same way: nil is "not supported", never "probably fine". A gray icon says
+/// nothing; a green one is a claim.
+///
+/// `sellReason` is a MACHINE KEY (`documents_required`, …), never copy. The
+/// server owns the reason, the client owns the sentence — a server string
+/// rendered verbatim would arrive untranslated on six locales and would put
+/// words in the product's mouth.
+struct LineCountry: Codable, Identifiable, Hashable {
+    let countryCode: String
+    let countryName: String?
+    let supportsVoice: Bool?
+    let supportsSms: Bool?
+    let supportsMms: Bool?
+    let supportsEmergency: Bool?
+    let available: Bool?
+    let sellReason: String?
+    /// Whether the country has curated cities. When false the server sells
+    /// country-wide and there is nothing to choose between.
+    let hasLocalities: Bool?
+
+    var id: String { countryCode }
+
+    /// Fail CLOSED. See the type comment.
+    var isAvailable: Bool { available == true }
+    var canVoice: Bool { supportsVoice == true }
+    var canSms: Bool { supportsSms == true }
+    var canMms: Bool { supportsMms == true }
+    var canEmergency: Bool { supportsEmergency == true }
+
+    /// ISO2 → 🇨🇦, by offsetting each letter into the regional-indicator block.
+    /// Returns "" for anything that is not two ASCII letters rather than
+    /// rendering half a flag or a tofu box.
+    var flag: String {
+        let letters = countryCode.uppercased().unicodeScalars.filter { $0.isASCII && $0.properties.isAlphabetic }
+        guard letters.count == 2 else { return "" }
+        var out = ""
+        for scalar in letters {
+            guard let indicator = UnicodeScalar(scalar.value + 127_397) else { return "" }
+            out.unicodeScalars.append(indicator)
+        }
+        return out
+    }
+
+    /// The country in the reader's language, falling back to whatever the
+    /// server called it. Resolved locally on purpose: `country_name` is one
+    /// English string and this app ships six other locales.
+    var displayName: String {
+        Locale.current.localizedString(forRegionCode: countryCode) ?? countryName ?? countryCode
+    }
+
+    /// Rendered instantly, then replaced by the view — same contract as
+    /// `LineCity.seeded`. US and CA are the two countries Telnyx sells with no
+    /// documents at all, so seeding them cannot promise something the catalog
+    /// will later refuse. Anything beyond these two must come from the server.
+    static let seeded: [LineCountry] = [
+        .init(countryCode: "US", countryName: "United States",
+              supportsVoice: true, supportsSms: true, supportsMms: true,
+              supportsEmergency: true, available: true, sellReason: nil,
+              hasLocalities: true),
+        .init(countryCode: "CA", countryName: "Canada",
+              supportsVoice: true, supportsSms: true, supportsMms: true,
+              supportsEmergency: true, available: true, sellReason: nil,
+              hasLocalities: true),
+    ]
+}
+
 /// A city we sell numbers in. The picker offers CITIES rather than area codes
 /// because Canada's prestige codes are exhausted — 416, 514, 613 and 403 all
 /// return zero stock while their overlays (437, 438, 343, 587) are full. A raw
@@ -285,6 +361,15 @@ struct LineVoiceToken: Codable, Hashable {
 struct LineCity: Codable, Identifiable, Hashable {
     let id: String
     let label: String
+    /// Which country this locality belongs to. Optional because the shipped
+    /// server does not send it, and because the list is only ever displayed
+    /// for one country at a time — it exists so a stale list from another
+    /// country can be recognised rather than rendered.
+    var countryCode: String? = nil
+    /// Province / state / region, from `line_locality_menu`. Takes precedence
+    /// over the hardcoded Canadian switch below, which stays as the offline
+    /// fallback for the seeded rows.
+    var regionLabel: String? = nil
 
     /// Rendered immediately so the picker is on screen before any network call,
     /// then REPLACED by whatever the server returns — exactly how `SeedData`
@@ -312,16 +397,26 @@ struct LineCity: Codable, Identifiable, Hashable {
     /// `LocalizedStringKey`, so this file stays free of SwiftUI. Call sites
     /// render it with plain `Text(_:)`, which is correct precisely because the
     /// catalog lookup already happened.
+    /// The server's own label wins when it sends one — a Polish voivodeship
+    /// cannot be derived from a switch over seven Canadian city ids. The
+    /// switch survives as the offline fallback for `seeded`, which renders
+    /// before any network call.
     var region: String {
+        if let regionLabel, !regionLabel.isEmpty { return regionLabel }
         switch id {
-        case "toronto":   String(localized: "Ontario")
-        case "montreal":  String(localized: "Quebec")
-        case "vancouver": String(localized: "British Columbia")
-        case "calgary":   String(localized: "Alberta")
-        case "ottawa":    String(localized: "Ontario")
-        case "halifax":   String(localized: "Nova Scotia")
-        case "winnipeg":  String(localized: "Manitoba")
-        default:          String(localized: "Canada")
+        case "toronto":   return String(localized: "Ontario")
+        case "montreal":  return String(localized: "Quebec")
+        case "vancouver": return String(localized: "British Columbia")
+        case "calgary":   return String(localized: "Alberta")
+        case "ottawa":    return String(localized: "Ontario")
+        case "halifax":   return String(localized: "Nova Scotia")
+        case "winnipeg":  return String(localized: "Manitoba")
+        // ⚠️ NOT "Canada". This used to name the country for any unknown id,
+        // which was true while the catalogue was seven Canadian cities and
+        // becomes a lie the moment a Warsaw row falls through. An unknown
+        // locality with no server label says nothing rather than the wrong
+        // thing; the row renders the city alone.
+        default:          return ""
         }
     }
 }
@@ -337,8 +432,29 @@ struct LineNumberOffer: Codable, Identifiable, Hashable {
     let region: String?
     let monthlyCents: Int?
     let upfrontCents: Int?
+    /// All four are additive and OPTIONAL: the deployed server does not send
+    /// them yet, and a build that requires them would fail to decode a search
+    /// it can perfectly well render.
+    var countryCode: String? = nil
+    /// Telnyx's per-number feature list, verbatim (`voice`, `sms`, `mms`,
+    /// `emergency`). Kept as strings rather than an enum — an unrecognised
+    /// feature must not throw on decode, and the only question asked of it is
+    /// membership.
+    var features: [String]? = nil
+    var numberType: String? = nil
+    /// The currency the wholesale quote is in. Present so a non-USD quote is
+    /// RECOGNISABLE; it is never converted and never rendered.
+    var currency: String? = nil
 
     var id: String { phoneNumber }
+
+    /// nil when the server said nothing — "we do not know", not "it cannot".
+    /// The caller decides; see `LineCheckoutScreen.capabilityNote`, which
+    /// falls back to the country's own capability rather than guessing here.
+    func supports(_ feature: String) -> Bool? {
+        guard let features else { return nil }
+        return features.contains(feature)
+    }
 }
 
 /// The result of a search, plus the hold if we managed to place one.
@@ -349,7 +465,28 @@ struct LineAvailability: Codable, Hashable {
     let cities: [LineCity]
     let numbers: [LineNumberOffer]
 
+    /// Which country this search was answered for, and what that country can
+    /// do. All optional: the shipped server answers with `cities`/`numbers`
+    /// alone, and this build has to keep working against it.
+    var country: String? = nil
+    var countryName: String? = nil
+    var supportsVoice: Bool? = nil
+    var supportsSms: Bool? = nil
+    var supportsMms: Bool? = nil
+    var supportsEmergency: Bool? = nil
+    var numberType: String? = nil
+    /// The new name for `cities`. Both are sent during the overlap; readers
+    /// take `localities` when it is there and `cities` otherwise, so an old
+    /// server and a new one are indistinguishable from up here.
+    var localities: [LineCity]? = nil
+
     var first: LineNumberOffer? { numbers.first }
+
+    /// Whichever list the server actually sent.
+    var places: [LineCity] {
+        if let localities, !localities.isEmpty { return localities }
+        return cities
+    }
 }
 
 /// A number held for this user while they decide.
@@ -385,6 +522,17 @@ struct LineReservationQuote: Codable, Hashable {
     let reservationId: String?
     let monthlyCents: Int?
     let upfrontCents: Int?
+    /// What the reserved number can actually do — the same additive optional
+    /// block `search-line-numbers` returns. This is the authority the checkout
+    /// screen's capability line prefers, because it describes the specific
+    /// number about to be bought rather than the country in general.
+    var country: String? = nil
+    var countryName: String? = nil
+    var supportsVoice: Bool? = nil
+    var supportsSms: Bool? = nil
+    var supportsMms: Bool? = nil
+    var supportsEmergency: Bool? = nil
+    var numberType: String? = nil
 
     var reservation: LineReservation {
         LineReservation(phoneNumber: phoneNumber, city: city, heldUntil: heldUntil)
@@ -437,6 +585,10 @@ struct LineSendResult: Codable, Hashable {
 enum LineUnavailableReason: Hashable {
     case paused
     case noStock
+    /// The server refused the COUNTRY, not the stock — `country_not_sellable`.
+    /// A separate case because "we don't sell here yet" and "this city is dry"
+    /// send the user to different places: another country versus another city.
+    case countryNotSellable
     case unknown
 }
 

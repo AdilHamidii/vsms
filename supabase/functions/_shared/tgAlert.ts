@@ -203,6 +203,21 @@ export const WATCHDOG_COPY: Record<string, WatchdogCopy> = {
     what: (d) => `Deleted accounts left Telnyx numbers behind. ${esc(d)}`,
     action: "Release them by hand at Telnyx, then clear app_config.unreleased_line_numbers — nothing else can name them.",
   },
+  "line-country-catalog-stale": {
+    group: "Lines", sev: "🟠",
+    what: (d) => `The country catalog has stopped refreshing. ${esc(d)}`,
+    action: "Check relay-sync-line-countries — every sell state, capability flag and wholesale sample the store shows is being served from an old probe, and a country Telnyx has since closed still reads sellable.",
+  },
+  "line-country-none-sellable": {
+    group: "Lines", sev: "🔴",
+    what: (d) => `No country can sell a second number. ${esc(d)}`,
+    action: "This is a STATE check, not a heartbeat — the sync may be running fine and blanking the catalog. Run refresh_line_country_sellability() and read sell_reason before touching the sync.",
+  },
+  "line-country-order-rejected": {
+    group: "Lines", sev: "🟠",
+    what: (d) => `Telnyx refused an order we said we could sell. ${esc(d)}`,
+    action: "The row self-blocks, so nobody else hits it — but the probe was wrong at the till. Check that country's requirements (GET /v2/requirements) and whether a requirement group lapsed.",
+  },
 
   // ── Money: float and rent. ───────────────────────────────────────────────
   "5sim-float": {

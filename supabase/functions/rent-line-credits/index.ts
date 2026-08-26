@@ -26,22 +26,20 @@ import { handleCors, json } from "../_shared/cors.ts";
 import { admin, callerUserId } from "../_shared/supabaseAdmin.ts";
 import {
   searchNumbers, orderNumber, getOrder, findNumberId, attachMessagingProfile,
-  releaseNumber, faultOf,
+  releaseNumber, faultOf, type AvailableNumber,
 } from "../_shared/telnyx.ts";
 import { provisionLineVoice } from "../_shared/lineVoice.ts";
+import {
+  sellableCountry, localitiesFor, catalogFaultOf, loadLineCatalogConfig,
+  withinWholesaleCeiling, type LineLocality,
+} from "../_shared/lineCatalog.ts";
+import { NANP } from "../_shared/phone.ts";
 
-/** Mirrors `reserve-line-number` and `search-line-numbers`. The three must
- *  agree on what "Toronto" means or this buys from a different pool than the
- *  one the picker showed. */
-const CITIES: Record<string, { country: string; codes: string[] }> = {
-  toronto:   { country: "CA", codes: ["437", "647", "416", "905", "289"] },
-  montreal:  { country: "CA", codes: ["438", "514"] },
-  vancouver: { country: "CA", codes: ["604", "778", "236"] },
-  calgary:   { country: "CA", codes: ["587", "403", "825"] },
-  ottawa:    { country: "CA", codes: ["343", "613"] },
-  halifax:   { country: "CA", codes: ["902", "782"] },
-  winnipeg:  { country: "CA", codes: ["204", "431"] },
-};
+/** The third copy of the hardcoded CITIES map lived here. All three now read
+ *  `public.line_localities`, so the picker, the reserve step and this one agree
+ *  on what "Toronto" means by construction rather than by anyone remembering
+ *  to edit three files. */
+const DEFAULT_COUNTRY = "CA";
 
 /** Owner decision 2026-08-06: 20 credits/month for 100 SMS + 50 minutes.
  *  A credit nets $0.397 blended, so this is ~$7.94 against ~$1 rent plus
@@ -77,13 +75,18 @@ Deno.serve(async (req) => {
   const userId = await callerUserId(req);
   if (!userId) return json({ error: "unauthorized" }, { status: 401 });
 
-  let body: { city?: string; phone_number?: string } = {};
+  let body: {
+    city?: string | null; phone_number?: string;
+    country?: string | null; number_type?: string | null;
+  } = {};
   try { body = await req.json(); } catch { /* guarded below */ }
 
   const cityKey = (body.city ?? "").toLowerCase();
   const wanted = body.phone_number ?? "";
-  const city = CITIES[cityKey];
-  if (!city || !wanted) return json({ error: "bad_request" }, { status: 400 });
+  // Defaults on BOTH null and absent — shipped 2.3 sends neither.
+  const country = (body.country ?? DEFAULT_COUNTRY).toUpperCase();
+  const numberType = body.number_type ?? "local";
+  if (!wanted) return json({ error: "bad_request" }, { status: 400 });
 
   const sb = admin();
 
@@ -104,23 +107,86 @@ Deno.serve(async (req) => {
   // returns `cost_information: null` and the resource has no price field at
   // all — so this quote is the only chance to record what Telnyx charges US.
   // Losing it makes margin analysis on this line impossible.
+  // The country gate, before any provider call and long before the charge.
+  // Fails CLOSED — unreadable, missing and stale all refuse, each with its own
+  // reason, because `country_not_sellable` and `no_numbers_available` send a
+  // user to completely different places.
+  const cfg = await loadLineCatalogConfig(sb);
+  const sellable = await sellableCountry(sb, country, numberType, cfg);
+  if (catalogFaultOf(sellable)) {
+    return json({
+      error: "country_not_sellable",
+      reason: sellable.reason === "country_not_sellable"
+        ? (sellable.detail ?? "blocked")
+        : sellable.reason,
+      country,
+    }, { status: 409 });
+  }
+
+  const localities = await localitiesFor(sb, country, numberType);
+  let place: LineLocality | null = null;
+  if (cityKey) place = localities.find((l) => l.id === cityKey) ?? null;
+  if (!place) place = localities[0] ?? null;
+
+  const quote = async (opts: { areaCode?: string; locality?: string; administrativeArea?: string }) =>
+    await searchNumbers({
+      country, numberType, limit: 8,
+      // From the catalog, never a literal.
+      features: sellable.features,
+      ...opts,
+    });
+
   let monthlyCents: number | null = null;
-  let found = false;
-  for (const code of city.codes) {
-    const r = await searchNumbers({ country: city.country, areaCode: code, limit: 8 });
+  let offer: AvailableNumber | null = null;
+  const codes = NANP.has(country) ? (place?.areaCodes ?? []) : [];
+
+  if (codes.length > 0) {
+    for (const code of codes) {
+      const r = await quote({ areaCode: code });
+      if (faultOf(r)) {
+        // Only a real stockout justifies trying the next code — a dead key or
+        // an outage is not a stock problem, and walking on would end in a
+        // misleading "that number is taken".
+        if (r.type !== "OUT_OF_STOCK") {
+          return json({ error: "provider_unreachable" }, { status: 502 });
+        }
+        continue;
+      }
+      const m = r.find((n) => n.phoneNumber === wanted);
+      if (m) { offer = m; break; }
+    }
+  } else {
+    const r = await quote({
+      locality: place?.locality ?? undefined,
+      administrativeArea: place?.adminArea ?? undefined,
+    });
     if (faultOf(r)) {
-      // Only a real stockout justifies trying the next code — a dead key or an
-      // outage is not a stock problem, and walking on would end in a misleading
-      // "that number is taken".
       if (r.type !== "OUT_OF_STOCK") {
         return json({ error: "provider_unreachable" }, { status: 502 });
       }
-      continue;
+    } else {
+      offer = r.find((n) => n.phoneNumber === wanted) ?? null;
     }
-    const hit = r.find((n) => n.phoneNumber === wanted);
-    if (hit) { found = true; monthlyCents = hit.monthlyCents ?? null; break; }
   }
-  if (!found) return json({ error: "number_taken" }, { status: 409 });
+  if (!offer) return json({ error: "number_taken" }, { status: 409 });
+  monthlyCents = offer.monthlyCents ?? null;
+
+  // ── 1b. The wholesale ceiling, BEFORE the charge ─────────────────────────
+  // A SAFETY guard, never pricing. Refusing here costs the user nothing;
+  // refusing after `begin_credit_line_rental` would mean charging credits for a
+  // number we then have to hand back. A non-USD quote is refused, never
+  // converted, and an unquoted cost outside NANP is refused rather than padded.
+  const ceiling = withinWholesaleCeiling(offer, cfg, country);
+  if (!ceiling.ok) {
+    console.error(JSON.stringify({
+      alert: "line_wholesale_ceiling", context: "rent_credits",
+      reason: ceiling.reason, country, number: wanted,
+      monthly_cents: offer.monthlyCents, upfront_cents: offer.upfrontCents,
+      currency: offer.currency, cost_known: offer.costKnown,
+    }));
+    return json({ error: "line_wholesale_ceiling", reason: ceiling.reason },
+                { status: 409 });
+  }
 
   // ── 2. Charge + row, ONE transaction. ────────────────────────────────────
   // Enforces the pause, the per-user cap and the balance, all under the same
@@ -128,8 +194,8 @@ Deno.serve(async (req) => {
   const { data: begun, error: beginErr } = await sb.rpc("begin_credit_line_rental", {
     p_user: userId,
     p_e164: wanted,
-    p_country: city.country,
-    p_number_type: "local",
+    p_country: country,
+    p_number_type: numberType,
     p_rent_credits: RENT_CREDITS,
     p_sms_allowance: SMS_ALLOWANCE,
     p_voice_allowance_seconds: VOICE_ALLOWANCE_SECONDS,
@@ -146,10 +212,30 @@ Deno.serve(async (req) => {
   }
   const lineId = String(begun.line_id);
 
+  // Which locality this number came from. `begin_credit_line_rental` has no
+  // `p_locality` argument, and widening a SQL signature that six paths call is
+  // a far larger change than one nullable stamp — so it is written here.
+  // Best-effort and non-fatal: it is only ever read by a non-NANP SWAP, which
+  // falls back to a country-wide search when it is absent. Outside NANP there
+  // is no area code to recover it from later, which is the whole reason the
+  // column exists.
+  if (place?.id) {
+    const { error: locErr } = await sb.from("phone_lines")
+      .update({ locality: place.id }).eq("id", lineId);
+    if (locErr) {
+      console.error(JSON.stringify({
+        alert: "line_locality_unrecorded", line: lineId, locality: place.id,
+        detail: locErr.message,
+      }));
+    }
+  }
+
   // ── 3. Buy it. `customer_reference` = the line id is what makes orphan
   //      reconciliation possible: a number we own with no live line pointing at
   //      it is otherwise invisible until the invoice.
-  const order = await orderNumber(wanted, lineId);
+  const order = await orderNumber(wanted, lineId, {
+    requirementGroupId: sellable.requirementGroupId,
+  });
   if (faultOf(order)) {
     await refund(sb, lineId, `order_${order.type}`);
     return json({ error: "provision_failed" }, { status: 502 });
@@ -176,11 +262,24 @@ Deno.serve(async (req) => {
     const n = st.numbers[0];
     // ⚠️ `requirement-info-pending` means BOUGHT AND UNUSABLE pending
     // regulatory documents. It reads like progress and is a dead end — the
-    // mistake that cost $3.83 on a GB number. CA needs no documents, so seeing
-    // it here means something changed and the number must be released.
+    // mistake that cost $3.83 on a GB number. Our catalog said this country
+    // needs none, so seeing it here means the CATALOG is wrong.
     if (n?.status === "requirement-info-pending") {
       const id = await findNumberId(wanted);
       if (typeof id === "string") await releaseNumber(id);
+      // Same self-healing write as `verify-line-subscription`: Telnyx's refusal
+      // is evidence and it beats our own probe, so the next user does not walk
+      // into the same wall. `refresh_line_country_sellability()` preserves an
+      // `order_rejected` block rather than re-opening it.
+      const { error: blockErr } = await sb.from("line_country_catalog")
+        .update({ sell_state: "blocked", sell_reason: "order_rejected" })
+        .eq("country_code", country).eq("number_type", numberType);
+      if (blockErr) {
+        console.error(JSON.stringify({
+          alert: "line_catalog_selfheal_failed", country,
+          number_type: numberType, detail: blockErr.message,
+        }));
+      }
       await refund(sb, lineId, "requirements_pending");
       return json({ error: "provision_failed" }, { status: 502 });
     }

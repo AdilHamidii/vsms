@@ -27,22 +27,21 @@ import { handleCors, json } from "../_shared/cors.ts";
 import { admin, callerUserId } from "../_shared/supabaseAdmin.ts";
 import { countOccupiedLines } from "../_shared/lines.ts";
 import {
-  searchNumbers, reserveNumber, getBalance, faultOf,
+  searchNumbers, reserveNumber, getBalance, faultOf, type AvailableNumber,
 } from "../_shared/telnyx.ts";
+import {
+  sellableCountry, localitiesFor, catalogFaultOf, loadLineCatalogConfig,
+  withinWholesaleCeiling, type LineLocality,
+} from "../_shared/lineCatalog.ts";
+import { NANP } from "../_shared/phone.ts";
 
-/** Codes per city, ordered most-likely-to-have-stock first. Mirrors
- *  `search-line-numbers` deliberately: the two must agree on what "Toronto"
- *  means, or this function reserves from a different pool than the one the
- *  picker showed. */
-const CITIES: Record<string, { country: string; codes: string[] }> = {
-  toronto:   { country: "CA", codes: ["437", "647", "416", "905", "289"] },
-  montreal:  { country: "CA", codes: ["438", "514"] },
-  vancouver: { country: "CA", codes: ["604", "778", "236"] },
-  calgary:   { country: "CA", codes: ["587", "403", "825"] },
-  ottawa:    { country: "CA", codes: ["343", "613"] },
-  halifax:   { country: "CA", codes: ["902", "782"] },
-  winnipeg:  { country: "CA", codes: ["204", "431"] },
-};
+/** The hardcoded CITIES map that used to sit here — a byte-for-byte copy of
+ *  the one in `search-line-numbers`, plus a third in `rent-line-credits` — is
+ *  gone. All three now read `public.line_localities`, which is what makes the
+ *  three agree on what "Toronto" means BY CONSTRUCTION rather than by anyone
+ *  remembering to edit three files. Reserving from a different pool than the
+ *  picker showed is exactly the drift a duplicated constant produces. */
+const DEFAULT_COUNTRY = "CA";
 
 /** Headroom over the number's own first-month cost. Not a guess at future
  *  months — this only has to cover the purchase we are about to authorise.
@@ -69,13 +68,18 @@ Deno.serve(async (req) => {
   const userId = await callerUserId(req);
   if (!userId) return json({ error: "unauthorized" }, { status: 401 });
 
-  let body: { city?: string; phone_number?: string } = {};
+  let body: {
+    city?: string | null; phone_number?: string;
+    country?: string | null; number_type?: string | null;
+  } = {};
   try { body = await req.json(); } catch { /* handled by the guards below */ }
 
   const cityKey = (body.city ?? "").toLowerCase();
   const wanted = body.phone_number ?? "";
-  const city = CITIES[cityKey];
-  if (!city || !wanted) return json({ error: "bad_request" }, { status: 400 });
+  // `country` defaults on BOTH null and absent — shipped 2.3 sends neither.
+  const country = (body.country ?? DEFAULT_COUNTRY).toUpperCase();
+  const numberType = body.number_type ?? "local";
+  if (!wanted) return json({ error: "bad_request" }, { status: 400 });
 
   const sb = admin();
 
@@ -105,33 +109,109 @@ Deno.serve(async (req) => {
     return json({ error: "line_limit_reached", limit: cap }, { status: 409 });
   }
 
-  // Re-quote server-side. Walk the same codes in the same order and take the
-  // first page that has stock, then require the requested number to be in it.
-  let quoted: Awaited<ReturnType<typeof searchNumbers>> = [];
-  for (const code of city.codes) {
-    const r = await searchNumbers({ country: city.country, areaCode: code, limit: 8 });
+  // ── The country gate, BEFORE any provider call ───────────────────────────
+  // Fails closed: a country we have never probed, whose probe is stale, or
+  // whose catalog row we cannot read is REFUSED. `country_not_sellable` is a
+  // different answer from `no_numbers_available` and must stay one — "this
+  // country needs six regulatory documents" is not a stock problem, and telling
+  // the user to pick another city sends them into the same wall forever.
+  const cfg = await loadLineCatalogConfig(sb);
+  const sellable = await sellableCountry(sb, country, numberType, cfg);
+  if (catalogFaultOf(sellable)) {
+    return json({
+      error: "country_not_sellable",
+      reason: sellable.reason === "country_not_sellable"
+        ? (sellable.detail ?? "blocked")
+        : sellable.reason,
+      country,
+    }, { status: 409 });
+  }
+
+  // Re-quote server-side. Walk the same localities the picker walked, in the
+  // same order, and require the requested number to be in the result.
+  const localities = await localitiesFor(sb, country, numberType);
+  let place: LineLocality | null = null;
+  if (cityKey) {
+    place = localities.find((l) => l.id === cityKey) ?? null;
+    // An unknown city id is a client/server disagreement about the catalog, not
+    // a user error. Fall through to the country-wide/first-locality search
+    // rather than 400-ing a purchase the user is midway through.
+  }
+  if (!place) place = localities[0] ?? null;
+
+  const quote = async (opts: { areaCode?: string; locality?: string; administrativeArea?: string }) =>
+    await searchNumbers({
+      country, numberType, limit: 8,
+      // From the catalog, never a literal — a hardcoded `["sms","voice"]`
+      // returns 400 `10015` on a voice-only country.
+      features: sellable.features,
+      ...opts,
+    });
+
+  const codes = NANP.has(country) ? (place?.areaCodes ?? []) : [];
+  let quoted: AvailableNumber[] = [];
+
+  if (codes.length > 0) {
+    for (const code of codes) {
+      const r = await quote({ areaCode: code });
+      if (faultOf(r)) {
+        // Only a real stockout justifies trying the next code. A dead key, an
+        // empty account or an outage is not a stock problem, and walking on
+        // would end in `number_taken` — which tells the user to pick again,
+        // into the same wall, right before we would have charged them.
+        if (r.type !== "OUT_OF_STOCK") {
+          console.error(JSON.stringify({
+            alert: "line_reserve_provider_fault", country, city: cityKey,
+            fault: r.type,
+          }));
+          return json({ error: "provider_unreachable" }, { status: 502 });
+        }
+        continue;
+      }
+      if (r.length > 0) { quoted = r; break; }
+    }
+  } else {
+    const r = await quote({
+      locality: place?.locality ?? undefined,
+      administrativeArea: place?.adminArea ?? undefined,
+    });
     if (faultOf(r)) {
-      // Only a real stockout justifies trying the next code. A dead key, an
-      // empty account or an outage is not a stock problem, and walking on
-      // would end in `number_taken` — which tells the user to pick again,
-      // into the same wall, right before we would have charged them.
       if (r.type !== "OUT_OF_STOCK") {
         console.error(JSON.stringify({
-          alert: "line_reserve_provider_fault", city: cityKey, fault: r.type,
+          alert: "line_reserve_provider_fault", country, city: cityKey,
+          fault: r.type,
         }));
         return json({ error: "provider_unreachable" }, { status: 502 });
       }
-      continue;
+    } else {
+      quoted = r;
     }
-    if (r.length > 0) { quoted = r; break; }
   }
-  if (faultOf(quoted)) return json({ error: "provider_unreachable" }, { status: 502 });
 
   const offer = quoted.find((n) => n.phoneNumber === wanted);
   // Gone between the picker and the tap. Ordinary, and the client re-searches
   // rather than treating it as an error — it must never provision a number
   // other than the one on screen.
   if (!offer) return json({ error: "number_taken" }, { status: 409 });
+
+  // ── The wholesale ceiling, BEFORE the float check ────────────────────────
+  // Deliberately in this order: "this number is too expensive to sell" and "we
+  // cannot afford this number" are different problems with different fixes
+  // (drop the country vs top up the account), and the alert keys must not be
+  // the same one. The ceiling is a SAFETY guard, not pricing — it exists so the
+  // line cannot quietly sell a $27/month DR Congo mobile against a $9.99
+  // subscription. A non-USD quote is REFUSED here, never converted.
+  const ceiling = withinWholesaleCeiling(offer, cfg, country);
+  if (!ceiling.ok) {
+    console.error(JSON.stringify({
+      alert: "line_wholesale_ceiling", reason: ceiling.reason, country,
+      number: wanted, monthly_cents: offer.monthlyCents,
+      upfront_cents: offer.upfrontCents, currency: offer.currency,
+      cost_known: offer.costKnown,
+    }));
+    return json({ error: "line_wholesale_ceiling", reason: ceiling.reason },
+                { status: 409 });
+  }
 
   // ── The float guard ──────────────────────────────────────────────────────
   // Fails CLOSED, unlike `create-order`'s balance guard which fails OPEN on a
@@ -202,9 +282,25 @@ Deno.serve(async (req) => {
   return json({
     phone_number: offer.phoneNumber,
     region: offer.region,
+    // ⚠️ Echoes what the CLIENT asked for, not what we resolved. `city` is a
+    // non-optional String in the shipped client and the checkout screen carries
+    // it straight through to the purchase, so substituting our own default here
+    // would silently move the user's pick.
     city: cityKey,
     held_until: heldUntil,
     reservation_id: reservationId,
+    // Additive capability block — the checkout screen prefers this over the
+    // country roll-up because it describes the specific number being bought.
+    country: sellable.countryCode,
+    country_name: sellable.countryName,
+    supports_voice: sellable.supportsVoice,
+    supports_sms: sellable.supportsSms,
+    supports_mms: sellable.supportsMms,
+    supports_emergency: sellable.supportsEmergency,
+    number_type: offer.type,
+    country_code: offer.countryCode ?? sellable.countryCode,
+    features: offer.features,
+    currency: offer.currency,
     // Never rendered. Carried so `verify-line-subscription` can stamp it onto
     // phone_lines.monthly_cost_cents — nothing reports the cost again after
     // purchase, so this quote is the only chance to record it.

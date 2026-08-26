@@ -49,6 +49,11 @@ struct LineCheckoutScreen: View {
                         VStack(alignment: .leading, spacing: 0) {
                             intro.riseIn(appeared, index: 0)
                             numberCard.padding(.top, 20).riseIn(appeared, index: 1)
+                            // Directly under the number and above the benefit
+                            // list — as prominent as the price, because it is
+                            // the term most likely to be discovered after
+                            // paying rather than before.
+                            capabilityNote.padding(.top, 12).riseIn(appeared, index: 1)
                             included.padding(.top, 26).riseIn(appeared, index: 2)
                             // Choice first, then the price block — which restates
                             // the selection in full with its renewal terms. Putting
@@ -224,6 +229,62 @@ struct LineCheckoutScreen: View {
         return state.lineCities.first { $0.id == id }?.label
     }
 
+    // MARK: - What this number can do
+    //
+    // Three sources, in decreasing order of authority, and the ordering is the
+    // point. The RESERVATION describes the exact number about to be bought;
+    // the OFFER's `features[]` is Telnyx's own per-number list; the COUNTRY is
+    // a generalisation. Only the first two are about the digits on screen.
+
+    /// The country row backing this purchase, when we have one.
+    private var country: LineCountry? {
+        guard let iso = state.lineCountry else { return nil }
+        if let c = state.lineSearchCountry, c.countryCode == iso { return c }
+        return state.lineCountries.first { $0.countryCode == iso }
+    }
+
+    /// nil means "we do not know", and that is NOT the same as false. An
+    /// unknown capability renders no claim at all — the same rule the delivery
+    /// badges follow, one product line over.
+    private var numberSendsTexts: Bool? {
+        if let q = state.lineReservation, q.phoneNumber == state.lineOffer?.phoneNumber,
+           let sms = quoteSupportsSms { return sms }
+        if let fromOffer = state.lineOffer?.supports("sms") { return fromOffer }
+        return country?.supportsSms
+    }
+
+    /// Held separately because `LineReservation` is the trimmed shape stored in
+    /// state; the capability booleans live on the QUOTE, which the buy path
+    /// keeps only long enough to start the purchase.
+    @State private var quoteSupportsSms: Bool?
+
+    /// Rendered ONLY on a positive "this number cannot text".
+    ///
+    /// An SMS-capable number keeps the existing copy — the benefit list
+    /// already says what it receives — and an UNKNOWN capability says nothing,
+    /// because a "calls only" warning over a number that texts perfectly well
+    /// is a lie that costs the sale.
+    @ViewBuilder
+    private var capabilityNote: some View {
+        if numberSendsTexts == false {
+            HStack(alignment: .top, spacing: 10) {
+                Image(systemName: "phone.fill")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(theme.warn)
+                    .padding(.top, 1)
+                Text("Calls only. This number can't send or receive texts.")
+                    .font(RFont.text(13, weight: .semibold))
+                    .foregroundStyle(theme.text)
+                    .lineSpacing(2)
+                    .fixedSize(horizontal: false, vertical: true)
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 12)
+            .background(theme.warnSoft, in: .rect(cornerRadius: RRadius.sm))
+        }
+    }
+
     /// The area code, read off the number itself rather than tracked in state —
     /// the server decides which code a city resolves to, and the digits on
     /// screen are the only authority on what it chose.
@@ -246,7 +307,13 @@ struct LineCheckoutScreen: View {
         HeroCard {
             VStack(spacing: 12) {
                 HStack(spacing: 7) {
-                    Text(verbatim: "🇨🇦").font(.system(size: 15))
+                    // ⚠️ Was a hardcoded 🇨🇦. Harmless while Canada was the
+                    // whole catalogue and a flat error the moment it is not —
+                    // the flag sits directly above the digits, so the wrong
+                    // one contradicts the number itself. Falls back to the
+                    // launch market only when the country is genuinely unknown.
+                    Text(verbatim: country.map(\.flag).flatMap { $0.isEmpty ? nil : $0 } ?? "🇨🇦")
+                        .font(.system(size: 15))
                     Text(placeLine)
                         .font(RFont.text(12, weight: .semibold))
                         .foregroundStyle(theme.text2)
@@ -267,7 +334,7 @@ struct LineCheckoutScreen: View {
     }
 
     private var placeLine: String {
-        let city = cityLabel ?? String(localized: "Canada")
+        let city = cityLabel ?? country?.displayName ?? String(localized: "Canada")
         if let areaCode { return "\(city) · \(areaCode)" }
         return city
     }
@@ -654,7 +721,8 @@ struct LineCheckoutScreen: View {
             let quote: LineReservationQuote?
             do {
                 quote = try await LineAPI(client: api)
-                    .reserve(city: city, phoneNumber: offer.phoneNumber)
+                    .reserve(city: city, phoneNumber: offer.phoneNumber,
+                             country: state.lineCountry)
             } catch let err as APIError {
                 isReserving = false
                 RHaptic.warn()
@@ -676,9 +744,15 @@ struct LineCheckoutScreen: View {
             guard let quote else { return }
 
             state.lineReservation = quote.reservation
+            // The quote is the most authoritative thing we will ever hold
+            // about this specific number, and only its capability half
+            // survives into `LineReservation`. Kept so the note above cannot
+            // be contradicted by the number actually being bought.
+            quoteSupportsSms = quote.supportsSms
             let ok = await subs.purchase(
                 phoneNumber: quote.phoneNumber, city: city,
-                monthlyCents: quote.monthlyCents)
+                monthlyCents: quote.monthlyCents,
+                country: quote.country ?? state.lineCountry)
 
             if ok {
                 RHaptic.success()

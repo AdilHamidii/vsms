@@ -439,6 +439,17 @@ final class AppState {
     /// Cities we sell numbers in. Seeded so the picker renders instantly, then
     /// replaced by the server's list on the first search — see `LineCity.seeded`
     /// for why a city is safe to seed when an area code is not.
+    /// Countries we can sell a number in, seeded with the two that need no
+    /// documents so the picker renders before any network call — same contract
+    /// as `lineCities`. Replaced by `line_country_menu` on first read.
+    var lineCountries: [LineCountry] = LineCountry.seeded
+    /// The country the user is shopping in, ISO2. nil means "the server's
+    /// default", which is what every shipped build sends.
+    var lineCountry: String?
+    /// What the last search said the current country can do. Distinct from the
+    /// matching `lineCountries` row: this one describes the stock that was
+    /// actually returned, and it survives a catalogue read that failed.
+    var lineSearchCountry: LineCountry?
     var lineCities: [LineCity] = LineCity.seeded
     /// Every number the search returned, for the user to pick from. Showing one
     /// number is a take-it-or-leave-it; showing eight is a choice, and the
@@ -1876,14 +1887,46 @@ final class AppState {
     /// so a client-side list would offer cities we can no longer fill. The
     /// error paths carry that list too, which is why they are decoded rather
     /// than dropped: "no numbers in Toronto" has to be able to offer Montreal.
+    /// The country catalogue. Swallows its own failure ON PURPOSE: the seeded
+    /// US/CA list is a correct, conservative answer, and blanking the picker
+    /// because a read failed would take the store down over a view that the
+    /// deployed server may not even publish yet.
+    ///
+    /// An EMPTY result is also kept rather than applied — an empty catalogue
+    /// and a filtered-to-nothing one look identical from here, and neither is
+    /// a reason to stop selling the two countries we know sell.
     @MainActor
-    func loadLineNumbers(using api: LineAPI, city: String? = nil) async {
+    func loadLineCountries(using api: LineAPI) async {
+        guard let fresh = try? await api.countries(), !fresh.isEmpty else { return }
+        lineCountries = fresh
+    }
+
+    @MainActor
+    func loadLineNumbers(using api: LineAPI, city: String? = nil,
+                         country: String? = nil) async {
         isLoadingLineNumbers = true
         defer { isLoadingLineNumbers = false }
+        let wantCountry = country ?? lineCountry
         do {
-            let res = try await api.availability(city: city ?? lineCity)
-            if !res.cities.isEmpty { lineCities = res.cities }
+            let res = try await api.availability(city: city ?? lineCity, country: wantCountry)
+            let places = res.places
+            if !places.isEmpty { lineCities = places }
             lineCity = res.city
+            // The server's answer wins over what we asked for. It defaults the
+            // country when we send none, so trusting the request would leave
+            // `lineCountry` nil on exactly the build that most needs to know.
+            lineCountry = res.country ?? wantCountry
+            // Capabilities as the SEARCH reported them, kept separately from
+            // the menu row: the search describes the country this stock
+            // actually came from, and it is present even when the catalogue
+            // view could not be read at all.
+            if let iso = res.country {
+                lineSearchCountry = LineCountry(
+                    countryCode: iso, countryName: res.countryName,
+                    supportsVoice: res.supportsVoice, supportsSms: res.supportsSms,
+                    supportsMms: res.supportsMms, supportsEmergency: res.supportsEmergency,
+                    available: true, sellReason: nil, hasLocalities: !places.isEmpty)
+            }
             lineOffers = res.numbers
             // Preselect the first so the confirm step always has something, but
             // the user can pick any of them.
@@ -2032,6 +2075,8 @@ final class AppState {
         lineReservation = nil
         lineUnavailableReason = nil
         lineCity = nil
+        lineCountry = nil
+        lineSearchCountry = nil
         // The composed call's price goes with the draft. Leaving it set would
         // let `creditsShortfall` keep sizing packs for a call that is no longer
         // on screen — the same shape as the stale `checkoutEsimPlan` and the
@@ -2049,6 +2094,9 @@ final class AppState {
         switch code {
         case "lines_paused":         return .paused
         case "no_numbers_available": return .noStock
+        // We do not sell this country YET — a different answer from "this city
+        // is dry", and it must not send the user to try another city here.
+        case "country_not_sellable": return .countryNotSellable
         case "provider_unreachable": return .unknown
         default:                     return .unknown
         }

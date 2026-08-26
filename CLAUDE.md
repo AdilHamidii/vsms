@@ -184,7 +184,7 @@ supabase functions deploy poll-active-orders sync-prices sync-5sim sync-herosms 
   sync-esim-plans sync-smspva-operators sync-smspva-conversions winback \
   telegram-notify telegram-webhook daily-credit telegram-setup goodwill-credit \
   broadcast-push telnyx-webhook apple-notifications release-lines sync-telnyx-cdr \
-  sync-line-voice probe-telnyx-connection \
+  sync-line-voice probe-telnyx-connection sync-line-countries \
   --no-verify-jwt
 # ✅ The two lists above are now EXHAUSTIVE, and `supabase/config.toml` carries
 # a `[functions.<name>] verify_jwt = false` entry for every member of the second
@@ -213,6 +213,10 @@ supabase functions deploy poll-active-orders sync-prices sync-5sim sync-herosms 
 # PROBE" above — "do not re-run") that was never added to either list and is
 # not meant to be redeployed on a normal cadence. Re-assert the sum before
 # trusting either number; do not assume this note stays current.
+# ✅ Re-asserted 2026-08-27: 25 + 21 = **46** (sync-line-countries — the line
+# country catalog sync — joined the --no-verify-jwt group this day, with its
+# config.toml entry) against `ls … | wc -l` = **47**; the gap is still
+# `probe-5sim`. Re-run the count rather than trusting this line.
 # ✅ As of 2026-08-06 the two lists ARE exhaustive — 21 + 18 = **39**, asserted
 # against `ls supabase/functions | grep -v _shared | wc -l`. They were not
 # before: this comment claimed 19, then 25, then 26 while two functions
@@ -248,6 +252,8 @@ supabase db query --linked "select count(*) from public.routes;"
 #                                            must survive the edge layer dying)
 #   relay-release-lines       3,18,33,48 * * * *  (the provider DELETE)
 #   relay-sync-telnyx-cdr     */10 * * * *  (settles call minutes)
+#   relay-sync-line-countries 40 3 * * *    (line country catalog: coverage +
+#                                            ordering requirements + samples)
 #   settle-stale-line-calls   23 * * * *    (PURE SQL; the 6h no-CDR backstop)
 supabase db query --linked "
   select net.http_post(
@@ -305,7 +311,7 @@ under `VirtualSIM/`. ~6.7k tokens.
 ### Backend layout
 
 - `supabase/migrations/` — chronological SQL, each phase ships its own file
-- `supabase/functions/_shared/` — `providers.ts` (unified router; per-SERVICE ownership across 5sim/SMSPVA/HeroSMS with NO cross-provider fallback — order/poll functions call this, NOT a specific provider), `fivesim.ts` (5sim REST wrapper — the PRIMARY SMS adapter), `herosms.ts` (SMS-Activate `handler_api` wrapper), `heromail.ts` (HeroSMS `/api/v1`, the temp-EMAIL line), `emailStatus.ts`, `smspva.ts` (v2 REST wrapper), `smspool.ts` (eSIM + balance ONLY — the SMS surface was deleted 2026-07-30), `apns.ts` (HTTP/2 + JWT), `cors.ts`, `iap.ts` (Apple receipt chain verification), `telegram.ts`, `opsFormat.ts`, `supabaseAdmin.ts`, `telnyx.ts` (the rented-line adapter: Ed25519 webhook verification, numbers, messaging, voice credentials and detail records). `virtualsms.ts` is **gone**. That is **14 files** — count them rather than trusting this list.
+- `supabase/functions/_shared/` — `providers.ts` (unified router; per-SERVICE ownership across 5sim/SMSPVA/HeroSMS with NO cross-provider fallback — order/poll functions call this, NOT a specific provider), `fivesim.ts` (5sim REST wrapper — the PRIMARY SMS adapter), `herosms.ts` (SMS-Activate `handler_api` wrapper), `heromail.ts` (HeroSMS `/api/v1`, the temp-EMAIL line), `emailStatus.ts`, `smspva.ts` (v2 REST wrapper), `smspool.ts` (eSIM + balance ONLY — the SMS surface was deleted 2026-07-30), `apns.ts` (HTTP/2 + JWT), `cors.ts`, `iap.ts` (Apple receipt chain verification), `telegram.ts`, `opsFormat.ts`, `supabaseAdmin.ts`, `telnyx.ts` (the rented-line adapter: Ed25519 webhook verification, numbers, messaging, voice credentials and detail records), `lineCatalog.ts` (the fail-closed sellability gate every line seller calls — see "Line country catalog" below). This list is INCOMPLETE and has been for weeks (`ls supabase/functions/_shared | wc -l` read **24** on 2026-08-27) — count, don't trust it.
 - `supabase/functions/<name>/index.ts` — one per endpoint, all Deno.serve
 - `supabase/README.md` — deployment + secret setup walkthrough
 
@@ -2197,6 +2203,67 @@ cross-user, and refuse-without-charge. ⚠️ **The Telnyx order/release half ha
 never run against the live API** (doing so would spend float and give away a
 real customer's number); the call shapes are copied verbatim from
 `reserve-line-number`, which is proven. **The first real swap is the probe.**
+
+### Line country catalog — data-driven sellability (2026-08-27)
+
+The rented-line store is no longer a hardcoded 7-Canadian-city list. Which
+countries sell is decided by **`line_country_catalog`** (PK country_code ×
+number_type), written only by `sync-line-countries` (cron `relay-sync-line-
+countries`, 03:40 daily) from live Telnyx reads: `GET /v2/country_coverage`
+(per-type capability flags) and `GET /v2/requirements?filter[action]=ordering`
+(the document gate). Cities/area codes live in **`line_localities`** (seeded
+with the exact 7 CA cities the old CITIES maps carried — the maps are deleted
+from all three functions). Clients read the **views** `line_country_menu` /
+`line_locality_menu` only; the base tables are the cost book and compliance
+record and are service-role-only. Bootstrapped 2026-08-26: 125 rows, 3
+sellable (US, CA, PR — all $1.00/mo except PR $3.00), GB/DE/FR/NL/PL/AU
+blocked `documents_required` (3–6 docs each).
+
+Rules that are load-bearing:
+- **A country sells ⇔ probed AND (zero ordering documents OR an APPROVED
+  requirement group)**, computed by `refresh_line_country_sellability()`.
+  NULL fails closed everywhere: never-probed ⇒ blocked. There is deliberately
+  **NO `force_sell` override** — the only override is `force_block`. Filing a
+  requirement group in Telnyx (owner action, manual) and recording its id on
+  the row turns a documented country green with no deploy.
+- **Every seller calls `_shared/lineCatalog.ts::sellableCountry()` and fails
+  CLOSED** (`country_not_sellable` / `catalog_stale` / `catalog_unreadable`).
+  Consequence: **an empty or stale catalog takes the WHOLE line store down,
+  Canada included** — the watchdog checks `line-country-catalog-stale`,
+  `line-country-none-sellable` and `line-country-order-rejected` exist for
+  exactly this. Never deploy the sellers against an unpopulated catalog.
+- 🔴 **Never re-add a literal `filter[features][]` to `searchNumbers`.**
+  Probed 2026-08-26: `features[]=sms&voice` on GB/DE local returns **HTTP 400
+  code 10015**, not an empty list — the old hardcoded filter made every
+  voice-only country read as a provider outage. `searchNumbers` now defaults
+  to NO features filter; callers pass what the catalog row says.
+- **`withinWholesaleCeiling`** (config `line_wholesale_ceiling_monthly_cents`
+  300 / `_upfront_` 500) is a SAFETY guard, not pricing. The comparison is
+  `>`, so a number at exactly the ceiling is allowed — PR samples at exactly
+  300¢/mo and must stay orderable. Non-USD quotes are refused, never
+  converted; outside NANP `costKnown=false` is a refusal (the fallback cents
+  are NANP-calibrated).
+- **`verify-line-subscription` re-checks sellability after the JWS and before
+  `orderNumber`**, and a Telnyx `requirement-info-pending` rejection
+  self-heals the catalog (`sell_reason='order_rejected'`, preserved by the
+  refresh until a real blocker replaces it) so the next user never hits the
+  same wall. `rent-line-credits` does the same. **Swap is deliberately NOT
+  gated on sellability** (only the ceiling) — a regulatory change after the
+  sale must not strand a paying subscriber; swap stays same-country always.
+- **`toE164` takes the line's country** and refuses a bare national number on
+  a non-NANP line instead of guessing +1. The client warns voice-only ONLY on
+  `supports_sms === false`, so a sellable country must always carry a real
+  supports_sms value.
+- The client (2.4) shows ALL probed countries with capability icons, green
+  where supported, gray where not; blocked rows render "Not available yet".
+  Behavioural checks: `scripts/verify-line-country-catalog.sql` (10 groups,
+  rolled back), `scripts/verify-line-catalog-gate.ts` (29 offline assertions),
+  `scripts/verify-lines-countries-format.ts` (`/lines countries` rendering —
+  the Telegram ops view of the catalog incl. per-country wholesale).
+- ⚠️ **The first non-NANP order has never run** — US/CA/PR need no documents
+  so today's sellable set exercises only the proven NANP path. When a
+  requirement group first makes a documented country sellable, the first
+  order IS the probe (owner-controlled credits line, read the order back).
 
 ### 🔴 The client is never authoritative about money
 

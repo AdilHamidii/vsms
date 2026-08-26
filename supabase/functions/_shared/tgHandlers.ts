@@ -28,6 +28,7 @@ import {
   formatFailures,
   formatFunnel,
   formatGross,
+  formatLineCountries,
   formatLines,
   formatLinesMoney,
   formatNow,
@@ -305,6 +306,18 @@ export const handlers: Record<string, Handler> = {
     // moment you cannot. The on/off half mirrors /esim precisely, including
     // reporting the live count so "pausing did nothing" is visible rather than
     // looking like success.
+    // `/lines countries` — the international catalog. READ-ONLY, and it shares
+    // the /lines name deliberately: it is the same product, and a separate
+    // top-level command would be one more entry in a popup menu the owner
+    // scrolls. Checked before both other branches because "countries" is
+    // neither on/off nor the fleet list.
+    if (arg === "countries" || arg === "country") {
+      const { data, error } = await sb.rpc("ops_line_countries");
+      if (error) console.error("ops_line_countries failed:", error.message);
+      return error || !data
+        ? readFail("the country catalog")
+        : stamped(formatLineCountries(data as Record<string, unknown>));
+    }
     if (arg !== "on" && arg !== "off") {
       // No arg now LISTS the lines rather than only reporting the switch: the
       // switch is one bit and the lines are the product.

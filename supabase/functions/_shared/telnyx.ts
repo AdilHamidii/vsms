@@ -273,6 +273,25 @@ export interface AvailableNumber {
   costKnown: boolean;
   reservable: boolean;
   region: string | null;
+  /** Telnyx's per-number capability list, NORMALISED TO LOWERCASE STRINGS.
+   *
+   *  ⚠️ The API sends an array of OBJECTS (`[{name:"voice"},{name:"sms"}]`),
+   *  not strings — measured 2026-08-26. Handing those to a client that expects
+   *  `["voice"]` decodes to nothing useful, and `features.includes("voice")`
+   *  on the raw array is silently always false. */
+  features: string[];
+  /** ISO2 from `region_information[region_type = 'country_code']`, or null.
+   *  Never inferred from the dialling prefix — +1 alone cannot tell US from CA. */
+  countryCode: string | null;
+  /** The currency `cost_information` is quoted in. 🔴 A non-USD quote must be
+   *  REFUSED, never converted: we hold no rate table we control, and a EUR
+   *  figure read as USD cents is a float guard that wrongly allows. */
+  currency: string | null;
+  /** `region_information[region_type = 'location']` — the city, where Telnyx
+   *  reports one. This is what a non-NANP search filters on. */
+  locality: string | null;
+  /** `region_information[region_type = 'state']` — province/state. */
+  administrativeArea: string | null;
 }
 
 const cents = (v: unknown) => Math.round(parseFloat(String(v ?? "0")) * 100);
@@ -290,22 +309,84 @@ const cents = (v: unknown) => Math.round(parseFloat(String(v ?? "0")) * 100);
  *  measured rate rather than to zero, and `costKnown` says which it was. This
  *  is the same distinction as HeroSMS's `herosms_real_count`: null means "not
  *  probed", 0 means "probed, nothing there", and collapsing them is how a
- *  guard stops guarding. */
+ *  guard stops guarding.
+ *
+ *  🔴 THESE CONSTANTS ARE NANP-ONLY, AND THAT IS A CONSTRAINT ON CALLERS.
+ *  $1.00/$1.00 was measured on US and CA local. It is NOT a world price: the
+ *  2026-08-05 sweep found CD mobile at $27 and BW toll-free at $40. So OUTSIDE
+ *  US/CA/PR/VI a substituted figure is a guess about a market we have never
+ *  priced, and `costKnown === false` must be a REFUSAL rather than a padded
+ *  allowance — see `withinWholesaleCeiling` in `_shared/lineCatalog.ts`, which
+ *  is where that rule is enforced. */
 const FALLBACK_UPFRONT_CENTS = 100;
 const FALLBACK_MONTHLY_CENTS = 100;
 
+/** Normalise Telnyx's `features` onto lowercase strings.
+ *
+ *  ⚠️ Live rows carry OBJECTS (`[{name:"voice"}]`), not strings — measured
+ *  2026-08-26. Both shapes are accepted because the docs describe the string
+ *  form and this endpoint has already been documented wrong three times. */
+function featureNames(v: unknown): string[] {
+  if (!Array.isArray(v)) return [];
+  const out: string[] = [];
+  for (const f of v) {
+    const name = typeof f === "string"
+      ? f
+      : (f && typeof f === "object" ? (f as Record<string, unknown>).name : null);
+    if (typeof name === "string" && name) out.push(name.toLowerCase());
+  }
+  return out;
+}
+
 /** Live availability. NEVER cache this — stock is per (country, area code) and
- *  genuinely runs out, the same rule `email-domains` follows for HeroSMS. */
+ *  genuinely runs out, the same rule `email-domains` follows for HeroSMS.
+ *
+ *  🔴 `features` DEFAULTS TO NO FILTER AT ALL, AND MUST STAY THAT WAY.
+ *
+ *  This function used to hardcode `filter[features][]=sms` +
+ *  `filter[features][]=voice`. Probed 2026-08-26 on GB and DE local, with
+ *  everything else identical:
+ *
+ *  | search                              | GB local        | DE local        |
+ *  |-------------------------------------|-----------------|-----------------|
+ *  | no features filter                  | 200, 3 rows     | 200, 3 rows     |
+ *  | `features[]=voice`                  | 200, 3 rows     | 200, 3 rows     |
+ *  | `features[]=sms&features[]=voice`   | **400 `10015`** | **400 `10015`** |
+ *
+ *  So on a voice-only country the hardcoded pair does not return an empty
+ *  list — it FAILS, `classifyTelnyxFault` maps the 400 to TRANSPORT_ERROR, and
+ *  `search-line-numbers` renders `provider_unreachable`. A country we made
+ *  unsearchable ourselves read as a Telnyx outage.
+ *
+ *  An empty or absent `features` appends nothing. Callers pass what the
+ *  CATALOG says the country supports (`_shared/lineCatalog.ts`), NEVER a
+ *  literal — a literal is exactly how this bug was written the first time.
+ *
+ *  ⚠️ A 400 `10015` cannot distinguish "bad country" from "no stock matching
+ *  these filters": the control probe showed `country_code=ZZ` returns the same
+ *  error. Only re-searching without the filter separates them. */
 export async function searchNumbers(opts: {
-  country: string; areaCode?: string; limit?: number;
+  country: string;
+  areaCode?: string;
+  limit?: number;
+  /** `local` unless the catalog says otherwise. GB SMS lives on `mobile`, which
+   *  is a different type with a heavier requirement set. */
+  numberType?: string;
+  /** Telnyx's non-NANP city filter. NANP walks `areaCode` instead. */
+  locality?: string;
+  administrativeArea?: string;
+  features?: string[];
 }): Promise<AvailableNumber[] | TelnyxFault> {
   const p = new URLSearchParams();
   p.set("filter[country_code]", opts.country);
-  p.set("filter[phone_number_type]", "local");
-  p.append("filter[features][]", "sms");
-  p.append("filter[features][]", "voice");
+  p.set("filter[phone_number_type]", opts.numberType ?? "local");
+  for (const f of opts.features ?? []) p.append("filter[features][]", f);
   p.set("filter[limit]", String(opts.limit ?? 10));
   if (opts.areaCode) p.set("filter[national_destination_code]", opts.areaCode);
+  if (opts.locality) p.set("filter[locality]", opts.locality);
+  if (opts.administrativeArea) {
+    p.set("filter[administrative_area]", opts.administrativeArea);
+  }
 
   const r = await call<Array<Record<string, unknown>>>("GET", "/available_phone_numbers?" + p);
   if (faultOf(r)) return r;
@@ -314,6 +395,8 @@ export async function searchNumbers(opts: {
     const ci = (n.cost_information ?? {}) as Record<string, unknown>;
     const regions = (n.region_information ?? []) as Array<Record<string, string>>;
     const costKnown = ci.monthly_cost != null || ci.upfront_cost != null;
+    const regionOf = (t: string) =>
+      regions.find((x) => x.region_type === t)?.region_name ?? null;
     return {
       phoneNumber: String(n.phone_number),
       type: String(n.phone_number_type),
@@ -325,21 +408,108 @@ export async function searchNumbers(opts: {
       reservable: n.reservable === true,
       // Prefer the human-meaningful label; the raw first entry is often an
       // obscure rate centre nobody recognises.
-      region: regions.find((x) => x.region_type === "location")?.region_name ??
-              regions.find((x) => x.region_type === "state")?.region_name ?? null,
+      region: regionOf("location") ?? regionOf("state"),
+      features: featureNames(n.features),
+      countryCode: regionOf("country_code"),
+      currency: ci.currency == null ? null : String(ci.currency),
+      locality: regionOf("location"),
+      administrativeArea: regionOf("state"),
     };
   });
 }
 
+/** Per-country, per-number-type capabilities.
+ *
+ *  ⚠️ **`data` IS AN OBJECT KEYED BY FULL COUNTRY NAME** — `"United Kingdom"`,
+ *  not `"GB"` — with **247 entries**, and it is not an array. Probed
+ *  2026-08-26. Each entry carries `code`, `region`, `reservable`, `quickship`
+ *  and one block per number type (`local`/`mobile`/`national`/`toll_free`/
+ *  `shared_cost`), where an EMPTY `{}` means that type does not exist there.
+ *
+ *  🔴 Never read capabilities off the country-level `features` roll-up: it
+ *  UNIONS every number type, so GB reads as having SMS when GB *local* does
+ *  not (GB *mobile* does, under a heavier requirement set).
+ *
+ *  `GET /v2/country_coverage/countries/{XX}` exists and returns the same richer
+ *  per-country object, so a single country needs no scan of the 247-entry list.
+ *  Raw and unmapped on purpose — the caller stores it verbatim. */
+export async function getCountryCoverage(
+  country?: string,
+): Promise<Record<string, unknown> | TelnyxFault> {
+  const path = country
+    ? `/country_coverage/countries/${encodeURIComponent(country.toUpperCase())}`
+    : "/country_coverage";
+  const r = await call<Record<string, unknown>>("GET", path);
+  if (faultOf(r)) return r;
+  return r;
+}
+
+/** The regulatory documents needed to ORDER in a country.
+ *
+ *  🔴 THIS RETURNS ONE ROW PER REQUIREMENT **SET**, AND `data.length` IS NOT A
+ *  DOCUMENT COUNT. The documents live in each row's `requirement_types[]`.
+ *  Measured 2026-08-26: US/CA/PR return **0 rows**; GB returns **1 row holding
+ *  6 requirement types**. Counting rows would read GB as "one small hurdle".
+ *  The "no paperwork" test is zero sets OR zero requirement types.
+ *
+ *  🔴 A NON-200 IS NOT "NO REQUIREMENTS". Firing ~28 of these back to back
+ *  rate-limited four countries, and a 429 read as an empty result marks a
+ *  documented country sellable — which sells a number that arrives
+ *  `requirement-info-pending` and never works. This returns a fault; any caller
+ *  writing sellability must leave the flag UNTOUCHED on a fault, never write
+ *  `requirements_empty = true` from a failed read.
+ *
+ *  Returns the RAW `data` array, unmapped, so the caller stores the compliance
+ *  record verbatim rather than through a lossy projection. */
+export async function getOrderingRequirements(
+  country: string, numberType = "local",
+): Promise<Array<Record<string, unknown>> | TelnyxFault> {
+  const p = new URLSearchParams({
+    "filter[country_code]": country.toUpperCase(),
+    "filter[phone_number_type]": numberType,
+    "filter[action]": "ordering",
+  });
+  const r = await call<Array<Record<string, unknown>>>("GET", "/requirements?" + p);
+  if (faultOf(r)) return r;
+  return Array.isArray(r) ? r : [];
+}
+
+/** Requirement Groups we have pre-verified with Telnyx.
+ *
+ *  An APPROVED group is what turns a documented country sellable without
+ *  collecting ID from every customer — the owner files the documents once.
+ *  Probed 2026-08-26: the endpoint answers 200 with `data: []`; the account
+ *  holds zero groups. **Nothing in this codebase creates one** — filing is an
+ *  owner action, and this wrapper only reads. */
+export async function listRequirementGroups(): Promise<
+  Array<Record<string, unknown>> | TelnyxFault
+> {
+  const r = await call<Array<Record<string, unknown>>>("GET", "/requirement_groups");
+  if (faultOf(r)) return r;
+  return Array.isArray(r) ? r : [];
+}
+
 /** Buy. ASYNCHRONOUS — the order starts `pending`; poll `getOrder`. Measured
  *  under 5s, but a webhook outage must not strand a purchase, so the caller
- *  polls rather than waiting on an event. */
+ *  polls rather than waiting on an event.
+ *
+ *  `requirementGroupId` attaches a pre-verified regulatory bundle to the order,
+ *  which is the only way a documented country can be ordered without collecting
+ *  documents from the end user. ⚠️ When it is absent the request body is
+ *  BYTE-IDENTICAL to the US/CA shape that has been proven in production — the
+ *  field is spread in conditionally rather than sent as null, because a null on
+ *  this API has already meant "silently ignored" three times over. */
 export async function orderNumber(
-  phoneNumber: string, customerReference: string,
+  phoneNumber: string,
+  customerReference: string,
+  opts?: { requirementGroupId?: string | null },
 ): Promise<{ orderId: string; status: string } | TelnyxFault> {
   const r = await call<Record<string, unknown>>("POST", "/number_orders", {
     phone_numbers: [{ phone_number: phoneNumber }],
     customer_reference: customerReference,
+    ...(opts?.requirementGroupId
+      ? { requirement_group_id: opts.requirementGroupId }
+      : {}),
   });
   if (faultOf(r)) return r;
   return { orderId: String(r.id), status: String(r.status) };

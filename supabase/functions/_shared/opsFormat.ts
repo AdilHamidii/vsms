@@ -1875,6 +1875,132 @@ export function formatLines(raw: Record<string, unknown>): string {
   return out.join("\n");
 }
 
+// ── /lines countries ────────────────────────────────────────────────────────
+
+/** A country's capability strip. PRESENT-OR-ABSENT, never red: absence is not
+ *  an error, it is what the country sells. A voice-only country is an honest
+ *  "call out" line, not a broken one — that is the whole reason the catalog
+ *  exists, so it must not be rendered as a fault. */
+function capStrip(r: Record<string, unknown>): string {
+  const glyph = (on: unknown, yes: string) => on === true ? yes : "·";
+  return [
+    glyph(r.supports_voice, "📞"),
+    glyph(r.supports_sms, "💬"),
+    glyph(r.supports_mms, "🖼"),
+    glyph(r.supports_emergency, "🚑"),
+  ].join("");
+}
+
+/** Wholesale sample. `sample_cost_known === false` means we quoted a number
+ *  Telnyx did not price — printing it as money would make a guess look
+ *  measured, which is this repo's oldest standing rule. */
+function wholesaleBit(r: Record<string, unknown>): string {
+  if (r.sample_cost_known !== true) return "no quote";
+  const cur = str(r.sample_currency) || "USD";
+  const monthly = num0(r.sample_monthly_cents) / 100;
+  const upfront = num0(r.sample_upfront_cents) / 100;
+  const m = cur === "USD" ? usd(monthly) : `${monthly.toFixed(2)} ${cur}`;
+  const u = upfront > 0
+    ? ` +${cur === "USD" ? usd(upfront) : `${upfront.toFixed(2)} ${cur}`} once`
+    : "";
+  return `${m}/mo${u}`;
+}
+
+/** `/lines countries` — what the second-number product can actually sell, and
+ *  why the rest is blocked.
+ *
+ *  Wholesale is printed HERE and nowhere else: it is the ops chat, and the
+ *  client never sees a cost. The blocked half prints its `sell_reason` and, for
+ *  a document-gated country, how many documents Telnyx wants — that number is
+ *  the difference between "file two forms" and "never".
+ *
+ *  Counts come from the RPC (`total` / `sellable`), never from the array: the
+ *  list below is capped, and a headline computed over a capped array is an
+ *  artifact of the LIMIT (ops_route once read "25 of 69 bookable" against 54). */
+export function formatLineCountries(raw: Record<string, unknown>): string {
+  const s = obj(raw);
+  const rows = arr(s.countries);
+  const now = new Date();
+  const total = num0(s.total);
+  const sellable = num0(s.sellable);
+  const sync = obj(s.sync);
+  const checkedAt = ts(sync.checked_at);
+
+  const out: string[] = [];
+  // `n()` pluralises by appending "s" — "countrys" — so the plural is given.
+  out.push(`🌍 <b>${esc(sellable)} sellable of ` +
+           `${esc(n("country", total, "countries"))} probed</b>`);
+
+  if (rows.length === 0) {
+    out.push("");
+    out.push("<i>Nothing probed yet — sync-line-countries has never written a row.</i>");
+    out.push("");
+    out.push(stamp(now));
+    return out.join("\n");
+  }
+
+  const sell = rows.filter((r) => str(r.sell_state) === "sellable");
+  const blocked = rows.filter((r) => str(r.sell_state) !== "sellable");
+
+  if (sell.length > 0) {
+    out.push("");
+    out.push("<b>On sale</b>");
+    const { shown, hidden } = capped(sell, 20);
+    for (const r of shown) {
+      const bits = [
+        `✅ <b>${esc(str(r.code).toUpperCase())}</b>`,
+        esc(str(r.name) || "?"),
+        capStrip(r),
+        esc(wholesaleBit(r)),
+      ];
+      if (str(r.number_type) && str(r.number_type) !== "local") {
+        bits.splice(2, 0, esc(str(r.number_type)));
+      }
+      if (num0(r.live_lines) > 0) bits.push(`${esc(n("line", num0(r.live_lines)))} live`);
+      // stock_seen is false only when a search came back empty — a country we
+      // are willing to sell and cannot fill is worth seeing before a customer
+      // finds it.
+      if (r.stock_seen === false) bits.push("⚠️ no stock seen");
+      out.push(bits.join(" · "));
+    }
+    if (hidden > 0) out.push(`<i>… and ${esc(hidden)} more, not shown</i>`);
+  }
+
+  if (blocked.length > 0) {
+    out.push("");
+    out.push(`<b>Blocked (${esc(blocked.length)})</b>`);
+    const { shown, hidden } = capped(blocked, 15);
+    for (const r of shown) {
+      const bits = [
+        `🚫 <b>${esc(str(r.code).toUpperCase())}</b>`,
+        esc(str(r.name) || "?"),
+        capStrip(r),
+        esc(str(r.sell_reason) || "no reason recorded"),
+      ];
+      const docs = r.document_count;
+      if (typeof docs === "number" && docs > 0) bits.push(`${esc(n("document", docs))}`);
+      if (str(r.requirement_group_status)) {
+        bits.push(`group ${esc(str(r.requirement_group_status))}`);
+      }
+      if (num0(r.live_lines) > 0) {
+        // Rent we are paying in a country we will not sell again.
+        bits.push(`⚠️ ${esc(n("line", num0(r.live_lines)))} still live`);
+      }
+      out.push(bits.join(" · "));
+    }
+    if (hidden > 0) out.push(`<i>… and ${esc(hidden)} more, not shown</i>`);
+  }
+
+  out.push("");
+  out.push(checkedAt
+    ? `<i>Probed ${esc(parisSmart(checkedAt, now))} (${esc(ago(checkedAt, now))}).</i>`
+    : `<i>No sync heartbeat yet — these rows have never been refreshed.</i>`);
+  out.push(`<i>📞 call · 💬 text · 🖼 MMS · 🚑 emergency; “·” means the country ` +
+           `does not offer it. Wholesale is ops-only and is never shown in the app.</i>`);
+  out.push(stamp(now));
+  return out.join("\n");
+}
+
 // ── /route ──────────────────────────────────────────────────────────────────
 
 /** `/route <service> [country]` — "why is X unavailable?".
