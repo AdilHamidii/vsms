@@ -3393,12 +3393,13 @@ SMS provider again, walk this list:
 Every number below has been wrong within a day of being written at least once.
 It is a starting point for "is this roughly right", never a citation.
 
-- **iOS**: `MARKETING_VERSION 2.3`, `CURRENT_PROJECT_VERSION 44`, iOS min
+- **iOS**: `MARKETING_VERSION 2.4`, `CURRENT_PROJECT_VERSION 45`, iOS min
   **18.0**, **3** SwiftPM dependencies (TelnyxRTC 4.1.2 → WebRTC 139.0.0,
   Starscream 4.0.8). Re-count sources with
   `find VirtualSIM -name '*.swift' | wc -l` rather than quoting a number.
-  **2.2 is `READY_FOR_SALE`; 2.3 (build 44) SUBMITTED 2026-08-23 11:22Z —
-  `WAITING_FOR_REVIEW`, submission `887a51cf-…`, version `223625a6-…`.**
+  **2.3 (build 44) is `READY_FOR_SALE`; 2.4 (build 45, the line country
+  catalog + country picker) SUBMITTED 2026-08-26 22:47Z —
+  `WAITING_FOR_REVIEW`, submission `6c2530b0-…`, version `f08aaa70-…`.**
   (Build 43's submission `22be3a0b-…` was CANCELLED the same morning to pull
   the "≈ N verifications" paywall estimate and add the line-UI batch; the
   cancel → `DEVELOPER_REJECTED` → reattach → resubmit path worked a fourth

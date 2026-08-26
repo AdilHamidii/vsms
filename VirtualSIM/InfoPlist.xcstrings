@@ -1,20 +1,44 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "CFBundleDisplayName" : {
+      "comment" : "Bundle display name",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "vSMS"
+          }
+        }
+      }
+    },
+    "CFBundleName" : {
+      "comment" : "Bundle name",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "VirtualSIM"
+          }
+        }
+      }
+    },
     "NSCameraUsageDescription" : {
       "comment" : "vSMS never opens the camera. The string exists because build 32 was REJECTED with ITMS-90683: WebRTC.framework links AVCaptureDevice and AVCaptureSession, and Apple's static check requires a purpose string for any linked sensitive API whether or not the app calls it. Keep the wording honest — iOS would show this verbatim if anything ever did ask.",
       "extractionState" : "manual",
       "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "vSMS does not use your camera. This notice is required because the calling component the app is built on also supports video calls, which vSMS does not offer."
-          }
-        },
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "vSMS verwendet Ihre Kamera nicht. Dieser Hinweis ist erforderlich, weil die Anrufkomponente der App auch Videoanrufe unterstützt, die vSMS nicht anbietet."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "vSMS does not use your camera. This notice is required because the calling component the app is built on also supports video calls, which vSMS does not offer."
           }
         },
         "es" : {
@@ -53,16 +77,16 @@
       "comment" : "Shown by iOS the first time the user places or answers a call on their rented second number. Info.plist strings are NOT covered by Localizable.xcstrings — they need this separate catalog, which is why six locales read English here until it was added.\n\n🔴 THE \"en\" ENTRY IS LOAD-BEARING AND WAS MISSING UNTIL 2026-08-07. A key with no source-language value does NOT fall back to the INFOPLIST_KEY_* build setting — Xcode's catalog compiler emits the KEY ITSELF as the value, so en.lproj/InfoPlist.strings read \"NSMicrophoneUsageDescription\" and that literal is what iOS showed English users on their first call. Caught only because Apple flagged the camera twin with ITMS-90738; the microphone one had been shipping silently since calling landed. Every key in this file needs an explicit \"en\".",
       "extractionState" : "manual",
       "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "vSMS uses the microphone so you can talk during calls placed from your rented number."
-          }
-        },
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "vSMS verwendet das Mikrofon, damit Sie bei Anrufen über Ihre gemietete Nummer sprechen können."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "vSMS uses the microphone so you can talk during calls placed from your rented number."
           }
         },
         "es" : {

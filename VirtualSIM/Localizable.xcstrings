@@ -3265,6 +3265,7 @@
       }
     },
     "A typical verification costs %lld credits. Prices vary by service and country.": {
+      "extractionState": "stale",
       "localizations": {
         "de": {
           "stringUnit": {
@@ -4325,10 +4326,86 @@
       }
     },
     "Anywhere available": {
-      "extractionState": "manual"
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Überall verfügbar"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Disponible en cualquier lugar"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Disponible partout"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Disponibile ovunque"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "どこでも利用可能"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Disponível em qualquer lugar"
+          }
+        }
+      }
     },
     "Anywhere in %@": {
-      "extractionState": "manual"
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Überall in %@"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "En cualquier lugar de %@"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "N'importe où : %@"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ovunque in %@"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@のどこでも"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Em qualquer lugar de %@"
+          }
+        }
+      }
     },
     "Appearance": {
       "extractionState": "manual",
@@ -5624,9 +5701,48 @@
       }
     },
     "Calls only. This number can't send or receive texts.": {
-      "extractionState": "manual"
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nur Anrufe. Diese Nummer kann keine SMS senden oder empfangen."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Solo llamadas. Este número no puede enviar ni recibir SMS."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Appels uniquement. Ce numéro ne peut ni envoyer ni recevoir de SMS."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Solo chiamate. Questo numero non può inviare né ricevere SMS."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "通話のみ。この番号ではSMSの送受信はできません。"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Apenas chamadas. Este número não pode enviar nem receber SMS."
+          }
+        }
+      }
     },
     "Calls you make and receive on this number appear here.": {
+      "extractionState": "stale",
       "localizations": {
         "de": {
           "stringUnit": {
@@ -7690,7 +7806,6 @@
       }
     },
     "Coming soon": {
-      "extractionState": "stale",
       "localizations": {
         "de": {
           "stringUnit": {
@@ -11224,7 +11339,45 @@
       }
     },
     "Emergency calls": {
-      "extractionState": "manual"
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Notrufe"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Llamadas de emergencia"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Appels d'urgence"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Chiamate di emergenza"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "緊急通報"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Chamadas de emergência"
+          }
+        }
+      }
     },
     "End call": {
       "localizations": {
@@ -18427,7 +18580,45 @@
       }
     },
     "Not available yet": {
-      "extractionState": "manual"
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Noch nicht verfügbar"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aún no disponible"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pas encore disponible"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Non ancora disponibile"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "まだ利用できません"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ainda não disponível"
+          }
+        }
+      }
     },
     "Not enough credits. Tap Top up to buy more.": {
       "localizations": {
@@ -18591,7 +18782,45 @@
       }
     },
     "Not supported": {
-      "extractionState": "manual"
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nicht unterstützt"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No compatible"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Non pris en charge"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Non supportato"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "非対応"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Não suportado"
+          }
+        }
+      }
     },
     "Not tested": {
       "extractionState": "stale",
@@ -21197,7 +21426,45 @@
       }
     },
     "Picture messages": {
-      "extractionState": "manual"
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bildnachrichten"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mensajes con imágenes"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Messages photo"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Messaggi con immagini"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "画像メッセージ"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mensagens de imagem"
+          }
+        }
+      }
     },
     "Pink": {
       "localizations": {
@@ -23269,7 +23536,45 @@
       }
     },
     "Requires local registration we don't support yet": {
-      "extractionState": "manual"
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Erfordert eine lokale Registrierung, die wir noch nicht unterstützen"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Requiere un registro local que aún no admitimos"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nécessite un enregistrement local que nous ne prenons pas encore en charge"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Richiede una registrazione locale che non supportiamo ancora"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "現在未対応の現地登録が必要です"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Exige um registro local que ainda não suportamos"
+          }
+        }
+      }
     },
     "Resend in %llds": {
       "localizations": {
@@ -24919,6 +25224,7 @@
       }
     },
     "Share my number": {
+      "extractionState": "stale",
       "localizations": {
         "de": {
           "stringUnit": {
@@ -26729,7 +27035,45 @@
       }
     },
     "Supported": {
-      "extractionState": "manual"
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Unterstützt"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Compatible"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pris en charge"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Supportato"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "対応"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Suportado"
+          }
+        }
+      }
     },
     "System": {
       "localizations": {
@@ -27418,7 +27762,45 @@
       }
     },
     "Texts": {
-      "extractionState": "manual"
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "SMS"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "SMS"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "SMS"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "SMS"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "SMS"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "SMS"
+          }
+        }
+      }
     },
     "Texts left": {
       "extractionState": "stale",
@@ -27462,6 +27844,7 @@
       }
     },
     "Texts sent to it land here. Share it with someone to get started.": {
+      "extractionState": "stale",
       "localizations": {
         "de": {
           "stringUnit": {
@@ -29183,7 +29566,45 @@
       }
     },
     "This country isn't available yet. Pick another one.": {
-      "extractionState": "manual"
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dieses Land ist noch nicht verfügbar. Wählen Sie ein anderes."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Este país aún no está disponible. Elige otro."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ce pays n'est pas encore disponible. Choisissez-en un autre."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Questo paese non è ancora disponibile. Scegline un altro."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "この国はまだ利用できません。別の国を選んでください。"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Este país ainda não está disponível. Escolha outro."
+          }
+        }
+      }
     },
     "This credit pack isn't available right now. Please try again later.": {
       "localizations": {
@@ -30770,7 +31191,45 @@
       }
     },
     "Try another country": {
-      "extractionState": "manual"
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Anderes Land versuchen"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Prueba con otro país"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Essayer un autre pays"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Prova un altro paese"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "別の国を試す"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tente outro país"
+          }
+        }
+      }
     },
     "Try another number": {
       "extractionState": "manual",
@@ -31017,6 +31476,7 @@
       }
     },
     "Under 1 verification": {
+      "extractionState": "stale",
       "localizations": {
         "de": {
           "stringUnit": {
@@ -32709,7 +33169,45 @@
       }
     },
     "We don't sell numbers here yet": {
-      "extractionState": "manual"
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hier verkaufen wir noch keine Nummern"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aún no vendemos números aquí"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nous ne vendons pas encore de numéros ici"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Qui non vendiamo ancora numeri"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "この地域ではまだ番号を販売していません"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ainda não vendemos números aqui"
+          }
+        }
+      }
     },
     "We hand you a real, working e-mail address": {
       "localizations": {
@@ -33034,7 +33532,45 @@
       }
     },
     "We're working on this country. Another one is ready now.": {
-      "extractionState": "manual"
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Wir arbeiten an diesem Land. Ein anderes ist bereits verfügbar."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Estamos trabajando en este país. Otro ya está listo."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ce pays est en préparation. Un autre est déjà disponible."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Stiamo lavorando a questo paese. Un altro è già pronto."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "この国は準備中です。他の国はすぐに利用できます。"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Estamos trabalhando neste país. Outro já está pronto."
+          }
+        }
+      }
     },
     "We've paused data plans while we make some improvements. Any eSIM you already bought keeps working. Find it under My eSIMs.": {
       "extractionState": "manual",
@@ -33478,7 +34014,45 @@
       }
     },
     "Which city?": {
-      "extractionState": "manual"
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Welche Stadt?"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "¿Qué ciudad?"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Quelle ville ?"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Quale città?"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "どの都市にしますか？"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Qual cidade?"
+          }
+        }
+      }
     },
     "With Apple, there's no password to make and your email can stay hidden": {
       "localizations": {
@@ -35942,6 +36516,7 @@
       }
     },
     "Your number is ready": {
+      "extractionState": "stale",
       "localizations": {
         "de": {
           "stringUnit": {
@@ -38230,6 +38805,7 @@
       "shouldTranslate": false
     },
     "≈ %lld verifications": {
+      "extractionState": "stale",
       "localizations": {
         "de": {
           "stringUnit": {
@@ -38270,6 +38846,7 @@
       }
     },
     "≈ 1 verification": {
+      "extractionState": "stale",
       "localizations": {
         "de": {
           "stringUnit": {
