@@ -519,16 +519,20 @@ cannot tell you:
   There is no offer-type column; a yearly is the only kind of product with a
   trial, so this heuristic is exact today and wrong the day a $0 promo ships on
   a monthly. `/trials`, `trial_soon` and `trial_off` all share it.
-  **NO product carries a trial as of 2026-08-25.** `line.yearly`'s 3-day
-  trial was removed first (see "the yearly trial is dead" below), and
-  `mail.yearly`'s followed on 2026-08-25 (owner decision — every billing
-  attempt across both products' trials failed: 6/6 line, 1/1 mail at that
-  point, all `DID_FAIL_TO_RENEW` with auto-renew still on). Both verified
-  via `GET /v1/subscriptions/{id}/introductoryOffers` = empty
-  (line 6798759539, mail 6803258736). So after the in-flight trials settle
-  (last converts 2026-08-28), ANY new `price_milli = 0` row means an offer
-  came back or something is wrong. The paywalls need no release —
-  trial copy reads the live intro offer and disappears on its own.
+  **`mail.yearly` carries a 3-day trial again (REINSTATED 2026-08-27, owner
+  decision); the LINE products carry none.** History: both trials were
+  removed by 2026-08-25 because every billing attempt across them failed
+  (6/6 line, 1/1 mail, all `DID_FAIL_TO_RENEW` with auto-renew still on).
+  The mail one was brought back two days later — the mail sample was n=1
+  and $29.99 is a softer conversion than the line's $99.99 — and this time
+  it covers **all 175 priced territories** (the 2026-08-19 original was
+  base-territory only). Created and read back by
+  `scripts/asc-mail-yearly-trial.py` (dry-run by default; idempotent).
+  Verified: line 6798759539 offers = empty; mail 6803258736 offers = 175.
+  So a `price_milli = 0` row on `mail.yearly` is a real trial; on any LINE
+  product it means an offer came back or something is wrong. The paywalls
+  need no release — trial copy reads the live intro offer and appears or
+  disappears on its own.
 - **"Today" is since midnight Paris**, not UTC — `ops_now` does
   `date_trunc('day', now() at time zone 'Europe/Paris') at time zone 'Europe/Paris'`.
 - **Every count a formatter prints must be computed in SQL, not over the rows
@@ -1247,7 +1251,7 @@ these):
 |---|---|---|---|
 | group | **22320947** "vSMS Mail" | — | — |
 | `com.anthersystems.VirtualSIM.mail.monthly` | **6803258564** | $2.99/mo | none |
-| `com.anthersystems.VirtualSIM.mail.yearly` | **6803258736** | $29.99/yr | ~~3 days~~ **removed 2026-08-25** |
+| `com.anthersystems.VirtualSIM.mail.yearly` | **6803258736** | $29.99/yr | **3 days — removed 2026-08-25, REINSTATED 2026-08-27 in all 175 territories** |
 
 Both are available in the same **175 territories** the line sells in and priced
 in all 175 (verified 2026-08-19: USA/FRA/DEU/GBR $2.99·€2.99·£2.99 monthly and
@@ -2144,8 +2148,9 @@ live intro offer and is nil without one, so "Start 3 days free" disappears
 on its own; `Products.storekit` and the DEBUG fixture were updated to match.
 ⚠️ The ops bot's trial heuristic (`price_milli = 0` on a `.yearly`) stays
 exact for the in-flight four and is simply empty afterwards. **The MAIL
-yearly's trial was removed too, on 2026-08-25** — see the mail-subscription
-section; as of that date NO product carries a trial.
+yearly's trial was removed the same week and then REINSTATED on 2026-08-27**
+— see the mail-subscription section; the LINE products are the ones with no
+trial, and that part of this section stands.
 
 ### Swapping a line's number — 8 credits (2026-08-21, repriced 2026-08-23)
 
