@@ -124,6 +124,11 @@ enum PrefKey {
     static let otpAnimation     = "pref.otpAnimation"
     static let showMetrics      = "pref.showMetrics"
 
+    /// Local nicknames for line peers, keyed by E.164. Device-only on
+    /// purpose — the server has no contacts table and must not learn who a
+    /// user's callers are.
+    static let lineContactNames = "line.contactNames"
+
     /// The `id` of the announcement this user waved away. Stored as the id and
     /// not a Bool so the NEXT announcement still shows — see
     /// `AppState.visibleAnnouncement`.
@@ -660,10 +665,39 @@ final class AppState {
     var appearance: AppearanceMode {
         didSet { UserDefaults.standard.set(appearance.rawValue, forKey: PrefKey.appearance) }
     }
-    /// Brand colour. Affects `ink`/`inkSoft`/`glow` only — semantic
+    /// Brand colour. Affects `ink`/`inkSoft` only — semantic
     /// success/warn/fail colours are fixed. See `AccentColor`.
     var accent: AccentColor {
         didSet { UserDefaults.standard.set(accent.rawValue, forKey: PrefKey.accent) }
+    }
+
+    /// Local nicknames for line peers (recents, conversations, in-call),
+    /// keyed by E.164. Persisted per device only — see `PrefKey.lineContactNames`.
+    /// Set an empty/whitespace name to remove. Read through `contactName(for:)`.
+    var lineContactNames: [String: String] {
+        didSet { UserDefaults.standard.set(lineContactNames, forKey: PrefKey.lineContactNames) }
+    }
+
+    /// The nickname for a peer, or nil — callers fall back to the formatted
+    /// number themselves so this never invents a display string.
+    func contactName(for e164: String) -> String? {
+        lineContactNames[e164]
+    }
+
+    /// A number the dialer should open pre-filled — set by "Call back" on a
+    /// recents row and by the thread header's call button, consumed (and
+    /// cleared) by `DialerScreen` on appear. Cleared on consume rather than on
+    /// dismiss so an abandoned prefill can never leak into the next manual
+    /// dial.
+    var dialerPrefill: String?
+
+    func setContactName(_ name: String, for e164: String) {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty {
+            lineContactNames.removeValue(forKey: e164)
+        } else {
+            lineContactNames[e164] = trimmed
+        }
     }
     var waitingAnimation: WaitingAnimation {
         didSet { UserDefaults.standard.set(waitingAnimation.rawValue, forKey: PrefKey.waitingAnimation) }
@@ -717,6 +751,8 @@ final class AppState {
             rawValue: defaults.string(forKey: PrefKey.otpAnimation) ?? ""
         ) ?? .cascade
         self.showMetrics = defaults.object(forKey: PrefKey.showMetrics) as? Bool ?? true
+        self.lineContactNames =
+            defaults.dictionary(forKey: PrefKey.lineContactNames) as? [String: String] ?? [:]
         // Seed the intent to match the launch tab. Everywhere else it is set by
         // a tab change or a flow entry, and neither fires on the tab the app
         // opens ON — so without this the app would boot on the Number tab
