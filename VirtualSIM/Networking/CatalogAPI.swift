@@ -41,10 +41,28 @@ struct Catalog: Codable {
 struct CatalogAPI {
     let client: APIClient
 
+    /// Every column `Service` decodes, and no others. Same rule as `routes`
+    /// below: this request is UNAUTHENTICATED, so `select=*` hands every
+    /// present-and-future column on the table to anyone holding the
+    /// publishable key. Add a column here only when the model decodes it.
+    private static let serviceColumns = [
+        "id", "name", "category", "glyph", "icon", "domain", "tint_hex",
+        "smspva_code", "cost", "success_rate", "eta_seconds", "sort_order",
+        "observed_codes", "observed_attempts",
+        "arrival_p50_seconds", "arrival_p90_seconds", "arrival_sample",
+        "arrival_scope", "arrival_hold_pct",
+    ].joined(separator: ",")
+
+    /// Every column `Country` decodes, and no others.
+    private static let countryColumns = [
+        "id", "name", "flag", "dial_code", "smspva_code", "stock",
+        "avg_seconds", "sort_order", "observed_attempts", "observed_codes",
+    ].joined(separator: ",")
+
     func fetch() async throws -> Catalog {
         async let svcTask: [Service] = client.request(
             .get, path: "rest/v1/services",
-            query: [URLQueryItem(name: "select", value: "*"),
+            query: [URLQueryItem(name: "select", value: Self.serviceColumns),
                     // Skip services flagged not-visible server-side (e.g. ones
                     // whose only provider code is an UNMAPPED placeholder — a
                     // guaranteed dead end). Data-driven, no client release needed.
@@ -54,7 +72,7 @@ struct CatalogAPI {
         )
         async let ctyTask: [Country] = client.request(
             .get, path: "rest/v1/countries",
-            query: [URLQueryItem(name: "select", value: "*"),
+            query: [URLQueryItem(name: "select", value: Self.countryColumns),
                     URLQueryItem(name: "order",  value: "sort_order.asc")],
             authenticated: false
         )

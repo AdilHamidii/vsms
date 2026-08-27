@@ -13684,6 +13684,48 @@
         }
       }
     },
+    "High": {
+      "extractionState": "extracted (manual)",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hoch"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Alto"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Élevé"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Alto"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "高い"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Alto"
+          }
+        }
+      },
+      "comment": "Band word for a network-wide delivery rate above 60% (see NetworkRateMeter) — not a general-purpose adjective."
+    },
     "Hit or miss for %@": {
       "extractionState": "stale",
       "localizations": {
@@ -15380,6 +15422,48 @@
         }
       }
     },
+    "Low": {
+      "extractionState": "extracted (manual)",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Niedrig"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bajo"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Faible"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Basso"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "低い"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Baixo"
+          }
+        }
+      },
+      "comment": "Band word for a network-wide delivery rate below 30% (see NetworkRateMeter) — not a general-purpose adjective."
+    },
     "MANUAL INSTALL": {
       "localizations": {
         "de": {
@@ -15944,6 +16028,48 @@
           }
         }
       }
+    },
+    "Medium": {
+      "extractionState": "extracted (manual)",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mittel"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Medio"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Moyen"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Medio"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "普通"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Médio"
+          }
+        }
+      },
+      "comment": "Band word for a network-wide delivery rate between 30% and 60% (see NetworkRateMeter) — not a general-purpose adjective."
     },
     "Member since %@": {
       "localizations": {
@@ -16514,45 +16640,47 @@
         }
       }
     },
-    "Network-wide delivery rate %lld percent": {
+    "Network-wide delivery rate: %@": {
+      "extractionState": "extracted (manual)",
       "localizations": {
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Netzwerkweite Zustellrate %lld Prozent"
+            "value": "Netzwerkweite Zustellrate: %@"
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "Tasa de entrega en toda la red: %lld por ciento"
+            "value": "Tasa de entrega en toda la red: %@"
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Taux de réception à l'échelle du réseau : %lld pour cent"
+            "value": "Taux de livraison sur l'ensemble du réseau : %@"
           }
         },
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "Tasso di consegna sull'intera rete %lld percento"
+            "value": "Tasso di consegna sull'intera rete: %@"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "ネットワーク全体の到達率%lldパーセント"
+            "value": "ネットワーク全体の到達率：%@"
           }
         },
         "pt-BR": {
           "stringUnit": {
             "state": "translated",
-            "value": "Taxa de entrega em toda a rede: %lld por cento"
+            "value": "Taxa de entrega em toda a rede: %@"
           }
         }
-      }
+      },
+      "comment": "VoiceOver label for NetworkRateMeter. %@ is one of High/Medium/Low (see those keys) — never the raw percentage."
     },
     "Network-wide rate, not our own record": {
       "localizations": {
@@ -19760,45 +19888,47 @@
         }
       }
     },
-    "On outlook.com and hotmail.com, subject to availability. Your allowance resets at midnight UTC. Gmail stays a 1-credit purchase either way — it isn't part of the subscription.": {
+    "On outlook.com and hotmail.com, subject to availability. Your allowance resets at midnight UTC.": {
+      "extractionState": "extracted (manual)",
       "localizations": {
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Auf outlook.com und hotmail.com, solange verfügbar. Dein Kontingent wird um Mitternacht UTC zurückgesetzt. Gmail kostet weiterhin 1 Credit und gehört nicht zum Abo."
+            "value": "Bei outlook.com und hotmail.com, je nach Verfügbarkeit. Ihr Kontingent wird um Mitternacht UTC zurückgesetzt."
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "En outlook.com y hotmail.com, según disponibilidad. Tu cupo se restablece a medianoche UTC. Gmail sigue costando 1 crédito y no está incluido en la suscripción."
+            "value": "En outlook.com y hotmail.com, según disponibilidad. Tu límite se reinicia a medianoche UTC."
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Sur outlook.com et hotmail.com, selon les disponibilités. Votre quota est réinitialisé à minuit UTC. Gmail reste à 1 crédit et n’est pas inclus dans l’abonnement."
+            "value": "Sur outlook.com et hotmail.com, selon disponibilité. Votre quota est réinitialisé à minuit UTC."
           }
         },
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "Su outlook.com e hotmail.com, salvo disponibilità. Il tuo limite si azzera a mezzanotte UTC. Gmail resta a 1 credito e non è incluso nell’abbonamento."
+            "value": "Su outlook.com e hotmail.com, in base alla disponibilità. Il tuo limite si azzera a mezzanotte UTC."
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "outlook.comとhotmail.comで、在庫がある場合に限ります。利用枠はUTCの午前0時にリセットされます。Gmailは引き続き1クレジットで、サブスクリプションには含まれません。"
+            "value": "outlook.comとhotmail.comで、在庫状況によります。割り当ては協定世界時（UTC）の午前0時にリセットされます。"
           }
         },
         "pt-BR": {
           "stringUnit": {
             "state": "translated",
-            "value": "Em outlook.com e hotmail.com, sujeito à disponibilidade. Sua cota é redefinida à meia-noite UTC. O Gmail continua custando 1 crédito e não faz parte da assinatura."
+            "value": "Em outlook.com e hotmail.com, sujeito à disponibilidade. Seu limite é reiniciado à meia-noite UTC."
           }
         }
-      }
+      },
+      "comment": "MailPaywallScreen intro sentence — states the two free domains and the daily reset. No gmail mention (removed from sale 2026-08-26)."
     },
     "Once an order ends, with a code or with a refund, it lands here.": {
       "localizations": {
@@ -22765,6 +22895,46 @@
           "stringUnit": {
             "state": "translated",
             "value": "Receba mensagens de números e serviços dos EUA e do Canadá, atenda chamadas de qualquer lugar e ligue a partir dele. Seu número real nunca sai do seu telefone."
+          }
+        }
+      }
+    },
+    "Received": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Erhalten"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Recibido"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Reçu"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ricevuto"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "受信済み"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Recebido"
           }
         }
       }
@@ -35422,45 +35592,47 @@
         }
       }
     },
-    "You've used today's free addresses. Try again tomorrow, or pick Gmail.": {
+    "You've used today's free addresses. Try again tomorrow, or subscribe for more on Outlook and Hotmail.": {
+      "extractionState": "extracted (manual)",
       "localizations": {
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Sie haben die kostenlosen Adressen für heute aufgebraucht. Versuchen Sie es morgen erneut oder wählen Sie Gmail."
+            "value": "Sie haben Ihre kostenlosen Adressen für heute aufgebraucht. Versuchen Sie es morgen erneut oder abonnieren Sie für mehr Adressen bei Outlook und Hotmail."
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "Has usado las direcciones gratuitas de hoy. Inténtalo mañana o elige Gmail."
+            "value": "Has usado tus direcciones gratuitas de hoy. Inténtalo de nuevo mañana o suscríbete para tener más en Outlook y Hotmail."
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Vous avez utilisé les adresses offertes du jour. Réessayez demain ou choisissez Gmail."
+            "value": "Vous avez utilisé vos adresses gratuites du jour. Réessayez demain, ou abonnez-vous pour en obtenir davantage sur Outlook et Hotmail."
           }
         },
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "Hai usato gli indirizzi gratuiti di oggi. Riprova domani oppure scegli Gmail."
+            "value": "Hai utilizzato gli indirizzi gratuiti di oggi. Riprova domani oppure abbonati per averne di più su Outlook e Hotmail."
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "本日の無料アドレスをすべて使いました。明日もう一度お試しいただくか、Gmailをお選びください。"
+            "value": "本日の無料アドレスはすべて使用済みです。明日また試すか、購読するとOutlookとHotmailでさらに利用できます。"
           }
         },
         "pt-BR": {
           "stringUnit": {
             "state": "translated",
-            "value": "Você usou os endereços grátis de hoje. Tente amanhã ou escolha o Gmail."
+            "value": "Você já usou os endereços gratuitos de hoje. Tente novamente amanhã ou assine para ter mais endereços no Outlook e no Hotmail."
           }
         }
-      }
+      },
+      "comment": "APIError free_limit_reached copy — the pre-subscription daily free-address cap. Never names a domain the server refuses (icloud/gmail)."
     },
     "You've used your free address. More come with a subscription.": {
       "localizations": {

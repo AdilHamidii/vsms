@@ -47,7 +47,8 @@ struct SupportAPI {
     func messages() async throws -> [SupportMessage] {
         try await client.request(
             .get, path: "rest/v1/support_messages",
-            query: [URLQueryItem(name: "select", value: "*"),
+            query: [URLQueryItem(name: "select",
+                                 value: "id,thread_id,sender,body,created_at"),
                     URLQueryItem(name: "order", value: "created_at.asc")]
         )
     }

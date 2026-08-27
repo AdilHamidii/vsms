@@ -61,6 +61,17 @@ extension DeliveryRecord {
 /// `ServiceSheet` — rendered nothing for routes the country picker was already
 /// showing a real figure for. A rendering rule that exists in one file is a
 /// rule the rest of the app does not have.
+///
+/// 🔴 **RENDERS A BAND WORD, NEVER THE RAW PERCENTAGE (2026-08-27).** Measured
+/// against our own realised delivery on non-cancelled orders, the published
+/// figure runs roughly double what we saw (80+ realised ~40%, 60–79 realised
+/// ~25% — see CLAUDE.md, "STILL OUTSTANDING: the rendered number is ~2× our
+/// realised delivery"). A third-party aggregate with no published denominator
+/// should not wear two significant figures — the same rule this repo already
+/// applies to its own delivery record (`DeliveryRecord`, "2 of 7, never 29%").
+/// The bar's FILL still uses the raw `pct` (a continuous visual has no false
+/// precision to shed); only the printed text and the accessibility label are
+/// downgraded to the word.
 struct NetworkRateMeter: View {
     @Environment(\.theme) private var theme
     let pct: Int
@@ -73,11 +84,21 @@ struct NetworkRateMeter: View {
     /// amber, <30 red.** They are an explicit owner decision (2026-08-03), and
     /// they were never on the same scale as our own orders: measured over every
     /// non-cancelled order, a published 80+ realised ~40% and 60–79 realised
-    /// ~25%, so the published figure runs roughly double what we saw.
+    /// ~25%, so the published figure runs roughly double what we saw. The same
+    /// three bands now also decide the printed WORD (High/Medium/Low) — see
+    /// `band` below.
     private var color: Color {
         if clamped > 60 { return theme.live }
         if clamped >= 30 { return theme.warn }
         return theme.fail
+    }
+
+    /// The word replacing the raw percentage on screen. Same thresholds as
+    /// `color`, so the word and the colour never disagree.
+    private var band: String {
+        if clamped > 60 { return String(localized: "High") }
+        if clamped >= 30 { return String(localized: "Medium") }
+        return String(localized: "Low")
     }
 
     var body: some View {
@@ -94,17 +115,16 @@ struct NetworkRateMeter: View {
                     .frame(width: max(3, Self.barWidth * CGFloat(clamped) / 100), height: 4)
             }
 
-            Text("\(clamped)%")
+            Text(band)
                 .font(RFont.text(12, weight: .bold))
                 .foregroundStyle(color)
-                .monospacedDigit()
 
             Text("network")
                 .font(RFont.text(11))
                 .foregroundStyle(theme.text3)
         }
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(Text("Network-wide delivery rate \(clamped) percent"))
+        .accessibilityLabel(Text("Network-wide delivery rate: \(band)"))
     }
 }
 

@@ -69,10 +69,6 @@ Deno.serve(async (req) => {
   const voice = await provisionLineVoice(sb, line as LineVoiceRow,
     { persistIds: true });
 
-  const pushCredentialId =
-    Deno.env.get("TELNYX_IOS_PUSH_CREDENTIAL_ID") || undefined;
-  const hasPushCredential = !!pushCredentialId;
-
   // A missing connection or credential means the device cannot register at all,
   // so there is no token to mint. Report the first fault rather than a generic
   // one: `voiceFault` is what makes the first real call double as the probe
@@ -113,7 +109,13 @@ Deno.serve(async (req) => {
     // could ever produce a PushKit notification, and this endpoint cheerfully
     // reported inbound_ready: true. The client then advertises a capability
     // that cannot work, and nothing anywhere logs a reason.
-    inbound_ready: attachedOk && hasPushCredential,
+    //
+    // `pushCredentialHeld` is READ BACK from the connection by
+    // `provisionLineVoice` (which also repairs a push-less connection), never
+    // inferred from the env var — a connection created while the secret was
+    // unset would otherwise report ready forever. `=== true` on purpose: an
+    // unverifiable read is null and must not advertise the capability.
+    inbound_ready: attachedOk && voice.pushCredentialHeld === true,
   });
 });
 

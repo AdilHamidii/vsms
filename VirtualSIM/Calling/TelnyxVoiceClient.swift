@@ -295,8 +295,20 @@ extension TelnyxVoiceClient: TxClientDelegate {
         }
     }
 
+    /// A call arriving over an already-open socket.
+    ///
+    /// 🔴 This used to ONLY stash the call, so nothing ever rang: CallKit was
+    /// reached exclusively from the PushKit callback. Raise it here too, using
+    /// the SDK's own call id so the CallKit UUID and the SDK's call are the
+    /// same value — an end or answer action keyed on anything else matches
+    /// nothing.
     func onIncomingCall(call: TelnyxRTC.Call) {
         currentCall = call
+        guard let info = call.callInfo else { return }
+        delegate?.voiceIncomingCall(
+            id: info.callId,
+            from: info.callerNumber ?? "",
+            callerName: info.callerName ?? "")
     }
 
     func onPushCall(call: TelnyxRTC.Call) {

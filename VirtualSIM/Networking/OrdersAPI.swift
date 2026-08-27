@@ -31,12 +31,27 @@ private struct OrderEnvelope: Codable { let order: ServerOrder }
 struct OrdersAPI {
     let client: APIClient
 
+    /// Every column `ServerOrder` decodes, and no others.
+    ///
+    /// This was `select=*`, which shipped `actual_cost_cents` — the wholesale
+    /// we paid the provider for that exact order — to the buyer, decoded by
+    /// nothing. Naming the columns is the CLIENT half of a two-phase fix: the
+    /// server can only revoke SELECT on the cost columns once a build carrying
+    /// this list is adopted, because Postgres needs SELECT on every column to
+    /// answer `select=*`. Client first, revoke second.
+    private static let columns = [
+        "id", "user_id", "service_id", "country_id", "smspva_id",
+        "smspva_number", "cost_credits", "status", "otp", "raw_message",
+        "created_at", "expires_at", "arrived_at", "closed_at", "tier",
+        "provider",
+    ].joined(separator: ",")
+
     func list() async throws -> [ServerOrder] {
         try await client.request(
             .get,
             path: "rest/v1/orders",
             query: [
-                URLQueryItem(name: "select", value: "*"),
+                URLQueryItem(name: "select", value: Self.columns),
                 URLQueryItem(name: "order",  value: "created_at.desc"),
             ]
         )
@@ -86,7 +101,7 @@ struct OrdersAPI {
             path: "rest/v1/orders",
             query: [
                 URLQueryItem(name: "id",     value: "eq.\(orderId)"),
-                URLQueryItem(name: "select", value: "*"),
+                URLQueryItem(name: "select", value: Self.columns),
                 URLQueryItem(name: "limit",  value: "1"),
             ]
         )

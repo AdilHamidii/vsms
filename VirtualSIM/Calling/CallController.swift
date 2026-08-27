@@ -79,6 +79,18 @@ final class CallController: NSObject {
     /// different number than the one on screen.
     var activeLineId: String?
 
+    /// 🔴 ONE INSTANCE, CREATED AT PROCESS START.
+    ///
+    /// PushKit has to have a registry before the first `.voIP` push arrives,
+    /// and a push can wake a TERMINATED app. While this object was a
+    /// view-owned `@State` whose registry was created in `LineScreen.task`, a
+    /// push that arrived before the user had ever opened the Number tab found
+    /// no registry at all — and iOS permanently stops delivering VoIP pushes
+    /// to a bundle that repeatedly takes one without reporting a call. So the
+    /// controller (and with it the `CXProvider`) is built by the app delegate
+    /// at launch and the view adopts it.
+    static let shared = CallController()
+
     override init() {
         let config = CXProviderConfiguration()
         config.supportsVideo = false
@@ -104,7 +116,19 @@ final class CallController: NSObject {
             voice.setDelegate(self)
             isVoiceAvailable = true
         }
+        // The registry now exists from launch, so PushKit hands us the VoIP
+        // token BEFORE there is an API client to upload it to or a real voice
+        // client to give it to — and `didUpdate` fires once per token, so a
+        // dropped one is dropped forever. Held and flushed here instead.
+        if let token = pendingVoIPToken {
+            pendingVoIPToken = nil
+            self.voice.registerPushToken(token)
+            Task { await uploadVoIPToken(token) }
+        }
     }
+
+    /// The most recent VoIP token, kept until `attach` can act on it.
+    private var pendingVoIPToken: String?
 
     /// How much of calling actually works right now.
     ///
@@ -196,9 +220,14 @@ final class CallController: NSObject {
 
     /// Registers for VoIP pushes. Safe to call repeatedly.
     ///
-    /// Only worth doing once a line exists — a user with no number can never
-    /// receive a call, and registering earlier just asks for a token nothing
-    /// will ever send to.
+    /// Called from `AppDelegate.didFinishLaunchingWithOptions`, NOT from a
+    /// screen. This once waited until a line existed, on the reasoning that a
+    /// user with no number can never be called — but a registry that does not
+    /// exist when a push lands is an unreported push, and iOS answers repeated
+    /// unreported pushes by cutting the app off from VoIP delivery for good.
+    /// The unused token costs nothing; the missing registry is unrecoverable.
+    ///
+    /// The token can therefore arrive before `attach` — see `pendingVoIPToken`.
     func registerForVoIPPushes() {
         guard pushRegistry == nil else { return }
         let registry = PKPushRegistry(queue: .main)
@@ -585,12 +614,28 @@ extension CallController: CXProviderDelegate {
 // MARK: - PushKit
 
 extension CallController: PKPushRegistryDelegate {
+    /// The alert strings Telnyx uses to mark a push as a DISMISSAL rather than
+    /// a new call. Matched verbatim against the SDK — there is no structured
+    /// flag anywhere in the payload, the string is the signal.
+    nonisolated static func endedReason(forAlert alert: String) -> CXCallEndedReason? {
+        switch alert {
+        case "Missed call!":      .unanswered
+        case "Answered Elsewhere": .answeredElsewhere
+        default:                   nil
+        }
+    }
+
     nonisolated func pushRegistry(_ registry: PKPushRegistry,
                                   didUpdate credentials: PKPushCredentials,
                                   for type: PKPushType) {
         guard type == .voIP else { return }
         let token = credentials.token.map { String(format: "%02x", $0) }.joined()
         Task { @MainActor in
+            guard apiClient != nil else {
+                // Arrived before sign-in wired anything up — see `attach`.
+                pendingVoIPToken = token
+                return
+            }
             // The SDK needs it too: Telnyx sends the VoIP push itself, and a
             // credential registered without this token can never ring.
             voice.registerPushToken(token)
@@ -620,19 +665,69 @@ extension CallController: PKPushRegistryDelegate {
         guard type == .voIP else { completion(); return }
 
         let info = payload.dictionaryPayload
-        let from = (info["from"] as? String) ?? (info["caller"] as? String) ?? ""
-        let uuid = (info["uuid"] as? String).flatMap(UUID.init(uuidString:)) ?? UUID()
+        // Telnyx nests EVERYTHING its SDK and this callback need under
+        // `metadata` — `caller_number`, `caller_name`, `call_id`.
+        //
+        // 🔴 This used to read `info["from"]` and `info["uuid"]`, which Telnyx
+        // does not send at any level. Every consequence was silent: a blank
+        // caller on the CallKit screen, a random CallKit UUID that matched
+        // nothing the SDK held (so answer and end actions addressed a call
+        // that did not exist), and — because `registerInboundCall` guards on a
+        // non-empty peer — not one inbound `line_calls` row in the product's
+        // history. The old keys are kept as fallbacks only.
+        let metadata = info["metadata"] as? [String: Any]
+        let callerNumber = (metadata?["caller_number"] as? String) ?? ""
+        let callerName = (metadata?["caller_name"] as? String) ?? ""
+        let from = callerNumber.isEmpty
+            ? ((info["from"] as? String) ?? (info["caller"] as? String) ?? "")
+            : callerNumber
+
+        // Lowercased before parsing, matching `providerSessionId`: Telnyx ids
+        // are lowercase and `UUID.uuidString` is upper, and every id we hand
+        // back to the server has to be comparable to the provider's own.
+        let callId = (metadata?["call_id"] as? String)?.lowercased()
+        let uuid = callId.flatMap(UUID.init(uuidString:))
+            ?? (info["uuid"] as? String).flatMap(UUID.init(uuidString:))
+            ?? UUID()
+
+        // 🔴 A DISMISSAL PUSH IS NOT AN INCOMING CALL. Telnyx sends a second
+        // VoIP push when the call is missed or answered elsewhere; reporting
+        // it as new left a phantom call ringing with nothing to end it. iOS
+        // still requires EVERY `.voIP` push to report a call, so the only
+        // legal shape is report-then-immediately-end — a throwaway call
+        // reported to satisfy the obligation, then both it and the real call
+        // ended. This is Telnyx's own prescribed workaround.
+        if let alert = (info["aps"] as? [String: Any])?["alert"] as? String,
+           let reason = Self.endedReason(forAlert: alert) {
+            let placeholder = CXCallUpdate()
+            placeholder.remoteHandle = CXHandle(type: .generic, value: " ")
+            let tempUUID = UUID()
+            MainActor.assumeIsolated {
+                provider.reportNewIncomingCall(with: tempUUID, update: placeholder) { [weak self] _ in
+                    Task { @MainActor in
+                        guard let self else { completion(); return }
+                        let now = Date()
+                        self.provider.reportCall(with: uuid, endedAt: now, reason: reason)
+                        self.provider.reportCall(with: tempUUID, endedAt: now, reason: reason)
+                        completion()
+                        // Only after the obligation is met, and only when this
+                        // is the call we are actually showing.
+                        if self.currentUUID == uuid, self.phase != .idle {
+                            await self.endCall()
+                        }
+                    }
+                }
+            }
+            return
+        }
 
         let update = CXCallUpdate()
         update.remoteHandle = CXHandle(type: .phoneNumber, value: from)
+        if !callerName.isEmpty { update.localizedCallerName = callerName }
         update.hasVideo = false
         update.supportsGrouping = false
         update.supportsUngrouping = false
         update.supportsHolding = false
-
-        // Telnyx nests what its SDK needs under `metadata`. Captured before the
-        // report so the closure does not reach back into the payload.
-        let metadata = info["metadata"] as? [String: Any]
 
         // `assumeIsolated`, not a `Task` and not `nonisolated(unsafe)`. The
         // registry is created with `PKPushRegistry(queue: .main)`, so this
@@ -733,5 +828,42 @@ extension CallController: VoiceClientDelegate {
 
     nonisolated func voiceFailed(_ message: String) {
         Task { @MainActor in await failCall(message) }
+    }
+
+    /// A call the SDK delivered over a live socket — no push, so none of the
+    /// PushKit obligations apply and this may hop actors freely.
+    nonisolated func voiceIncomingCall(id: UUID, from: String, callerName: String) {
+        Task { @MainActor in reportSocketIncomingCall(id: id, from: from, callerName: callerName) }
+    }
+}
+
+extension CallController {
+    /// Ring for a socket-delivered call.
+    ///
+    /// A push for the same call may already have reported it — Telnyx pushes
+    /// AND delivers over the socket once it is up — so this is a no-op when
+    /// anything is already live. Reporting twice would put a second call on
+    /// the system UI that nothing can end.
+    fileprivate func reportSocketIncomingCall(id: UUID, from: String, callerName: String) {
+        guard phase == .idle, currentUUID != id else { return }
+
+        let update = CXCallUpdate()
+        update.remoteHandle = CXHandle(type: .phoneNumber, value: from)
+        if !callerName.isEmpty { update.localizedCallerName = callerName }
+        update.hasVideo = false
+        update.supportsGrouping = false
+        update.supportsUngrouping = false
+        update.supportsHolding = false
+
+        provider.reportNewIncomingCall(with: id, update: update) { [weak self] error in
+            Task { @MainActor in
+                guard let self, error == nil else { return }
+                self.currentUUID = id
+                self.peer = from
+                self.isOutbound = false
+                self.phase = .ringing
+                await self.registerInboundCall(peer: from)
+            }
+        }
     }
 }

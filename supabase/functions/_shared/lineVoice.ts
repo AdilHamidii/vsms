@@ -37,7 +37,7 @@ import { admin } from "./supabaseAdmin.ts";
 import {
   createCredentialConnection, createTelephonyCredential,
   createOutboundVoiceProfile, attachOutboundProfile, attachVoiceConnection,
-  faultOf, type TelnyxFault,
+  ensurePushCredential, faultOf, type TelnyxFault,
 } from "./telnyx.ts";
 
 export interface LineVoiceRow {
@@ -55,6 +55,11 @@ export interface LineVoiceResult {
   voiceProfileId: string | null;
   /** The number's voice points at the connection — i.e. INBOUND can ring. */
   attached: boolean;
+  /** READ BACK from the connection, never inferred from the env var: true =
+   *  the connection genuinely holds the iOS VoIP push credential, false = it
+   *  does not (or the env var is unset), null = could not be verified this
+   *  run. `inbound_ready` must key on `=== true`. */
+  pushCredentialHeld: boolean | null;
   /** Non-empty means something is missing; the caller decides how loud to be. */
   faults: { step: string; fault: TelnyxFault }[];
 }
@@ -98,6 +103,7 @@ export async function provisionLineVoice(
     credentialId: line.provider_credential_id ?? null,
     voiceProfileId: line.provider_voice_profile_id ?? null,
     attached: line.provider_voice_attached === true,
+    pushCredentialHeld: null,
     faults: [],
   };
 
@@ -125,6 +131,26 @@ export async function provisionLineVoice(
     }
     out.connectionId = conn.id;
     if (opts.persistIds) await persist(sb, line.id, { connection: conn.id });
+  }
+
+  // ── 1b. Does the connection actually HOLD the VoIP push credential? ──────
+  // The same verify-and-repair shape as 2b, for the same reason: a connection
+  // created while TELNYX_IOS_PUSH_CREDENTIAL_ID was unset was built push-less
+  // (the field is silently omitted), our DB has no record of that, and a
+  // push-less connection means no inbound call can ever wake the device.
+  // `ensurePushCredential` reads the connection back — a POST/PATCH 200 is
+  // not evidence on this API. Runs on freshly-created connections too, so the
+  // create path is covered by the same proof instead of trusting its 200.
+  if (!pushCredentialId) {
+    out.pushCredentialHeld = false;
+  } else {
+    const held = await ensurePushCredential(out.connectionId, pushCredentialId);
+    if (faultOf(held)) {
+      out.faults.push({ step: "verify_push_credential", fault: held });
+      out.pushCredentialHeld = null; // unverified, NOT false — and never true
+    } else {
+      out.pushCredentialHeld = true;
+    }
   }
 
   // ── 2. The outbound profile ─────────────────────────────────────────────

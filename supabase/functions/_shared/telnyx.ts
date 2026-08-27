@@ -840,6 +840,46 @@ export async function attachOutboundProfile(
   return true;
 }
 
+/** Verify — and if missing, attach — the iOS VoIP push credential on a
+ *  credential connection. The read-back twin of `attachOutboundProfile`, for
+ *  the same reason: a connection created while TELNYX_IOS_PUSH_CREDENTIAL_ID
+ *  was unset was built push-less (`createCredentialConnection` silently omits
+ *  the field), and nothing ever went back to check — so `inbound_ready` could
+ *  report true for a connection no VoIP push can ever wake. A 200 on the PATCH
+ *  is not evidence on this API; only the read-back is. */
+export async function ensurePushCredential(
+  connectionId: string, pushCredentialId: string,
+): Promise<true | TelnyxFault> {
+  const read = () => call<Record<string, unknown>>(
+    "GET", `/credential_connections/${connectionId}`);
+
+  const before = await read();
+  if (faultOf(before)) return before;
+  if (String(before.ios_push_credential_id ?? "") === pushCredentialId) {
+    return true;
+  }
+
+  const r = await call<Record<string, unknown>>(
+    "PATCH", `/credential_connections/${connectionId}`,
+    { ios_push_credential_id: pushCredentialId });
+  if (faultOf(r)) return r;
+
+  const back = await read();
+  if (faultOf(back)) return back;
+  const held = back.ios_push_credential_id ?? null;
+  if (String(held ?? "") !== pushCredentialId) {
+    return {
+      telnyxFault: true,
+      type: "TRANSPORT_ERROR",
+      status: 200,
+      detail: `ensurePushCredential: PATCH returned 200 but read-back holds ` +
+              `${JSON.stringify(held)} — expected ${pushCredentialId}. ` +
+              `Field placement may be wrong (the attachOutboundProfile class).`,
+    };
+  }
+  return true;
+}
+
 /** A login for one line's connection. Cache the id on
  *  `phone_lines.provider_credential_id`: DELETING it on lapse is what makes
  *  suspension real rather than client-side theatre. */

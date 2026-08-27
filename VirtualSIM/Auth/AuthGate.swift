@@ -32,7 +32,11 @@ struct AuthGate: View {
     /// `CXProvider` delegate and must outlive any view that presents a call —
     /// and because an incoming call has to be reportable whatever screen the
     /// app happens to be on.
-    @State private var calls = CallController()
+    ///
+    /// Adopts the instance the app delegate built at launch rather than making
+    /// its own: PushKit's registry and the `CXProvider` have to exist before
+    /// the first VoIP push, which can arrive before any view has been created.
+    @State private var calls = CallController.shared
     @AppStorage("onboardingComplete") private var onboardingComplete = false
     // Pre-sign-in screens (onboarding, sign-in, splash) run before AppState
     // exists, so they read the same UserDefaults it will. Via @AppStorage so a

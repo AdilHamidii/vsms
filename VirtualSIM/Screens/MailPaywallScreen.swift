@@ -23,15 +23,20 @@ import SwiftUI
 ///
 /// ── Honesty rules, each one a bug this repo has already shipped ────────
 ///
-/// - Names the two free domains, states gmail's price plainly, and states the
-///   DAILY LIMIT. Never a bare "unlimited e-mails"/"unlimited addresses":
-///   gmail is not included, `app_config.email_sub_daily_cap` refuses a
-///   subscriber at `MailProduct.dailyAddressCap` a day with
-///   `daily_cap_reached` (a message `APIError` already ships, so the app
-///   contradicted itself), and free-domain stock genuinely runs dry
-///   independently (hotmail.com has shown as few as 2 in stock for a busy
-///   service). Promising more than the server delivers is App Store 2.3.1,
-///   and this copy becomes the App Store Connect description.
+/// - Names the two free domains and states the DAILY LIMIT. Never a bare
+///   "unlimited e-mails"/"unlimited addresses": `app_config
+///   .email_sub_daily_cap` refuses a subscriber at `MailProduct
+///   .dailyAddressCap` a day with `daily_cap_reached` (a message `APIError`
+///   already ships, so the app contradicted itself), and free-domain stock
+///   genuinely runs dry independently (hotmail.com has shown as few as 2 in
+///   stock for a busy service). Promising more than the server delivers is
+///   App Store 2.3.1, and this copy becomes the App Store Connect
+///   description.
+/// - **No gmail.com anywhere.** It was removed from sale 2026-08-26 — its
+///   HeroSMS pool stopped delivering (0 codes in its last 23 orders) — so the
+///   mail product's entire sellable inventory is the two free domains named
+///   above. A paywall that still quoted its price would describe a purchase
+///   the server refuses.
 /// - Never names the supplier (owner decision, 2026-07-31 — see CLAUDE.md).
 /// - The yearly saving is computed from the LIVE `Product.price` values,
 ///   never hardcoded — the credit-pack ladder drifted to $4.99-vs-€5.99 on
@@ -99,8 +104,9 @@ struct MailPaywallScreen: View {
 
     // MARK: - What this buys
 
-    /// Names the two free domains, states the daily limit, and states gmail's
-    /// price. Never a bare "unlimited e-mails" — see the file header.
+    /// Names the two free domains and states the daily limit. Never a bare
+    /// "unlimited e-mails" — see the file header. No gmail mention: it was
+    /// removed from sale 2026-08-26 and isn't part of this product anymore.
     ///
     /// This is the ONE place the cap figure is quoted, so a server-side change
     /// to `email_sub_daily_cap` falsifies one sentence rather than five.
@@ -111,7 +117,7 @@ struct MailPaywallScreen: View {
                 .displayType(26)
                 .foregroundStyle(theme.text)
                 .fixedSize(horizontal: false, vertical: true)
-            Text("On outlook.com and hotmail.com, subject to availability. Your allowance resets at midnight UTC. Gmail stays a 1-credit purchase either way — it isn't part of the subscription.")
+            Text("On outlook.com and hotmail.com, subject to availability. Your allowance resets at midnight UTC.")
                 .font(RFont.text(15))
                 .foregroundStyle(theme.text2)
                 .lineSpacing(3)

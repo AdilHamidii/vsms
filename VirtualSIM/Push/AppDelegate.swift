@@ -52,6 +52,15 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
         // highest-volume re-entry path. Nothing logged; it just looked like
         // the push did not deep-link.
         UNUserNotificationCenter.current().delegate = self
+
+        // 🔴 THE VoIP REGISTRY MUST EXIST FROM PROCESS START. A `.voIP` push
+        // can wake a TERMINATED app, and it used to be created in
+        // `LineScreen.task` — so a push arriving before the user had ever
+        // opened the Number tab found no registry, produced no incoming-call
+        // report, and iOS permanently stops delivering VoIP pushes to a bundle
+        // that does that repeatedly. Registering here also means the token
+        // exists long before anyone dials.
+        CallController.shared.registerForVoIPPushes()
         return true
     }
 

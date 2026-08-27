@@ -1084,7 +1084,9 @@ while the free pair delivered normally in the same window (outlook 53%, hotmail
 7.5× margin) and every failure charge-and-refunded, so users paid, failed and
 retried. Re-add the key only when the `email-domain-gmail.com` watchdog
 evidence says the pool delivers again. (2.3's `MailPaywallScreen` copy still
-names gmail's 1-credit price — stale copy, cosmetic, next release.)
+named gmail's 1-credit price — purged from the repo 2026-08-27 along with the
+`free_limit_reached` "pick Gmail" advice in `APIError`; shipped builds up to
+2.4 still show the old copy until 2.5.)
 
 **icloud.com was REMOVED 2026-07-31 (owner decision)** — handing out throwaway
 addresses on Apple's own consumer domain, from an app distributed on Apple's
@@ -2552,12 +2554,18 @@ every 5sim order that got a number and was NOT cancelled: published 80+ → **40
 ranking is **monotone**, which is the first positive read on the correlation
 study — the steering works. The LEVEL does not. n = 27, so treat the ordering as
 the finding and the percentages as indicative. Re-run at ~100 non-cancelled
-orders before acting. The candidate fix is to stop quoting a bare percentage at
-all and render the colour band as a word (High/Medium/Low) — a third-party
-aggregate with no published denominator should not wear two significant figures,
-which is this repo's own standing rule (see Badge confidence, and the SMSPVA
-seeded grade that had to be demoted to `.notTested`). That needs a client
-release.
+orders before acting. **DONE IN THE REPO 2026-08-27 (2.5 work): the user-facing
+render no longer quotes a bare percentage** — `NetworkRateMeter` prints the
+colour band as a word (High >60 / Medium 30–60 / Low <30, the same thresholds
+as the colour so the two can never disagree), localized in all six locales; the
+bar's continuous FILL still uses the raw value, and sorting, stamping and ops
+surfaces stay numeric. Rationale: a third-party aggregate with no published
+denominator should not wear two significant figures — this repo's own standing
+rule (see Badge confidence, and the SMSPVA seeded grade demoted to
+`.notTested`). Reaches users when 2.5 ships. `RecoveryScreen`'s
+`CountryRank.vendorPercent` (the superseded `service_country_ranks` figure) is
+the one remaining bare vendor percentage on any screen — same class, not yet
+converted.
 
 **Colour bands (owner, 2026-08-03): >60 green, 30–60 amber, <30 red.**
 `CountrySheet.poolRateColor`. Sort options are exactly three — **Best success,
@@ -4122,28 +4130,40 @@ has a market today or is receive-only until toll-free verification or 10DLC
 clears — both of which require declaring a use case that "users send whatever
 they like" does not satisfy.
 
-🔴 **INBOUND CALLING CANNOT WORK — FOUR CLIENT BUGS, NONE FIXED (2026-08-17).**
-Zero inbound calls in the product's history. Found by audit against the
-TelnyxRTC SDK source, not from docs:
+🟠 **INBOUND CALLING — the four client bugs are FIXED IN THE REPO (2026-08-27,
+2.5 work) but UNVERIFIED ON A DEVICE, and zero inbound calls have still ever
+happened.** A simulator cannot receive a PushKit push, so the first real
+inbound call on a physical device is the probe. Watch for: the phone rings at
+all, the CallKit screen shows the caller's number, a `line_calls` row with
+`direction='inbound'` appears, and a missed call dismisses instead of ringing
+forever. What was fixed, each matched against the resolved TelnyxRTC 4.1.2
+source (not docs):
 
-1. **`onIncomingCall` raises nothing.** `reportNewIncomingCall` appears exactly
-   once in the app, inside the PushKit callback — so a call arriving over an
-   open socket never rings at all.
-2. **The push payload is read with keys Telnyx does not send.**
-   `info["from"]`/`info["uuid"]` are nil; the SDK sends
-   `metadata["caller_number"]` / `metadata["call_id"]`. Consequences: blank
-   caller, a CallKit UUID that does not match the SDK's call, and
-   `registerInboundCall`'s `!peer.isEmpty` guard means **no inbound `line_calls`
-   row is ever written**.
-3. **`PKPushRegistry` is created only in `LineScreen.task`**, so a VoIP push to
-   a terminated app finds no registry. Repeat offences are what makes iOS stop
-   delivering VoIP pushes to a bundle permanently.
-4. **Dismissal pushes ("Missed call!") are reported as NEW incoming calls** and
-   nothing ends them.
+1. **`onIncomingCall` now reports to CallKit** via a new
+   `VoiceClientDelegate.voiceIncomingCall`, using the SDK's own
+   `callInfo.callId` as the CallKit UUID; guarded on `phase == .idle` so a
+   push that already reported the same call cannot double-report.
+2. **The push payload is parsed with the keys Telnyx actually sends** —
+   `metadata["caller_number"]` / `caller_name` / `call_id` (old `from`/`uuid`
+   kept only as fallbacks; `call_id` lowercased, the `providerSessionId`
+   convention), so the caller renders and `registerInboundCall` finally gets a
+   non-empty peer.
+3. **`PKPushRegistry` + `CXProvider` are created at process start** —
+   `CallController.shared` built in `AppDelegate.didFinishLaunchingWithOptions`,
+   adopted by `AuthGate`. Consequence handled: the one-shot VoIP token can now
+   arrive before sign-in, so it is buffered (`pendingVoIPToken`) and flushed in
+   `attach`.
+4. **Dismissal pushes ("Missed call!" / "Answered Elsewhere") do
+   report-then-immediately-end** — Telnyx's own prescribed workaround, since
+   iOS requires every `.voIP` push to report a call. The alert STRING is the
+   only signal; there is no structured flag.
 
-Also: `mint-line-token` computes `inbound_ready` from the ENV VAR rather than
-from the connection's actual push credential, so a connection created while the
-secret was unset reports ready forever.
+`mint-line-token`'s `inbound_ready` is fixed the same day: it now requires
+`provisionLineVoice`'s **read-back** proof that the connection genuinely holds
+the iOS push credential (`ensurePushCredential` in `_shared/telnyx.ts` — the
+verify-and-repair twin of `attachOutboundProfile`, run on every line every
+run, so hourly `sync-line-voice` heals any push-less connection among the sold
+lines). The env var alone no longer counts.
 
 
 ✅ **RESOLVED 2026-08-06 — `TELNYX_IOS_PUSH_CREDENTIAL_ID` EXISTS AND POINTS AT
@@ -4345,14 +4365,17 @@ are as load-bearing as the findings:
   and Japanese legitimately omit the trailing English plural fragment in
   `"You're %lld credit%@ short…"` — omitting a LATER argument is safe;
   reordering or omitting an earlier one is not.
-- ⚠️ **Six locales read English UI chrome while their translations sit unused in
-  the catalog.** `Text(someString)` does not consult the catalog — only
-  `Text("literal")` does. `PrimaryButton` works around it with
-  `Text(LocalizedStringKey(label))`; `SheetHeader`, `Metric`, `ChipButton`,
-  `StatusBadge`, `StockPill`, `GhostButton` do not. So every sheet header, the
-  Home greeting, every order-history status pill and the metric labels ship
-  English to all six locales. Matters now that 13 storefront localizations are
-  live. Fix the components, not the call sites.
+- ✅ **RESOLVED — the shared components all localize (re-audited 2026-08-27).**
+  `SheetHeader`, `Metric`, `ChipButton`, `StatusBadge` and `GhostButton` each
+  render via `Text(LocalizedStringKey(...))` / `String(localized:)` — this
+  entry claimed they did not long after they were fixed (`StockPill` no longer
+  exists). The audit's one REAL find was different: the order-history pill's
+  `"Received"` key **did not exist in `Localizable.xcstrings` at all**, so
+  every non-English locale rendered the raw English key — invisible to a
+  file-level "0 untranslated" audit precisely because the key was absent
+  rather than untranslated. Added 2026-08-27 with all six translations. The
+  standing rule survives: when auditing localization, diff the KEYS the code
+  can emit against the catalog, not just the catalog against itself.
 - ✅ **RESOLVED — the e-mail waiting screen no longer hangs.**
   `refreshEmailOrder` gained a terminal branch (`fresh.status.isTerminal, !fresh.hasCode`)
   in `0552d53` on 2026-08-02, shipped in **1.8 build 28**, live since 08-03. It
@@ -4563,11 +4586,22 @@ refused.
   policy, so the cost book reads with **no account at all**, not merely with the
   publishable key.
 
-- ⚠️ **`orders.actual_cost_cents` ships per-order wholesale to the buyer.**
-  `orders`, `esim_orders` and `email_orders` all carry it, all three client
-  fetches use `select=*`, and RLS self-read grants the row — while **no Swift
-  model decodes it**. A pure leak. Fixing it needs the client to name its columns
-  first, so it is a two-phase rollout like the others; it missed build 19.
+- 🟠 **`orders.actual_cost_cents` — the CLIENT half is done, the server revoke
+  is still outstanding.** `orders`, `esim_orders` and `email_orders` all carry
+  per-order wholesale, RLS self-read grants the row, and **no Swift model
+  decodes it** — a pure leak. As of 2026-08-27 **every PostgREST fetch in the
+  iOS client names its columns explicitly; there is no `select=*` left**
+  (`grep -rn 'value: "\*"' VirtualSIM/Networking` must return nothing). The
+  lists live next to the fetch that uses them — `CatalogAPI.serviceColumns` /
+  `.countryColumns` (routes was already explicit), `OrdersAPI.columns`,
+  `EsimOrdersAPI.orderColumns`, `EmailAPI.orderColumns`, and the inline list in
+  `SupportAPI.messages()`. Each is exactly the decoding model's stored
+  properties — a column dropped from one of these lists makes an OPTIONAL
+  property silently nil and throws on a non-optional one, so re-derive the list
+  from the model whenever the model changes. **The server-side revoke must still
+  wait until a build carrying this is ADOPTED**, because Postgres needs SELECT
+  on every column to answer the `select=*` that shipped builds still send.
+  Client first, revoke second — same ordering as `routes` and `esim_plans`.
 
 - ⚠️ **`telegram-setup` is in neither deploy list** in this file, and the claim
   at the top that those lists cover "every directory … (19 functions total)" is

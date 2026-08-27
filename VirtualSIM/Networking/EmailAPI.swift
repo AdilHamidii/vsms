@@ -9,6 +9,14 @@ struct EmailAPI {
 
     private struct OrderEnvelope: Codable { let order: ServerEmailOrder }
 
+    /// Every column `ServerEmailOrder` decodes, and no others. `select=*` here
+    /// shipped `actual_cost_cents` to the buyer, decoded by nothing. Client
+    /// names its columns first so the server can revoke them second.
+    private static let orderColumns = [
+        "id", "service_id", "site", "domain", "email", "cost_credits",
+        "status", "code", "created_at", "expires_at",
+    ].joined(separator: ",")
+
     /// The four sellable domains for one service, with LIVE stock.
     ///
     /// Deliberately not cached: stock is per (service, domain) and moves —
@@ -22,9 +30,11 @@ struct EmailAPI {
         )
     }
 
-    /// Buy one address. Charges 1 credit for gmail, nothing for
-    /// outlook/hotmail (icloud was removed 2026-07-31) — the server is the
-    /// authority on both the price and the free-tier daily cap.
+    /// Buy one address. Free on outlook/hotmail, subject to the server's free
+    /// allowance and daily cap — icloud.com was removed 2026-07-31 and
+    /// gmail.com followed 2026-08-26 (its pool stopped delivering), so those
+    /// two free domains are the whole of what's sellable today. The server is
+    /// the authority on both the price and the allowance.
     func create(serviceId: String, domain: String) async throws -> ServerEmailOrder {
         struct Body: Encodable { let service_id: String; let domain: String }
         let env: OrderEnvelope = try await client.request(
@@ -66,7 +76,7 @@ struct EmailAPI {
     func list() async throws -> [ServerEmailOrder] {
         try await client.request(
             .get, path: "rest/v1/email_orders",
-            query: [URLQueryItem(name: "select", value: "*"),
+            query: [URLQueryItem(name: "select", value: Self.orderColumns),
                     URLQueryItem(name: "order", value: "created_at.desc")]
         )
     }

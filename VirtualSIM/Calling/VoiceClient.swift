@@ -18,6 +18,16 @@ protocol VoiceClientDelegate: AnyObject, Sendable {
     /// The far end hung up, or the SDK dropped the call.
     func voiceRemoteEnded()
 
+    /// A call arrived over an ALREADY-OPEN socket, with no VoIP push involved.
+    ///
+    /// 🔴 This is the OTHER half of inbound, and it had no implementation at
+    /// all: `reportNewIncomingCall` appeared exactly once in the app, inside
+    /// the PushKit callback, so a call the SDK delivered over a live socket
+    /// never reached CallKit and the phone simply never rang. Anything that
+    /// wants to ring has to go through CallKit — there is no other way to
+    /// raise a call UI on iOS.
+    func voiceIncomingCall(id: UUID, from: String, callerName: String)
+
     /// The call failed in a way the user has to be told about.
     func voiceFailed(_ message: String)
 }

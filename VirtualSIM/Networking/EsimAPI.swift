@@ -36,11 +36,22 @@ struct EsimOrdersAPI {
     let client: APIClient
     private struct Envelope: Codable { let order: ServerEsimOrder }
 
+    /// Every column `ServerEsimOrder` decodes, and no others. `select=*` here
+    /// shipped `actual_cost_cents` — the wholesale we paid for that eSIM — to
+    /// the buyer, decoded by nothing. Same two-phase rule as `EsimPlansAPI`
+    /// above: client names its columns first, server revokes second.
+    private static let orderColumns = [
+        "id", "plan_id", "smspool_tx", "cost_credits", "status",
+        "activation_code", "smdp_address", "matching_id", "apn",
+        "sim_pin", "sim_puk", "data_total_mb", "data_used_mb",
+        "activated", "activated_at", "expires_at", "created_at",
+    ].joined(separator: ",")
+
     func list() async throws -> [ServerEsimOrder] {
         try await client.request(
             .get, path: "rest/v1/esim_orders",
             query: [
-                URLQueryItem(name: "select", value: "*"),
+                URLQueryItem(name: "select", value: Self.orderColumns),
                 URLQueryItem(name: "order", value: "created_at.desc"),
             ]
         )

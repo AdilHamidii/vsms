@@ -160,11 +160,16 @@ enum APIError: Error, LocalizedError {
                     return String(localized: "Email addresses aren't available for this service yet.")
                 case "email_purchase_failed":
                     return String(localized: "We couldn't get an address right now. Please try again.")
-                // No iCloud here: icloud.com was removed from the product on
-                // 2026-07-31 and create-email-order refuses it — naming it sent
-                // users to an option the app itself rejects.
+                // Never name a domain here. icloud.com was removed from the
+                // product 2026-07-31 and gmail.com followed on 2026-08-26 (its
+                // pool stopped delivering) — create-email-order refuses both,
+                // so naming either sends users to an option the app itself
+                // rejects. `free_limit_reached` is the pre-subscription daily
+                // cap (`app_config.email_free_daily_cap`); with the
+                // subscription now enforced this path is effectively retired,
+                // but the copy must stay accurate if it ever fires.
                 case "free_limit_reached":
-                    return String(localized: "You've used today's free addresses. Try again tomorrow, or pick Gmail.")
+                    return String(localized: "You've used today's free addresses. Try again tomorrow, or subscribe for more on Outlook and Hotmail.")
                 case "subscription_required":
                     // "unlimited" was a promise the server does not keep —
                     // subscribers are capped daily and refused with
