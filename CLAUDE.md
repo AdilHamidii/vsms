@@ -3406,20 +3406,21 @@ SMS provider again, walk this list:
 Every number below has been wrong within a day of being written at least once.
 It is a starting point for "is this roughly right", never a citation.
 
-- **iOS**: `MARKETING_VERSION 2.4`, `CURRENT_PROJECT_VERSION 45`, iOS min
+- **iOS**: `MARKETING_VERSION 2.5`, `CURRENT_PROJECT_VERSION 46`, iOS min
   **18.0**, **3** SwiftPM dependencies (TelnyxRTC 4.1.2 → WebRTC 139.0.0,
   Starscream 4.0.8). Re-count sources with
   `find VirtualSIM -name '*.swift' | wc -l` rather than quoting a number.
-  **2.3 (build 44) is `READY_FOR_SALE`; 2.4 (build 45, the line country
-  catalog + country picker) SUBMITTED 2026-08-26 22:47Z —
-  `WAITING_FOR_REVIEW`, submission `6c2530b0-…`, version `f08aaa70-…`.**
-  (Build 43's submission `22be3a0b-…` was CANCELLED the same morning to pull
-  the "≈ N verifications" paywall estimate and add the line-UI batch; the
-  cancel → `DEVELOPER_REJECTED` → reattach → resubmit path worked a fourth
-  time.)
+  **2.4 (build 45, the line country catalog + country picker) is
+  `READY_FOR_SALE` (approved 2026-08-27); 2.5 (build 46 — the phone-app
+  Number-tab redesign, the four inbound-calling client fixes, app-wide glow
+  removal, named-column fetches, High/Medium/Low rate bands) SUBMITTED
+  2026-08-27 20:38Z — `WAITING_FOR_REVIEW`, submission `2410abc6-…`, version
+  `ec832ce4-…`.** ⚠️ 2.5 ships the inbound-calling code path with NO device
+  verification of ringing or call audio — the listing still keeps incoming
+  calls in the "not yet" block, deliberately.
   All 13 localizations carry the corrected listing (no "in and out", no
   trial, inbound calls in the "not yet" block). Read the live state with
-  `python3 scripts/asc-release.py status 2.3` — never this line.
+  `python3 scripts/asc-release.py status 2.5` — never this line.
   ⚠️ **This line has been wrong about the review state FOUR versions running**,
   each time by describing a submitted build as still in review after it shipped.
   It is a decision error, not a typo: "still in review" is the argument for
