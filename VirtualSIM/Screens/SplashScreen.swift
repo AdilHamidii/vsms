@@ -92,16 +92,10 @@ struct SplashScreen: View {
     /// there is no spinner competing with the logo for the same job.
     private var lockup: some View {
         ZStack {
-            // A restrained halo, sized to the type rather than to a tile. It
-            // breathes so the screen is never fully static, which is what makes
-            // a slow launch read as "working" instead of "stuck".
-            Ellipse()
-                .fill(theme.glow)
-                .frame(width: 260, height: 150)
-                .blur(radius: 55)
-                .scaleEffect(animating ? 1.06 : 0.88)
-                .opacity(animating ? 0.75 : 0.4)
-
+            // The breathing accent halo that sat behind the mark was removed
+            // with every other glow app-wide (owner request, 2026-08-27). The
+            // spinning `v` alone is the "working" signal.
+            //
             // Static in the failure state: a logo still cheerfully spinning
             // under the words "Couldn't reach the server" would be absurd.
             BrandWordmark(size: 46, spins: state != .failed)

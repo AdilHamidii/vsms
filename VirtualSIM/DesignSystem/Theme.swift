@@ -172,7 +172,6 @@ struct Theme: Equatable {
     let warnSoft: Color
     let fail: Color
     let failSoft: Color
-    let glow: Color
     let chipBg: Color
     let isDark: Bool
 
@@ -226,7 +225,6 @@ struct Theme: Equatable {
             warnSoft:  Color(hex: 0xC7911B, opacity: 0.13),
             fail:      Color(hex: 0xDC5050),
             failSoft:  Color(hex: 0xDC5050, opacity: 0.12),
-            glow:      Color(hex: a, opacity: 0.22),
             chipBg:    Color(hex: 0x17181A, opacity: 0.055),
             isDark:    false,
             accent2:   Color(hex: a).mixed(with: ink, amount: 0.22),
@@ -267,7 +265,6 @@ struct Theme: Equatable {
             warnSoft:  Color(hex: 0xFFC53D, opacity: 0.14),
             fail:      Color(hex: 0xF87171),
             failSoft:  Color(hex: 0xF87171, opacity: 0.14),
-            glow:      Color(hex: a, opacity: 0.30),
             chipBg:    Color(hex: 0xF8F7F4, opacity: 0.07),
             isDark:    true,
             accent2:   Color(hex: a).mixed(with: ink, amount: 0.30),

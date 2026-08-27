@@ -39,9 +39,9 @@ struct Card<Content: View>: View {
 }
 
 /// The one object a screen is about — the number being bought, a delivered
-/// code. Carries the accent's own glow under the neutral shadow, which is the
-/// only place `theme.glow` earns its keep. Before this it was declared in the
-/// theme and used in exactly one file.
+/// code. Distinguished by its wash and a slightly stronger neutral shadow —
+/// the accent glow it used to carry was removed app-wide with every other
+/// colored halo (owner request, 2026-08-27).
 struct HeroCard<Content: View>: View {
     @Environment(\.theme) private var theme
     var radius: CGFloat = RRadius.xl
@@ -62,8 +62,7 @@ struct HeroCard<Content: View>: View {
             }
             .overlay(shape.strokeBorder(theme.sep, lineWidth: 1))
             .clipShape(shape)
-            .shadow(color: theme.glow.opacity(theme.isDark ? 0.45 : 0.30),
-                    radius: 26, x: 0, y: 12)
-            .shadow(color: theme.shadow(.raised), radius: 6, x: 0, y: 2)
+            .shadow(color: theme.shadow(.lifted), radius: RElevation.lifted.radius,
+                    x: 0, y: RElevation.lifted.y)
     }
 }

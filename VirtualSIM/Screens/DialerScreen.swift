@@ -268,8 +268,6 @@ struct DialerScreen: View {
                 }
                     .frame(width: 68, height: 68)
                     .background(canDial || calls.isStarting ? theme.live : theme.chipBg, in: .circle)
-                    .shadow(color: canDial || calls.isStarting ? theme.live.opacity(0.35) : .clear,
-                            radius: 16, y: 7)
                     .contentShape(.circle)
             }
             .pressable(0.92)

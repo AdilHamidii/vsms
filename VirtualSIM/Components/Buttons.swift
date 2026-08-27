@@ -68,15 +68,12 @@ struct PrimaryButton: View {
                 if disabled {
                     Capsule().fill(theme.chipBg)
                 } else {
-                    // A shallow vertical gradient plus the accent's own glow.
-                    // A flat fill is the single most "system default" thing a
-                    // primary button can do; the app owned a `glow` token and
-                    // used it in exactly one file.
+                    // A shallow vertical gradient; no glow — every colored
+                    // halo was removed app-wide (owner request, 2026-08-27).
                     Capsule()
                         .fill(LinearGradient(
                             colors: [theme.ink.mixed(with: .white, amount: 0.10), theme.ink],
                             startPoint: .top, endPoint: .bottom))
-                        .shadow(color: theme.glow, radius: 18, x: 0, y: 8)
                 }
             }
             .contentShape(Capsule())

@@ -156,7 +156,6 @@ struct InCallOverlay: View {
                     .foregroundStyle(.white)
                     .frame(width: 72, height: 72)
                     .background(theme.fail, in: .circle)
-                    .shadow(color: theme.fail.opacity(0.35), radius: 16, y: 7)
                     .contentShape(.circle)
             }
             .pressable(0.92)
