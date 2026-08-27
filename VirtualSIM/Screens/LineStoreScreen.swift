@@ -221,7 +221,11 @@ struct LineStoreScreen: View {
             select(country)
         } label: {
             HStack(spacing: 12) {
-                Text(verbatim: country.flag).font(.system(size: 20))
+                // A real flag asset rather than the emoji, at the 44pt leading
+                // slot every other list row in the redesigned tab uses — the
+                // emoji renders as a tofu box wherever the font lacks the pair,
+                // and `CodeFlag` cascades bundled PNG → flagcdn → emoji.
+                CodeFlag(code: country.countryCode, size: 34)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(verbatim: country.displayName)
                         .font(RFont.display(16, weight: .semibold))
@@ -243,7 +247,8 @@ struct LineStoreScreen: View {
                 }
             }
             .padding(.horizontal, 16)
-            .padding(.vertical, 13)
+            .padding(.vertical, 11)
+            .frame(minHeight: 56)
             .contentShape(.rect)
         }
         .buttonStyle(PressScaleStyle())
@@ -486,9 +491,9 @@ struct LineStoreScreen: View {
     private var rowSkeleton: some View {
         VStack(spacing: 8) {
             ForEach(0..<4, id: \.self) { i in
-                RoundedRectangle(cornerRadius: 16)
+                RoundedRectangle(cornerRadius: RRadius.md, style: .continuous)
                     .fill(theme.elev)
-                    .frame(height: 52)
+                    .frame(height: 56)
                     .opacity(1 - Double(i) * 0.18)
             }
         }
@@ -506,6 +511,7 @@ struct LineStoreScreen: View {
                 }
             } label: {
                 HStack(spacing: 12) {
+                    leadingTile(RIcon.globe)
                     Text(countryLabel.map { String(localized: "Anywhere in \($0)") }
                          ?? String(localized: "Anywhere available"))
                         .font(RFont.display(16, weight: .semibold))
@@ -517,7 +523,8 @@ struct LineStoreScreen: View {
                         .foregroundStyle(theme.text3)
                 }
                 .padding(.horizontal, 16)
-                .padding(.vertical, 15)
+                .padding(.vertical, 11)
+                .frame(minHeight: 56)
                 .contentShape(.rect)
             }
             .buttonStyle(PressScaleStyle())
@@ -588,6 +595,12 @@ struct LineStoreScreen: View {
             }
         } label: {
             HStack(spacing: 12) {
+                // The same 34pt leading slot the country rows use, so the two
+                // steps read as one sequence rather than two list styles. A
+                // place glyph, not a flag: every city on screen is in the one
+                // country already named in the header, so a repeated flag would
+                // be seven copies of information the subtitle carries once.
+                leadingTile("mappin.and.ellipse")
                 Text(city.label)
                     .font(RFont.display(16, weight: .semibold))
                     .tracking(-0.3)
@@ -606,11 +619,28 @@ struct LineStoreScreen: View {
                     .foregroundStyle(theme.text3)
             }
             .padding(.horizontal, 16)
-            // 15 + 15 around a 20pt line clears the 44pt minimum target.
-            .padding(.vertical, 15)
+            // 11 + 11 around a 34pt tile clears the 44pt minimum target with
+            // room to spare; the explicit `minHeight` is what guarantees it if
+            // the tile ever shrinks.
+            .padding(.vertical, 11)
+            .frame(minHeight: 56)
             .contentShape(.rect)
         }
         .buttonStyle(PressScaleStyle())
+    }
+
+    /// The leading glyph slot shared by the city and country-wide rows.
+    ///
+    /// Sized to match `CodeFlag(size: 34)` exactly so a step that leads with a
+    /// flag and a step that leads with an icon put their titles on the same
+    /// x-position — the thing that makes a multi-step picker feel like one
+    /// screen changing rather than four different lists.
+    private func leadingTile(_ symbol: String) -> some View {
+        Image(systemName: symbol)
+            .font(.system(size: 14, weight: .semibold))
+            .foregroundStyle(theme.text2)
+            .frame(width: 34, height: 34)
+            .background(theme.chipBg, in: .circle)
     }
 
     // MARK: - Step 3 · number
@@ -654,21 +684,28 @@ struct LineStoreScreen: View {
     /// same failure the "Not yet" ledger rows exist to prevent. `warnSoft` and
     /// not `failSoft`: it is a property of the number, not a fault.
     private var voiceOnlyNotice: some View {
-        HStack(alignment: .top, spacing: 10) {
-            Image(systemName: "exclamationmark.triangle.fill")
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(theme.warn)
-                .padding(.top, 1)
-            Text("Calls only. This number can't send or receive texts.")
-                .font(RFont.text(12, weight: .medium))
-                .foregroundStyle(theme.text)
-                .lineSpacing(2)
-                .fixedSize(horizontal: false, vertical: true)
-            Spacer(minLength: 0)
+        // Through `Card` with a semantic fill and hairline, which is the one
+        // sanctioned use of `border`: an amber caution surface. Identical
+        // treatment to `LineCheckoutScreen`'s own copy of this notice and to
+        // its emergency block, so a caution looks like a caution everywhere in
+        // the funnel instead of three hand-rolled backgrounds drifting apart.
+        Card(radius: RRadius.md, elevation: .flat,
+             fill: theme.warnSoft, border: theme.warn.opacity(0.28)) {
+            HStack(alignment: .top, spacing: 10) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(theme.warn)
+                    .padding(.top, 1)
+                Text("Calls only. This number can't send or receive texts.")
+                    .font(RFont.text(12, weight: .medium))
+                    .foregroundStyle(theme.text)
+                    .lineSpacing(2)
+                    .fixedSize(horizontal: false, vertical: true)
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 12)
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 12)
-        .background(theme.warnSoft, in: .rect(cornerRadius: RRadius.sm))
         .padding(.horizontal, 20)
         .padding(.bottom, 10)
     }
@@ -715,14 +752,26 @@ struct LineStoreScreen: View {
     private var numberSkeleton: some View {
         VStack(spacing: 8) {
             ForEach(0..<5, id: \.self) { i in
-                RoundedRectangle(cornerRadius: 16)
+                RoundedRectangle(cornerRadius: RRadius.md, style: .continuous)
                     .fill(theme.elev)
-                    .frame(height: 58)
+                    // Matches the contact card exactly — 42pt avatar plus 14+14
+                    // of padding — so the list does not jump as it fills.
+                    .frame(height: 70)
                     .overlay(alignment: .leading) {
-                        RoundedRectangle(cornerRadius: 6)
-                            .fill(theme.chipBg)
-                            .frame(width: 150, height: 15)
-                            .padding(.leading, 16)
+                        HStack(spacing: 13) {
+                            Circle()
+                                .fill(theme.chipBg)
+                                .frame(width: 42, height: 42)
+                            VStack(alignment: .leading, spacing: 7) {
+                                RoundedRectangle(cornerRadius: 4)
+                                    .fill(theme.chipBg)
+                                    .frame(width: 140, height: 15)
+                                RoundedRectangle(cornerRadius: 3)
+                                    .fill(theme.chipBg)
+                                    .frame(width: 72, height: 10)
+                            }
+                        }
+                        .padding(.leading, 14)
                     }
                     .opacity(1 - Double(i) * 0.15)
             }
@@ -739,50 +788,96 @@ struct LineStoreScreen: View {
                     numberRow(offer, index: i)
                 }
 
-                Button {
+                // The app's one secondary-action shape, rather than a bespoke
+                // borderless row that gave no press feedback at all.
+                GhostButton(label: "Show different numbers",
+                            icon: RIcon.refresh,
+                            fillsWidth: false) {
                     Task { await state.loadLineNumbers(using: LineAPI(client: api)) }
-                } label: {
-                    HStack(spacing: 7) {
-                        Image(systemName: RIcon.refresh)
-                            .font(.system(size: 12, weight: .semibold))
-                        Text("Show different numbers")
-                            .font(RFont.text(13, weight: .medium))
-                    }
-                    .foregroundStyle(theme.text2)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 14)
                 }
-                .buttonStyle(.plain)
                 .disabled(state.isLoadingLineNumbers)
+                .opacity(state.isLoadingLineNumbers ? 0.5 : 1)
+                .padding(.top, 6)
             }
             .padding(.horizontal, 20)
             .padding(.bottom, 120)
         }
     }
 
+    /// One candidate number, presented as a contact card.
+    ///
+    /// `PeerAvatar` is the same deterministic circle the recents and thread
+    /// rows use, keyed on the E.164 — so the colour a user sees beside a number
+    /// here is the colour it keeps on the checkout hero and, once bought,
+    /// everywhere in the tab. That continuity is the whole reason to spend the
+    /// leading slot on it: it makes the number feel like a thing being adopted
+    /// rather than a row in a stock list.
+    ///
+    /// ⚠️ **No price is rendered here, deliberately.** `monthlyCents` /
+    /// `upfrontCents` on this model are the WHOLESALE quote — the cost book,
+    /// which the app never shows a user — and the retail figure is the same
+    /// subscription price on every row, so printing it would be noise on top
+    /// of a leak. The price is stated once, on `LineCheckoutScreen`, which is
+    /// the 3.1.2(a) surface.
     private func numberRow(_ offer: LineNumberOffer, index: Int) -> some View {
         Button {
             state.lineOffer = offer
             state.intent = .line
             state.flow = .lineCheckout
         } label: {
-            HStack(spacing: 12) {
-                Text(PhoneFormat.national(offer.phoneNumber))
-                    .font(RFont.mono(17, weight: .medium))
-                    .foregroundStyle(theme.text)
-                    .minimumScaleFactor(0.8)
-                    .lineLimit(1)
-                Spacer(minLength: 0)
-                Image(systemName: RIcon.chev)
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(theme.text3)
+            Card(radius: RRadius.md, elevation: .raised) {
+                HStack(spacing: 13) {
+                    PeerAvatar(e164: offer.phoneNumber, size: 42)
+                    VStack(alignment: .leading, spacing: 5) {
+                        Text(PhoneFormat.national(offer.phoneNumber))
+                            .font(RFont.mono(18, weight: .medium))
+                            .foregroundStyle(theme.text)
+                            .minimumScaleFactor(0.8)
+                            .lineLimit(1)
+                        offerCapabilities(offer)
+                    }
+                    Spacer(minLength: 0)
+                    Image(systemName: RIcon.chev)
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(theme.text3)
+                }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 14)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(.rect)
             }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 19)
-            .background(theme.elev, in: .rect(cornerRadius: 16))
-            .contentShape(.rect)
         }
-        .buttonStyle(PressScaleStyle())
+        .buttonStyle(PressScaleStyle(scale: 0.98, dim: true))
+    }
+
+    /// What THIS number can do, when Telnyx told us.
+    ///
+    /// `features` is optional on the model because the deployed server does not
+    /// always send it, and an absent list means "we do not know" — never "it
+    /// cannot". So the strip renders nothing at all rather than four gray
+    /// glyphs, which would read as a number that does nothing. When the list IS
+    /// present the same rule as the country strip applies: green means
+    /// supported, gray means not, never red. The region, when the search names
+    /// one, stands in when there are no features to show.
+    @ViewBuilder
+    private func offerCapabilities(_ offer: LineNumberOffer) -> some View {
+        if offer.features != nil {
+            HStack(spacing: 9) {
+                capabilityIcon("phone.fill", on: offer.supports("voice") == true,
+                               label: String(localized: "Calls"))
+                capabilityIcon("message.fill", on: offer.supports("sms") == true,
+                               label: String(localized: "Texts"))
+                capabilityIcon("photo.fill", on: offer.supports("mms") == true,
+                               label: String(localized: "Picture messages"))
+                capabilityIcon("cross.case.fill", on: offer.supports("emergency") == true,
+                               label: String(localized: "Emergency calls"))
+            }
+        } else if let region = offer.region, !region.isEmpty {
+            Text(verbatim: region)
+                .font(RFont.text(12))
+                .foregroundStyle(theme.text2)
+                .lineLimit(1)
+        }
     }
 
     // MARK: - Nothing to sell
@@ -794,34 +889,30 @@ struct LineStoreScreen: View {
     /// failed fetch looks identical from here, which is why the third case
     /// claims no reason at all. Same discipline as
     /// `EsimStoreScreen.emptyCatalog`.
+    /// Through the shared `EmptyState`, which is the app's one answer to
+    /// "there is nothing here" — and which carries the rule this screen was
+    /// already following by hand: an empty state with an obvious next action
+    /// must offer it, and a genuine LOAD FAILURE must not look like a healthy
+    /// absence. Hence the `fail` tint on the unknown case only; a paused line
+    /// or a dry city is not an error.
     private var unavailable: some View {
-        VStack(spacing: 8) {
-            Image(systemName: state.lineUnavailableReason == .paused
-                  ? "pause.circle" : RIcon.phone)
-                .font(.system(size: 30))
-                .foregroundStyle(theme.text3)
-            Text(unavailableTitle)
-                .font(RFont.display(16, weight: .semibold))
-                .foregroundStyle(theme.text)
-                .multilineTextAlignment(.center)
-            Text(unavailableBody)
-                .font(RFont.text(13))
-                .foregroundStyle(theme.text2)
-                .multilineTextAlignment(.center)
-                .fixedSize(horizontal: false, vertical: true)
+        EmptyState(
+            icon: state.lineUnavailableReason == .paused
+                  ? "pause.circle" : "phone.badge.waveform",
+            title: unavailableTitle,
+            message: unavailableBody,
+            tint: state.lineUnavailableReason == nil ? theme.fail : nil,
             // A refused COUNTRY cannot be fixed by another city, so the escape
             // has to point one step further back.
-            GhostButton(label: state.lineUnavailableReason == .countryNotSellable
-                        ? "Try another country" : "Try another city",
-                        fillsWidth: false) {
-                go(to: state.lineUnavailableReason == .countryNotSellable && showsCountryStep
-                   ? .country : .city, forward: false)
-            }
-            .padding(.top, 8)
-        }
-        .padding(.horizontal, 40)
-        .frame(maxWidth: .infinity)
-        .padding(.top, 50)
+            secondary: (label: state.lineUnavailableReason == .countryNotSellable
+                        ? String(localized: "Try another country")
+                        : String(localized: "Try another city"),
+                        action: {
+                            go(to: state.lineUnavailableReason == .countryNotSellable
+                               && showsCountryStep ? .country : .city,
+                               forward: false)
+                        }))
+        .padding(.top, 24)
     }
 
     private var unavailableTitle: LocalizedStringKey {
@@ -860,6 +951,12 @@ struct LineStoreScreen: View {
     }
 
     private var usSoon: some View {
+        // Same container as the caution notices, in NEUTRAL ink rather than
+        // amber — this is a statement of reach, not a warning, and the two must
+        // not look alike. Giving it a surface at all is what stops a
+        // load-bearing honesty line reading as a stray caption.
+        Card(radius: RRadius.md, elevation: .flat,
+             fill: theme.chipBg, border: nil) {
         HStack(alignment: .top, spacing: 9) {
             Image(systemName: "flag")
                 .font(.system(size: 12, weight: .semibold))
@@ -885,6 +982,9 @@ struct LineStoreScreen: View {
                 .fixedSize(horizontal: false, vertical: true)
             Spacer(minLength: 0)
         }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
+        }
     }
 
     /// Temp SMS is second in the business, not retired. Now that this screen is
@@ -895,22 +995,15 @@ struct LineStoreScreen: View {
     /// app. It used to be a 13pt regular line in `text2`, which read as a
     /// caption; combined with the layout bug above (see `introStep`) it was
     /// both faint and off-screen. The copy is unchanged.
+    /// Now the shared `GhostButton` itself rather than a hand-rolled copy of
+    /// its shape. It was already styled to imitate one — same 48pt height,
+    /// `chipBg` capsule, same press scale — so this is the same button with
+    /// one definition instead of two, and it picks up any future change to the
+    /// app's secondary action for free. The copy is unchanged; the trailing
+    /// arrow goes, because `GhostButton` places its glyph leading and one
+    /// consistent shape beats a bespoke affordance.
     private var smsEscape: some View {
-        Button(action: onOpenSms) {
-            HStack(spacing: 8) {
-                Text("Just need a one-off verification code?")
-                    .font(RFont.text(13, weight: .medium))
-                    .foregroundStyle(theme.text)
-                Image(systemName: RIcon.arrow)
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(theme.ink)
-            }
-            .frame(maxWidth: .infinity)
-            .frame(height: 48)
-            .background(theme.chipBg, in: .capsule)
-            .contentShape(.capsule)
-        }
-        .buttonStyle(.plain)
-        .pressable(0.96)
+        GhostButton(label: "Just need a one-off verification code?",
+                    action: onOpenSms)
     }
 }

@@ -126,6 +126,16 @@ struct DialerScreen: View {
             }
         }
         .task {
+            // A number handed over from a recents row or a thread header. Read
+            // AND cleared here, in that order: an unconsumed prefill left
+            // behind would silently pre-fill the NEXT manual dial with someone
+            // else's number, which on a screen whose button spends credits is
+            // the worst possible kind of leftover state. It is already E.164,
+            // and the readout prints `+…` numbers verbatim.
+            if let prefill = state.dialerPrefill {
+                state.dialerPrefill = nil
+                digits = prefill
+            }
             withAnimation(RMotion.content) { appeared = true }
             // The rate card. Cheap, cached for the session, and the dialer is
             // the only screen that reads it — so it loads here rather than
@@ -166,8 +176,26 @@ struct DialerScreen: View {
         .padding(.top, 12)
     }
 
+    /// The saved nickname for exactly what has been typed, if there is one.
+    /// Exact E.164 match only — a partial number is not yet a person, and
+    /// naming one before the last digit is typed would be a guess.
+    private var typedName: String? {
+        digits.isEmpty ? nil : state.contactName(for: digits)
+    }
+
     private var readout: some View {
         VStack(spacing: 10) {
+            // Who this is, when we know — above the number, as on every phone
+            // dialer. It never replaces the digits: the number is what is about
+            // to be dialled and must stay legible.
+            if let typedName {
+                Text(verbatim: typedName)
+                    .font(RFont.text(14, weight: .semibold))
+                    .foregroundStyle(theme.text2)
+                    .lineLimit(1)
+                    .transition(.opacity)
+            }
+
             // `PhoneFormat.national` groups a NANP number and would mangle an
             // international one — it has no idea where the country code ends.
             // A leading `+` means the user is telling us the country, so show
@@ -243,8 +271,13 @@ struct DialerScreen: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
-        .frame(height: 96)
+        // FIXED height on purpose: the rate line, the shortfall warning and the
+        // refusals all appear and disappear as the user types, and letting the
+        // block grow would walk the keypad up and down under their thumb.
+        // Raised from 96 to fit the contact-name line above the digits.
+        .frame(height: 112)
         .padding(.horizontal, 8)
+        .animation(RMotion.content, value: typedName)
     }
 
     private var callRow: some View {

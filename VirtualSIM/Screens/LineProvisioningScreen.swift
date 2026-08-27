@@ -79,13 +79,30 @@ struct LineProvisioningScreen: View {
     }
 
     private var working: some View {
-        VStack(spacing: 16) {
-            ProgressView().scaleEffect(1.2)
+        VStack(spacing: 18) {
+            // The number the user picked, wearing the same avatar it wore on
+            // the picker row and the checkout hero, with the spinner ringing
+            // it. Continuity across the three screens is the point: this is a
+            // wait on a specific number arriving, not a generic progress
+            // screen. Rendered only once we know which digits — the hero shape
+            // must not invent a placeholder number.
+            if let e164 = provisionedNumber {
+                ZStack {
+                    PeerAvatar(e164: e164, size: 64)
+                    ProgressView()
+                        .scaleEffect(1.6)
+                        .tint(theme.text3)
+                }
+            } else {
+                ProgressView().scaleEffect(1.2)
+            }
+
             VStack(spacing: 8) {
                 Text("Setting up your number")
                     .font(RFont.display(22, weight: .bold))
                     .tracking(-0.5)
                     .foregroundStyle(theme.text)
+                    .multilineTextAlignment(.center)
                 if let e164 = provisionedNumber {
                     Text(PhoneFormat.national(e164))
                         .font(RFont.mono(19, weight: .medium))
@@ -114,9 +131,18 @@ struct LineProvisioningScreen: View {
     /// already paged the owner by the time anyone reads this.
     private var failed: some View {
         VStack(spacing: 12) {
-            Image(systemName: "exclamationmark.triangle")
-                .font(.system(size: 32))
-                .foregroundStyle(theme.warn)
+            // Same soft-disc glyph `EmptyState` uses, so a failure on this
+            // screen looks like a failure everywhere else in the app rather
+            // than a bare symbol floating on the canvas. Copy unchanged.
+            ZStack {
+                Circle()
+                    .fill(theme.warn.opacity(0.12))
+                    .frame(width: 84, height: 84)
+                Image(systemName: "exclamationmark.triangle")
+                    .font(.system(size: 32, weight: .medium))
+                    .foregroundStyle(theme.warn)
+            }
+            .padding(.bottom, 6)
             Text("We couldn't finish setting up your number")
                 .font(RFont.display(20, weight: .bold))
                 .tracking(-0.4)

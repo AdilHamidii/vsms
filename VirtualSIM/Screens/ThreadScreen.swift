@@ -20,9 +20,11 @@ struct ThreadScreen: View {
     @Environment(\.theme) private var theme
     @Environment(AppState.self) private var state
     @Environment(APIClient.self) private var api
+    @Environment(CallController.self) private var calls
 
     @State private var showActions = false
     @State private var reported = false
+    @State private var showNameSheet = false
 
     private var thread: LineThread? {
         state.lineThreads.first { $0.id == state.openThreadId }
@@ -30,6 +32,8 @@ struct ThreadScreen: View {
     private var messages: [LineMessage] {
         state.openThreadId.flatMap { state.lineMessages[$0] } ?? []
     }
+    private var peer: String { thread?.peerE164 ?? "" }
+    private var peerName: String? { state.contactName(for: peer) }
 
     var body: some View {
         ZStack {
@@ -78,6 +82,37 @@ struct ThreadScreen: View {
             }
             Button("Cancel", role: .cancel) { }
         }
+        // Presented from HERE, not from `ContentView`: this screen is itself a
+        // `fullScreenCover`, and a sheet raised from the root while a cover is
+        // up does not appear at all. The environment objects are injected
+        // explicitly for the same reason `EnvBundle` exists — sheet content
+        // does not reliably inherit `@Observable` objects from its presenter.
+        .sheet(isPresented: $showNameSheet) {
+            PeerNameSheet(e164: peer)
+                .environment(\.theme, theme)
+                .environment(state)
+                .presentationDetents([.height(360)])
+                .presentationDragIndicator(.visible)
+                .presentationBackground(theme.bg)
+        }
+    }
+
+    /// Hand this conversation to the keypad, pre-filled.
+    ///
+    /// `flow` drives a `fullScreenCover(item:)`, and swapping one identity for
+    /// another while the cover is up is not a transition SwiftUI performs
+    /// reliably — the second stage can simply never appear. So the cover is
+    /// dismissed first and the dialer raised on the next runloop, once the
+    /// dismissal has actually committed. The prefill is set BEFORE either, so
+    /// the dialer can never come up empty if the hop is coalesced.
+    private func callPeer() {
+        RHaptic.select()
+        state.dialerPrefill = peer
+        state.flow = nil
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(320))
+            state.flow = .dialer
+        }
     }
 
     // MARK: - Header
@@ -93,22 +128,58 @@ struct ThreadScreen: View {
             }
             .buttonStyle(.plain)
 
-            VStack(alignment: .leading, spacing: 1) {
-                Text(PhoneFormat.national(thread?.peerE164 ?? ""))
-                    .font(RFont.display(17, weight: .semibold))
-                    .tracking(-0.3)
-                    .foregroundStyle(theme.text)
-                if thread?.blocked == true {
-                    Text("Blocked")
-                        .font(RFont.text(11, weight: .medium))
-                        .foregroundStyle(theme.fail)
-                } else if reported {
-                    Text("Reported. Thanks, we'll take a look")
-                        .font(RFont.text(11))
-                        .foregroundStyle(theme.text3)
+            // The identity is one tap target — avatar and name together, the
+            // way every phone app opens a contact from its thread header.
+            Button { showNameSheet = true } label: {
+                HStack(spacing: 10) {
+                    PeerAvatar(e164: peer, name: peerName, size: 36)
+                    VStack(alignment: .leading, spacing: 1) {
+                        // The nickname when there is one, the number when there
+                        // is not — never a guessed name, and never both stacked,
+                        // which is what makes a header feel cluttered.
+                        Text(verbatim: peerName ?? PhoneFormat.national(peer))
+                            .font(RFont.display(17, weight: .semibold))
+                            .tracking(-0.3)
+                            .foregroundStyle(theme.text)
+                            .lineLimit(1)
+                        if thread?.blocked == true {
+                            Text("Blocked")
+                                .font(RFont.text(11, weight: .medium))
+                                .foregroundStyle(theme.fail)
+                        } else if reported {
+                            Text("Reported. Thanks, we'll take a look")
+                                .font(RFont.text(11))
+                                .foregroundStyle(theme.text3)
+                                .lineLimit(1)
+                        } else if peerName != nil {
+                            Text(verbatim: PhoneFormat.national(peer))
+                                .font(RFont.mono(11))
+                                .foregroundStyle(theme.text3)
+                                .lineLimit(1)
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
+                .contentShape(.rect)
             }
-            Spacer(minLength: 0)
+            .buttonStyle(.plain)
+            .accessibilityHint(Text("Name this number"))
+
+            // Hidden, not disabled, when no voice client is attached — the same
+            // gate and the same reasoning as the Number tab's dial button: a
+            // greyed control still advertises a capability the build lacks.
+            if calls.isVoiceAvailable {
+                Button(action: callPeer) {
+                    Image(systemName: RIcon.phone)
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(theme.text2)
+                        .frame(width: 34, height: 34)
+                        .background(theme.chipBg, in: .circle)
+                        .contentShape(.circle)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(Text("Call this number"))
+            }
 
             Button { showActions = true } label: {
                 Image(systemName: "ellipsis")
@@ -126,12 +197,50 @@ struct ThreadScreen: View {
 
     // MARK: - Transcript
 
+    /// One message plus, when it opens a new calendar day, the label for that
+    /// day. Computed once per render of the list rather than per row: the
+    /// alternative is asking each bubble what the previous one's date was,
+    /// which turns a linear walk into a quadratic one.
+    private struct DatedMessage: Identifiable {
+        let id: String
+        let message: LineMessage
+        let daySeparator: String?
+    }
+
+    private var dated: [DatedMessage] {
+        let cal = Calendar.current
+        var previous: Date?
+        return messages.map { m in
+            let day = cal.startOfDay(for: m.timestamp)
+            let label = (previous.map { cal.isDate($0, inSameDayAs: day) } ?? false)
+                ? nil : Self.dayLabel(day, calendar: cal)
+            previous = day
+            return DatedMessage(id: m.id, message: m, daySeparator: label)
+        }
+    }
+
+    /// "Today" / "Yesterday" carry more than a date does — a timestamp the
+    /// reader has to decode is a timestamp they skip. Anything older gets a
+    /// real date, because "3 days ago" is arithmetic the reader then has to do.
+    private static func dayLabel(_ day: Date, calendar cal: Calendar) -> String {
+        if cal.isDateInToday(day) { return String(localized: "Today") }
+        if cal.isDateInYesterday(day) { return String(localized: "Yesterday") }
+        // Drop the year within the current one; a bare "12 March" reads faster.
+        let sameYear = cal.component(.year, from: day) == cal.component(.year, from: Date())
+        return day.formatted(sameYear
+            ? .dateTime.weekday(.abbreviated).day().month(.abbreviated)
+            : .dateTime.day().month(.abbreviated).year())
+    }
+
     private var transcript: some View {
         ScrollViewReader { proxy in
             ScrollView {
                 LazyVStack(spacing: 4) {
-                    ForEach(messages) { m in
-                        MessageBubble(message: m).id(m.id)
+                    ForEach(dated) { row in
+                        if let day = row.daySeparator {
+                            DaySeparator(label: day)
+                        }
+                        MessageBubble(message: row.message).id(row.id)
                     }
                     // Anchor for the scroll-to-bottom, so a new message does
                     // not require the user to chase it.
@@ -188,6 +297,29 @@ struct ThreadScreen: View {
     // which was the right distinction while sending existed. It does not
     // exist now, and a disabled composer with an explanation would still be a
     // text field on screen advertising a capability that is never coming.
+}
+
+/// The centred date chip between two calendar days.
+///
+/// A chip rather than a rule with text through it: the transcript already has
+/// bubbles on both edges, and a full-width line adds a third horizontal
+/// structure competing with them. Muted `chipBg`, so it reads as an index mark
+/// rather than as a message anyone sent.
+private struct DaySeparator: View {
+    @Environment(\.theme) private var theme
+    let label: String
+
+    var body: some View {
+        Text(verbatim: label)
+            .font(RFont.text(11, weight: .semibold))
+            .foregroundStyle(theme.text3)
+            .padding(.horizontal, 11)
+            .padding(.vertical, 5)
+            .background(theme.chipBg, in: Capsule())
+            .frame(maxWidth: .infinity)
+            .padding(.top, 12)
+            .padding(.bottom, 6)
+    }
 }
 
 /// One message. Inbound sits left on `elev`; outbound sits right on `ink`, the

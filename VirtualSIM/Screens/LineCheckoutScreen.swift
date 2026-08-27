@@ -267,21 +267,27 @@ struct LineCheckoutScreen: View {
     @ViewBuilder
     private var capabilityNote: some View {
         if numberSendsTexts == false {
-            HStack(alignment: .top, spacing: 10) {
-                Image(systemName: "phone.fill")
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(theme.warn)
-                    .padding(.top, 1)
-                Text("Calls only. This number can't send or receive texts.")
-                    .font(RFont.text(13, weight: .semibold))
-                    .foregroundStyle(theme.text)
-                    .lineSpacing(2)
-                    .fixedSize(horizontal: false, vertical: true)
-                Spacer(minLength: 0)
+            // Through `Card` with a semantic fill + hairline, identical to the
+            // emergency block below and to `LineStoreScreen.voiceOnlyNotice`:
+            // one caution surface across the whole funnel rather than three
+            // hand-rolled backgrounds free to drift apart.
+            Card(radius: RRadius.md, elevation: .flat,
+                 fill: theme.warnSoft, border: theme.warn.opacity(0.28)) {
+                HStack(alignment: .top, spacing: 10) {
+                    Image(systemName: "phone.fill")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(theme.warn)
+                        .padding(.top, 1)
+                    Text("Calls only. This number can't send or receive texts.")
+                        .font(RFont.text(13, weight: .semibold))
+                        .foregroundStyle(theme.text)
+                        .lineSpacing(2)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Spacer(minLength: 0)
+                }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 12)
             }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 12)
-            .background(theme.warnSoft, in: .rect(cornerRadius: RRadius.sm))
         }
     }
 
@@ -306,6 +312,15 @@ struct LineCheckoutScreen: View {
     private var numberCard: some View {
         HeroCard {
             VStack(spacing: 12) {
+                // The SAME deterministic circle the number wore on the picker
+                // row it was chosen from, keyed on the E.164 — so the thing
+                // being paid for is visibly the thing that was picked, and it
+                // keeps that identity into the thread and recents rows after
+                // the purchase. Decorative only; the digits below carry the
+                // meaning and the avatar is hidden from VoiceOver.
+                PeerAvatar(e164: state.lineOffer?.phoneNumber ?? "", size: 54)
+                    .padding(.bottom, 2)
+
                 HStack(spacing: 7) {
                     // ⚠️ Was a hardcoded 🇨🇦. Harmless while Canada was the
                     // whole catalogue and a flat error the moment it is not —
@@ -503,6 +518,13 @@ struct LineCheckoutScreen: View {
             RHaptic.select()
             withAnimation(RMotion.select) { subs.selectedPlan = plan }
         } label: {
+            // `Card` with a semantic fill + border — exactly what `border` is
+            // for. The old hand-rolled `.background(RoundedRectangle)` +
+            // `.overlay(stroke)` pair drew the same thing twice with two
+            // radius literals free to drift; this is one shape.
+            Card(radius: RRadius.md, elevation: .flat,
+                 fill: active ? theme.inkSoft.opacity(0.5) : theme.elev,
+                 border: active ? theme.ink.opacity(0.5) : theme.sep) {
             HStack(spacing: 12) {
                 Image(systemName: active ? "largecircle.fill.circle" : "circle")
                     .font(.system(size: 20))
@@ -544,17 +566,11 @@ struct LineCheckoutScreen: View {
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 14)
-            .background(
-                RoundedRectangle(cornerRadius: RRadius.md, style: .continuous)
-                    .fill(active ? theme.inkSoft.opacity(0.5) : theme.elev)
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: RRadius.md, style: .continuous)
-                    .stroke(active ? theme.ink.opacity(0.5) : theme.sep,
-                            lineWidth: active ? 1.5 : 1)
-            )
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(.rect)
+            }
         }
-        .buttonStyle(.plain)
+        .buttonStyle(PressScaleStyle(scale: 0.99))
         // 44pt minimum, and the whole row is the target rather than the radio.
         .frame(minHeight: 44)
         .accessibilityElement(children: .combine)
@@ -620,21 +636,23 @@ struct LineCheckoutScreen: View {
     /// on the store screen, which was rendered with identical weight and
     /// spacing: a safety warning and a "coming soon" should not look alike.
     private var emergency: some View {
-        HStack(alignment: .top, spacing: 10) {
-            Image(systemName: "exclamationmark.triangle.fill")
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(theme.warn)
-                .padding(.top, 1)
-            Text("This number can't call 911 or any emergency service. Always use your phone's own number for emergencies.")
-                .font(RFont.text(12, weight: .medium))
-                .foregroundStyle(theme.text)
-                .lineSpacing(2)
-                .fixedSize(horizontal: false, vertical: true)
-            Spacer(minLength: 0)
+        Card(radius: RRadius.md, elevation: .flat,
+             fill: theme.warnSoft, border: theme.warn.opacity(0.28)) {
+            HStack(alignment: .top, spacing: 10) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(theme.warn)
+                    .padding(.top, 1)
+                Text("This number can't call 911 or any emergency service. Always use your phone's own number for emergencies.")
+                    .font(RFont.text(12, weight: .medium))
+                    .foregroundStyle(theme.text)
+                    .lineSpacing(2)
+                    .fixedSize(horizontal: false, vertical: true)
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 12)
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 12)
-        .background(theme.warnSoft, in: .rect(cornerRadius: RRadius.sm))
     }
 
     /// Guideline 3.1.2(c): the purchase flow must carry functional links to the

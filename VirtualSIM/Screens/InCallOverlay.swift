@@ -15,9 +15,17 @@ import SwiftUI
 struct InCallOverlay: View {
     @Environment(\.theme) private var theme
     @Environment(CallController.self) private var calls
+    /// OPTIONAL on purpose. This overlay is mounted twice — on the root view
+    /// and inside the flow cover — and both call sites inject only `theme` and
+    /// `calls`. Declaring `AppState` non-optionally would trap the moment a
+    /// call goes live. The nickname is a nicety; the number underneath it is
+    /// the thing that must always render.
+    @Environment(AppState.self) private var state: AppState?
 
     @State private var tick = Date()
     @State private var showKeypad = false
+
+    private var peerName: String? { state?.contactName(for: calls.peer) }
 
     var body: some View {
         ZStack {
@@ -56,21 +64,37 @@ struct InCallOverlay: View {
 
     private var identity: some View {
         VStack(spacing: 10) {
-            ZStack {
-                Circle()
-                    .fill(theme.inkSoft)
-                    .frame(width: 96, height: 96)
-                Image(systemName: RIcon.phone)
-                    .font(.system(size: 34, weight: .medium))
-                    .foregroundStyle(theme.accent2)
-            }
+            // The same avatar the peer wears on recents rows, conversation rows
+            // and the thread header — a call must look like it is with the
+            // person the rest of the app has been showing, not with a generic
+            // phone glyph.
+            PeerAvatar(e164: calls.peer, name: peerName, size: 96)
 
-            Text(PhoneFormat.national(calls.peer))
-                .font(RFont.mono(27, weight: .semibold))
-                .foregroundStyle(theme.text)
-                .minimumScaleFactor(0.6)
-                .lineLimit(1)
-                .padding(.top, 8)
+            // Named peers lead with the name and keep the number under it in
+            // mono. Unnamed ones show the number alone, at the larger size —
+            // never a placeholder like "Unknown", which is a claim.
+            VStack(spacing: peerName == nil ? 0 : 4) {
+                if let peerName {
+                    Text(verbatim: peerName)
+                        .font(RFont.display(27, weight: .semibold))
+                        .tracking(-0.4)
+                        .foregroundStyle(theme.text)
+                        .minimumScaleFactor(0.6)
+                        .lineLimit(1)
+                    Text(verbatim: PhoneFormat.national(calls.peer))
+                        .font(RFont.mono(14))
+                        .foregroundStyle(theme.text3)
+                        .minimumScaleFactor(0.6)
+                        .lineLimit(1)
+                } else {
+                    Text(verbatim: PhoneFormat.national(calls.peer))
+                        .font(RFont.mono(27, weight: .semibold))
+                        .foregroundStyle(theme.text)
+                        .minimumScaleFactor(0.6)
+                        .lineLimit(1)
+                }
+            }
+            .padding(.top, 8)
 
             // Says which state the call is actually in. A screen that shows a
             // running timer before the other end has answered is claiming a
