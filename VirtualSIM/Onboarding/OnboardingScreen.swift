@@ -90,6 +90,13 @@ struct OnboardingScreen: View {
                     TermsPage().tag(3)
                 }
                 .tabViewStyle(.page(indexDisplayMode: .never))
+                // Runs before sign-in, so these only ENQUEUE — the flush waits
+                // for a session. That is the whole point: the pre-account half
+                // of the funnel has never been visible.
+                .onAppear { Analytics.shared.track("onboarding_page", ["index": .int(page)]) }
+                .onChange(of: page) { _, p in
+                    Analytics.shared.track("onboarding_page", ["index": .int(p)])
+                }
                 .frame(maxHeight: .infinity)
                 footer
             }
@@ -180,6 +187,7 @@ struct OnboardingScreen: View {
     /// both mean "I am done reading", and the next screen is the same screen.
     private func finish() {
         RHaptic.select()
+        Analytics.shared.track("onboarding_done", ["index": .int(page)])
         onDone()
     }
 }

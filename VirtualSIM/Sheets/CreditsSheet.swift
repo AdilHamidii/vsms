@@ -191,6 +191,12 @@ struct CreditsSheet: View {
         .background(theme.bg)
         .task {
             preselectForNeed()
+            // `needed` is the shortfall the caller computed, so it is also the
+            // only thing that separates "the app sent them here" from "they
+            // opened the paywall themselves".
+            Analytics.shared.track("paywall_shown", [
+                "source": .string(needed > 0 ? "shortfall" : "manual"),
+                "needed": .int(needed)])
             withAnimation(RMotion.content) { appeared = true }
             await iap.loadProducts()
             // Also here, not only in `onChange(of: productsLoaded)`: products
@@ -462,6 +468,8 @@ struct CreditsSheet: View {
                     guard !purchasing else { return }
                     RHaptic.select()
                     userChosePack = true
+                    Analytics.shared.track("pack_selected",
+                                           ["product": .string(p.productId)])
                     withAnimation(RMotion.select) { selected = p.id }
                 }
             }

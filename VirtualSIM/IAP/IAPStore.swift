@@ -163,30 +163,45 @@ final class IAPStore {
             await loadProducts()
         }
         guard let product = products[pack.productId] else {
+            Analytics.shared.track("purchase_result", [
+                "product": .string(pack.productId), "outcome": "failed"])
             // loadProducts already set a more specific lastError if it failed.
             if lastError == nil {
                 lastError = String(localized: "This credit pack isn't available right now. Please try again later.")
             }
             return false
         }
+        // `outcome` is taken from StoreKit's own result, never inferred from
+        // the Bool this function returns: `.userCancelled` and a rejected
+        // receipt both return false, and telling them apart is the one signal
+        // this product has never had.
+        func note(_ outcome: String) {
+            Analytics.shared.track("purchase_result", [
+                "product": .string(pack.productId), "outcome": .string(outcome)])
+        }
         do {
             let result = try await product.purchase()
             switch result {
             case .success(let verification):
                 let accepted = await handle(verification)
+                note(accepted ? "success" : "failed")
                 // A purchase that went through leaves no error behind, even if
                 // the shared transaction listener set one meanwhile.
                 if accepted { lastError = nil }
                 return accepted
             case .userCancelled:
+                note("cancelled")
                 return false
             case .pending:
+                note("pending")
                 lastError = String(localized: "Purchase is pending parental approval.")
                 return false
             @unknown default:
+                note("failed")
                 return false
             }
         } catch {
+            note("failed")
             lastError = error.localizedDescription
             return false
         }

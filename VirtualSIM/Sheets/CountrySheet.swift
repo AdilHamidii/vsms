@@ -172,6 +172,9 @@ struct CountrySheet: View {
                                selected: c.id == state.configuringCountry.id,
                                isLast: idx == rows.count - 1) {
                         RHaptic.select()
+                        Analytics.shared.track("country_selected", [
+                            "country": .string(c.id),
+                            "credits": .int(price(c) ?? 0)])
                         onPick(c)
                         dismiss()
                     }

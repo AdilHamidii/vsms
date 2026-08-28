@@ -324,6 +324,8 @@ struct ContentView: View {
             }
         }
         .onChange(of: scenePhase) { _, phase in
+            // The one moment we know a session is ending. Fire-and-forget.
+            if phase == .background { Analytics.shared.flushOnBackground() }
             if phase == .active {
                 Task {
                     // Re-fetch catalog too so server-side sync-prices runs
@@ -427,7 +429,7 @@ struct ContentView: View {
         // `state.maintenance`, rather than something threaded through the
         // item-based sheet enum.
         .sheet(isPresented: $state.showMailPaywall) {
-            MailPaywallScreen()
+            MailPaywallScreen(source: "refused")
                 .modifier(EnvBundle(theme: theme, state: state, api: api, push: push, session: session, iap: iap, subs: subs, mailStore: mailStore, calls: calls))
                 .presentationDetents([.large])
                 .presentationDragIndicator(.visible)

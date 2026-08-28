@@ -74,6 +74,9 @@ struct OtpScreen: View {
         guard !appeared else { return }
         appeared = true
         guard !otpValue.isEmpty else { return }
+        // The service only — never the code, the number, or the order id.
+        Analytics.shared.track("code_received",
+                               ["service": .string(order.service.id)])
 
         UIPasteboard.general.string = otpValue
         copied = true

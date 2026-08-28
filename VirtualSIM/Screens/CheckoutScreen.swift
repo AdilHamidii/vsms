@@ -102,7 +102,14 @@ struct CheckoutScreen: View {
                 BottomBar { ctaBlock }
             }
         }
-        .task { withAnimation(RMotion.content) { appeared = true } }
+        .task {
+            withAnimation(RMotion.content) { appeared = true }
+            Analytics.shared.track("checkout_view", [
+                "service": .string(service.id),
+                "country": .string(country.id),
+                "credits": .int(routeCost ?? 0),
+                "tier": .string(state.checkoutPremium ? "premium" : "standard")])
+        }
     }
 
     private var topBar: some View {

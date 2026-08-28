@@ -59,7 +59,7 @@ struct EmailDomainSheet: View {
         .background(theme.bg)
         .presentationDetents([.medium, .large])
         .sheet(isPresented: $showPaywall) {
-            MailPaywallScreen()
+            MailPaywallScreen(source: "domain_sheet")
                 .environment(\.theme, theme)
                 .environment(state)
                 .environment(mailStore)

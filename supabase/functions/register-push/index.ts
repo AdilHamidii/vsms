@@ -43,6 +43,22 @@ Deno.serve(async (req) => {
   // this (empty push_devices ⇒ registration path never reached) vs. failing.
   console.log(`register-push OK user=${userId} env=${body.environment} bundle=${body.bundle_id} token=${body.token.slice(0, 8)}…`);
 
+  // Geography capture for SHIPPED builds (2026-08-28): URLSession sends
+  // Accept-Language derived from the device locale, so this is the one
+  // device-geography signal that needs no client change. Best-effort — a
+  // failure here must never fail the push registration. Coverage caveat: only
+  // users who allowed push reach this function; 2.6+ clients also write the
+  // full profile (incl. StoreKit storefront) through record-events.
+  const lang = (req.headers.get("accept-language") ?? "").split(",")[0].trim().slice(0, 32);
+  if (lang) {
+    const { error: profErr } = await sb.from("device_profiles").upsert({
+      user_id: userId,
+      accept_language: lang,
+      updated_at: new Date().toISOString(),
+    }, { onConflict: "user_id" });
+    if (profErr) console.error(`register-push profile write failed user=${userId}: ${profErr.message}`);
+  }
+
   // The daily credit was disabled (20260801150000) and then REMOVED
   // (2026-08-02): the claim_daily_credit_for round-trip that used to live here
   // was a guaranteed no-op costing every cold launch an RPC. The literal

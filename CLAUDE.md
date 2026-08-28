@@ -175,7 +175,7 @@ supabase functions deploy create-order check-order cancel-order register-push ia
   create-email-order check-email-order email-domains support-send \
   search-line-numbers reserve-line-number verify-line-subscription rent-line-credits \
   send-line-message line-thread-action mint-line-token begin-line-call report-line-call \
-  record-attribution verify-email-subscription swap-line-number
+  record-attribution verify-email-subscription swap-line-number record-events
 # Cron-gated functions MUST ship --no-verify-jwt: their pg_cron relays send
 # only x-cron-secret, no Authorization header. winback lived in the JWT group
 # until 2026-07-21 and silently 401'd on every daily run — zero nudges ever
@@ -213,6 +213,9 @@ supabase functions deploy poll-active-orders sync-prices sync-5sim sync-herosms 
 # PROBE" above — "do not re-run") that was never added to either list and is
 # not meant to be redeployed on a normal cadence. Re-assert the sum before
 # trusting either number; do not assume this note stays current.
+# ✅ Re-asserted 2026-08-28: 26 + 21 = **47** (record-events — the behavioural
+# analytics ingest, JWT-verified — joined the JWT group this day) against
+# `ls … | wc -l` = **48**; the gap is still `probe-5sim`. Re-run the count.
 # ✅ Re-asserted 2026-08-27: 25 + 21 = **46** (sync-line-countries — the line
 # country catalog sync — joined the --no-verify-jwt group this day, with its
 # config.toml entry) against `ls … | wc -l` = **47**; the gap is still
@@ -4108,6 +4111,34 @@ Five things that are load-bearing:
 Not built: a `/attribution` Telegram command. `attribution_summary()` is the
 payoff and is queryable by hand; the bot surface needs a formatter in
 `_shared/opsFormat.ts` and is worth doing once there is data in the table.
+
+### Behavioural analytics + device geography (2026-08-28)
+
+Built to diagnose the 08-17 organic surge (signups doubled, buyer rate fell
+~5% → 0.4%, surge unattributed — 355 of ~520 post-08-16 signups have Apple's
+definitive "not attributed"; only 7 are ASA). Two tables, migration
+`20260828130000`:
+
+- **`device_profiles`** (1 row/user, cascades on purpose — user data, not a
+  tombstone): `storefront` (StoreKit — the true payment geography),
+  `device_locale`, `timezone`, `app_version`, `accept_language`. Two writers:
+  `register-push` stamps `accept_language` from the request header — works
+  for SHIPPED builds with no release, but only users who allowed push — and
+  `record-events`' optional `profile` field covers everyone on 2.6+.
+- **`app_events`** — first-party event stream, written ONLY by the
+  **`record-events`** edge function (JWT group; batch ≤ 50, names
+  `^[a-z0-9_.]{1,64}$`, props ≤ 2KB else `{"_truncated":true}`). RLS on with
+  NO client policies — a client that can insert directly can poison every
+  funnel read; keep it that way. 90-day retention via pg_cron
+  `app-events-prune` (50 3 * * *). Analytics only, never accounting — money
+  stays in the money tables.
+- Client half (`Networking/Analytics.swift` + ~16 funnel events: paywall
+  shown, pack selected, `purchase_result` incl. **cancelled** — the signal we
+  have never had) ships in **2.6**. ⚠️ Before submitting 2.6, the App Privacy
+  label needs **Product Interaction (linked to identity)** added, or the
+  submission misdeclares data collection.
+- The server never surfaces analytics failures to the app, and the client
+  fires-and-forgets — measuring the product must never degrade it.
 
 ### Known-open
 

@@ -917,6 +917,11 @@ final class AppState {
         // a paying user — the app spends on ASA daily and, until this landed,
         // installs and purchases were never joined at all.
         await submitAttributionIfNeeded(api: api)
+
+        // Last, with attribution, and for the same reason: a measurement may
+        // never lengthen the boot critical path. Enqueue only — the flush is
+        // gated on an authenticated session inside `Analytics`.
+        Analytics.shared.track("app_open")
     }
 
     /// Hand Apple's AdServices attribution token to `record-attribution`, once
@@ -2159,6 +2164,8 @@ final class AppState {
         let svc = configuringService
         isBuyingEmail = true
         defer { isBuyingEmail = false }
+        Analytics.shared.track("email_order_submitted",
+                               ["domain": .string(dom.domain)])
         do {
             let order = try await api.create(serviceId: svc.id, domain: dom.domain)
             emailOrders.insert(order, at: 0)
@@ -2172,6 +2179,7 @@ final class AppState {
             // limit; they are already paying and do not need to be sold
             // anything, so it falls through to the ordinary `userMessage`.
             if case .http(_, let body) = err, Self.errorCode(in: body) == "subscription_required" {
+                Analytics.shared.track("email_walled")
                 intent = .mailSubscription
                 showMailPaywall = true
                 return
@@ -2359,6 +2367,12 @@ final class AppState {
         isPlacingOrder = true
         defer { isPlacingOrder = false }
         let concurrent = wantsConcurrentOrder
+        let tier = effectiveCheckoutPremium ? "premium" : "standard"
+        Analytics.shared.track("order_submitted", [
+            "service": .string(svc.id),
+            "country": .string(cty.id),
+            "credits": .int(cost(for: svc, country: cty) ?? 0),
+            "tier": .string(tier)])
         do {
             let server = try await orders.create(serviceId: svc.id, countryId: cty.id,
                                                  premium: effectiveCheckoutPremium,
@@ -2372,9 +2386,25 @@ final class AppState {
             flow = .waiting
             await refreshWallet(using: wallet)
         } catch let apiErr as APIError {
+            Analytics.shared.track("order_refused",
+                                   ["reason": .string(AppState.refusalReason(apiErr))])
             showError(apiErr)
         } catch {
+            Analytics.shared.track("order_refused", ["reason": "other"])
             lastError = "Something went wrong. Please try again."
+        }
+    }
+
+    /// Coarse label for `order_refused`. Deliberately a fixed vocabulary: an
+    /// arbitrary server string would drift and would eventually carry data
+    /// that has no business in an event prop.
+    private static func refusalReason(_ err: APIError) -> String {
+        switch err.businessCode {
+        case "insufficient_credits":  return "insufficient_credits"
+        case "no_numbers_available":  return "no_numbers_available"
+        case "margin_too_low":        return "margin_too_low"
+        case "provider_unreachable":  return "provider_unreachable"
+        default:                      return "other"
         }
     }
 
@@ -2566,6 +2596,12 @@ final class AppState {
         defer { isPlacingOrder = false }
         do {
             let server = try await orders.cancel(orderId: order.id)
+            // Tracked on SUCCESS only: a cancel refused by the minimum hold
+            // (429 `cancel_too_early`) is not a cancel, and counting it would
+            // overstate impatience — the exact quantity this event exists to
+            // measure. `held_s` is what makes cancel-before-arrival legible.
+            Analytics.shared.track("waiting_cancel", [
+                "held_s": .int(max(0, Int(Date().timeIntervalSince(order.createdAt))))])
             let updated = resolve(server)
             if let idx = self.orders.firstIndex(where: { $0.id == updated.id }) {
                 self.orders[idx] = updated

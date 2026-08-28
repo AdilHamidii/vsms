@@ -116,6 +116,10 @@ struct AuthGate: View {
         }
         .task {
             push.attach(api: api, session: session)
+            // Attached here, with the other stores, because onboarding runs
+            // BEFORE sign-in and its events must already be queueing. The
+            // flush itself is gated on `session.status` inside `Analytics`.
+            Analytics.shared.attach(api: api, session: session)
             // Registered BEFORE the sweep. `iap.attach` starts
             // `restorePurchases()` in a Task, so it cannot observe a handler
             // assigned in a LATER task — which is how the mail subscription's

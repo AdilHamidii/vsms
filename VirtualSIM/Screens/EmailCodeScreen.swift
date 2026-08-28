@@ -90,7 +90,7 @@ struct EmailCodeScreen: View {
             .presentationBackground(theme.bg)
         }
         .sheet(isPresented: $showPaywall) {
-            MailPaywallScreen()
+            MailPaywallScreen(source: "code_screen")
                 .environment(\.theme, theme)
                 .environment(state)
                 .environment(mailStore)

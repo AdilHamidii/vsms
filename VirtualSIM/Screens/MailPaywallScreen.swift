@@ -51,6 +51,11 @@ import SwiftUI
 ///   `MISSING_METADATA` in App Store Connect, not a client bug — say the
 ///   store is unavailable rather than rendering a live-looking disabled row.
 struct MailPaywallScreen: View {
+    /// Which surface raised it. There are four entry points and they mean
+    /// different things — a refused order is not the same event as someone
+    /// browsing the offer from Home.
+    var source: String = "other"
+
     @Environment(AppState.self) private var state
     @Environment(MailSubscriptionStore.self) private var store
     @Environment(\.dismiss) private var dismiss
@@ -98,6 +103,7 @@ struct MailPaywallScreen: View {
         .background(theme.bg)
         .task {
             withAnimation(RMotion.content) { appeared = true }
+            Analytics.shared.track("mail_paywall_shown", ["source": .string(source)])
             await store.load()
         }
     }

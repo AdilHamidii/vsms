@@ -68,6 +68,7 @@ struct LineStoreScreen: View {
         // up" was. Nothing on the city step needs the network at all.
         .task {
             withAnimation(RMotion.content) { appeared = true }
+            Analytics.shared.track("line_store_view")
             // The country catalogue. Swallows its own failure and keeps the
             // seeded two — see `AppState.loadLineCountries`. Fired here rather
             // than on entering the country step so the step can decide whether

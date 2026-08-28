@@ -139,7 +139,7 @@ struct HomeScreen: View {
         // inherit @Observable environment objects — the reason `EnvBundle`
         // exists at all.
         .sheet(isPresented: $showMailPaywall) {
-            MailPaywallScreen()
+            MailPaywallScreen(source: "home")
                 .environment(\.theme, theme)
                 .environment(state)
                 .environment(mailStore)

@@ -298,6 +298,9 @@ struct ServiceSheet: View {
                    balance: state.balance,
                    selected: service.id == state.configuringService.id) {
             RHaptic.select()
+            Analytics.shared.track("service_selected", [
+                "service": .string(service.id),
+                "source": .string(trimmedQuery.isEmpty ? "sheet" : "search")])
             onPick(service)
             dismiss()
         }
