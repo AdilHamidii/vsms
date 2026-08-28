@@ -29,22 +29,23 @@
 import { handleCors, json } from "../_shared/cors.ts";
 import { admin } from "../_shared/supabaseAdmin.ts";
 import { getCountryPrices, isOk } from "../_shared/smspva.ts";
+import { retailCredits } from "../_shared/pricing.ts";
 
-// Keep in lockstep with sync-prices: same divisor, same wholesale ceiling.
+// The premium tier is priced with the SHARED tapered curve in
+// `_shared/pricing.ts` — the same one sync-prices uses for standard retail, so
+// the two can no longer disagree by construction. This copy used to carry its
+// own `CREDIT_DIVISOR = 0.05`, duplicated from sync-prices.
 //
-// This is not decorative. On 2026-07-27 sync-prices' ceiling was raised
-// 400 -> 750 (tied to the largest credit pack) and this copy was left at 400.
-// Within one sync the two disagreed and **1,432 routes in the newly-opened
-// $4.00-$7.50 band lost their carrier pin AND their premium_credits** — that
-// was 100% of all active SMSPVA routes missing either. The affected set was
-// the worst possible one: nearly every WhatsApp route the ceiling change had
-// just made visible. Nothing detected it — this function returns 200 and
-// counts `routesPinned` only over what it did pin, so pinning fewer routes
-// looks identical to a healthy run.
-//
-// If you change one ceiling, change all three (sync-prices, here,
-// sync-smspool) in the same commit.
-const CREDIT_DIVISOR = 0.05;
+// The duplication was not decorative, and it drifted: on 2026-07-27
+// sync-prices' wholesale ceiling was raised 400 -> 750 and this copy was left
+// at 400. Within one sync the two disagreed and **1,432 routes in the
+// newly-opened $4.00-$7.50 band lost their carrier pin AND their
+// premium_credits** — 100% of all active SMSPVA routes missing either, and
+// nearly every WhatsApp route the ceiling change had just made visible.
+// Nothing detected it: this function returns 200 and counts `routesPinned`
+// only over what it did pin, so pinning fewer routes looks identical to a
+// healthy run. The remaining duplicated constant is MAX_WHOLESALE_CENTS
+// below — change it here and in sync-prices in the same commit.
 const MIN_CREDITS = 1;
 const MAX_CREDITS = 999;
 /** Owner decision 2026-08-04: the wholesale ceiling is REMOVED.
@@ -88,9 +89,11 @@ function isRealCarrier(op: string): boolean {
   return !/^(donor|other_|mvno_|total_)/i.test(op);
 }
 
+/** Carrier cost in CENTS → credits, on the shared curve. Clamping is already
+ *  1..999 inside `retailCredits`; kept as a thin wrapper so the call site below
+ *  still reads in the units SMSPVA quotes. */
 function toCredits(cents: number): number {
-  const raw = Math.ceil(cents / 100 / CREDIT_DIVISOR);
-  return Math.max(MIN_CREDITS, Math.min(MAX_CREDITS, raw));
+  return retailCredits(cents / 100);
 }
 
 function validateCronSecret(req: Request): boolean {

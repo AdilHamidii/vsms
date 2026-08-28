@@ -21,24 +21,18 @@
 import { handleCors, json } from "../_shared/cors.ts";
 import { admin } from "../_shared/supabaseAdmin.ts";
 import { getPricesForCountry, type FivePool } from "../_shared/fivesim.ts";
+import { retailCredits } from "../_shared/pricing.ts";
 
-// LOCKSTEP with create-order's MIN_MARGIN_BY_PROVIDER["5sim"] = 10.0 and its
-// NET_USD_PER_CREDIT = 0.40, because 0.40 / 10 = 0.04 exactly.
+// Retail comes from the SHARED tapered curve (owner decision 2026-08-28): 10×
+// on wholesale up to 15¢, 5.5× MARGINAL above it. It is provider-uniform, so
+// this function no longer carries a divisor of its own — see
+// `_shared/pricing.ts`, which also holds the lockstep rule binding it to
+// create-order's order-time ceiling.
 //
-// 0.03 → 0.04, owner decision 2026-08-05, to make the 10x REAL. The old pair
-// (0.30 / 10) was self-consistent arithmetic against a revenue figure no pack
-// sells at: measured over all 37 Production purchases a credit nets $0.397, so
-// 0.03 was charging 13.2x, not 10x. Nothing about the intent changed — only the
-// input that was wrong.
-//
-// Effect on the catalog, simulated over all 9,306 priced active routes before
-// applying: median route 7 → 6 credits, share reachable with the $2.99 entry
-// pack 36.7% → 49.9%. tinder/co (18c wholesale) goes 6 → 5 credits, which is
-// what moves it inside the smallest pack a new user can buy — the case that
-// prompted this.
-const CREDIT_DIVISOR = 0.04;
-const MIN_CREDITS = 1;
-const MAX_CREDITS = 999;
+// *History, kept because it explains the shape:* 5sim priced at a flat 0.04
+// divisor (a true 10×) from 2026-08-05. The taper keeps that 10× on cheap
+// routes — which is essentially the whole 5sim catalog — and only bends the
+// expensive tail, where a flat 10× priced routes out of every credit pack.
 
 /** Owner decision 2026-08-04: the wholesale ceiling is REMOVED.
  *
@@ -81,11 +75,6 @@ const CHUNK = 500;
 const CALL_SPACING_MS = 600;
 const RETRY_PAUSE_MS = 2_500;
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
-
-function priceToCredits(usd: number): number {
-  if (!Number.isFinite(usd) || usd <= 0) return MIN_CREDITS;
-  return Math.min(MAX_CREDITS, Math.max(MIN_CREDITS, Math.ceil(usd / CREDIT_DIVISOR)));
-}
 
 interface Chosen {
   chain: string[];      // ordered pool slugs, best first
@@ -470,7 +459,7 @@ Deno.serve(async (req) => {
       row.provider = "5sim";
       row.status = status;
       {
-        const computed = smoothed != null ? priceToCredits(smoothed / 100) : r.retail_credits as number | null;
+        const computed = smoothed != null ? retailCredits(smoothed / 100) : r.retail_credits as number | null;
         const floor = floors[key];
         row.retail_credits = computed != null && Number.isFinite(floor)
           ? Math.max(computed, Math.max(1, Math.floor(floor)))

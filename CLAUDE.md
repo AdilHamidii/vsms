@@ -780,7 +780,38 @@ function's own silent rejection), never 401.
 
 `AppState.cost(for:country:) -> Int?` uses an O(1) `routeIndex` dict (keyed `"serviceId|countryId"`) built in `loadCatalog`. Returns `nil` when the pair has no active route with a `retail_credits` price — meaning **unavailable to book**; UI shows "Unavailable" (see ServiceSheet/CountrySheet) and disables the Get-number button. It deliberately does **NOT** fall back to the seed `service.cost`, since undercharging vs the live provider price burns margin per order. **Do not** linear-scan `routes` (~17k rows after sync-prices) — that froze the country picker before the index was added.
 
-`sync-prices` formula: `credits = max(1, ceil(price / 0.05))` — 1 credit per started 5¢ of wholesale (`CREDIT_DIVISOR = 0.05`, duplicated in **two** files — `sync-prices` and `sync-smspva-operators`, which prices the premium tier — while `sync-herosms` defines its own, deliberately DIFFERENT `0.025`; see the per-provider table below. "Tuning the divisor" is a per-provider decision now, and the 0.05 pair must move together). Order-time enforcement matches: `create-order` has `MIN_MARGIN = 6.0` / `NET_USD_PER_CREDIT = 0.30`, so the max we pay a provider is `credits × $0.05` **plus `CEILING_HEADROOM_USD` ($0.10)**, enforced on the actual charged cost with cancel-and-fallback. Keep the divisor and the margin pair in lockstep; raising one alone either blocks honest routes or leaks margin.
+🔴 **SMS retail is ONE TAPERED CURVE since 2026-08-28 (owner decision), uniform
+across every provider, defined in `_shared/pricing.ts` and NOWHERE else:**
+
+```
+retailUsd(cost)   = cost ≤ $0.15 ? 10 × cost : $1.50 + 5.5 × (cost − $0.15)
+retail_credits    = clamp(1, 999, ceil(retailUsd / NET_USD_PER_CREDIT))   // NET = 0.40
+expectedCostUsd(credits)  — the EXACT algebraic inverse, used by create-order
+```
+
+The taper is **MARGINAL and continuous at the knee, deliberately** — a blanket
+5.5× above 15¢ would sell a 16¢ route ($0.88) cheaper than a 15¢ one ($1.50),
+a price inversion. Never rewrite it as a flat multiple picked by a threshold.
+All four SMS syncs (`sync-5sim`, `sync-herosms`, `sync-prices`,
+`sync-smspva-operators`) import `retailCredits()`; `create-order` imports
+`expectedCostUsd()` and `NET_USD_PER_CREDIT`. The per-provider
+`CREDIT_DIVISOR`s and `MIN_MARGIN_BY_PROVIDER`/`marginFor` are **deleted** —
+the old warning that consolidating divisors "would silently reprice a
+provider" is retired: uniformity is now the point, and one definition kills
+the drift class. **The lockstep rule survives in sharper form:**
+`expectedCostUsd` must remain the exact inverse of `retailUsd` — change one
+without the other and honestly-priced routes are refused `margin_too_low`,
+charged-and-refunded, silently. Both live in the same file so the same commit
+can hold both.
+
+Applied effect, measured against the live catalog before deploy (2026-08-28):
+3,773 of 7,866 active 5sim routes and 1,207 of 1,260 HeroSMS routes got
+CHEAPER, **zero got more expensive**, zero priced below wholesale; HeroSMS
+median 8 → 5 credits (its 16× era ended), 5sim ≤15¢ routes unchanged (already
+10×), the worst route fell 181 → 101 credits, and the $2.99/5cr pack's reach
+went ~47% → ~63% of the catalog. Rationale: the measured delivery-by-price
+gradient (≤5¢ 12–18%, >40¢ ~80%) means the expensive band is where the product
+actually works, and a flat 10–16× priced exactly that band out of the packs.
 
 **The $0.10 headroom is load-bearing — do not "simplify" it away.** Without it the two formulas are exactly inverse (`credits*0.30/6.0 == credits*0.05`), so a route whose wholesale lands on an exact 5¢ boundary has an order-time cap equal to its cost **to the cent**. Measured 2026-07-27: **12,507 of 16,303 active routes (76.7%) sat at exactly zero headroom.** A one-cent rise at SMSPVA then made every order on that route fail `margin_too_low` — charged and instantly refunded — until the next hourly `sync-prices` repriced it. That produced **11 of 22 orders in 24h closing in under a second with no number**, and because those orders were also counted as delivery failures it auto-hid TikTok/Netherlands (see below). The headroom is flat, not proportional, so exposure is bounded at $0.10/order at any price point; the cost is margin on the cheapest routes (a 2-credit route may now pay up to $0.20 against $0.60 of revenue, 3× not 6×), which is strictly better than refunding the order. **SMS markup went 3× → 6× on 2026-07-25** (divisor 0.10 → 0.05); retail is recomputed from `smoothed_cost_cents` every run, so the whole catalog reprices on the next `sync-prices`.
 
@@ -789,17 +820,21 @@ flat headroom, capped at half of revenue (owner decision, 2026-08-02: "be a bit
 lenient on the margin, all orders should succeed").**
 
 ```ts
-expectedCostUsd = credits * NET_USD_PER_CREDIT / minMargin      // = the divisor
-maxCostUsd = min( expectedCostUsd * CEILING_SLACK_MULTIPLE + CEILING_HEADROOM_USD,
+expectedUsd = expectedCostUsd(credits)   // _shared/pricing.ts — exact inverse of the taper
+maxCostUsd = min( expectedUsd * CEILING_SLACK_MULTIPLE + CEILING_HEADROOM_USD,
                   credits * NET_USD_PER_CREDIT * MAX_REVENUE_FRACTION )
 // CEILING_SLACK_MULTIPLE = 3.0 ; MAX_REVENUE_FRACTION = 0.5
 ```
 
-**The lockstep rule still holds and is unchanged** — `expectedCostUsd` must
-equal the divisor the route was priced with, exactly. The multiple sits on top
-of it. `MAX_REVENUE_FRACTION` is the INVARIANT (no order can ever be sold at a
-loss, whatever the multiple is set to or a future divisor change does);
-`CEILING_SLACK_MULTIPLE` is the POLICY.
+**The lockstep rule still holds** — the expected term must be the exact
+inverse of the curve the route was priced with; since 2026-08-28 both halves
+live in `_shared/pricing.ts` (see the taper block above), so the lockstep can
+only break if that one file is edited half-way. `MAX_REVENUE_FRACTION` is the
+INVARIANT (no order can ever be sold at a loss, whatever the multiple is set
+to or a future curve change does); `CEILING_SLACK_MULTIPLE` is the POLICY.
+Note that on the tapered curve's expensive tail the half-revenue cap now
+BINDS (3 × rev/5.5 ≈ 0.545·rev > 0.5·rev) — correct, since revenue ≥ 5.5×
+wholesale everywhere, half of revenue is still ≥ 2.75× the route's own cost.
 
 **Why 3×, and it is not about price rises.** We do not choose a pool: we pass
 `maxPrice` and the provider fills from the cheapest thing under it, so the
@@ -866,8 +901,13 @@ n=50, against 41.2% for user-picked), split on the 2.3 adoption date. The
 floor must never exceed the signup grant (3 today) or every first pick
 becomes unaffordable — change the two together.
 
-**Changing `CREDIT_DIVISOR` silently breaks the PREMIUM tier until you backfill
-`routes.premium_credits`.** This bit us on the 3× → 6× change (2026-07-25).
+**Changing the pricing curve silently breaks the PREMIUM tier until
+`premium_credits` is recomputed — the lesson survives the 2026-08-28 move to
+the shared taper** (the divisor-based backfill SQL below is historical; today
+the fix is one `sync-herosms` run — it prices its own premium — plus a
+`sync-smspva-operators` cycle if SMSPVA is ever un-retired, then assert
+`premium_credits >= retail_credits` is violated by zero rows). *Original,
+divisor-era text:* This bit us on the 3× → 6× change (2026-07-25).
 `retail_credits` is rewritten wholesale by `sync-prices` on the next hourly run,
 but `premium_credits` is written **only** by `sync-smspva-operators`, which is
 cursor-chunked at 12 countries/run across a nightly window — so it keeps
@@ -892,7 +932,9 @@ multiplier scales down, so `maxCostUsd` stays ≈ wholesale at any margin. That 
 the whole reason the two constants must move together — and why only the derived
 columns need a backfill.
 
-**Changing `CREDIT_DIVISOR` also silently devalues every FIXED credit grant.**
+**Changing the curve also silently devalues (or inflates) every FIXED credit
+grant — still true under the taper; re-check the grants after any curve
+change.** *The history below is from the divisor era:*
 The premium backfill above is not the only casualty — anything denominated in a
 flat number of credits buys proportionally less the moment prices double, and
 nothing recomputes it. The 3× → 6× change on 2026-07-25 cut what the 1-credit
@@ -938,14 +980,18 @@ A plain `0.5*new + 0.5*prev` averages a rise against yesterday's cheaper price a
 
 **eSIM** plans (`sync-esim-plans`) are priced **separately** at 4× wholesale (raised 3× → 4× on 2026-07-25) — `ESIM_MARGIN = 4`, `CREDIT_VALUE_USD = 0.48`, `retail_credits = ceil(usd * 4 / 0.48)` — NOT via `CREDIT_DIVISOR`, so the two product lines never collide. Inverted, the order-time ceiling in `create-esim-order` is `credits * 0.12`, enforced twice since the eSIM Access switch (2026-08-10): a fresh `package/list` quote blocks above the ceiling BEFORE charging (fails **closed** on a bad price, **open** on a failed lookup — an unreachable provider must not make eSIMs unbuyable), and the order call **echoes the price**, which the provider verifies (200005/200006 → refund + `margin_too_low`) — their order response reports no cost and takes no cap, so the echo is the only order-time price guard. The real figure lands in `actual_cost_cents` (before 2026-07-30 it echoed the cached catalog price, so margin analysis over it was circular). The eSIM path also gained the same **pre-charge provider-balance guard** as SMS (reads `app_config.esimaccess_health`, fails open on stale/missing).
 
-**The divisor is PER PROVIDER, and since 2026-08-05 `MIN_MARGIN` finally MEANS
-the margin we earn.** Each provider's sync sets its own `retail_credits`.
+**⚠️ SUPERSEDED 2026-08-28 — the per-provider divisor era is OVER; all SMS
+pricing is the shared taper in `_shared/pricing.ts` (see the top of this
+section).** The history below is kept because it explains `NET_USD_PER_CREDIT`
+= 0.40 (still live, now exported from `pricing.ts`) and the class of silent
+failure a divisor/inverse mismatch produces. The table it documents was, at
+retirement:
 
-| provider | priced by | divisor | `MIN_MARGIN` | `0.40 / MARGIN` | `MAX_WHOLESALE_CENTS` |
-|---|---|---|---|---|---|
-| **5sim** | `sync-5sim` | **0.04** | **10.0** | 0.04 ✓ | 100_000 |
-| herosms | `sync-herosms` | 0.025 | 16.0 | 0.025 ✓ | 100_000 |
-| smspva | `sync-prices` | 0.05 | 8.0 | 0.05 ✓ | 100_000 |
+| provider | priced by | divisor (RETIRED) | `MIN_MARGIN` (RETIRED) | `MAX_WHOLESALE_CENTS` |
+|---|---|---|---|---|
+| **5sim** | `sync-5sim` | 0.04 | 10.0 | 100_000 |
+| herosms | `sync-herosms` | 0.025 | 16.0 | 100_000 |
+| smspva | `sync-prices` | 0.05 | 8.0 | 100_000 |
 
 🔴 **THE TRAP THIS FIXED, because the lockstep ✓ cannot catch it.** The divisor
 is `NET_USD_PER_CREDIT / MIN_MARGIN`, so it is a true 10× only if a credit
@@ -1020,24 +1066,13 @@ After the new ladder sells, **re-derive `NET_USD_PER_CREDIT` from receipts**
 (the standing rule above): the 8-pack nets $0.424/cr and the repriced 12-pack
 $0.389/cr against the measured 0.40 — a mix shift moves the margin constants.
 
-`MIN_MARGIN_FALLBACK` is **16.0** — the strictest, never the loosest. Strictest
-means the LARGEST margin, i.e. the smallest divisor (HeroSMS's 0.025), so an
-unknown provider under-spends rather than overpaying on a route nobody priced.
-All four `MAX_WHOLESALE_CENTS` are **100_000** since the 2026-08-04 ceiling
-removal, i.e. non-binding — they are no longer `150 credits × divisor` and do
-not need to move when a divisor does. **There are FIVE copies of a divisor and
-FOUR of `MAX_WHOLESALE_CENTS` across four sync functions** — the divisors are
-deliberately different values, so "consolidating them into `_shared/`" would
-silently reprice a whole provider. Change them in one commit, never one at a
-time, and assert the lockstep mechanically rather than by eye: it fails silently
-as `margin_too_low` on every honestly-priced route.
-
-`create-order` resolves it via `marginFor(route.provider)`
-(`MIN_MARGIN_BY_PROVIDER`), falling back to the **strictest** value so an
-unknown provider under-spends rather than overpaying on a route nobody priced.
-The lockstep rule is unchanged and absolute: the order-time ceiling
-`credits × NET / MIN_MARGIN` must equal the divisor the route was priced with,
-exactly.
+`MIN_MARGIN_FALLBACK`, `MIN_MARGIN_BY_PROVIDER` and `marginFor()` are
+**DELETED as of 2026-08-28** — with one uniform curve there is no per-provider
+inverse to resolve, so an unknown provider is priced and ceiled identically to
+a known one. All four `MAX_WHOLESALE_CENTS` remain **100_000** (non-binding
+since the 2026-08-04 ceiling removal) and are still per-file copies — that
+duplication warning survives for THEM, just no longer for the divisors, which
+have exactly one definition now.
 
 *Why not the uniform 0.025 originally agreed.* It was modelled against the live
 catalog first, and it doubles **SMSPVA** too — 7,757 of 12,564 active routes,
@@ -1082,8 +1117,12 @@ stopped delivering ~2026-08-10: 1 code in its last 36 orders, 0 of the last 23,
 while the free pair delivered normally in the same window (outlook 53%, hotmail
 57%), so it was the pool, not the users. It was the only paid tier (1 credit at
 7.5× margin) and every failure charge-and-refunded, so users paid, failed and
-retried. Re-add the key only when the `email-domain-gmail.com` watchdog
-evidence says the pool delivers again. (2.3's `MailPaywallScreen` copy still
+retried. ⚠️ **gmail.com is EXCLUDED from the per-domain watchdog check as of
+`20260828120000` (owner asked for the paging gone)** — so there is no longer
+any automatic recovery signal for this pool. Re-adding the key requires TWO
+edits in one commit: put gmail back in `PRICING` (both copies) AND delete the
+`a.domain <> 'gmail.com'` exclusion in `watchdog_delivery_checks()`, then
+verify delivery by hand before selling. (2.3's `MailPaywallScreen` copy still
 named gmail's 1-credit price — purged from the repo 2026-08-27 along with the
 `free_limit_reached` "pick Gmail" advice in `APIError`; shipped builds up to
 2.4 still show the old copy until 2.5.)
@@ -1200,8 +1239,10 @@ window. Details that are load-bearing:
   same rule as the SMS side's `otp is not null`. Verified 2026-08-26: the two
   predicates agree on every e-mail order in the window, so this is correctness
   insurance rather than a behavioural difference today.
-- **One check name per domain** (`email-domain-gmail.com`), so each alerts and
-  recovers on its own; its Telegram copy comes from the `email-domain-` prefix
+- **One check name per domain** (`email-domain-<domain>`), so each alerts and
+  recovers on its own — but **gmail.com is hard-excluded since `20260828120000`**
+  (owner decision; see the gmail removal note above for the re-add rule); its
+  Telegram copy comes from the `email-domain-` prefix
   branch in `copyFor()` in `_shared/tgAlert.ts`, next to the `-float` one, and
   a fixed `WATCHDOG_COPY` key could never match it.
 - Orders younger than **1 hour** are excluded: the provider window is ~21
@@ -1902,7 +1943,7 @@ API, headlessly):**
 | period | `ONE_MONTH`, not family-shareable |
 | price | **$9.99 USD → proceeds $8.49** (base territory **USA**) |
 | availability | 175 territories, `availableInNewTerritories: true` (re-measured 2026-08-19; this said 32 for two weeks) |
-| grace period | **16 days, ALL_RENEWALS, sandboxOptIn ON** |
+| grace period | **DISABLED 2026-08-28 (owner decision)** — was 16 days, ALL_RENEWALS. App-level in ASC, so this covers the mail products too. A failed renewal now lapses instead of keeping the entitlement (and our Telnyx rent) alive free for 16 days; at the time of the change 5 line + 3 mail subs sat in grace with auto-renew on, all billing-declined. Cost: the `GRACE_PERIOD` branch of the lapse machine can no longer be exercised in Sandbox — it stays in code for the subs already in grace. |
 | state | `MISSING_METADATA` |
 
 ⚠️ **`subscriptionAvailability` MUST EXIST BEFORE PRICING.** Setting a price
@@ -3288,7 +3329,7 @@ for essentially every hidden route.
 - **`revoke execute … from anon, authenticated` IS A NO-OP while PUBLIC holds the grant.** `CREATE FUNCTION` grants EXECUTE to PUBLIC by default, and anon/authenticated are members of PUBLIC — so the revoke line present on ~35 migrations changes nothing on its own, and the function stays callable at `/rest/v1/rpc/<name>`. Read the ACL, not the migration: a secured function is `postgres=X/postgres | service_role=X/postgres`, a leaking one has a **leading `=X/postgres`** (empty grantee = PUBLIC). Caught 2026-07-27 when `revenue_snapshot` — the first function created after the default-privileges hardening — shipped world-callable *with* its revoke line, exposing gross revenue, wholesale cost and profit to anyone holding the publishable key (SECURITY DEFINER, so RLS was no help). `20260727211000` revoked the *default* for anon/authenticated but **not for PUBLIC**, so every future function kept arriving public. Fixed in `20260727240000`: `alter default privileges in schema public revoke execute on functions from public`, plus explicit `from public, anon, authenticated` on the four affected functions. Assert with `has_function_privilege('anon', p.oid,'execute')` — it must be **0 rows** across `pg_proc` in `public`; a passing `revoke` statement proves nothing.
 - **`ALTER DEFAULT PRIVILEGES` grants `anon`/`authenticated` rights on every FUTURE object.** Until 2026-07-27 that was `arwdDxtm` on future tables and `EXECUTE` on future functions — so any new table missing `enable row level security` would have been world-**writable** at `/rest/v1/<table>`, and any new SECURITY DEFINER function missing its revoke callable at `/rest/v1/rpc/<name>`. That is how `run_watchdog` became public. The postgres-owned defaults are now revoked (SELECT retained; RLS still governs rows); **the `supabase_admin` half is NOT applied** — it needs membership in that role, which the CLI's postgres connection lacks. Statements are in `20260727211000_default_privileges.sql`. Note this is a backstop, not a licence to skip the explicit `revoke execute` on every new function.
 - **A one-line refactor that changes a watchdog threshold is a monitoring outage.** Rebuilding `run_watchdog` for unrelated coverage silently narrowed the delivery check from 24h/≥10 to 6h/≥8 **and deleted its second branch** (≥20 conclusive at <10%). Measured: the max conclusive orders in ANY 6h window over 30 days is 8, against a gate of 8 — the check became effectively unreachable, leaving zero delivery-outcome coverage. When you re-create a function from `pg_get_functiondef`, diff it against the prior definition clause by clause; the dump is also **truncated** by most tooling, which is how a nonexistent `url` column on `net._http_response` got invented in the same rewrite.
-- **A constant duplicated across files WILL drift.** `MAX_WHOLESALE_CENTS` lives in three sync functions (and as `MAX_ORDER_COST_USD` in `poll-active-orders`, and as `LOW_BALANCE_USD` in `_shared/opsFormat.ts`). Changing it in one place on 2026-07-27 stripped 1,432 routes of their carrier pin and premium price, and left the digest warning at $20 while the pager fired at $37.50. Same for `CREDIT_DIVISOR` (the SMSPVA 0.05 is **two** copies — `sync-prices` and `sync-smspva-operators` — and `sync-herosms` carries a deliberately DIFFERENT 0.025, so "consolidating" the three into one constant would silently reprice a whole provider) and `ESIM_MARGIN`/`CREDIT_VALUE_USD` (two each). `MAX_WHOLESALE_CENTS`'s three syncs are now `sync-prices`, `sync-smspva-operators` and `sync-herosms`. Change them in one commit or consolidate them into `_shared/`.
+- **A constant duplicated across files WILL drift.** `MAX_WHOLESALE_CENTS` lives in three sync functions (and as `MAX_ORDER_COST_USD` in `poll-active-orders`, and as `LOW_BALANCE_USD` in `_shared/opsFormat.ts`). Changing it in one place on 2026-07-27 stripped 1,432 routes of their carrier pin and premium price, and left the digest warning at $20 while the pager fired at $37.50. (`CREDIT_DIVISOR` was the worst offender — five copies across four syncs — until 2026-08-28, when SMS pricing was consolidated into `_shared/pricing.ts`; the surviving duplicates are `ESIM_MARGIN`/`CREDIT_VALUE_USD`, two each.) `MAX_WHOLESALE_CENTS`'s three syncs are now `sync-prices`, `sync-smspva-operators` and `sync-herosms`. Change them in one commit or consolidate them into `_shared/`.
 - **Deleting an IAP receipt to force StoreKit redelivery can eat the payment.** `iap-verify` used to delete the row when `wallet_credit` failed, assuming StoreKit would retry. But the client runs **two** paths into that endpoint (`Transaction.updates` and the `Transaction.unfinished` sweep), so a concurrent duplicate may already have been answered `already_credited` and called `finish()` — retiring the transaction forever. It now zeroes `granted_credits` (keeping both the audit trail and the replay guard), and the duplicate branch refuses to confirm a receipt that has no matching `wallet_transactions` row.
 - **EVERY grant is farmable through account deletion unless it is tombstoned OUTSIDE the `auth.users` cascade.** This is the single most repeated money bug in this codebase — it has now been found **four** times, once per grant. Everything user-scoped cascades, so delete → sign in again erases our only record and mints the grant afresh. Apple *mandates* the Delete Account button, so this is not an edge case. The four grants and their tombstones: **signup credits** → `signup_grants` (hash of the email); **referral +2** → `signup_grants.referral_redeemed_at` (same key); **IAP purchases** → `public.iap_grants` (keyed on Apple's `transaction_id`); **the temp-e-mail lifetime free address** → `public.email_free_grants` (same two email hashes, added 2026-08-26 — see the temp-e-mail subscription section). ⚠️ **The fourth is the proof the rule needs restating rather than trusting: it is not denominated in credits, so nobody read it as a "grant", and it shipped counting `email_orders` rows that cascade — farmed 55 times from one identity before it was caught.** A grant is anything we hand out once per person. Each tombstone table must have **no foreign key to `auth.users`** — a reference there is precisely what deletes the row with the account. The email hash works because Apple's private-relay address is stable per (user, app), so it survives deletion while storing no address; all four fail **open** on a null email, because a missed grant on a real signup costs more than a rare duplicate. **If you add a fifth grant, it needs a tombstone in the same commit.**
 
@@ -4406,21 +4447,24 @@ are as load-bearing as the findings:
   countries in a different order on any run and the cursor skipped some
   permanently: those routes never got a `herosms_real_count` and were sold as
   VoIP-only forever. `sync-smspva-operators` had it right all along.
-- 🟠 **PARTLY RESOLVED — Apple refund/revocation IS handled for the LINE, and
-  still is NOT for CREDITS.** `apple-notifications` (ASSN V2, deployed and
-  verified end to end) handles `REFUND`/`REVOKE` by releasing the number and
-  paging. **`iap_receipts` still has no revocation column and nothing revokes
-  granted credits**, so a buyer can still refund a credit pack through Apple
-  and spend the credits. The endpoint now exists, so the remaining work is one
-  branch in it plus a ledger reversal — not a new function. **First live case
-  2026-08-10**: user `ae492f1f` bought three packs in 58 seconds ($11.97, 22
-  credits, zero orders placed), asked support for a refund ("it was a
-  mistake"). ⚠️ **This file said they "were pointed at reportaproblem.apple.com";
+- ✅ **RESOLVED (2026-08-18, re-verified in code AND live DB 2026-08-28) —
+  Apple refunds revoke credits too, not just the line.** `apple-notifications`
+  has a consumables branch (`index.ts` ~line 222) that calls
+  `revoke_iap_purchase(transaction_id)` on `REFUND`/`REVOKE` — one transaction
+  under the same advisory-lock key as `credit_iap_purchase`, idempotent
+  against Apple's 1h/12h/24h/48h/72h retries, capped at the wallet balance
+  with the shortfall paged. This entry claimed the credits half was unbuilt
+  for ten days after `20260818130000_iap_refund_revocation` shipped it; the
+  2026-08-28 check found the function in the live DB and the branch in the
+  deployed source, and redeployed `apple-notifications` to rule out a stale
+  bundle. Historical case kept: **2026-08-10**, user `ae492f1f` bought three
+  packs in 58 seconds ($11.97, 22 credits, zero orders placed), asked support
+  for a refund ("it was a mistake"). ⚠️ **This file said they "were pointed at reportaproblem.apple.com";
   the thread (`e36b25ba`) holds ZERO agent messages — verified 2026-08-21 —
   so no in-app reply was ever sent. It sat unanswered for 11 days and was
   closed unanswered on 2026-08-21 during the Telegram overhaul.** Apple is
-  still the only refund channel (developers cannot issue Apple refunds). If
-  Apple grants it, the 22 credits stay spendable until this branch is written.
+  still the only refund channel (developers cannot issue Apple refunds); if
+  Apple grants one now, the revocation lands automatically.
   Note also: **the bot has no way to CLOSE a support thread** — it can only
   move `open → assigned` — so answered threads sat in `/support` for two
   weeks reading as live work; a `/close` command is the missing piece.

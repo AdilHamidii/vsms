@@ -3,6 +3,7 @@ import { admin, callerUserId } from "../_shared/supabaseAdmin.ts";
 import { livePriceUsd, markDead, providerOrder, release, reserve, type RouteCodes } from "../_shared/providers.ts";
 import { getCountryPrices, isOk } from "../_shared/smspva.ts";
 import { notifySafe, esc } from "../_shared/telegram.ts";
+import { expectedCostUsd, NET_USD_PER_CREDIT } from "../_shared/pricing.ts";
 
 interface Body {
   service_id: string;
@@ -36,75 +37,32 @@ const DEDUPE_DEFAULT_SECONDS = 15;
 const DEDUPE_CONCURRENT_SECONDS = 3;
 
 // Verify-then-charge guard. Before reserving a number we re-check the LIVE
-// provider price and refuse unless the credits we'd charge are worth at least
-// MIN_MARGIN× that cost. Runs per candidate provider so we never lose money on
-// a price spike, and we skip a provider (falling back) rather than overpay.
+// provider price and refuse unless it clears the ceiling derived from what we
+// charged. Runs per candidate provider so we never lose money on a price spike,
+// and we skip a provider (falling back) rather than overpay.
 //
-// NET_USD_PER_CREDIT: the MEASURED net revenue per credit. Raised 0.30 → 0.40 on
-// 2026-08-05 because 0.30 was doing two opposite-signed jobs and getting one of
-// them wrong.
+// PRICING IS PROVIDER-UNIFORM since 2026-08-28 (owner decision): every SMS
+// route is priced by the tapered curve in `_shared/pricing.ts` — 10× on
+// wholesale up to 15¢, 5.5× MARGINAL above it — so the order-time inverse is
+// uniform too. `expectedCostUsd(credits)` from that module IS that inverse, and
+// the lockstep rule lives there: change the curve and the inverse in the same
+// commit, or every honestly-priced route is refused with margin_too_low —
+// charged and instantly refunded — until the next sync reprices it, which is
+// exactly what produced 11 of 22 orders in 24h closing in under a second with
+// no number on 2026-07-27.
 //
-// It bounds the order-time ceiling, where understating revenue is conservative
-// (we spend less). But it ALSO defines every pricing divisor via
-// NET / MIN_MARGIN, where understating revenue makes us CHARGE MORE. At 0.30
-// every provider ran ~32% above its stated multiple: 5sim's "10×" was really
-// 13.2×, HeroSMS's "12×" 15.9×, SMSPVA's "6×" 7.9×, and the lockstep ✓ below
-// could not catch it because the arithmetic was self-consistent — just against
-// a revenue figure no pack sells at.
+// This replaced `MIN_MARGIN_BY_PROVIDER` (5sim 10 / HeroSMS 16 / SMSPVA 8),
+// which existed only because each sync carried its own divisor.
 //
-// 0.40 is measured over all 37 Production purchases (586 credits, $273.63):
-// blended gross $0.467/credit, $0.397 net after Apple's 15%, rounded to 0.40.
-// Re-derive from receipts if the pack mix shifts; do not guess it.
-//
-// The floor itself is the credits charged being worth at least MARGIN× the
-// wholesale cost. That makes the order-time ceiling exactly the pricing sync's
-// implied cost line, so honestly-priced routes always clear and anything
-// pricier than what we charged is capped or refused. Moving one without the
-// other either blocks honest routes or leaks margin.
-// PER-PROVIDER since 2026-07-31. The ceiling below is `credits * NET / MARGIN`
-// and MUST equal the divisor the route was PRICED with, exactly:
-//
-//   provider   priced by            divisor    MIN_MARGIN   0.40 / MARGIN
-//   5sim       sync-5sim              0.04         10.0         0.04   ✓
-//   herosms    sync-herosms           0.025        16.0         0.025  ✓
-//   smspva     sync-prices            0.05          8.0         0.05   ✓
-//
-// EACH MIN_MARGIN NOW MEANS THE MARGIN WE ACTUALLY EARN, because NET is the
-// measured figure. Only 5sim's DIVISOR moved (0.03 → 0.04, owner 2026-08-05);
-// HeroSMS and SMSPVA keep their exact divisors and only had their MIN_MARGIN
-// restated from the fictional 12/6 to the real 16/8, so their prices are
-// byte-identical before and after this change.
-//
-// A single global constant cannot express this any more, and getting it wrong
-// is silent in the worst direction: too low and every honestly-priced route is
-// refused with margin_too_low — charged and instantly refunded — until the next
-// sync repriced it, which is exactly what produced 11 of 22 orders in 24h
-// closing in under a second with no number on 2026-07-27.
-//
-// Why the two differ at all: HeroSMS wholesale is far cheaper, so at a shared
-// 0.05 its routes would price into the 1-credit band, which measures 18%
-// delivery against 46-59% for 2-8 credits. Applying 0.025 to BOTH instead would
-// double SMSPVA — 60% of the catalog, and the better-delivering provider — and
-// take its 3-credit reach from 729 routes to 16. See the block in sync-herosms.
-const MIN_MARGIN_BY_PROVIDER: Record<string, number> = {
-  // A TRUE 10x (owner, 2026-08-05 — it read 10.0 before but delivered 13.2x).
-  // LOCKSTEP with sync-5sim's CREDIT_DIVISOR = 0.04, because 0.40 / 10 = 0.04
-  // exactly. Move one without the other and you either refuse honest routes
-  // (margin_too_low, charged then refunded) or sell under cost on every order.
-  "5sim": 10.0,
-  // 16 and 8, not 12 and 6. These are RESTATEMENTS, not repricings: 0.40/16 is
-  // the same 0.025 sync-herosms already uses and 0.40/8 the same 0.05
-  // sync-prices already uses, so neither provider's prices move. The old 12/6
-  // described a margin these routes never earned.
-  herosms: 16.0,
-  smspva: 8.0,
-};
-/** Falls back to the strictest value we use, never to the loosest: an unknown
- *  provider must under-spend rather than overpay on a route nobody priced.
- *  Strictest = LARGEST margin = smallest divisor, i.e. HeroSMS's 0.025. */
-const MIN_MARGIN_FALLBACK = 16.0;
-const marginFor = (provider: string | null | undefined): number =>
-  MIN_MARGIN_BY_PROVIDER[provider ?? ""] ?? MIN_MARGIN_FALLBACK;
+// NET_USD_PER_CREDIT: the MEASURED net revenue per credit, measured over all 37
+// Production purchases (586 credits, $273.63): blended gross $0.467/credit,
+// $0.397 net after Apple's 15%, rounded to 0.40. Raised from 0.30 on
+// 2026-08-05, because at 0.30 every provider ran ~32% above its stated multiple
+// (5sim's "10×" was really 13.2×) while the arithmetic stayed self-consistent —
+// just against a revenue figure no pack sells at. Re-derive it from receipts if
+// the pack mix shifts; do not guess it. It is DUPLICATED in
+// `_shared/pricing.ts`, which is the definition; this copy only scales the
+// half-of-revenue invariant below.
 
 /** The price HeroSMS says it WILL sell at, out of `WRONG_MAX_PRICE:0.35`.
  *
@@ -124,7 +82,8 @@ function wrongMaxPriceUsd(raw: string | undefined): number | null {
   return Number.isFinite(usd) && usd > 0 ? usd : null;
 }
 
-const NET_USD_PER_CREDIT = 0.40;
+// NET_USD_PER_CREDIT is imported from _shared/pricing.ts — one definition,
+// shared with the curve it prices against.
 
 // Absolute slack added to the order-time ceiling so a trivial provider price
 // tick doesn't take a route offline between hourly sync-prices runs. Flat, not
@@ -140,8 +99,8 @@ const CEILING_HEADROOM_USD = 0.10;
  *
  *  THIS DOES NOT REDUCE MARGIN ON ORDERS THAT ALREADY SUCCEED. It is a cap
  *  passed to the provider, not a price: a normal fill comes from the cheapest
- *  pool and earns the full 12x/6x. The cap only binds when the price has moved
- *  since the last sync — and today that order does not earn less, it FAILS,
+ *  pool and earns the full curve multiple. The cap only binds when the price
+ *  has moved since the last sync — and today that order does not earn less, it FAILS,
  *  returning margin_too_low after charging and refunding the user. So the whole
  *  effect of this constant is to convert failures into lower-margin sales.
  *
@@ -175,11 +134,20 @@ const CEILING_HEADROOM_USD = 0.10;
  *  zero tolerance on 2026-07-27. */
 const CEILING_SLACK_MULTIPLE = 3.0;
 
-/** Hard backstop: never pay more than this fraction of what we charged. With
- *  NET_USD_PER_CREDIT deliberately conservative, half of revenue still leaves
- *  every order at 2x or better, so no order can ever be sold at a loss no
- *  matter what the multiple above is set to or what a future divisor change
- *  does. This is the invariant; CEILING_SLACK_MULTIPLE is the policy. */
+/** Hard backstop: never pay more than this fraction of what we charged. Half of
+ *  revenue still leaves every order at 2x or better, so no order can ever be
+ *  sold at a loss no matter what the multiple above is set to or what a future
+ *  change to the pricing curve does. This is the invariant;
+ *  CEILING_SLACK_MULTIPLE is the policy.
+ *
+ *  ⚠️ SINCE THE TAPER (2026-08-28) THIS CAP BINDS ON EVERY ROUTE ABOVE THE
+ *  KNEE, and that is correct, not a regression. Above 15¢ the curve charges a
+ *  marginal 5.5×, so the slack ceiling is 3 × rev/5.5 ≈ 0.545·rev — just over
+ *  the 0.5·rev invariant, which therefore wins. Revenue is ≥ 5.5× wholesale
+ *  everywhere on the curve, so half of revenue is still ≥ 2.75× the route's own
+ *  cost: no honestly-priced route is refused, the slack is merely a little
+ *  tighter than 3× on the expensive tail. Below the knee (10×) the slack
+ *  multiple still binds first, exactly as before. */
 const MAX_REVENUE_FRACTION = 0.5;
 
 /** Numberless attempts on one route, by one user, before we start requiring a
@@ -568,14 +536,14 @@ Deno.serve(async (req) => {
   const providers = providerOrder(codes);
   if (providers.length === 0) return json({ error: "route_unavailable" }, { status: 409 });
 
-  // The most we can pay and still keep MIN_MARGIN on what we charged. Passed
+  // The most we can pay and still keep our margin on what we charged. Passed
   // to the provider as a purchase-time cap AND enforced on the actual charged
   // cost — the live quote is per cheapest pool and does not bind the fill
   // price (seen live: wechat/kg quoted 6¢, uncapped purchase filled at 79¢).
   //
   // + CEILING_HEADROOM_USD, because without it this ceiling has ZERO tolerance
-  // on most of the catalog. sync-prices sets retail = ceil(cost / 0.05) and
-  // this computes cost * 0.05, so whenever wholesale lands on an exact 5¢
+  // on most of the catalog: `expectedCostUsd` is the exact inverse of the curve
+  // the route was priced with, so whenever wholesale lands on an exact credit
   // boundary the cap equals the cost to the cent — measured 2026-07-27:
   // 12,507 of 16,303 active routes (76.7%) sat at exactly zero headroom. A
   // one-cent rise at SMSPVA then made `liveCost > maxCostUsd` true and every
@@ -585,21 +553,20 @@ Deno.serve(async (req) => {
   // fed the auto-hide (see 20260727120000) which removed TikTok/Netherlands
   // from the catalog on 8 orders that never got a number.
   //
-  // Resolved from the route's OWN provider, because the two are priced at
-  // different divisors — see MIN_MARGIN_BY_PROVIDER. `route.provider` is the
-  // right source: providerOrder() returns exactly one provider per service and
-  // there is no cross-provider fallback, so the row we priced is the row we buy.
+  // No longer resolved per provider: every SMS route is priced by the one
+  // shared curve, so `expectedCostUsd()` is the same inverse whoever fills it.
   //
   // Computed BEFORE the charge (not in the reservation loop) because the
   // pre-charge balance guard below needs it.
-  const minMargin = marginFor(route.provider as string | null);
-  // What we EXPECTED to pay, i.e. the divisor the route was priced with.
-  const expectedCostUsd = (cost * NET_USD_PER_CREDIT) / minMargin;
+  //
+  // What we EXPECTED to pay, i.e. the exact inverse of the curve the route was
+  // priced with — see the lockstep rule in `_shared/pricing.ts`.
+  const expectedUsd = expectedCostUsd(cost);
   // What we are WILLING to pay. Deliberately much higher — see the block above
   // CEILING_SLACK_MULTIPLE for why, and note it is a cap, not a price: a normal
   // order still fills from the cheapest pool and still earns the full margin.
   const maxCostUsd = Math.min(
-    expectedCostUsd * CEILING_SLACK_MULTIPLE + CEILING_HEADROOM_USD,
+    expectedUsd * CEILING_SLACK_MULTIPLE + CEILING_HEADROOM_USD,
     cost * NET_USD_PER_CREDIT * MAX_REVENUE_FRACTION,
   );
 
@@ -1097,7 +1064,7 @@ Deno.serve(async (req) => {
       // revenue, so a downgraded order can no more be sold at a loss than a
       // normal one.
       const stdCeiling = Math.min(
-        (stdCredits * NET_USD_PER_CREDIT / minMargin) * CEILING_SLACK_MULTIPLE +
+        expectedCostUsd(stdCredits) * CEILING_SLACK_MULTIPLE +
           CEILING_HEADROOM_USD,
         stdCredits * NET_USD_PER_CREDIT * MAX_REVENUE_FRACTION,
       );

@@ -25,33 +25,23 @@
 import { handleCors, json } from "../_shared/cors.ts";
 import { admin } from "../_shared/supabaseAdmin.ts";
 import { getPricesForService, getOffers, type HeroPrice, getNumbersStatus, getOperators } from "../_shared/herosms.ts";
+import { retailCredits } from "../_shared/pricing.ts";
 
 // ── Pricing (added 2026-07-31; this function now SETS retail) ───────────────
 //
-// HeroSMS is priced at 12×, SMSPVA stays at 6×. That asymmetry is deliberate
-// and was measured, not assumed. Applying 0.025 globally — the original plan —
-// also doubles every SMSPVA route: SMSPVA is 7,757 of the 12,564 active routes
-// and currently the BETTER-delivering provider (34% vs HeroSMS 21% on orders
-// that got a number), and doubling it takes its 3-credit reach from 729 routes
-// to 16. That is the same shape as the 2026-07-25 divisor change, which cut
-// 1-credit reach from 971 routes to 24 and produced a 24h funnel of 11 signups
-// → 2 orders → 0 codes → 0 purchases. Modelled over the live catalog:
+// Retail comes from the SHARED tapered curve (owner decision 2026-08-28): 10×
+// on wholesale up to 15¢, 5.5× MARGINAL above it, provider-uniform. The
+// per-provider divisors are gone — see `_shared/pricing.ts`, which also holds
+// the lockstep rule binding this curve to create-order's order-time ceiling.
 //
-//   option                        reach @3cr   routes in the 2-8cr band
-//   hero 12x / smspva 6x  (this)   1,235→2,259    3,692→4,999
-//   uniform 12x                    1,235→1,546    3,692→3,848
-//   status quo                         1,235          3,692
-//
-// (2-8cr is where measured delivery is 46-59%; 9+cr is 19%, 1cr is 18%.)
-//
-// LOCKSTEP, and it is the whole ballgame: create-order's ceiling is
-// `credits * NET_USD_PER_CREDIT / MIN_MARGIN`, which must equal this divisor
-// EXACTLY. 0.30/12 = 0.025. create-order therefore resolves MIN_MARGIN per
-// provider — see marginFor() there. Change one without the other and you either
-// refuse honest routes at checkout (ceiling too low) or leak margin.
-const CREDIT_DIVISOR = 0.025;
-const MIN_CREDITS = 1;
-const MAX_CREDITS = 999;
+// *History, kept because it explains why this function prices at all:* HeroSMS
+// routes were priced at their own 0.025 divisor from 2026-07-31, deliberately
+// different from SMSPVA's 0.05, because before that they were SOLD at the price
+// SMSPVA's wholesale implied while being BOUGHT at HeroSMS's — a mean realised
+// margin of 97×, a median retail of 15 credits against a policy price of 6, and
+// the single biggest reason a new user with the signup grant could reach only
+// 506 of 12,564 active routes. HeroSMS wholesale is cheap, so the uniform curve
+// keeps it in the same low-credit band the 0.025 divisor put it in.
 
 /** Weight on the new quote when the cost FALLS. Matches sync-prices. */
 const SMOOTH_ALPHA = 0.5;
@@ -71,14 +61,6 @@ const SMOOTH_ALPHA = 0.5;
  *  own maxCostUsd, which is ~$27 for a 300-credit route and ~$108 for the
  *  dearest. See "Why a service reads Unavailable" in CLAUDE.md. */
 const MAX_WHOLESALE_CENTS = 100_000;
-
-/** cents → credits at the HeroSMS divisor. Mirrors sync-prices' priceToCredits
- *  exactly, including the clamps, so the two providers round identically. */
-function priceToCredits(priceUsd: number): number {
-  if (!Number.isFinite(priceUsd) || priceUsd <= 0) return MIN_CREDITS;
-  const raw = Math.ceil(priceUsd / CREDIT_DIVISOR);
-  return Math.max(MIN_CREDITS, Math.min(MAX_CREDITS, raw));
-}
 
 /** Pace between provider calls. There is NO documented per-second limit (25/25
  *  rapid calls returned 200 on 2026-07-30), but the account has a
@@ -413,7 +395,7 @@ Deno.serve(async (req) => {
     // whose code failed were already `continue`d above; this covers a code that
     // fetched fine but returned no row for this country.
     const retail = smoothedCents != null
-      ? priceToCredits(smoothedCents / 100)
+      ? retailCredits(smoothedCents / 100)
       : (r.retail_credits as number | null);
     if (smoothedCents != null && retail !== (r.retail_credits as number | null)) repriced++;
 
@@ -502,7 +484,7 @@ Deno.serve(async (req) => {
     // (the whole HeroSMS catalog moving off SMSPVA-derived prices) and near-zero
     // afterwards — a persistently high count means the ratchet is oscillating.
     repriced,
-    credit_divisor: CREDIT_DIVISOR,
+    pricing: "taper 10x<=15c, 5.5x-marginal above",
     operator_probes: operatorProbes,
     countries_probed: slice.map((c) => c.id),
     cursor_next: nextCursor,

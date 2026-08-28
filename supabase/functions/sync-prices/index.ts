@@ -4,12 +4,11 @@
 // either be invoked manually (one-shot from terminal) or scheduled via
 // pg_cron alongside poll-active-orders.
 //
-// Pricing formula (6x markup):
-//   credits = max(1, ceil(cost / 0.05))
-//   So:    0.05 -> 1cr,  0.50 -> 10cr,  1.00 -> 20cr,
-//          2.00 -> 40cr, 3.00 -> 60cr,  4.00 -> 80cr
-// Tune CREDIT_DIVISOR below if margins need adjusting — and move
-// create-order's MIN_MARGIN with it (see the lockstep note there).
+// Pricing comes from the SHARED tapered curve in `_shared/pricing.ts` — 10x on
+// wholesale up to 15c, 5.5x MARGINAL above it, then ceil()'d into credits at
+// $0.40 net per credit. It is provider-uniform, so tuning it there reprices
+// every SMS provider at once; its lockstep with create-order's order-time
+// ceiling is documented in that file.
 //
 // IMPORTANT (money-critical): multiple catalog services can legitimately share
 // one smspva_code (e.g. apple-id + apple-music both map to SMSPVA's "Apple"
@@ -22,16 +21,7 @@
 import { handleCors, json } from "../_shared/cors.ts";
 import { admin } from "../_shared/supabaseAdmin.ts";
 import { getAllPrices, isOk } from "../_shared/smspva.ts";
-
-// 6× retail markup: credits = ceil(cost / 0.05). Valued at the conservative
-// NET_USD_PER_CREDIT ($0.30) used by create-order's order-time ceiling, this
-// collects 6× wholesale. Keep in lockstep with sync-smspool,
-// sync-smspva-operators and create-order's MIN_MARGIN — the order-time ceiling
-// (credits * NET / MIN_MARGIN) must equal this divisor exactly, or honest
-// routes get refused at checkout / margin leaks.
-const CREDIT_DIVISOR = 0.05;
-const MIN_CREDITS = 1;
-const MAX_CREDITS = 999;
+import { retailCredits, expectedCostUsd } from "../_shared/pricing.ts";
 
 // Price smoothing: retail_credits is derived from an EWMA of wholesale cost, not
 // the single latest quote, so a one-day SMSPVA spike/dip doesn't flip a route
@@ -133,17 +123,19 @@ const HEALTH_FRESH_MS = 5 * 60 * 1000;
 
 /** ⚠️ MIRRORS OF create-order CONSTANTS — CHANGE BOTH TOGETHER.
  *
- *  These four reproduce `maxCostUsd` from create-order/index.ts exactly (see
+ *  These three reproduce `maxCostUsd` from create-order/index.ts exactly (see
  *  the block around `const maxCostUsd = Math.min(...)`). They are duplicated
  *  rather than shared because `_shared/*` is bundled per function, so moving
  *  them would force a redeploy of the busiest money path in the product to
- *  change a catalog sync. Same trade this repo already makes for
- *  CREDIT_DIVISOR across the four syncs — and the same standing warning: a
- *  constant duplicated across files WILL drift. If create-order's ceiling
- *  changes and this does not, the only symptom is routes that stay visible
- *  while checkout refuses them, which is precisely the bug being fixed here. */
+ *  change a catalog sync — and the same standing warning applies: a constant
+ *  duplicated across files WILL drift. If create-order's ceiling changes and
+ *  this does not, the only symptom is routes that stay visible while checkout
+ *  refuses them, which is precisely the bug being fixed here.
+ *
+ *  The expected-cost half is NOT duplicated any more: both sides call
+ *  `expectedCostUsd()` from `_shared/pricing.ts`, which is the exact inverse of
+ *  the curve the route was priced with. */
 const NET_USD_PER_CREDIT = 0.40;
-const SMSPVA_MIN_MARGIN = 8.0;      // MIN_MARGIN_BY_PROVIDER.smspva
 
 /** 🔴 SMSPVA IS RETIRED FROM ROUTING (owner decision, 2026-08-17) and this
  *  sync MUST NOT put its routes back on the shelf.
@@ -181,16 +173,9 @@ const MAX_REVENUE_FRACTION = 0.5;
  *  buyable, however good its price looks. */
 function orderCeilingUsd(credits: number): number {
   return Math.min(
-    (credits * NET_USD_PER_CREDIT / SMSPVA_MIN_MARGIN) * CEILING_SLACK_MULTIPLE +
-      CEILING_HEADROOM_USD,
+    expectedCostUsd(credits) * CEILING_SLACK_MULTIPLE + CEILING_HEADROOM_USD,
     credits * NET_USD_PER_CREDIT * MAX_REVENUE_FRACTION,
   );
-}
-
-function priceToCredits(price: number): number {
-  if (!Number.isFinite(price) || price <= 0) return MIN_CREDITS;
-  const raw = Math.ceil(price / CREDIT_DIVISOR);
-  return Math.max(MIN_CREDITS, Math.min(MAX_CREDITS, raw));
 }
 
 function validateCronSecret(req: Request): boolean {
@@ -425,7 +410,7 @@ Deno.serve(async (req) => {
       const smoothed = prev == null || cents > prev
         ? cents
         : Math.round(SMOOTH_ALPHA * cents + (1 - SMOOTH_ALPHA) * prev);
-      const credits = priceToCredits(smoothed / 100);
+      const credits = retailCredits(smoothed / 100);
 
       // Serviceability, on top of the existing price/blocklist hides. Both are
       // recomputed every run from live data, so both un-hide on their own: the
@@ -629,6 +614,6 @@ Deno.serve(async (req) => {
     servicesWithoutPricesCount: servicesWithoutPrices.length,
     servicesWithoutPrices: servicesWithoutPrices.slice(0, 40),
     unknownServiceCodes: [...unknownServiceCodes].slice(0, 40),
-    formula: `credits = max(${MIN_CREDITS}, ceil(price / ${CREDIT_DIVISOR}))`,
+    formula: "credits = ceil(retailUsd(cost) / 0.40); taper 10x<=15c, 5.5x-marginal above",
   });
 });
