@@ -26,7 +26,10 @@ low, so a dry balance loses sales, not money.
 
 ## Calendar items
 
-- **2027-09-05 — VoIP push certificate expires.** Plain-English: this
+- **2027-09-05 — VoIP push certificate expires — THE BOT NOW REMINDS YOU
+  ITSELF** (2026-08-29): 🔴 Telegram pages on Aug 5 and Aug 29, 2027
+  (`ops_reminders`, swept by telegram-notify). No external calendar needed.
+  Plain-English: this
   certificate is what lets Telnyx wake an iPhone to ring it for an incoming
   call on a rented number; Apple expires every VoIP certificate after 365
   days, no permanent option. It is a ONCE-A-YEAR ~10-minute chore, not
