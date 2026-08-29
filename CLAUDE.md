@@ -2707,8 +2707,16 @@ gate writes `measured 0%` off just two attempts.
 
 **eSIMs are PAUSED as of 2026-07-31** while the owner switches eSIM providers.
 
-**The switch happened 2026-08-10: eSIM Access is implemented end to end and
-the line STAYS PAUSED until the owner tops the account up (~$50 minimum).**
+🔴 **THE eSIM LINE IS PERMANENTLY PARKED IN vSMS (owner decision 2026-08-29):
+the owner moved the eSIM business to a SEPARATE app.** Do not propose the
+top-up, do not resume the line, do not build on it here. The infrastructure
+below stays as-is deliberately — kill switches already hold it off, the
+nightly sync is harmless, `check-esim-usage` still serves the 12 legacy
+eSIMs, and the balance alert is muted while paused.
+
+*Historical — the state this section was written for:* the switch happened
+2026-08-10: eSIM Access is implemented end to end and the line stayed paused
+pending an account top-up (~$50 minimum).
 Resume checklist: top up → confirm `/balance` shows eSIM Access fresh → re-run
 `sync-esim-plans` once → `/esim on` (must report `plans_changed > 0`) → assert
 `select count(*) from esim_plans where status='active' and id not like 'ea:%'`
