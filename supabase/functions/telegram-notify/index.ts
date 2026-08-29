@@ -23,7 +23,7 @@ import { handleCors, json } from "../_shared/cors.ts";
 import { admin } from "../_shared/supabaseAdmin.ts";
 import { sendMessage, esc } from "../_shared/telegram.ts";
 import { formatDigest, formatNow } from "../_shared/opsFormat.ts";
-import { alertHtml, formatWatchdogPage, formatWatchdogRecovered } from "../_shared/tgAlert.ts";
+import { alertHtml, formatWatchdogPage, formatWatchdogRecovered, type Severity } from "../_shared/tgAlert.ts";
 import { parisFull, until, duration, n as plural } from "../_shared/tgFormat.ts";
 
 const DEV_USER = "825688de-6117-4251-9f90-93b83b41b572";
@@ -623,6 +623,44 @@ Deno.serve(async (req) => {
     }
   } catch (e) {
     console.error("support_waiting alerting failed (sweep continues):", e);
+  }
+
+  // ── One-shot scheduled reminders (public.ops_reminders, 2026-08-29).
+  //
+  //    Calendar items a hands-off owner must not miss (seeded: the VoIP push
+  //    certificate expiring 2027-09-05 — a failure that is otherwise silent).
+  //    The row's sent_at IS the claim: stamped before sending, cleared back on
+  //    a failed send so the next minutely run retries. `what`/`action` are
+  //    trusted HTML written only by migrations (the table is service-role
+  //    only); alertHtml escapes just the title.
+  try {
+    const { data: dueRems } = await sb.from("ops_reminders")
+      .select("id, sev, title, what, action")
+      .is("sent_at", null).lte("remind_at", now.toISOString())
+      .order("remind_at").limit(5);
+    for (const rem of dueRems ?? []) {
+      const { data: claimed } = await sb.from("ops_reminders")
+        .update({ sent_at: now.toISOString() })
+        .eq("id", rem.id).is("sent_at", null).select("id");
+      if (!claimed || claimed.length === 0) continue; // another run took it
+      const sevs = ["🔴", "🟠", "🟡", "🟢", "ℹ️"];
+      const r = await sendMessage(alertHtml({
+        sev: (sevs.includes(rem.sev as string) ? rem.sev : "🔴") as Severity,
+        title: rem.title as string,
+        what: rem.what as string,
+        why: "Scheduled reminder — it fires once and will not repeat.",
+        action: rem.action as string,
+        at: now,
+      }));
+      if (r.ok) sent++;
+      else {
+        failed++;
+        await sb.from("ops_reminders").update({ sent_at: null }).eq("id", rem.id);
+        console.error(`ops_reminders ${rem.id} failed to send — unclaimed for retry`);
+      }
+    }
+  } catch (e) {
+    console.error("ops_reminders sweep failed (sweep continues):", e);
   }
 
   // ── 6-hourly digest + the once-a-day morning brief.
