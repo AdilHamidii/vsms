@@ -26,9 +26,14 @@ low, so a dry balance loses sales, not money.
 
 ## Calendar items
 
-- **2027-09-05 — VoIP push certificate expires.** Silent failure: rented
-  numbers stop ringing, nothing pages. Renew in the Apple portal against the
-  SAME key (`~/Desktop/telnyx-voip/voip.key`). Put it in your calendar.
+- **2027-09-05 — VoIP push certificate expires.** Plain-English: this
+  certificate is what lets Telnyx wake an iPhone to ring it for an incoming
+  call on a rented number; Apple expires every VoIP certificate after 365
+  days, no permanent option. It is a ONCE-A-YEAR ~10-minute chore, not
+  maintenance: renew in the Apple developer portal against the SAME key
+  (`~/Desktop/telnyx-voip/voip.key` — do not lose it), upload to Telnyx.
+  If it lapses the failure is silent (numbers stop ringing, nothing pages) —
+  hence a calendar entry, not an alert.
 - **Apple annual**: membership renewal, tax/banking agreement re-acceptance —
   Apple emails about these; ignoring them takes the app off sale.
 - **Supabase is on the FREE plan — no backups.** Fine while hands-off, but a
@@ -36,11 +41,13 @@ low, so a dry balance loses sales, not money.
 
 ## Known-degraded, accepted
 
-- **ASA billing card declines** — the account goes dark 1 day in 3 and paid
-  (high-intent, buying) traffic is ~2% of installs. Fixing the card at
-  ads.apple.com → Billing is the single biggest revenue action available; if
-  instead you're done paying for ads, pause the campaigns so the account
-  stops half-spending.
+- **ASA is ABANDONED (owner decision 2026-08-29).** ⚠️ One manual step
+  remains: log into ads.apple.com and PAUSE both campaigns (or remove the
+  payment method) — the declined card is not a reliable off switch; the
+  account historically still spent 2 days out of 3 on it. The API can't do
+  it: the repo's ASA credentials no longer authenticate (`invalid_client`).
+  Accepted consequence: paid traffic was where the buyers came from; revenue
+  now depends entirely on organic search conversion.
 - **eSIM line permanently parked** (moved to a separate app, 2026-08-29).
 - **2.5 in App Review** as of 2026-08-29; the 2.6 tree (behavioural
   analytics client) is committed but uncut — ship it whenever, or never; the
