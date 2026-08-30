@@ -224,6 +224,30 @@ struct ServiceSheet: View {
                 if filtered.isEmpty {
                     emptyState
                         .padding(.top, 12)
+                        // The ONE event that can answer "did they come for
+                        // something we don't carry". Every other funnel event
+                        // fires on a choice the user made from what we already
+                        // have, so a demand gap leaves no trace at all — the
+                        // user searches, finds nothing, and leaves.
+                        //
+                        // Debounced by keying the task on the query: SwiftUI
+                        // re-runs it per keystroke, so "tinder" would otherwise
+                        // send six events, five of them prefixes that were
+                        // never a real search. 700ms after typing stops is the
+                        // first moment the string is worth recording.
+                        .task(id: trimmedQuery) {
+                            guard !trimmedQuery.isEmpty else { return }
+                            try? await Task.sleep(for: .milliseconds(700))
+                            guard !Task.isCancelled else { return }
+                            Analytics.shared.track("service_search_empty", [
+                                // Truncated deliberately: this is free text a
+                                // human typed, and a service name is never
+                                // long. Caps what a stray paste can send.
+                                "query": .string(String(trimmedQuery.prefix(32))),
+                                "category": .string(category),
+                                "affordable_only": .bool(affordableOnly),
+                                "email_mode": .bool(state.emailMode)])
+                        }
                 } else {
                     LazyVStack(alignment: .leading, spacing: 0) {
                         ForEach(sections) { section in
