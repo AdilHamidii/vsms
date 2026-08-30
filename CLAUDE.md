@@ -1484,6 +1484,41 @@ one: it catches the leak even if the heartbeat is never written, which is
 exactly the case that shipped. A heartbeat-only check would have stayed silent
 for the same reason the bug did.
 
+🔴 **`reclaim_lapsed_lines()` SWEEPS `grace` AND `past_due` TOO, AS OF
+`20260830120000` — before that it swept only `status='active'` and the other
+two leaked $1/month per number forever.** The `current_period_end` backstop
+added in `20260818110000` was written for the `active` case and was never
+extended, so the ONLY exit from `grace` or `past_due` was an Apple `EXPIRED`
+notification calling `suspend_line_claim`. A missed notification meant the
+line sat there indefinitely, paying Telnyx rent, and **the invoice was the
+only place it would ever show up** — `hold_until` is null in both states, so
+branch (a) could not catch them either.
+
+**`past_due` is the half that matters going forward.** App-level grace was
+DISABLED on 2026-08-28, so every future failed renewal now lands in
+`past_due` via `mark_line_past_due_claim` — **which records no deadline of
+its own**, only a status flip. Disabling grace would otherwise have turned
+every future billing failure into a permanent rent leak.
+
+Three properties that are load-bearing:
+- **Both new branches suspend with the SAME 7-day hold `suspend_line_claim`
+  writes**, so `releasing` → `release-lines` is unchanged, and the hold IS
+  the billing-recovery window: `apply_line_renewal` restores a `suspended`
+  line to `active` and clears `hold_until`, so a late Apple recovery inside
+  those 7 days costs the subscriber nothing.
+- **A `grace` row with a NULL `grace_until`** (the renewal-info JWS carried no
+  `gracePeriodExpiresDate`) falls back to `current_period_end + 16 days` —
+  Apple's MAXIMUM grace. The fallback can only ever fire LATER than a real
+  deadline, so it can never cut a live grace short.
+- **The `past_due` branch keys on `current_period_end`** because that is the
+  only timestamp the state carries, and it is the right one: `past_due` means
+  precisely "the renewal failed and there is no grace period".
+
+Behavioural checks: `scripts/verify-line-lapse-backstop.sql` (5 cases in a
+rolled-back transaction, including the two that must NOT fire). A structural
+check cannot catch this class — the function existed and ran every 15 minutes
+the whole time it was failing to sweep two of the four lapse states.
+
 ⚠️ **`swiftc -typecheck` NO LONGER WORKS** — the `TelnyxRTC` dependency landed
 on 2026-08-06 and retired it exactly as the plan predicted. Use `xcodebuild`.
 `NullVoiceClient` still exists and still throws rather than faking success, so
