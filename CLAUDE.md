@@ -3493,10 +3493,15 @@ SMS provider again, walk this list:
 Every number below has been wrong within a day of being written at least once.
 It is a starting point for "is this roughly right", never a citation.
 
-- **iOS**: `MARKETING_VERSION 2.5`, `CURRENT_PROJECT_VERSION 46`, iOS min
+- **iOS**: `MARKETING_VERSION 2.6`, `CURRENT_PROJECT_VERSION 47`, iOS min
   **18.0**, **3** SwiftPM dependencies (TelnyxRTC 4.1.2 → WebRTC 139.0.0,
   Starscream 4.0.8). Re-count sources with
   `find VirtualSIM -name '*.swift' | wc -l` rather than quoting a number.
+  **2.5 (build 46) is `READY_FOR_SALE`; 2.6 (build 47 — the analytics client
+  + `service_search_empty`) SUBMITTED 2026-08-30 19:46Z, version
+  `826494f3-…`, submission `40e632e8-…`, all 13 `whatsNew` locales written
+  and read back.** See the App Privacy warning in the analytics section —
+  the label is web-UI only and was NOT updated by this submission.
   **2.4 (build 45, the line country catalog + country picker) is
   `READY_FOR_SALE` (approved 2026-08-27); 2.5 (build 46 — the phone-app
   Number-tab redesign, the four inbound-calling client fixes, app-wide glow
@@ -3556,7 +3561,23 @@ It is a starting point for "is this roughly right", never a citation.
   2026-08-10; 174 of 175 territories live). Apple/MIIT forbids CallKit in apps
   sold on the China App Store, and 2.0 ships CallKit. Re-adding China requires
   gating CallKit off by storefront first — do not re-tick it casually.
-- **Signup grant: 2 credits — SET 2026-08-25 (owner decision), verified by
+- **Signup grant: 3 credits — RESTORED 2026-08-30 (owner decision), verified by
+  read-back (`effective_grant: 3` through `grant_signup_bonus`'s own regex +
+  clamp, not just the raw key).** Why: at 2 it VIOLATED this file's own
+  invariant — `AppState.minDefaultCredits` is **3**, and the rule is *"the
+  floor must never exceed the signup grant … change the two together."* The
+  grant was cut 3 → 2 on 08-25 and the floor was left at 3, so for five days
+  the starter pick, the auto-landed country and the post-failure retry all
+  DEMOTED everything the new user could afford. It is a demotion not a filter,
+  so nothing ever read "Unavailable" — the user simply landed on a price they
+  could not pay. Two credits reached **1,118 of 9,185 active priced routes
+  (12%)** against a median route of **5**. Measured cohorts (dev excluded,
+  30d): pre-08-19 **26.6%** of signups ordered SMS / 16 buyers → 08-19–24 at
+  grant 3 **15.7%** / 1 buyer → 08-25+ at grant 2 **10.7%** / 2 buyers.
+  ⚠️ Grant and floor are now EQUAL at 3; moving either alone re-opens this.
+  *History (do not re-litigate, the tension is real):* at grant 5, 49 of 52
+  first orders cost ≤5 so nobody met a paywall and pack sales went to ~0.
+- **Signup grant history: 2 credits — SET 2026-08-25 (owner decision), verified by
   read-back of `app_config.signup_bonus_credits`.** It was 3 from 08-22 16:58Z.
   Reason for the 08-22 cut from 5, measured that day: at 5 credits, **49 of 52 first orders
   (Aug 20–22) cost ≤ 5**, so new users never met a paywall and pack sales
@@ -4177,9 +4198,28 @@ definitive "not attributed"; only 7 are ASA). Two tables, migration
   stays in the money tables.
 - Client half (`Networking/Analytics.swift` + ~16 funnel events: paywall
   shown, pack selected, `purchase_result` incl. **cancelled** — the signal we
-  have never had) ships in **2.6**. ⚠️ Before submitting 2.6, the App Privacy
-  label needs **Product Interaction (linked to identity)** added, or the
-  submission misdeclares data collection.
+  have never had) **SUBMITTED in 2.6 (build 47) on 2026-08-30**.
+- 🔴 **`service_search_empty` is the ONLY event that can answer "did they come
+  for something we do not carry", and it was missing from the original 16.**
+  Every other event fires on a choice made from inventory we already have, so
+  a demand gap left no trace whatsoever — the user searched, found nothing,
+  and left. It fires from `ServiceSheet`'s empty state, **debounced 700 ms by
+  keying `.task` on the query** (SwiftUI re-runs per keystroke, so "tinder"
+  would otherwise send six events, five of them prefixes that were never a
+  real search). It carries the query **truncated to 32 chars** plus
+  `category` / `affordable_only` / `email_mode`, so a zero result caused by
+  OUR OWN filters is distinguishable from one caused by missing inventory —
+  without that split the headline number is uninterpretable.
+- 🔴 **THE APP PRIVACY LABEL IS WEB-UI ONLY AND IS NOT YET UPDATED.** Probed
+  2026-08-30: `dataUsages`, `appDataUsages` and `appDataUsagesPublishState`
+  all return **404 PATH_ERROR** on this API key, so the headless pipeline
+  cannot touch it — this is the one release step that is not automatable.
+  2.6 needs **Product Interaction (linked to identity)** for the funnel events
+  AND **Search History (linked to identity)** for `service_search_empty`'s
+  query text, or the submission misdeclares data collection. If the owner
+  would rather not declare Search History, the fallback is to drop the
+  `query` prop (keep the event) and ship a build 48 — the magnitude of the
+  demand gap survives; only "which service to add" is lost.
 - The server never surfaces analytics failures to the app, and the client
   fires-and-forgets — measuring the product must never degrade it.
 
