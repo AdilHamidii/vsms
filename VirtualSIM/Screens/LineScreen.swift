@@ -81,6 +81,15 @@ private struct LiveLineView: View {
         ZStack(alignment: .bottomTrailing) {
             VStack(spacing: 0) {
                 header
+                // The product's one action, on the product's one screen
+                // (owner decision 2026-09-01): a fresh number for a few credits
+                // when a platform refuses this one. It renders only for an
+                // active line with a live price — see the button's own doc.
+                if !line.status.isSettingUp {
+                    LineSwitchNumberButton(line: line, style: .primary)
+                        .padding(.horizontal, 20)
+                        .padding(.top, 10)
+                }
                 LineStatusBanner(line: line)
                     .padding(.horizontal, 20)
                 VoiceReadinessNotice(readiness: calling.readiness)
@@ -233,6 +242,16 @@ private struct LiveLineView: View {
             // Sharing the number is genuinely the next step for a new
             // subscriber, so it keeps a permanent affordance — as an icon now
             // rather than a full-width capsule.
+            // An explicit copy control beside the tap-to-copy number. The
+            // number is what a subscriber pastes into a signup form, and a
+            // hidden gesture is not an affordance a first-time user can find.
+            Button { copyNumber() } label: {
+                iconChip(RIcon.copy)
+            }
+            .buttonStyle(.plain)
+            .pressable(0.9)
+            .accessibilityLabel(Text("Copy number"))
+
             ShareLink(item: PhoneFormat.national(line.e164)) {
                 iconChip("square.and.arrow.up")
             }
@@ -274,7 +293,11 @@ private struct LiveLineView: View {
         }
     }
 
-    /// One quiet line under the number: copied, or when it renews.
+    /// One quiet line under the number: copied, or how to copy.
+    ///
+    /// "Active · renews <date>" lived here until 2026-09-01 and is GONE with
+    /// every other plan/renewal mention on the Number tab (owner decision):
+    /// this screen is about receiving codes, not about the subscription.
     ///
     /// Deliberately says nothing about a PROBLEM state — `LineStatusBanner`
     /// sits directly below and explains grace, past-due and suspension in a
@@ -286,10 +309,6 @@ private struct LiveLineView: View {
             Text("Copied")
                 .font(RFont.text(12, weight: .medium))
                 .foregroundStyle(theme.live)
-        } else if line.status == .active, let end = line.currentPeriodEnd {
-            Text("Active · renews \(end.formatted(.dateTime.day().month(.abbreviated)))")
-                .font(RFont.text(12))
-                .foregroundStyle(theme.text3)
         } else {
             Text("Tap the number to copy it")
                 .font(RFont.text(12))
@@ -481,14 +500,17 @@ private struct LiveLineView: View {
                         .tracking(-0.3)
                         .foregroundStyle(theme.text)
                 }
-                Text("Text it from your own phone — the message appears here within seconds.")
+                // Codes-first (2026-09-01). Names only services that have
+                // delivered a real code to a rented number — WhatsApp, TikTok
+                // and DoorDash each have — never a guess.
+                Text("Use it to sign up for WhatsApp, TikTok, DoorDash and most other apps — the code appears here within seconds, with one tap to copy it.")
                     .font(RFont.text(14))
                     .lineSpacing(2)
                     .foregroundStyle(theme.text2)
                     .fixedSize(horizontal: false, vertical: true)
                 // Points at the header rather than repeating it — one number
                 // per screen, so a swap has one place to be correct.
-                Text("Your number is at the top of this screen — tap it to copy.")
+                Text("If a code doesn't arrive, some platforms refuse virtual numbers — switch to a new number from the button above.")
                     .font(RFont.text(12))
                     .foregroundStyle(theme.text3)
                     .fixedSize(horizontal: false, vertical: true)
@@ -622,6 +644,18 @@ struct ThreadRow: View {
 
     private var unread: Bool { thread.unreadCount > 0 }
 
+    /// The first 4–8 digit group in a preview, with WhatsApp's "123-456"
+    /// shape accepted. Display only — it decides nothing and copies nothing;
+    /// the thread screen remains the place a code is copied from. Returns nil
+    /// for a phone-number-shaped run (10+ digits) so a preview quoting a
+    /// number is not dressed up as a code.
+    static func code(in preview: String?) -> String? {
+        guard let preview else { return nil }
+        let pattern = #"(?<!\d)(\d{3}-\d{3}|\d{4,8})(?!\d)"#
+        guard let range = preview.range(of: pattern, options: .regularExpression) else { return nil }
+        return String(preview[range])
+    }
+
     var body: some View {
         Button(action: onTap) {
             HStack(spacing: 12) {
@@ -643,10 +677,24 @@ struct ThreadRow: View {
                                 .background(theme.chipBg, in: .capsule)
                         }
                     }
-                    Text(thread.lastPreview ?? "")
-                        .font(RFont.text(13, weight: unread ? .medium : .regular))
-                        .foregroundStyle(unread ? theme.text : theme.text2)
-                        .lineLimit(1)
+                    // The code first, when the last message carries one. A
+                    // subscriber opening this list is almost always here for
+                    // a verification code (2026-09-01: codes-first), and a
+                    // 13pt truncated preview — "Your verification code is 1…"
+                    // — hid the one thing they came for behind an ellipsis.
+                    HStack(spacing: 6) {
+                        if let code = ThreadRow.code(in: thread.lastPreview) {
+                            Text(verbatim: code)
+                                .font(RFont.mono(13, weight: .bold))
+                                .foregroundStyle(theme.text)
+                                .padding(.horizontal, 6).padding(.vertical, 2)
+                                .background(theme.chipBg, in: .rect(cornerRadius: 6))
+                        }
+                        Text(thread.lastPreview ?? "")
+                            .font(RFont.text(13, weight: unread ? .medium : .regular))
+                            .foregroundStyle(unread ? theme.text : theme.text2)
+                            .lineLimit(1)
+                    }
                 }
                 Spacer(minLength: 8)
                 VStack(alignment: .trailing, spacing: 5) {

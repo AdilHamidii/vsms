@@ -2035,10 +2035,47 @@ API, headlessly):**
 | group | **`22289428`** "Second Number" (+ en-US localization) |
 | product | **`6798378879`** `com.anthersystems.VirtualSIM.line.monthly` |
 | period | `ONE_MONTH`, not family-shareable |
-| price | **$9.99 USD → proceeds $8.49** (base territory **USA**) |
+| price | **$5.99 USD from 2026-09-02** (was $9.99 → proceeds $8.49 until then; base territory **USA**). Yearly `6798759539` **$59.99** from the same date (was $99.99). See the 🔴 reprice block below this table. |
 | availability | 175 territories, `availableInNewTerritories: true` (re-measured 2026-08-19; this said 32 for two weeks) |
 | grace period | **DISABLED 2026-08-28 (owner decision)** — was 16 days, ALL_RENEWALS. App-level in ASC, so this covers the mail products too. A failed renewal now lapses instead of keeping the entitlement (and our Telnyx rent) alive free for 16 days; at the time of the change 5 line + 3 mail subs sat in grace with auto-renew on, all billing-declined. Cost: the `GRACE_PERIOD` branch of the lapse machine can no longer be exercised in Sandbox — it stays in code for the subs already in grace. |
 | state | `MISSING_METADATA` |
+
+🔴 **REPRICED 2026-09-01 (owner decision) — $5.99/mo and $59.99/yr, in all
+175 territories, EFFECTIVE 2026-09-02, and the line was REFOCUSED on
+receiving verification codes the same day.** `scripts/asc-reprice-line-
+subscriptions.py` (dry-run by default, `--apply` to write, reads every price
+back). Three facts it encodes:
+- **An APPROVED subscription cannot take a price without a `startDate`** —
+  every POST is 409 *"Initial price cannot be created again after
+  subscription is approved"* — and `startDate = today` is 409 *"Invalid
+  startDate"*. The earliest Apple accepts is **tomorrow**. A reprice is
+  therefore always a scheduled change landing at 00:00 the next day; the
+  first attempt without a date wrote 1 of 175 and read back the OLD price
+  everywhere. `preserveCurrentPrice = false` — it is a decrease, so existing
+  subscribers pay the new price at their next renewal.
+- **Same-numeral rule, as for the mail products:** 136 of 175 territories
+  take the identical numeral (USD, EUR, GBP, CAD…), 39 equalize (JPY ¥1000 /
+  ¥10000, AUD 9.99).
+- 🔴 **`line.yearly` WAS AVAILABLE IN ONE TERRITORY (USA) UNTIL 2026-09-01.**
+  Its `subscriptionAvailability` had never been re-POSTed with the full set
+  — the exact base-territory trap recorded for the mail products below —
+  so no one outside the US could ever buy the yearly. Re-POSTed with the
+  monthly's 175 the same day (read back: 1 → 175).
+Refocus (2.7, build 48): the Number tab sells "a real US/Canada number that
+receives your verification codes" — names ONLY services proven on a rented
+line (WhatsApp, TikTok, DoorDash — each has a real code in `line_messages`),
+states that some platforms refuse virtual numbers, and sells the switch
+(`line_swap_credits`, live) as the remedy with a full-width "Switch number ·
+N credits" button directly under the number. **Every plan / renewal /
+manage-subscription affordance is GONE from the Number tab**; Apple's
+manage-subscriptions sheet is reachable from **Account → Support** only.
+Calling stays, demoted to one secondary row. `LineSwitchNumberButton` is the
+single definition of the swap price/confirmation/call. Ops: `opsFormat.ts`
+`LINE_PRICE_USD` is 5.99 (the MRR line over-counts yearly subscribers; exact
+figures wait on subscriptions entering `revenue_snapshot`). ⚠️ Margin: $5.99
+nets ~$5.09 against $1/mo rent + $1 upfront; a heavy CALLER (100 domestic
+minutes ≈ $1–2 wholesale) still clears, but the headroom that justified
+"hard-stop billing holds even on the heaviest user" is now ~$2, not ~$4.
 
 ⚠️ **`subscriptionAvailability` MUST EXIST BEFORE PRICING.** Setting a price
 first returns a useless **409 `ENTITY_ERROR.RELATIONSHIP.INVALID`** pointing at

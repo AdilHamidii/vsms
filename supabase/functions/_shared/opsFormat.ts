@@ -87,8 +87,13 @@ const FX_TO_USD: Record<string, number> = {
   AUD: 0.66, JPY: 0.0064, PLN: 0.25, SEK: 0.092, NOK: 0.091, DKK: 0.145,
 };
 
-/** List price of the Second Number subscription, per month, USA base. */
-const LINE_PRICE_USD = 9.99;
+/** List price of the Second Number subscription, per month, USA base.
+ *  $9.99 until 2026-09-01 (owner repriced to $5.99/mo, $59.99/yr the day the
+ *  line was refocused on receiving verification codes). The MRR estimate
+ *  below counts every active line at this monthly figure — yearly
+ *  subscribers are over-counted (they pay $5.00/mo equivalent); the exact
+ *  number is in `revenue_snapshot` once subscriptions are folded in. */
+const LINE_PRICE_USD = 5.99;
 
 /** Telegram hard-limits a message at 4096 chars. Cap every list well under that
  *  and SAY SO when rows are dropped — a silently truncated list reads as "that

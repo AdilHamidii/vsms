@@ -3143,6 +3143,46 @@
         }
       }
     },
+    "A number for your codes": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Eine Nummer für deine Codes"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Un número para tus códigos"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Un numéro pour vos codes"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Un numero per i tuoi codici"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "認証コード用の番号"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Um número para seus códigos"
+          }
+        }
+      }
+    },
     "A real Canadian phone number that stays yours.": {
       "localizations": {
         "de": {
@@ -3220,6 +3260,46 @@
           "stringUnit": {
             "state": "translated",
             "value": "Um número canadense de verdade que fica seu. Mande mensagens por ele aqui mesmo e mantenha seu número privado."
+          }
+        }
+      }
+    },
+    "A real US or Canadian number that receives your verification codes.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Eine echte US- oder kanadische Nummer, die deine Bestätigungscodes empfängt."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Un número real de EE. UU. o Canadá que recibe tus códigos de verificación."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Un vrai numéro américain ou canadien qui reçoit vos codes de vérification."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Un vero numero statunitense o canadese che riceve i tuoi codici di verifica."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "認証コードを受け取れる、本物の米国・カナダの電話番号。"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Um número real dos EUA ou do Canadá que recebe seus códigos de verificação."
           }
         }
       }
@@ -4028,6 +4108,46 @@
           "stringUnit": {
             "state": "translated",
             "value": "Já pagou? Restaurar compras"
+          }
+        }
+      }
+    },
+    "Also makes calls to 50+ countries, priced per minute": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Telefoniert außerdem in über 50 Länder, Preis pro Minute"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "También llama a más de 50 países, con precio por minuto"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Appelle aussi vers plus de 50 pays, tarif à la minute"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Chiama anche in oltre 50 Paesi, prezzo al minuto"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "50か国以上への通話も可能（分単位の料金）"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Também faz ligações para mais de 50 países, preço por minuto"
           }
         }
       }
@@ -13805,6 +13925,7 @@
       }
     },
     "High": {
+      "comment": "Band word for a network-wide delivery rate above 60% (see NetworkRateMeter) — not a general-purpose adjective.",
       "extractionState": "extracted (manual)",
       "localizations": {
         "de": {
@@ -13843,8 +13964,7 @@
             "value": "Alto"
           }
         }
-      },
-      "comment": "Band word for a network-wide delivery rate above 60% (see NetworkRateMeter) — not a general-purpose adjective."
+      }
     },
     "Hit or miss for %@": {
       "extractionState": "stale",
@@ -14005,6 +14125,46 @@
           "stringUnit": {
             "state": "translated",
             "value": "SE NENHUM CÓDIGO CHEGAR"
+          }
+        }
+      }
+    },
+    "If a code doesn't arrive, some platforms refuse virtual numbers — switch to a new number from the button above.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kommt kein Code an: Manche Plattformen lehnen virtuelle Nummern ab – wechsle über den Button oben zu einer neuen Nummer."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Si no llega el código, algunas plataformas rechazan números virtuales: cambia a un número nuevo con el botón de arriba."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Si le code n'arrive pas, certaines plateformes refusent les numéros virtuels — passez à un nouveau numéro avec le bouton ci-dessus."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Se il codice non arriva, alcune piattaforme rifiutano i numeri virtuali: passa a un nuovo numero con il pulsante qui sopra."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "コードが届かない場合、一部のプラットフォームは仮想番号を拒否しています。上のボタンから新しい番号に切り替えてください。"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Se o código não chegar, algumas plataformas recusam números virtuais — troque para um novo número pelo botão acima."
           }
         }
       }
@@ -15543,6 +15703,7 @@
       }
     },
     "Low": {
+      "comment": "Band word for a network-wide delivery rate below 30% (see NetworkRateMeter) — not a general-purpose adjective.",
       "extractionState": "extracted (manual)",
       "localizations": {
         "de": {
@@ -15581,8 +15742,7 @@
             "value": "Baixo"
           }
         }
-      },
-      "comment": "Band word for a network-wide delivery rate below 30% (see NetworkRateMeter) — not a general-purpose adjective."
+      }
     },
     "MANUAL INSTALL": {
       "localizations": {
@@ -15823,6 +15983,46 @@
           "stringUnit": {
             "state": "translated",
             "value": "Gerenciar assinatura"
+          }
+        }
+      }
+    },
+    "Manage subscriptions": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Abos verwalten"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gestionar suscripciones"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gérer les abonnements"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gestisci abbonamenti"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "サブスクリプションを管理"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gerenciar assinaturas"
           }
         }
       }
@@ -16150,6 +16350,7 @@
       }
     },
     "Medium": {
+      "comment": "Band word for a network-wide delivery rate between 30% and 60% (see NetworkRateMeter) — not a general-purpose adjective.",
       "extractionState": "extracted (manual)",
       "localizations": {
         "de": {
@@ -16188,8 +16389,7 @@
             "value": "Médio"
           }
         }
-      },
-      "comment": "Band word for a network-wide delivery rate between 30% and 60% (see NetworkRateMeter) — not a general-purpose adjective."
+      }
     },
     "Member since %@": {
       "localizations": {
@@ -16841,6 +17041,7 @@
       }
     },
     "Network-wide delivery rate: %@": {
+      "comment": "VoiceOver label for NetworkRateMeter. %@ is one of High/Medium/Low (see those keys) — never the raw percentage.",
       "extractionState": "extracted (manual)",
       "localizations": {
         "de": {
@@ -16879,8 +17080,7 @@
             "value": "Taxa de entrega em toda a rede: %@"
           }
         }
-      },
-      "comment": "VoiceOver label for NetworkRateMeter. %@ is one of High/Medium/Low (see those keys) — never the raw percentage."
+      }
     },
     "Network-wide rate, not our own record": {
       "localizations": {
@@ -20129,6 +20329,7 @@
       }
     },
     "On outlook.com and hotmail.com, subject to availability. Your allowance resets at midnight UTC.": {
+      "comment": "MailPaywallScreen intro sentence — states the two free domains and the daily reset. No gmail mention (removed from sale 2026-08-26).",
       "extractionState": "extracted (manual)",
       "localizations": {
         "de": {
@@ -20167,8 +20368,7 @@
             "value": "Em outlook.com e hotmail.com, sujeito à disponibilidade. Seu limite é reiniciado à meia-noite UTC."
           }
         }
-      },
-      "comment": "MailPaywallScreen intro sentence — states the two free domains and the daily reset. No gmail mention (removed from sale 2026-08-26)."
+      }
     },
     "Once an order ends, with a code or with a refund, it lands here.": {
       "localizations": {
@@ -23135,6 +23335,46 @@
           "stringUnit": {
             "state": "translated",
             "value": "Receba mensagens de números e serviços dos EUA e do Canadá, atenda chamadas de qualquer lugar e ligue a partir dele. Seu número real nunca sai do seu telefone."
+          }
+        }
+      }
+    },
+    "Receive verification codes in the app": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bestätigungscodes in der App empfangen"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Recibe códigos de verificación en la app"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Recevez les codes de vérification dans l'app"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ricevi i codici di verifica nell'app"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "アプリで認証コードを受信"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Receba códigos de verificação no app"
           }
         }
       }
@@ -26479,6 +26719,86 @@
         }
       }
     },
+    "Some platforms refuse virtual numbers. If a code doesn't arrive, switch to a new number for %lld credits.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Manche Plattformen lehnen virtuelle Nummern ab. Kommt kein Code an, wechsle für %lld Credits zu einer neuen Nummer."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Algunas plataformas rechazan números virtuales. Si no llega el código, cambia a un número nuevo por %lld créditos."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Certaines plateformes refusent les numéros virtuels. Si le code n'arrive pas, passez à un nouveau numéro pour %lld crédits."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Alcune piattaforme rifiutano i numeri virtuali. Se il codice non arriva, passa a un nuovo numero per %lld crediti."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "一部のプラットフォームは仮想番号を拒否します。コードが届かない場合は、%lldクレジットで新しい番号に切り替えられます。"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Algumas plataformas recusam números virtuais. Se o código não chegar, troque para um novo número por %lld créditos."
+          }
+        }
+      }
+    },
+    "Some platforms refuse virtual numbers. If a code doesn't arrive, switch to a new number for a few credits.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Manche Plattformen lehnen virtuelle Nummern ab. Kommt kein Code an, wechsle für ein paar Credits zu einer neuen Nummer."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Algunas plataformas rechazan números virtuales. Si no llega el código, cambia a un número nuevo por unos créditos."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Certaines plateformes refusent les numéros virtuels. Si le code n'arrive pas, passez à un nouveau numéro pour quelques crédits."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Alcune piattaforme rifiutano i numeri virtuali. Se il codice non arriva, passa a un nuovo numero per pochi crediti."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "一部のプラットフォームは仮想番号を拒否します。コードが届かない場合は、数クレジットで新しい番号に切り替えられます。"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Algumas plataformas recusam números virtuais. Se o código não chegar, troque para um novo número por alguns créditos."
+          }
+        }
+      }
+    },
     "Some services block temporary numbers, so a code may never come through. If that happens you're not charged — and trying another number is free, as many times as you like.": {
       "extractionState": "manual",
       "localizations": {
@@ -27601,6 +27921,166 @@
           "stringUnit": {
             "state": "translated",
             "value": "Suportado"
+          }
+        }
+      }
+    },
+    "Switch number": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nummer wechseln"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cambiar número"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Changer de numéro"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cambia numero"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "番号を切り替え"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Trocar número"
+          }
+        }
+      }
+    },
+    "Switch number · %lld credits": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nummer wechseln · %lld Credits"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cambiar número · %lld créditos"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Changer de numéro · %lld crédits"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cambia numero · %lld crediti"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "番号を切り替え · %lldクレジット"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Trocar número · %lld créditos"
+          }
+        }
+      }
+    },
+    "Switch to a new number whenever you need": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Jederzeit zu einer neuen Nummer wechseln"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cambia a un número nuevo cuando quieras"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Passez à un nouveau numéro quand vous voulez"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Passa a un nuovo numero quando vuoi"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "必要なときにいつでも新しい番号へ"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Troque para um novo número quando quiser"
+          }
+        }
+      }
+    },
+    "Switch to a new number?": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Zu einer neuen Nummer wechseln?"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "¿Cambiar a un número nuevo?"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Passer à un nouveau numéro ?"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Passare a un nuovo numero?"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "新しい番号に切り替えますか？"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Trocar para um novo número?"
           }
         }
       }
@@ -32206,6 +32686,46 @@
         }
       }
     },
+    "Use it to sign up for WhatsApp, TikTok, DoorDash and most other apps — the code appears here within seconds, with one tap to copy it.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nutze sie für WhatsApp, TikTok, DoorDash und die meisten anderen Apps – der Code erscheint hier in Sekunden, ein Tipp zum Kopieren."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Úsalo para registrarte en WhatsApp, TikTok, DoorDash y la mayoría de las apps: el código aparece aquí en segundos y se copia con un toque."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Utilisez-le pour vous inscrire sur WhatsApp, TikTok, DoorDash et la plupart des autres apps — le code apparaît ici en quelques secondes, un tap pour le copier."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Usalo per registrarti su WhatsApp, TikTok, DoorDash e la maggior parte delle altre app: il codice appare qui in pochi secondi, un tocco per copiarlo."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "WhatsApp、TikTok、DoorDashなどほとんどのアプリの登録に使えます。コードは数秒でここに表示され、タップ一つでコピーできます。"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Use-o para se cadastrar no WhatsApp, TikTok, DoorDash e na maioria dos outros apps — o código aparece aqui em segundos, com um toque para copiar."
+          }
+        }
+      }
+    },
     "Use this address": {
       "localizations": {
         "de": {
@@ -34798,6 +35318,46 @@
         }
       }
     },
+    "Works with WhatsApp, TikTok, DoorDash and most other apps. The code lands here, with one tap to copy it.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Funktioniert mit WhatsApp, TikTok, DoorDash und den meisten anderen Apps. Der Code landet hier – ein Tipp zum Kopieren."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Funciona con WhatsApp, TikTok, DoorDash y la mayoría de las apps. El código llega aquí y se copia con un toque."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Fonctionne avec WhatsApp, TikTok, DoorDash et la plupart des autres apps. Le code arrive ici, un tap pour le copier."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Funziona con WhatsApp, TikTok, DoorDash e la maggior parte delle altre app. Il codice arriva qui, un tocco per copiarlo."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "WhatsApp、TikTok、DoorDashなどほとんどのアプリで使えます。コードはここに届き、タップ一つでコピーできます。"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Funciona com WhatsApp, TikTok, DoorDash e a maioria dos outros apps. O código chega aqui, com um toque para copiar."
+          }
+        }
+      }
+    },
     "YOUR NUMBER": {
       "extractionState": "manual",
       "localizations": {
@@ -36073,6 +36633,7 @@
       }
     },
     "You've used today's free addresses. Try again tomorrow, or subscribe for more on Outlook and Hotmail.": {
+      "comment": "APIError free_limit_reached copy — the pre-subscription daily free-address cap. Never names a domain the server refuses (icloud/gmail).",
       "extractionState": "extracted (manual)",
       "localizations": {
         "de": {
@@ -36111,8 +36672,7 @@
             "value": "Você já usou os endereços gratuitos de hoje. Tente novamente amanhã ou assine para ter mais endereços no Outlook e no Hotmail."
           }
         }
-      },
-      "comment": "APIError free_limit_reached copy — the pre-subscription daily free-address cap. Never names a domain the server refuses (icloud/gmail)."
+      }
     },
     "You've used your free address. More come with a subscription.": {
       "localizations": {

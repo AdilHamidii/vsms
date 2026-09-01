@@ -653,6 +653,10 @@ extension ContentView {
         case .lineIntro, .lineStore, .linePaywall, .linePaywallYearly:
             state.tab = .line
             state.lines = []                   // not yet a subscriber
+            // The pitch prices the switch from `app_config.line_swap_credits`,
+            // which `simctl` never fetches. Fixture only — the LIVE value is
+            // the server's; 8 is what it read on 2026-09-01.
+            state.appStatus = AppStatus(announcement: nil, esimPaused: false, lineSwapCredits: 8)
             if shot == .lineStore {
                 // The city step now prints the monthly price (see
                 // `LineStoreScreen.priceNote`), and it renders NOTHING until
@@ -701,6 +705,9 @@ extension ContentView {
             state.tab = .line
             state.lines = [ScreenshotMode.sampleLine]
             state.lineThreads = ScreenshotMode.sampleThreads
+            // "Switch number · N credits" renders only with a live price;
+            // see the `.lineIntro` note above.
+            state.appStatus = AppStatus(announcement: nil, esimPaused: false, lineSwapCredits: 8)
 
         case .thread:
             state.tab = .line

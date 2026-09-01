@@ -1,3 +1,4 @@
+import StoreKit
 import SwiftUI
 
 /// Settings, the wallet, the invite loop and the two destructive actions.
@@ -585,6 +586,14 @@ struct AccountScreen: View {
                                onTap: restore)
                     SettingRow(label: "Contact support", icon: "envelope",
                                onTap: { openMail() })
+                    // The ONLY route to Apple's manage-subscriptions sheet
+                    // since 2026-09-01: every plan/renewal/cancel affordance
+                    // came off the Number tab (owner decision — that tab is
+                    // about receiving codes). Apple's own sheet, never a
+                    // custom cancel flow, which cannot cancel anything and
+                    // reads as a dark pattern.
+                    SettingRow(label: "Manage subscriptions", icon: "creditcard",
+                               onTap: { Task { await openManageSubscriptions() } })
                     // Only an email account HAS a password. An Apple account
                     // does not, and offering the row would open a screen whose
                     // every outcome is an error.
@@ -766,6 +775,15 @@ struct AccountScreen: View {
         if let url = URL(string: "mailto:\(LegalLinks.supportEmail)?subject=vSMS%20support") {
             UIApplication.shared.open(url)
         }
+    }
+
+    /// Apple's sheet for every subscription this Apple ID holds (line and
+    /// mail groups alike). Moved here from `LineSettingsScreen` on 2026-09-01.
+    private func openManageSubscriptions() async {
+        guard let scene = UIApplication.shared.connectedScenes
+            .first(where: { $0.activationState == .foregroundActive }) as? UIWindowScene
+        else { return }
+        try? await AppStore.showManageSubscriptions(in: scene)
     }
 
     private func deleteAccount() async {

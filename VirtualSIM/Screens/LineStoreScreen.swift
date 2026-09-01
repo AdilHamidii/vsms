@@ -116,7 +116,7 @@ struct LineStoreScreen: View {
         GeometryReader { proxy in
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
-                    header(kicker: "Second number", title: "Your own number")
+                    header(kicker: "Second number", title: "A number for your codes")
 
                     // Two spacers, not one. With a single spacer under the
                     // card the whole pitch clung to the top and left a third
@@ -126,7 +126,13 @@ struct LineStoreScreen: View {
                     Spacer(minLength: 16)
 
                     pitch.riseIn(appeared, index: 0)
-                    usSoon.padding(.top, 16).riseIn(appeared, index: 1)
+                    // `usSoon` no longer renders on this step (2026-09-01):
+                    // the card's headline names "US or Canadian" and the
+                    // ledger rows carry both limits it stated, so it was a
+                    // third copy of the same two facts — and the ~90pt it
+                    // cost pushed "Choose a country" under the tab bar on a
+                    // 6.3" screen. It still renders on the city step, where
+                    // the pitch card is not on screen.
 
                     Spacer(minLength: 24)
 
@@ -365,10 +371,18 @@ struct LineStoreScreen: View {
     /// demonstrably works and sells the half that was invisible: international
     /// calling existed only inside the dialer and was never mentioned to anyone
     /// deciding whether to buy.
+    ///
+    /// 🔴 **CODES-FIRST since 2026-09-01 (owner decision).** The pitch is "a
+    /// real US or Canadian number that receives verification codes" — not
+    /// calling, not texting. It names ONLY services that have delivered a real
+    /// code to a rented number (WhatsApp, TikTok, DoorDash — each verified in
+    /// `line_messages`), says plainly that some platforms refuse virtual
+    /// numbers, and sells the switch as the remedy at its live price. Calling
+    /// is demoted to one secondary row: it works, it is not why people buy.
     private var pitch: some View {
         Card(elevation: .raised) {
             VStack(alignment: .leading, spacing: 0) {
-                Text("A real Canadian phone number that stays yours.")
+                Text("A real US or Canadian number that receives your verification codes.")
                     .font(RFont.display(17, weight: .semibold))
                     .tracking(-0.3)
                     .foregroundStyle(theme.text)
@@ -377,34 +391,43 @@ struct LineStoreScreen: View {
                     .padding(.top, 18)
                     .padding(.bottom, 8)
 
-                // The situations, not the medium. Every one of these is
-                // somebody sending a code TO the number.
-                Text("Give it to marketplaces, dating apps, a side business or a bank. Your verification codes and texts land here, with one tap to copy the code.")
+                // Only proven names. Adding a service here requires a real
+                // code on a rented line, not a guess.
+                Text("Works with WhatsApp, TikTok, DoorDash and most other apps. The code lands here, with one tap to copy it.")
                     .font(RFont.text(13))
                     .lineSpacing(2)
                     .foregroundStyle(theme.text2)
                     .fixedSize(horizontal: false, vertical: true)
                     .padding(.horizontal, 16)
-                    .padding(.bottom, 14)
+                    .padding(.bottom, 10)
+
+                // The honest line, and the remedy priced live. NO client
+                // default for the price — `app_config.line_swap_credits`
+                // changes without a release; when it is unknown the sentence
+                // drops the figure rather than inventing one.
+                Group {
+                    if let cost = state.appStatus.lineSwapCredits {
+                        Text("Some platforms refuse virtual numbers. If a code doesn't arrive, switch to a new number for \(cost) credits.")
+                    } else {
+                        Text("Some platforms refuse virtual numbers. If a code doesn't arrive, switch to a new number for a few credits.")
+                    }
+                }
+                .font(RFont.text(12))
+                .lineSpacing(2)
+                .foregroundStyle(theme.text3)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.horizontal, 16)
+                .padding(.bottom, 14)
 
                 RowRule(inset: 54)
                 BenefitRow(icon: RIcon.message,
-                           label: "Receive texts and codes in the app",
+                           label: "Receive verification codes in the app",
+                           tint: theme.live,
                            dense: true)
                 RowRule(inset: 54)
-                // "Make and take" until 2026-08-22. Inbound has never connected
-                // once; it is a "Not yet" row below. Mirror of LineCheckoutScreen.
-                BenefitRow(icon: RIcon.phone,
-                           label: "Make calls from the app",
-                           dense: true)
-                RowRule(inset: 54)
-                // Sold here for the first time. The rates, the credit cost and
-                // the per-minute price all existed and were reachable ONLY from
-                // inside the dialer — i.e. only after paying — so nobody
-                // deciding whether to subscribe ever knew the number could call
-                // abroad at all.
-                BenefitRow(icon: RIcon.globe,
-                           label: "Call 50+ countries, priced per minute before you dial",
+                BenefitRow(icon: "arrow.triangle.2.circlepath",
+                           label: "Switch to a new number whenever you need",
+                           hint: state.appStatus.lineSwapCredits.map { "\($0) credits" },
                            dense: true)
                 RowRule(inset: 54)
                 // The actual reason to buy, and it used to be the last clause
@@ -412,7 +435,14 @@ struct LineStoreScreen: View {
                 // problem rather than a feature.
                 BenefitRow(icon: RIcon.shield,
                            label: "Keep your own number private",
-                           tint: theme.live,
+                           dense: true)
+                RowRule(inset: 54)
+                // Demoted, not removed: outbound calling is live and proven.
+                // Inbound has never connected once; it is a "Not yet" row
+                // below. Mirror of LineCheckoutScreen.
+                BenefitRow(icon: RIcon.phone,
+                           label: "Also makes calls to 50+ countries, priced per minute",
+                           tint: theme.text2,
                            dense: true)
 
                 // ── What it does NOT do, stated on the same ledger ──────────
