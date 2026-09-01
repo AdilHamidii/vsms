@@ -1575,6 +1575,21 @@ rolled-back transaction, including the two that must NOT fire). A structural
 check cannot catch this class — the function existed and ran every 15 minutes
 the whole time it was failing to sweep two of the four lapse states.
 
+⚠️ **TELNYX BILLS NUMBER RENT ON THE 1ST OF THE MONTH, NOT ON EACH NUMBER'S
+ANNIVERSARY — inferred 2026-09-01, not read from Telnyx's ledger.** At
+00:00 UTC on Sep 1 the balance went from ~$12 to **−$1** (the poller's
+"balance EMPTY" page fired; the 07:26Z reading was back at $13.12, i.e.
+funds were added after) while we held 8 unreleased numbers plus recently
+released ones still on the account. A per-anniversary model cannot produce
+that; a 1st-of-month run of ~$13 can. Consequences: (1) the 2026-08-31
+claim that suspending grace lines early "saves $0 because their anniversaries
+are Sep 18–24" reasoned from the wrong model — the outcome held only because
+nothing could release before midnight; (2) **every lapsed number still held
+on the last day of a month costs a full month** — the backstop's 7-day hold
++ `release-lines` cadence must finish before the 1st to save anything, so
+when reasoning about a lapse near month-end, count days to the 1st, not to
+an anniversary. Verify against Telnyx's own billing page before quoting.
+
 ⚠️ **`swiftc -typecheck` NO LONGER WORKS** — the `TelnyxRTC` dependency landed
 on 2026-08-06 and retired it exactly as the plan predicted. Use `xcodebuild`.
 `NullVoiceClient` still exists and still throws rather than faking success, so
@@ -3587,7 +3602,13 @@ SMS provider again, walk this list:
 Every number below has been wrong within a day of being written at least once.
 It is a starting point for "is this roughly right", never a citation.
 
-- **iOS**: `MARKETING_VERSION 2.6`, `CURRENT_PROJECT_VERSION 47`, iOS min
+- **iOS**: `MARKETING_VERSION 2.7`, `CURRENT_PROJECT_VERSION 48`, iOS min
+  18.0. **2.6 (build 47) is `READY_FOR_SALE` (approved 2026-08-31); 2.7
+  (build 48 — the codes-first Number tab, $5.99/$59.99 line pricing, 13-locale
+  listing rewrite of the second-number section) SUBMITTED 2026-09-01 07:58Z,
+  version `2f0ef076-…`, submission `c2ff0ca1-…`, `WAITING_FOR_REVIEW`.**
+  Read the live state with `python3 scripts/asc-release.py status 2.7`.
+  *(Older text below, kept for history:)* `MARKETING_VERSION 2.6`, `CURRENT_PROJECT_VERSION 47`, iOS min
   **18.0**, **3** SwiftPM dependencies (TelnyxRTC 4.1.2 → WebRTC 139.0.0,
   Starscream 4.0.8). Re-count sources with
   `find VirtualSIM -name '*.swift' | wc -l` rather than quoting a number.
