@@ -1359,6 +1359,41 @@ per-day branch and the gmail paid path are untouched. Behavioural checks:
 `scripts/verify-email-free-tombstone.sql` (6 groups in a rolled-back
 transaction).
 
+🔴 **THE MAILBOX KEY ALONE WAS FARMED ANYWAY — 75 accounts from TWO PHONES —
+so since `20260901100000` the free path is ALSO keyed on the DEVICE and the
+IP, and disposable domains are refused at SIGNUP.** Measured 2026-09-01: 90
+email+password signups from throwaway domains in 7 days, 75 of them
+`utiluan.com` on exactly 2 push tokens, each taking the one free outlook.com
+address for facebook.com (70 of 75 got the code). A catch-all domain
+re-rolls the mailbox for free; the phone and the IP it cannot. Three layers:
+- **`public.signup_blocked_domains` + BEFORE INSERT trigger
+  `on_auth_user_before_created` on `auth.users`** raises
+  `signup_blocked_domain` for a listed domain OR any subdomain of one. Owner
+  decision: reject, don't starve — GoTrue answers **500 `P0001`** (verified
+  live against `/auth/v1/signup`) and the app shows its generic error. Add a
+  domain = one INSERT, no deploy. Seeded with 18; the farm WILL rotate, so
+  this is hygiene and the next two are the wall.
+- **`public.free_email_device_grants`** — md5 of the account's newest push
+  token; `begin_email_order` refuses on `greatest(order count, mailbox
+  tombstone, DEVICE tombstone)`. One free address per phone, ever, including
+  after Delete Account on the same phone (that IS "one per person"). No FK
+  to `auth.users`. Backfilled from every token's holders (152 devices; the
+  farm's two carry `used_count` 75).
+- **`public.free_email_ip_grants`** — free addresses per SHA-256(IP) per UTC
+  day, cap `app_config.email_free_ip_daily_cap` = **3**, hashed in
+  `create-email-order` (`p_ip_hash`; the function never sees an address).
+  Non-subscriber free path only — a paying subscriber is never IP-capped.
+  Refusal reason `ip_limit_reached` is mapped to the client's existing
+  `free_limit_reached` copy, so no release was needed. Rows > 7 days are
+  pruned inside the function.
+⚠️ `begin_email_order` is now the **6-arg** signature (`p_ip_hash text default
+null`); the 5-arg one was DROPPED so PostgREST cannot see two candidates.
+Residual, stated: a new phone AND a new IP is a new allowance — a cost floor.
+The next layer up is Apple DeviceCheck (needs a client release; not built).
+Behavioural checks: `scripts/verify-signup-block-free-email-keys.sql` (7
+groups, rolled back — block, subdomain block, mainstream passes, device wall,
+fresh phone granted, IP cap at 3, subscriber exempt).
+
 `has_email_subscription(uuid)` is the entitlement check: `state in ('active',
 'grace') and greatest(expires_at, grace_expires_at) > now()` — `greatest`, not
 `coalesce`, so a stale `grace_expires_at` from a past grace period can never
@@ -3380,6 +3415,7 @@ for essentially every hidden route.
 - **EVERY grant is farmable through account deletion unless it is tombstoned OUTSIDE the `auth.users` cascade.** This is the single most repeated money bug in this codebase — it has now been found **four** times, once per grant. Everything user-scoped cascades, so delete → sign in again erases our only record and mints the grant afresh. Apple *mandates* the Delete Account button, so this is not an edge case. The four grants and their tombstones: **signup credits** → `signup_grants` (hash of the email); **referral +2** → `signup_grants.referral_redeemed_at` (same key); **IAP purchases** → `public.iap_grants` (keyed on Apple's `transaction_id`); **the temp-e-mail lifetime free address** → `public.email_free_grants` (same two email hashes, added 2026-08-26 — see the temp-e-mail subscription section). ⚠️ **The fourth is the proof the rule needs restating rather than trusting: it is not denominated in credits, so nobody read it as a "grant", and it shipped counting `email_orders` rows that cascade — farmed 55 times from one identity before it was caught.** A grant is anything we hand out once per person. Each tombstone table must have **no foreign key to `auth.users`** — a reference there is precisely what deletes the row with the account. The email hash works because Apple's private-relay address is stable per (user, app), so it survives deletion while storing no address; all four fail **open** on a null email, because a missed grant on a real signup costs more than a rare duplicate. **If you add a fifth grant, it needs a tombstone in the same commit.**
 
   ⚠️ **THAT RELAY-STABILITY ARGUMENT IS NO LONGER THE WHOLE GUARANTEE (2026-08-18).** Email + password signup means the key can be an address the USER picks, which costs nothing to re-roll. Two things now hold it up, and neither is sufficient alone: `signup_grants.email_hash_norm` (md5 of `public.normalize_email`, which strips plus-tags everywhere and dots on gmail only) and the fact that the grant is paid on **confirmation** rather than at INSERT, so the mailbox must actually receive mail. **Both keys are checked and written; the legacy `email_hash` stays the primary key** because 8 of the 517 tombstones belong to deleted accounts whose address is unrecoverable — rewriting the key would have dropped exactly the rows doing the most work. State the residual honestly: a user with ten real mailboxes still gets ten grants. That is a cost floor, and it is LOWER than Apple's — price the grant accordingly (it is 0 today). See `20260818160000_email_signup_normalized_tombstone.sql` and `scripts/verify-signup-grant.sql`.
+  🔴 **And it was re-rolled 75 times from two phones inside two weeks (2026-09-01)** — a catch-all disposable domain (`utiluan.com`) confirms every mailbox, so "paid on confirmation" held nothing. Since `20260901100000` disposable domains are REFUSED AT SIGNUP (`signup_blocked_domains` + `on_auth_user_before_created`), and the free e-mail grant is additionally keyed on the DEVICE (push token) and rate-limited per IP — see the temp-e-mail subscription section. The credit grant is still mailbox-keyed only: at signup there is no push token yet, and the farm never spent a credit. If credits ever get farmed the same way, key `grant_signup_bonus` on the device at `register-push` time.
 - **APNs `aps-environment` is `production`** in the entitlements file (flipped for archiving; set `APNS_ENV=production` secret to match). Flip back to `development` if you need to test push against a dev-token build from Xcode.
 - **`Secrets.swift` is gitignored.** Template in `supabase/README.md`. Just `supabaseURL` + `supabaseAnonKey`. The publishable key (`sb_publishable_*`) is fine in client code — it's the new name for the anon key.
 - **Logo loading cascades** in `ServiceLogo`: DuckDuckGo ip3 (`icons.duckduckgo.com/ip3/<domain>.ico`) → Google FaviconV2 → SF Symbol on tinted background. URLCache caches across launches. **Clearbit (`logo.clearbit.com`) was removed** — HubSpot sunset the free Logo API on 2025-12-01 and its host no longer resolves; leaving it as source #1 made every logo eat a DNS failure before falling through. Do not re-add it.

@@ -7,9 +7,12 @@
 // design.
 //
 // Pricing (owner, 2026-07-31): gmail.com costs 1 credit; outlook.com and
-// hotmail.com are FREE and are the DEFAULT. The free tier is bounded server-side by
-// begin_email_order's per-user daily cap, which is the only thing standing
-// between us and unbounded spend now that there is no credit gate.
+// hotmail.com are FREE and are the DEFAULT. The free tier is bounded server-side
+// by begin_email_order: the lifetime allowance keyed on mailbox AND device
+// (push token), plus a per-IP daily cap (`app_config.email_free_ip_daily_cap`).
+// The IP is hashed HERE and passed as `p_ip_hash` — the function never sees a
+// raw address. Added 2026-09-01 against a farm that ran 75 signups from two
+// phones to harvest free facebook.com mailboxes (see migration 20260901100000).
 
 import { handleCors, json } from "../_shared/cors.ts";
 import { admin, callerUserId } from "../_shared/supabaseAdmin.ts";
@@ -142,6 +145,7 @@ Deno.serve(async (req) => {
   const { data: begun, error: beginErr } = await sb.rpc("begin_email_order", {
     p_user: userId, p_service: service.id, p_site: site,
     p_domain: domain, p_credits: credits,
+    p_ip_hash: await clientIpHash(req),
   });
   if (beginErr) {
     console.error(`create-email-order: begin_email_order failed: ${beginErr.message}`);
@@ -156,6 +160,13 @@ Deno.serve(async (req) => {
   if (res?.reason === "insufficient")       return json({ error: "insufficient_credits" }, { status: 402 });
   if (res?.reason === "duplicate_request")  return json({ error: "duplicate_request" }, { status: 409 });
   if (res?.reason === "free_limit_reached") {
+    return json({ error: "free_limit_reached", cap: res.cap ?? 3 }, { status: 429 });
+  }
+  // Per-IP daily cap on FREE addresses (subscribers are exempt). Rendered with
+  // the client's existing `free_limit_reached` copy ("used today's free
+  // addresses… try again tomorrow, or subscribe"), which is exactly right, so
+  // no client change is needed.
+  if (res?.reason === "ip_limit_reached") {
     return json({ error: "free_limit_reached", cap: res.cap ?? 3 }, { status: 429 });
   }
   // Lifetime free allowance used up, not subscribed. 402, not 429 — this is
@@ -238,6 +249,18 @@ Deno.serve(async (req) => {
 
   return json({ order: claimed });
 });
+
+/** SHA-256 hex of the caller's IP, or null when no proxy header is present
+ *  (then only the mailbox + device keys gate the free path). The first
+ *  `x-forwarded-for` entry is the client as seen by Supabase's edge proxy. */
+async function clientIpHash(req: Request): Promise<string | null> {
+  const xff = req.headers.get("x-forwarded-for") ?? "";
+  const ip = (xff.split(",")[0] ?? "").trim() ||
+    (req.headers.get("cf-connecting-ip") ?? "").trim();
+  if (!ip) return null;
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(ip));
+  return Array.from(new Uint8Array(digest)).map((b) => b.toString(16).padStart(2, "0")).join("");
+}
 
 /** Close a live row and refund if it was paid — ONE transaction.
  *
