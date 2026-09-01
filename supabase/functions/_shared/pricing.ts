@@ -10,18 +10,28 @@
 // buying anything and has only ever cost drift. Every SMS retail price and its
 // order-time inverse comes from here.
 //
-// The curve, on WHOLESALE cost in USD:
+// The curve, on WHOLESALE cost in USD (owner decision 2026-09-01, "tail 5x"
+// experiment — measure paywall->purchase on `needed >= 4` for ~2 weeks):
 //
-//     retailUsd(c) = c <= 0.15 ?  10.0 * c
-//                              :  1.50 + 5.5 * (c - 0.15)
+//     retailUsd(c) = c <= 0.15 ?  10.0 * c            // cheap band, unchanged
+//                  : c <= 0.30 ?  1.50                 // plateau — the join
+//                  :             5.0 * c               // tail: a true 5x
 //     retailCredits(c) = clamp(1, 999, ceil(retailUsd(c) / 0.40))
 //
-// ⚠️ THE TAPER IS MARGINAL (piecewise-linear and CONTINUOUS at the knee), and
-// that is not a stylistic choice. A blanket 5.5x above 15c would make retail
-// DROP as wholesale RISES through the knee — 10 x 15c = $1.50 against
-// 5.5 x 16c = $0.88 — a price inversion, i.e. a dearer route sold cheaper.
-// Only the marginal form is monotonic. Never rewrite this as a flat multiple
-// selected by a threshold.
+// ⚠️ THE PLATEAU IS WHAT KEEPS THIS MONOTONIC, and it is not a stylistic
+// choice. A blanket 5x above 15c would make retail DROP as wholesale RISES
+// through the knee — 10 x 15c = $1.50 against 5 x 16c = $0.80 — a price
+// inversion, i.e. a dearer route sold cheaper. Holding $1.50 flat from 15c to
+// 30c (where 5x catches up to $1.50) is the cheapest continuous, monotone
+// join. Never rewrite this as a flat multiple selected by a threshold.
+//
+// History: 2026-08-28 → 09-01 the tail was a MARGINAL 5.5x from the knee
+// (1.50 + 5.5 * (c - 0.15)), which is an EFFECTIVE 6.3–7.2x on the $0.50–$1.00
+// routes US users actually want (facebook/telegram/whatsapp). Measured on the
+// first day of 2.6 analytics: 4 of 5 paywall purchase attempts on those routes
+// were cancelled at Apple's sheet. This tail moves each of them down exactly
+// one pack rung (facebook 9→7 cr, telegram 14→11, whatsapp 16→13) and leaves
+// the ≤15c band — 12% delivery, and where the 3-credit grant lives — alone.
 //
 // LOCKSTEP RULE (the one that fails silently and per-order):
 // `expectedCostUsd` below MUST remain the exact algebraic inverse of
@@ -43,13 +53,16 @@ export const TAPER_KNEE_USD = 0.15;
 /** Multiple charged on wholesale up to the knee. */
 export const MULT_LOW = 10.0;
 
-/** MARGINAL multiple charged on wholesale ABOVE the knee — not a blanket
- *  multiple on the whole cost (see the inversion note above). */
-export const MULT_HIGH = 5.5;
+/** Multiple charged on the WHOLE wholesale cost on the tail (above the
+ *  plateau). A true multiple, unlike the 2026-08-28 marginal slope. */
+export const MULT_TAIL = 5.0;
 
-/** Revenue collected at exactly the knee. Both halves of the curve pass
- *  through this point, which is what makes it continuous. */
+/** Revenue collected at exactly the knee, and held flat across the plateau. */
 const KNEE_RETAIL_USD = MULT_LOW * TAPER_KNEE_USD; // 1.50
+
+/** Where the tail's `MULT_TAIL * c` reaches the plateau revenue — the
+ *  plateau's upper end. 1.50 / 5 = 0.30. Derived, never set by hand. */
+export const PLATEAU_END_USD = KNEE_RETAIL_USD / MULT_TAIL; // 0.30
 
 const MIN_CREDITS = 1;
 const MAX_CREDITS = 999;
@@ -57,9 +70,9 @@ const MAX_CREDITS = 999;
 /** Retail revenue, in USD, for a wholesale cost in USD. */
 export function retailUsd(costUsd: number): number {
   if (!Number.isFinite(costUsd) || costUsd <= 0) return 0;
-  return costUsd <= TAPER_KNEE_USD
-    ? MULT_LOW * costUsd
-    : KNEE_RETAIL_USD + MULT_HIGH * (costUsd - TAPER_KNEE_USD);
+  if (costUsd <= TAPER_KNEE_USD) return MULT_LOW * costUsd;
+  if (costUsd <= PLATEAU_END_USD) return KNEE_RETAIL_USD;
+  return MULT_TAIL * costUsd;
 }
 
 /** Retail price in CREDITS for a wholesale cost in USD, clamped to 1..999.
@@ -77,13 +90,20 @@ export function retailCredits(costUsd: number): number {
  *  the lockstep rule at the top of this file).
  *
  *      rev = credits * 0.40
- *      rev <= 1.50 ? rev / 10.0
- *                  : 0.15 + (rev - 1.50) / 5.5
+ *      rev <  1.50 ? rev / 10.0
+ *                  : max(0.30, rev / 5.0)
+ *
+ *  The plateau is not one-to-one: every cost in (0.15, 0.30] prices at $1.50.
+ *  The inverse therefore returns the UPPER end of that preimage (0.30) — the
+ *  most expensive route that could honestly carry this price — so the
+ *  order-time ceiling is lenient across the whole plateau and never refuses
+ *  an honestly-priced route. (`credits * 0.40` never equals 1.50 exactly for
+ *  an integer credit count, so the `<` vs `<=` at the knee is moot; the
+ *  4-credit plateau price is rev = 1.60 -> max(0.30, 0.32) = 0.32.)
  */
 export function expectedCostUsd(credits: number): number {
   if (!Number.isFinite(credits) || credits <= 0) return 0;
   const rev = credits * NET_USD_PER_CREDIT;
-  return rev <= KNEE_RETAIL_USD
-    ? rev / MULT_LOW
-    : TAPER_KNEE_USD + (rev - KNEE_RETAIL_USD) / MULT_HIGH;
+  if (rev < KNEE_RETAIL_USD) return rev / MULT_LOW;
+  return Math.max(PLATEAU_END_USD, rev / MULT_TAIL);
 }

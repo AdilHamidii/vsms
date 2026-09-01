@@ -787,14 +787,35 @@ function's own silent rejection), never 401.
 across every provider, defined in `_shared/pricing.ts` and NOWHERE else:**
 
 ```
-retailUsd(cost)   = cost ≤ $0.15 ? 10 × cost : $1.50 + 5.5 × (cost − $0.15)
+retailUsd(cost)   = cost ≤ $0.15 ? 10 × cost
+                  : cost ≤ $0.30 ? $1.50            // plateau — the join
+                  :                5 × cost         // "tail 5×", 2026-09-01
 retail_credits    = clamp(1, 999, ceil(retailUsd / NET_USD_PER_CREDIT))   // NET = 0.40
-expectedCostUsd(credits)  — the EXACT algebraic inverse, used by create-order
+expectedCostUsd(credits)  — the inverse, used by create-order; on the plateau it
+                            returns the UPPER preimage ($0.30) so the ceiling is
+                            lenient across it and never refuses an honest route
 ```
 
-The taper is **MARGINAL and continuous at the knee, deliberately** — a blanket
-5.5× above 15¢ would sell a 16¢ route ($0.88) cheaper than a 15¢ one ($1.50),
-a price inversion. Never rewrite it as a flat multiple picked by a threshold.
+🔴 **TAIL 5× IS A TWO-WEEK EXPERIMENT (owner decision 2026-09-01).** From
+08-28 to 09-01 the tail was a MARGINAL 5.5× (`1.50 + 5.5 × (cost − 0.15)`),
+which is an EFFECTIVE 6.3–7.2× on the $0.50–$1.00 routes US users actually
+want. First day of 2.6 analytics: **4 of 5 paywall purchase attempts on
+facebook/telegram/whatsapp were cancelled at Apple's sheet.** The tail 5×
+moves each down exactly one pack rung — facebook/us 9 → **7** cr ($3.99 ask →
+$2.99), telegram/us 14 → **11** ($5.49 → $3.99), whatsapp/us 16 → **13**
+($12.99 → $5.49) — and leaves the ≤15¢ band untouched, because a FLAT 5×
+would halve the cheap band (grant-reachable routes 2,618 → 5,858, i.e. the
+grant-5 collapse again, via price). Cost at constant volume ≈ $18/month.
+**Read it** at ~30 `paywall_shown` events with `needed ≥ 4`:
+`purchase_result` success vs cancelled on those, NOT raw revenue (the farm
+block and the grant restore landed the same week). Revert = the 08-28
+formula, one file, redeploy the five consumers. Verified at deploy with
+`$CLAUDE_JOB_DIR/tmp/curve_test.ts`-style sweep: monotone over 3,000 costs,
+never under 5×, inverse ≥ cost, never a loss.
+
+The plateau is what keeps the curve **monotone** — a blanket 5× above 15¢
+would sell a 16¢ route ($0.80) cheaper than a 15¢ one ($1.50), a price
+inversion. Never rewrite it as a flat multiple picked by a threshold.
 All four SMS syncs (`sync-5sim`, `sync-herosms`, `sync-prices`,
 `sync-smspva-operators`) import `retailCredits()`; `create-order` imports
 `expectedCostUsd()` and `NET_USD_PER_CREDIT`. The per-provider
@@ -835,9 +856,9 @@ live in `_shared/pricing.ts` (see the taper block above), so the lockstep can
 only break if that one file is edited half-way. `MAX_REVENUE_FRACTION` is the
 INVARIANT (no order can ever be sold at a loss, whatever the multiple is set
 to or a future curve change does); `CEILING_SLACK_MULTIPLE` is the POLICY.
-Note that on the tapered curve's expensive tail the half-revenue cap now
-BINDS (3 × rev/5.5 ≈ 0.545·rev > 0.5·rev) — correct, since revenue ≥ 5.5×
-wholesale everywhere, half of revenue is still ≥ 2.75× the route's own cost.
+Note that on the tail the half-revenue cap BINDS (3 × rev/5 = 0.6·rev >
+0.5·rev) — correct, since revenue ≥ 5× wholesale everywhere on the tail,
+half of revenue is still ≥ 2.5× the route's own cost.
 
 **Why 3×, and it is not about price rises.** We do not choose a pool: we pass
 `maxPrice` and the provider fills from the cheapest thing under it, so the
