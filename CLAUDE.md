@@ -3650,12 +3650,14 @@ SMS provider again, walk this list:
 Every number below has been wrong within a day of being written at least once.
 It is a starting point for "is this roughly right", never a citation.
 
-- **iOS**: `MARKETING_VERSION 2.7`, `CURRENT_PROJECT_VERSION 48`, iOS min
-  18.0. **2.6 (build 47) is `READY_FOR_SALE` (approved 2026-08-31); 2.7
-  (build 48 — the codes-first Number tab, $5.99/$59.99 line pricing, 13-locale
-  listing rewrite of the second-number section) SUBMITTED 2026-09-01 07:58Z,
-  version `2f0ef076-…`, submission `c2ff0ca1-…`, `WAITING_FOR_REVIEW`.**
-  Read the live state with `python3 scripts/asc-release.py status 2.7`.
+- **iOS**: `MARKETING_VERSION 2.8`, `CURRENT_PROJECT_VERSION 49`, iOS min
+  18.0. **2.7 (build 48) is `READY_FOR_SALE` (approved by 2026-09-03); 2.8
+  (build 49 — the one-screen Number store + seven line funnel events, the
+  third dialer `+0` fix, `/metrics` client half) SUBMITTED 2026-09-03 19:20Z,
+  version `0551dd49-…`, submission `048f4e91-…`, `WAITING_FOR_REVIEW`.**
+  ⚠️ The 2.8 dialer fix was NOT device-tested before submission (owner
+  chose review over a cable install). Read the live state with
+  `python3 scripts/asc-release.py status 2.8`.
   *(Older text below, kept for history:)* `MARKETING_VERSION 2.6`, `CURRENT_PROJECT_VERSION 47`, iOS min
   **18.0**, **3** SwiftPM dependencies (TelnyxRTC 4.1.2 → WebRTC 139.0.0,
   Starscream 4.0.8). Re-count sources with
