@@ -500,6 +500,33 @@ export const handlers: Record<string, Handler> = {
           : "");
   },
 
+  metrics: async ({ sb, arg }) => {
+    // The user-facing delivery figure is the vendor's network rate rendered
+    // as High/Medium/Low; `app_config.delivery_metrics_hidden` blanks it on
+    // every screen (client 2.8+). Written directly rather than through an
+    // RPC: it is one boolean with no side effects, unlike the two pause
+    // switches, which also move catalog rows and report the count.
+    if (arg !== "on" && arg !== "off") {
+      const { data: p, error } = await sb
+        .from("app_config").select("value").eq("key", "delivery_metrics_hidden").maybeSingle();
+      if (error) {
+        console.error("delivery_metrics_hidden read failed:", error.message);
+        return readFail("the metrics switch");
+      }
+      return `📊 Delivery rate is <b>${p?.value === true ? "HIDDEN" : "shown"}</b> in the app.\n\n` +
+        `<code>/metrics off</code> · <code>/metrics on</code>`;
+    }
+    const hiding = arg === "off";
+    const { error } = await sb.from("app_config")
+      .upsert({ key: "delivery_metrics_hidden", value: hiding }, { onConflict: "key" });
+    return error
+      ? `⚠️ Couldn't change it: ${esc(error.message)}`
+      : `📊 Delivery rate is now <b>${hiding ? "HIDDEN" : "shown"}</b> in the app.` +
+        `\n\n<i>Takes effect on the next cold launch of 2.8 or later. Sorting and the ` +
+        `country the app picks for a user still use the rate — only the number is ` +
+        `${hiding ? "gone" : "back"}.</i>`;
+  },
+
   help: () => Promise.resolve(helpText()),
 };
 

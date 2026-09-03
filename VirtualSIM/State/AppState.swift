@@ -1060,6 +1060,19 @@ final class AppState {
         return route.poolRatePct
     }
 
+    /// Whether the network rate may be RENDERED. `app_config.
+    /// delivery_metrics_hidden`, flipped from Telegram with `/metrics off`,
+    /// blanks it on every screen with no release. Steering (`rankedUntestedKey`,
+    /// `bestCountry`, the retry picker) and the country sort keep reading
+    /// `poolRate` directly — the owner is hiding a number, not the knowledge.
+    var showsDeliveryMetrics: Bool { !appStatus.deliveryMetricsHidden }
+
+    /// `poolRate` for DISPLAY: nil while the owner has hidden the metric.
+    /// Every render site goes through this; nothing that decides a pick does.
+    func displayedPoolRate(for service: Service, country: Country) -> Int? {
+        showsDeliveryMetrics ? poolRate(for: service, country: country) : nil
+    }
+
     /// How this COUNTRY has delivered across every service, over 30 days, on
     /// the provider we currently use — or nil when we've never had a conclusive
     /// order there. Server-computed by `refresh_country_delivery`.

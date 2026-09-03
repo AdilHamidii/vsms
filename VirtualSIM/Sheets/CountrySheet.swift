@@ -167,7 +167,7 @@ struct CountrySheet: View {
                 ForEach(Array(rows.enumerated()), id: \.element.id) { idx, c in
                     CountryRow(country: c,
                                price: price(c),
-                               poolRate: rate(c),
+                               poolRate: state.showsDeliveryMetrics ? rate(c) : nil,
                                balance: state.balance,
                                selected: c.id == state.configuringCountry.id,
                                isLast: idx == rows.count - 1) {
@@ -193,7 +193,12 @@ struct CountrySheet: View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 6) {
                 ForEach(CountrySort.allCases, id: \.self) { option in
-                    ChipButton(label: option.label,
+                    // With the metric hidden (`/metrics off`) the same ordering
+                    // still applies — it is the best one we have — but a chip
+                    // named after a number nobody can see would be a puzzle,
+                    // so it is called what it is: our recommendation.
+                    ChipButton(label: option == .networkRate && !state.showsDeliveryMetrics
+                                   ? String(localized: "Recommended") : option.label,
                                icon: option.icon,
                                active: sort == option) {
                         guard sort != option else { return }
@@ -203,7 +208,7 @@ struct CountrySheet: View {
                     // The definition of the number this sort ranks on, one tap
                     // away from the control that ranks on it — instead of a
                     // paragraph everyone scrolls past to reach the list.
-                    if option == .networkRate { rateInfoButton }
+                    if option == .networkRate, state.showsDeliveryMetrics { rateInfoButton }
                 }
 
             }

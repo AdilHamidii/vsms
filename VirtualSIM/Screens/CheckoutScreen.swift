@@ -50,7 +50,7 @@ struct CheckoutScreen: View {
     /// decision 2026-08-22 — see the header of `SuccessBadge.swift`), so this
     /// is the only delivery figure checkout has.
     private var poolRate: Int? {
-        state.poolRate(for: service, country: country)
+        state.displayedPoolRate(for: service, country: country)
     }
 
     // `tierAdvice` lived here: a sentence recommending Real SIM off our own

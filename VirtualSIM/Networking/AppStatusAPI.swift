@@ -29,7 +29,8 @@ struct Announcement: Codable, Hashable {
 ///
 /// The table also holds provider balances and the watchdog verdict, so it is
 /// RLS-restricted to an explicit key whitelist (`maintenance`, `announcement`,
-/// `esim_paused`, `lines_paused`, `line_swap_credits`). Never widen that policy
+/// `esim_paused`, `lines_paused`, `line_swap_credits`,
+/// `delivery_metrics_hidden`). Never widen that policy
 /// to `using (true)` — the same table holds provider balances, the watchdog
 /// verdict and every sync cursor.
 struct AppStatus: Equatable {
@@ -43,6 +44,10 @@ struct AppStatus: Equatable {
     /// quoting a figure the server has not confirmed — the rule that the
     /// "+3 credits" onboarding card and `inviteJoinerCredits` both broke.
     var lineSwapCredits: Int?
+    /// Owner kill switch (`/metrics off` in the ops bot) for the ONLY delivery
+    /// figure a user sees — the vendor's network rate. Display-only: steering
+    /// and sorting keep reading the rate. Absent key = shown.
+    var deliveryMetricsHidden: Bool = false
 
     static let unknown = AppStatus(announcement: nil, esimPaused: false,
                                    lineSwapCredits: nil)
@@ -77,7 +82,7 @@ struct AppStatusAPI {
             .get, path: "rest/v1/app_config",
             query: [
                 URLQueryItem(name: "key",
-                             value: "in.(announcement,esim_paused,line_swap_credits)"),
+                             value: "in.(announcement,esim_paused,line_swap_credits,delivery_metrics_hidden)"),
                 URLQueryItem(name: "select", value: "key,value"),
             ]
         )
@@ -86,7 +91,8 @@ struct AppStatusAPI {
             esimPaused: rows.first(where: { $0.key == "esim_paused" })?.flag ?? false,
             // No `?? 5`. An absent or unreadable price hides the feature; it
             // must never fall back to a number this build happens to remember.
-            lineSwapCredits: rows.first(where: { $0.key == "line_swap_credits" })?.number
+            lineSwapCredits: rows.first(where: { $0.key == "line_swap_credits" })?.number,
+            deliveryMetricsHidden: rows.first(where: { $0.key == "delivery_metrics_hidden" })?.flag ?? false
         )
     }
 }

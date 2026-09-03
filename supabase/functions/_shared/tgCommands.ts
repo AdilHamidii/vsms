@@ -228,6 +228,16 @@ export const COMMANDS: CommandSpec[] = [
     group: "Controls",
   },
   {
+    name: "metrics",
+    mutates: true,
+    args: "on|off",
+    summary: "Show or hide the delivery rate in the app",
+    help: "<code>/metrics off</code> hides the High/Medium/Low network rate on every " +
+      "screen · <code>/metrics on</code> shows it again · <code>/metrics</code> alone " +
+      "reports the state. Steering is unaffected — only what users SEE changes.",
+    group: "Controls",
+  },
+  {
     name: "help",
     summary: "Every command, grouped",
     group: "Other",

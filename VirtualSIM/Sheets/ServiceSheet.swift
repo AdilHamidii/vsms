@@ -316,7 +316,7 @@ struct ServiceSheet: View {
                    emailSupported: !(service.domain ?? "").isEmpty,
                    // The figure must describe the route the tap actually
                    // buys — the destination route when there is none here.
-                   poolRate: state.emailMode ? nil : state.poolRate(
+                   poolRate: state.emailMode ? nil : state.displayedPoolRate(
                        for: service,
                        country: elsewhere?.country ?? currentCountry),
                    balance: state.balance,

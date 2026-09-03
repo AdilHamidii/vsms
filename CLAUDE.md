@@ -485,7 +485,19 @@ unavailable — status, price, pool rate, stock, 7d orders/codes), `/balance`,
 and real rent; `on|off` unchanged), `/support` (threads waiting, oldest first),
 `/alerts` (what is firing + ladder/cooldown states), `/funnel`, `/config`
 (read-only: grant, e-mail caps, pause switches, swap price), `/announce`,
-`/esim`, `/help`.
+`/esim`, `/metrics`, `/help`.
+
+**`/metrics on|off` (2026-09-03) hides the ONLY delivery figure users see** —
+the vendor network rate rendered as High/Medium/Low — by writing
+`app_config.delivery_metrics_hidden` (published through the RLS whitelist,
+read in the same fetch as `esim_paused`). **Display-only by design:**
+`AppState.displayedPoolRate` is what every render site reads (Home hero,
+Checkout, ServiceSheet, CountrySheet rows), while steering
+(`rankedUntestedKey`, `bestCountry`, the retry picker) and the country sort
+keep reading `poolRate` — the owner is hiding a number, not the knowledge.
+When hidden, the "Network rate" sort chip is labelled "Recommended" and
+loses its ⓘ. **Client-side, so it ships with 2.8**; older builds keep
+showing the rate whatever the flag says. Takes effect on cold launch.
 
 **Every timestamp the bot prints is Europe/Paris**, through
 `_shared/tgFormat.ts` (`parisFull`, `ago`, `until`, `duration`, `usd`,
@@ -737,11 +749,13 @@ policy is now:
 ```sql
 app_config_read: SELECT to authenticated
   using (key = any (array['maintenance','announcement','esim_paused',
-                          'lines_paused','line_swap_credits']))
+                          'lines_paused','line_swap_credits',
+                          'delivery_metrics_hidden']))
 ```
 
-⚠️ **FIVE keys as of 2026-08-21, not three** — `lines_paused` and
-`line_swap_credits` were added later and this block claimed three for weeks.
+⚠️ **SIX keys as of 2026-09-03, not three** — `lines_paused`,
+`line_swap_credits` and `delivery_metrics_hidden` were added later and this
+block claimed three for weeks.
 Re-read the live policy (`select qual from pg_policies where
 tablename='app_config'`) rather than quoting this list. Widening it by one
 named key is the ONLY safe way to publish a value; `line_swap_credits` is

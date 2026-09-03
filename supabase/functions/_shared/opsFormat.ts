@@ -2247,6 +2247,7 @@ export const CONFIG_KEYS: {
   { key: "email_subscription_enforced", label: "Mail paywall", kind: "bool" },
   { key: "lines_paused", label: "Second-number rentals", kind: "bool", invert: true },
   { key: "esim_paused", label: "eSIM line", kind: "bool", invert: true },
+  { key: "delivery_metrics_hidden", label: "Delivery rate in app", kind: "bool", invert: true },
   { key: "line_swap_credits", label: "Number swap price", kind: "n" },
   { key: "line_swap_cooldown_days", label: "Swap cooldown", kind: "n" },
   { key: "line_orphan_release_enabled", label: "Orphan number sweep", kind: "bool" },

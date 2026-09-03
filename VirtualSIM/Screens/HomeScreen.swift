@@ -257,7 +257,7 @@ struct HomeScreen: View {
     /// Our own record is not shown here any more; see the header of
     /// `SuccessBadge.swift`.
     private var routePoolRate: Int? {
-        state.poolRate(for: state.lastService, country: state.lastCountry)
+        state.displayedPoolRate(for: state.lastService, country: state.lastCountry)
     }
 
     /// A user who has never placed an order.
