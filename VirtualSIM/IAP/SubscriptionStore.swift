@@ -54,9 +54,11 @@ final class SubscriptionStore {
     /// this state by any launch argument or server response — same guarantee
     /// `ScreenshotMode` already documents for its sample line and threads.
     struct ScreenshotPricing {
-        var monthly = "$9.99"
-        var yearly = "$99.99"
-        /// ($9.99 × 12 − $99.99) ÷ ($9.99 × 12) = 16.6% → 17, which is what
+        /// ⚠️ $5.99 / $59.99 since the 2026-09-01 reprice (effective 09-02),
+        /// not the launch $9.99 / $99.99 these read for the first four months.
+        var monthly = "$5.99"
+        var yearly = "$59.99"
+        /// ($5.99 × 12 − $59.99) ÷ ($5.99 × 12) = 16.5% → 17, which is what
         /// `yearlySavingsPercent` computes from the live prices.
         var savingsPercent = 17
         /// nil since 2026-08-23: the line has no trial on either plan (owner
@@ -97,9 +99,10 @@ final class SubscriptionStore {
 
     /// The MONTHLY plan. Every existing call site means this one.
     private(set) var product: Product?
-    /// The YEARLY plan — $99.99 with a 3-day free trial, same subscription
-    /// group. Held separately rather than in a list so the existing monthly
-    /// call sites keep their meaning; the paywall reads both.
+    /// The YEARLY plan — $59.99 since the 2026-09-01 reprice, no trial on
+    /// either plan since 2026-08-23. Same subscription group. Held separately
+    /// rather than in a list so the existing monthly call sites keep their
+    /// meaning; the paywall reads both.
     private(set) var yearlyProduct: Product?
 
     /// The trial, straight from StoreKit rather than hardcoded. `nil` when the
@@ -118,7 +121,7 @@ final class SubscriptionStore {
     /// introductory offer per subscription GROUP per Apple ID, so someone who
     /// already trialled the monthly gets nothing here and StoreKit reports no
     /// offer. Every trial claim in the UI hangs off this, so an ineligible user
-    /// is never shown "3 days free" and then charged $99.99 immediately —
+    /// is never shown "3 days free" and then charged the full year immediately —
     /// which is a refund, a one-star review, and an App Store 3.1.2 problem.
     var trialLabel: String? {
         #if DEBUG
@@ -202,7 +205,7 @@ final class SubscriptionStore {
     }
 
     /// The store's own price string, localized by StoreKit for the user's
-    /// storefront. NEVER a hardcoded "$9.99": the credit-pack ladder drifted to
+    /// storefront. NEVER a hardcoded "$5.99": the credit-pack ladder drifted to
     /// $4.99-vs-€5.99 on its top revenue product precisely because prices were
     /// assumed rather than read.
     var displayPrice: String? {
@@ -313,7 +316,22 @@ final class SubscriptionStore {
         guard !isPurchasing else { return false }
         // The SELECTED product, not the monthly. Buying anything other than the
         // plan shown next to the button is the worst bug this screen could have.
+        // ⚠️ Emitted HERE and nowhere else, so there is exactly one event per
+        // attempt. `handle()` is also reached from the shared transaction
+        // listener — renewals and restore sweeps — which are not attempts and
+        // would double-count every subscriber's monthly bill as a conversion.
+        //
+        // `outcome` comes from StoreKit's own result, never inferred from the
+        // Bool this returns: `.userCancelled`, `.pending` and a refused
+        // verification all return false, and telling them apart is the whole
+        // reason the event exists. Same shape as `IAPStore.purchase`.
+        let plan = selectedPlan.rawValue
+        func note(_ outcome: String) {
+            Analytics.shared.track("line_purchase_result", [
+                "outcome": .string(outcome), "plan": .string(plan)])
+        }
         guard let product = selectedProduct else {
+            note("failed")
             lastError = String(localized: "Second numbers are temporarily unavailable. Please try again in a moment.")
             return false
         }
@@ -325,21 +343,27 @@ final class SubscriptionStore {
             let result = try await product.purchase()
             switch result {
             case .success(let verification):
-                return await handle(verification)
+                let accepted = await handle(verification)
+                note(accepted ? "success" : "failed")
+                return accepted
             case .userCancelled:
+                note("cancelled")
                 pending = nil
                 return false
             case .pending:
                 // Ask-to-buy or SCA. The transaction arrives later on the
                 // shared listener, so this is not a failure — but it must not
                 // read as success either.
+                note("pending")
                 lastError = String(localized: "Your purchase needs approval. We'll set up your number as soon as it's approved.")
                 return false
             @unknown default:
+                note("failed")
                 pending = nil
                 return false
             }
         } catch {
+            note("failed")
             pending = nil
             // StoreKit REFUSES to sell a subscription this Apple ID already
             // holds — it shows its own "You're currently subscribed to this"
@@ -466,8 +490,8 @@ final class SubscriptionStore {
 /// there pays out credits on every renewal, forever.
 enum LineProduct {
     static let monthlyId = "com.anthersystems.VirtualSIM.line.monthly"
-    /// $99.99/year with a 3-day free trial. SAME subscription group as the
-    /// monthly (22289428), which is what makes them upgrade/downgrade siblings
+    /// $59.99/year, no trial (owner decision 2026-08-23). SAME subscription
+    /// group as the monthly (22289428), which is what makes them upgrade/downgrade siblings
     /// Apple prorates and stops a user holding both.
     static let yearlyId = "com.anthersystems.VirtualSIM.line.yearly"
 

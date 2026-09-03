@@ -42,6 +42,12 @@ struct LineProvisioningScreen: View {
                 await state.loadLine(using: LineAPI(client: api))
                 if let line = state.line {
                     if line.status == .active {
+                        // The end of the line funnel: a number that exists and
+                        // works, not merely a charge Apple accepted. Emitted
+                        // from the poll rather than from the purchase, because
+                        // provisioning is asynchronous server-side and can
+                        // still fail after the money has moved.
+                        Analytics.shared.track("line_provisioned")
                         subs.clearProvisioned()
                         state.flow = nil        // the Number tab takes over
                         return

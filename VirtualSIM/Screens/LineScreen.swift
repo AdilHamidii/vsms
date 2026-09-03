@@ -434,8 +434,11 @@ private struct LiveLineView: View {
 
     // MARK: - Messages
 
-    /// The empty inbox is what a user who just paid $9.99 actually looks at for
-    /// their first hour, so it is the screen that most deserves designing.
+    /// The empty inbox is what a user who just paid for a month actually looks
+    /// at for their first hour, so it is the screen that most deserves
+    /// designing. (The charge is $5.99/mo or $59.99/yr in the USA since
+    /// 2026-09-02 — never quoted as a literal on any screen; StoreKit's own
+    /// `displayPrice` is the only figure a user is shown.)
     ///
     /// 🔴 IT IS THE CANCELLATION SCREEN. Every subscriber so far killed
     /// auto-renew at a median of 3.9 minutes after paying, and lifetime inbound

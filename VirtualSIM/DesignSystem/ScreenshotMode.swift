@@ -35,7 +35,7 @@ enum ScreenshotMode {
     enum Screen: String {
         case onboarding      // page 1, the product pitch
         case lineIntro       // the store's first page — what a second number is
-        case lineStore       // pick a city
+        case lineStore       // the store with real numbers and the price on it
         case thread          // a real conversation on a rented number
         case email           // temp e-mail, code delivered
         case emailStore      // temp e-mail, choosing a free domain

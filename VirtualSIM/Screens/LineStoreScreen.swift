@@ -1,29 +1,34 @@
+import StoreKit
 import SwiftUI
 
 /// The rented-number store — and, since 2026-08-05, the app's front door.
 ///
-/// ── Why this is a sequence and not one long page ──────────────────────────
+/// ── Why this is ONE screen and not a sequence (2026-09-03) ────────────────
 ///
-/// Three steps — read the pitch, pick a city, pick your actual number — then
-/// the paywall. Each step renders instantly: a single page had to wait on a
-/// Telnyx search before it could show anything, and the whole screen sat blank
-/// meanwhile.
+/// It was four steps — read the pitch, pick a country, pick a city, pick your
+/// number — and then the paywall. That flow sold **nothing**: 162
+/// `line_store_view` events across 106 distinct viewers since 2.7 shipped, and
+/// **zero subscriptions**. The number and the price were three taps away from
+/// the only screen most people ever saw, and the first tap bought them another
+/// page of reading rather than the product. Owner decision 2026-09-03: collapse
+/// it, put real numbers and the monthly price on the launch surface, and let
+/// the pickers become a `.sheet` for the minority who want a different place.
 ///
-/// ⚠️ The city step NAMES THE MONTHLY PRICE as of 2026-08-23 (owner decision —
-/// see `priceNote`). The original sequencing argument was that the number on
-/// screen should be *theirs* before money is mentioned; that was overruled by
-/// the cancellation data, and a subscriber who meets $9.99/month only after two
-/// choices can feel walked into it. The full 3.1.2(a) disclosure is still
-/// `LineCheckoutScreen`'s job alone.
+/// The step sequence existed because a single page had to wait on a Telnyx
+/// search before it could show anything. That argument is answered rather than
+/// ignored: everything above the numbers renders from local state on the first
+/// frame, the search runs in the background from the root `.task`, and the
+/// numbers themselves occupy `numberSkeleton` at their real height meanwhile —
+/// so nothing on screen ever waits on the network to exist.
 ///
-/// There is deliberately **no credit pill** anywhere here. This product is paid
-/// entirely through a StoreKit subscription and never touches the wallet;
-/// showing a balance would imply otherwise, and it removes the `PurchaseIntent`
-/// read path that has already shipped three bugs elsewhere.
+/// ⚠️ **THE PRICE IS NAMED HERE, and it is never a literal** — see `priceNote`.
+/// There is deliberately **no credit pill** anywhere: this product is paid
+/// entirely through a StoreKit subscription and never touches the wallet, and
+/// showing a balance would imply otherwise.
 ///
-/// The price, period, renewal terms and Terms/Privacy links live on
-/// `LineCheckoutScreen`, which is the screen immediately before the purchase —
-/// which is what App Store 3.1.2(a) actually requires.
+/// The full 3.1.2(a) disclosure — price, period, renewal terms, Terms/Privacy —
+/// is still `LineCheckoutScreen`'s job alone, because that is the screen
+/// immediately before the purchase.
 struct LineStoreScreen: View {
     @Environment(\.theme) private var theme
     @Environment(AppState.self) private var state
@@ -35,146 +40,523 @@ struct LineStoreScreen: View {
     /// `HomeScreen(onOpenEsim:)`.
     var onOpenSms: () -> Void
 
-    private enum Step: Hashable { case intro, country, city, number }
-
-    /// Opens on the pitch. The one exception is the screenshot harness, whose
-    /// `lineStore` frame has always been the city list — the App Store
-    /// screenshots would otherwise silently change meaning on the next run.
-    @State private var step: Step =
-        ScreenshotMode.screen == .lineStore ? .city : .intro
-
-    /// Which way the last move went.
-    ///
-    /// A fixed edge per step works only while there are two steps and
-    /// therefore one boundary. `city` now has a neighbour on either side, so
-    /// there is no single edge that is correct for both — it has to slide out
-    /// of whichever side it is being pushed toward.
-    @State private var goingForward = true
     @State private var appeared = false
 
+    /// The place pickers, which are no longer steps in a flow. They are a
+    /// detour off a screen that already has an answer on it.
+    @State private var showsPlaceSheet = false
+    /// Which list the sheet is showing. A country selection moves it to that
+    /// country's cities INSIDE the sheet, so the two lists keep the ordering
+    /// the old two steps had without owning the whole screen.
+    @State private var sheetShowsCountries = false
+
+    /// How many numbers the screen offers at once.
+    ///
+    /// Three, not the whole search. This list is one section of a scrolling
+    /// page rather than the page itself, and every row past the third pushes
+    /// the price — the thing a subscriber has to have read — below the fold.
+    /// "Show different numbers" re-rolls the search for anyone who dislikes
+    /// all three.
+    private static let visibleOffers = 3
+
     var body: some View {
-        ZStack {
-            switch step {
-            case .intro:   introStep.transition(pushTransition)
-            case .country: countryStep.transition(pushTransition)
-            case .city:    cityStep.transition(pushTransition)
-            case .number:  numberStep.transition(pushTransition)
-            }
-        }
-        .background(theme.bg)
-        // Set BEFORE any await. This flag drives `riseIn`, so awaiting a network
-        // call first left the entire screen at opacity 0 until Telnyx answered —
-        // which is exactly what "the rent number screen takes too long to show
-        // up" was. Nothing on the city step needs the network at all.
-        .task {
-            withAnimation(RMotion.content) { appeared = true }
-            Analytics.shared.track("line_store_view")
-            // The country catalogue. Swallows its own failure and keeps the
-            // seeded two — see `AppState.loadLineCountries`. Fired here rather
-            // than on entering the country step so the step can decide whether
-            // to exist at all before the user reaches it.
-            await state.loadLineCountries(using: LineAPI(client: api))
-            // Loads the product the city step's `priceNote` reads — and the
-            // reason that note renders nothing until this returns. Also keeps
-            // the product warm for the paywall: the store is the app's first
-            // screen, and `LineCheckoutScreen` renders a redacted placeholder while
-            // StoreKit is still answering, and this usually removes it.
-            // Idempotent, so calling it in both places is free.
-            await subs.loadProduct()
-        }
-    }
-
-    private var pushTransition: AnyTransition {
-        .asymmetric(
-            insertion: .move(edge: goingForward ? .trailing : .leading)
-                .combined(with: .opacity),
-            removal: .move(edge: goingForward ? .leading : .trailing)
-                .combined(with: .opacity))
-    }
-
-    /// Direction is set OUTSIDE the animation, so `pushTransition` is resolved
-    /// against the new value in the same update that moves the step.
-    private func go(to next: Step, forward: Bool) {
-        goingForward = forward
-        withAnimation(RMotion.panel) { step = next }
-    }
-
-    // MARK: - Step 1 · the pitch, alone
-    //
-    // The city list used to sit under this card on the same scroll, so the
-    // launch screen opened on a wall of seven rows plus a footnote plus an
-    // escape link — the reader had to get past a decision to finish reading
-    // what the product even was. One page, one job: say what this is, then ask.
-    //
-    // Nothing here touches the network.
-
-    private var introStep: some View {
-        // `minHeight` equal to the viewport is what puts the CTA in the thumb
-        // zone on a short page while still letting the whole thing scroll at
-        // accessibility type sizes. A plain VStack would clip; a plain
-        // ScrollView would leave the button stranded mid-screen.
         GeometryReader { proxy in
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
                     header(kicker: "Second number", title: "A number for your codes")
 
-                    // Two spacers, not one. With a single spacer under the
-                    // card the whole pitch clung to the top and left a third
-                    // of the screen empty above the button; equal-priority
-                    // spacers split the slack so the card floats between the
-                    // title and the CTA instead.
                     Spacer(minLength: 16)
 
                     pitch.riseIn(appeared, index: 0)
-                    // `usSoon` no longer renders on this step (2026-09-01):
-                    // the card's headline names "US or Canadian" and the
-                    // ledger rows carry both limits it stated, so it was a
-                    // third copy of the same two facts — and the ~90pt it
-                    // cost pushed "Choose a country" under the tab bar on a
-                    // 6.3" screen. It still renders on the city step, where
-                    // the pitch card is not on screen.
+
+                    numbers.padding(.top, 18).riseIn(appeared, index: 1)
+
+                    usSoon.padding(.top, 16).riseIn(appeared, index: 3)
 
                     Spacer(minLength: 24)
 
-                    PrimaryButton(label: showsCountryStep
-                                  ? String(localized: "Choose a country")
-                                  : String(localized: "Choose a city")) {
-                        go(to: showsCountryStep ? .country : .city, forward: true)
-                    }
-                    .riseIn(appeared, index: 2)
-
-                    smsEscape.padding(.top, 12).riseIn(appeared, index: 3)
+                    smsEscape.padding(.top, 12).riseIn(appeared, index: 4)
                 }
                 .padding(.horizontal, 20)
                 // 🔴 THE TAB-BAR CLEARANCE MUST SIT OUTSIDE THE MIN-HEIGHT
                 // FRAME. With `.padding(.bottom, 120)` applied INSIDE it, the
-                // 120pt of clearance counted as content: the two spacers then
-                // distributed slack across the FULL viewport, which put "Choose
-                // a city" flush against the bottom of the screen — i.e. on top
-                // of the floating tab bar — and pushed `smsEscape` underneath
-                // it entirely. The escape is the only route to the temp-SMS
-                // product from the launch surface, so it being invisible is a
-                // funnel bug, not a cosmetic one.
-                //
-                // Subtracting the clearance from the min height and applying it
-                // afterwards makes the spacers distribute slack in the space
-                // that is actually visible.
+                // 120pt of clearance counts as content: the spacers then
+                // distribute slack across the FULL viewport, which puts the
+                // last element flush against the bottom of the screen — i.e.
+                // on top of the floating tab bar — and pushes `smsEscape`
+                // underneath it entirely. The escape is the only route to the
+                // temp-SMS product from the launch surface, so it being
+                // invisible is a funnel bug, not a cosmetic one.
                 .frame(minHeight: proxy.size.height - 120, alignment: .top)
                 .padding(.bottom, 120)
             }
         }
+        .background(theme.bg)
+        .sheet(isPresented: $showsPlaceSheet) { placeSheet }
+        // Set BEFORE any await. This flag drives `riseIn`, so awaiting a
+        // network call first left the entire screen at opacity 0 until Telnyx
+        // answered — which is exactly what "the rent number screen takes too
+        // long to show up" was. Nothing above the numbers needs the network.
+        .task {
+            withAnimation(RMotion.content) { appeared = true }
+            Analytics.shared.track("line_store_view")
+            // The country catalogue. Swallows its own failure and keeps the
+            // seeded two — see `AppState.loadLineCountries`. It has to land
+            // before the default place is chosen, because "is this country
+            // sellable" is a question only the catalogue can answer.
+            await state.loadLineCountries(using: LineAPI(client: api))
+            if state.lineCountry == nil, let iso = await storefrontCountry() {
+                state.lineCountry = iso
+            }
+            // Numbers before the product: the search is the slow half and it
+            // is what this screen is for. `priceNote` renders nothing until
+            // StoreKit answers and then fills in a beat later, without moving
+            // anything above it.
+            //
+            // Screenshot frames seed the offers directly — a live search from
+            // `simctl` returns nothing and would wipe the fixture, the same
+            // trap `AppState.loadLineThreads` documents.
+            if !ScreenshotMode.isActive, state.lineOffers.isEmpty {
+                await reloadNumbers()
+            }
+            // Keeps the product warm for the paywall: the store is the app's
+            // first screen and `LineCheckoutScreen` renders a redacted
+            // placeholder while StoreKit is still answering. Idempotent, so
+            // calling it in both places is free.
+            await subs.loadProduct()
+        }
     }
 
-    // MARK: - Step 2 · country
-    //
-    // Renders from `LineCountry.seeded` before any network call, then from
-    // `line_country_menu`.
+    // MARK: - The search
 
-    /// Only sellable countries count toward "is there a choice here". A screen
-    /// listing one buyable country and eleven grayed ones is a wall of "no"
+    /// Every search the screen runs goes through here, so `line_numbers_shown`
+    /// cannot drift away from the thing it claims to measure. It fires on the
+    /// RESULT rather than in `body`, which SwiftUI re-evaluates for reasons
+    /// that have nothing to do with a new search.
+    private func reloadNumbers(city: String? = nil, country: String? = nil) async {
+        await state.loadLineNumbers(using: LineAPI(client: api),
+                                    city: city, country: country)
+        Analytics.shared.track("line_numbers_shown", [
+            "country": .string(state.lineCountry ?? "unknown"),
+            // "any" is a real answer here — a country with no curated
+            // localities sells country-wide — and it must not be read as a
+            // missing one.
+            "city": .string(state.lineCity ?? "any"),
+            "count": .int(state.lineOffers.count)])
+    }
+
+    /// One definition of "the user chose somewhere else", used by all three
+    /// selection paths in the sheet. Anything that changes the place must go
+    /// through it, or the funnel silently loses a branch.
+    private func changePlace(city: String? = nil, country: String? = nil) {
+        Analytics.shared.track("line_place_changed", [
+            "country": .string(country ?? state.lineCountry ?? "unknown"),
+            "city": .string(city ?? "any")])
+        Task { await reloadNumbers(city: city, country: country) }
+    }
+
+    /// ISO-3166 alpha-3 → alpha-2, for the countries this store can sell.
+    ///
+    /// ⚠️ `Storefront.countryCode` is **alpha-3** ("USA", "CAN") while the
+    /// catalogue speaks alpha-2, and Foundation offers no conversion. So the
+    /// map is explicit and deliberately covers the sellable set only —
+    /// anything outside it resolves to nil and the server's own default
+    /// stands. Add a row here when a country becomes sellable; a wrong guess
+    /// (the first two letters happen to work for these three and not for
+    /// DEU/GBR) would search the wrong country.
+    private static let storefrontISO2: [String: String] =
+        ["USA": "US", "CAN": "CA", "PRI": "PR"]
+
+    /// The device's App Store country, when we can actually sell there.
+    ///
+    /// 41 of the last 50 signups are USA and the server's default is Toronto,
+    /// so an untouched screen showed most users a foreign number. The
+    /// storefront is the payment geography, which is the closest thing to
+    /// "where this person is" that costs no permission prompt.
+    private func storefrontCountry() async -> String? {
+        guard let iso3 = await Storefront.current?.countryCode,
+              let iso2 = Self.storefrontISO2[iso3],
+              sellableCountries.contains(where: { $0.countryCode == iso2 })
+        else { return nil }
+        return iso2
+    }
+
+    // MARK: - The pitch
+
+    /// ⚠️ **Only sell what ships.** Calling was absent from this card for as
+    /// long as `flow = .dialer` was assigned nowhere, and was restored in the
+    /// same commit that linked the SDK and wired the dialer. Keep that
+    /// ordering for anything added here.
+    ///
+    /// 🔴 **CODES-FIRST since 2026-09-01 (owner decision).** The pitch is "a
+    /// real US or Canadian number that receives verification codes" — not
+    /// calling, not texting. It names ONLY services that have delivered a real
+    /// code to a rented number (WhatsApp, TikTok, DoorDash — each verified in
+    /// `line_messages`), says plainly that some platforms refuse virtual
+    /// numbers, and sells the switch as the remedy at its live price.
+    ///
+    /// 🔴 **THREE ROWS, and the "Not yet" ledger is NOT one of them
+    /// (2026-09-03).** The ledger — sending texts, receiving from outside
+    /// NANP, taking incoming calls — still exists, on `LineCheckoutScreen`,
+    /// which is the disclosure surface a buyer reads immediately before
+    /// paying. It came off THIS card because the store now has to carry the
+    /// numbers and the price as well, and seven ledger rows between the
+    /// headline and the first real number is the shape that sold nothing.
+    /// Honesty is not deleted here, it is moved to the screen where it is
+    /// acted on. The same rule governs calling, which was a fourth row and is
+    /// now checkout's alone: it works, it is not why anyone buys.
+    private var pitch: some View {
+        Card(elevation: .raised) {
+            VStack(alignment: .leading, spacing: 0) {
+                Text("A real US or Canadian number that receives your verification codes.")
+                    .font(RFont.display(17, weight: .semibold))
+                    .tracking(-0.3)
+                    .foregroundStyle(theme.text)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.horizontal, 16)
+                    .padding(.top, 18)
+                    .padding(.bottom, 8)
+
+                // Only proven names. Adding a service here requires a real
+                // code on a rented line, not a guess.
+                Text("Works with WhatsApp, TikTok, DoorDash and most other apps. The code lands here, with one tap to copy it.")
+                    .font(RFont.text(13))
+                    .lineSpacing(2)
+                    .foregroundStyle(theme.text2)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, 14)
+
+                RowRule(inset: 54)
+                BenefitRow(icon: RIcon.message,
+                           label: "Receive verification codes in the app",
+                           tint: theme.live,
+                           dense: true)
+                RowRule(inset: 54)
+                // The honest line, and the remedy priced live. NO client
+                // default for the figure — `app_config.line_swap_credits`
+                // changes without a release, so when it is unknown the
+                // sentence drops the number rather than inventing one. Never
+                // `?? 8`.
+                if let cost = state.appStatus.lineSwapCredits {
+                    BenefitRow(icon: "arrow.triangle.2.circlepath",
+                               label: "Might not work on every service — if a code doesn't arrive, switch to a new number for \(cost) credits",
+                               dense: true)
+                } else {
+                    BenefitRow(icon: "arrow.triangle.2.circlepath",
+                               label: "Might not work on every service — if a code doesn't arrive, switch to a new number for a few credits",
+                               dense: true)
+                }
+                RowRule(inset: 54)
+                // The actual reason to buy, and it used to be the last clause
+                // of a paragraph. It is the only line here that names a
+                // problem rather than a feature.
+                BenefitRow(icon: RIcon.shield,
+                           label: "Keep your own number private",
+                           dense: true)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    // MARK: - The numbers, on the same screen
+
+    /// Where the stock on screen is from, in the reader's own words: the city
+    /// when the search picked one, the country otherwise. Never an ISO code —
+    /// "CA" is not a place to a reader.
+    private var placeLabel: String? { cityLabel ?? countryLabel }
+
+    private var numbers: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 12) {
+                if let place = placeLabel {
+                    MicroLabel("Available now in \(place)")
+                } else {
+                    MicroLabel("Available now")
+                }
+                Spacer(minLength: 0)
+                GhostButton(label: "Change", fillsWidth: false) {
+                    sheetShowsCountries = showsCountryStep
+                    showsPlaceSheet = true
+                }
+            }
+
+            // The price sits ABOVE the list, not under it: below three 70pt
+            // rows it landed under the floating tab bar on a 6.3" screen, i.e.
+            // the one figure this redesign exists to put in front of the
+            // reader was the one thing they had to scroll for (verified from a
+            // simulator screenshot, 2026-09-03).
+            priceNote
+
+            if isVoiceOnly { voiceOnlyNotice }
+
+            if state.isLoadingLineNumbers, state.lineOffers.isEmpty {
+                numberSkeleton
+            } else if state.lineOffers.isEmpty {
+                unavailable
+            } else {
+                numberList
+            }
+        }
+    }
+
+    private var numberList: some View {
+        VStack(spacing: 8) {
+            ForEach(Array(state.lineOffers.prefix(Self.visibleOffers)), id: \.id) { offer in
+                numberRow(offer)
+            }
+
+            // The app's one secondary-action shape, rather than a bespoke
+            // borderless row that gave no press feedback at all.
+            GhostButton(label: "Show different numbers",
+                        icon: RIcon.refresh,
+                        fillsWidth: false) {
+                Task { await reloadNumbers() }
+            }
+            .disabled(state.isLoadingLineNumbers)
+            .opacity(state.isLoadingLineNumbers ? 0.5 : 1)
+            .padding(.top, 6)
+        }
+    }
+
+    /// One candidate number, presented as a contact card.
+    ///
+    /// `PeerAvatar` is the same deterministic circle the recents and thread
+    /// rows use, keyed on the E.164 — so the colour a user sees beside a number
+    /// here is the colour it keeps on the checkout hero and, once bought,
+    /// everywhere in the tab. That continuity is the whole reason to spend the
+    /// leading slot on it: it makes the number feel like a thing being adopted
+    /// rather than a row in a stock list.
+    ///
+    /// ⚠️ **No price is rendered here, deliberately.** `monthlyCents` /
+    /// `upfrontCents` on this model are the WHOLESALE quote — the cost book,
+    /// which the app never shows a user — and the retail figure is the same
+    /// subscription price on every row, so printing it would be noise on top
+    /// of a leak. The price is stated once below this list, and in full on
+    /// `LineCheckoutScreen`, which is the 3.1.2(a) surface.
+    private func numberRow(_ offer: LineNumberOffer) -> some View {
+        Button {
+            Analytics.shared.track("line_number_picked", [
+                "country": .string(offer.countryCode ?? state.lineCountry ?? "unknown")])
+            state.lineOffer = offer
+            state.intent = .line
+            state.flow = .lineCheckout
+        } label: {
+            Card(radius: RRadius.md, elevation: .raised) {
+                HStack(spacing: 13) {
+                    PeerAvatar(e164: offer.phoneNumber, size: 42)
+                    VStack(alignment: .leading, spacing: 5) {
+                        Text(PhoneFormat.national(offer.phoneNumber))
+                            .font(RFont.mono(18, weight: .medium))
+                            .foregroundStyle(theme.text)
+                            .minimumScaleFactor(0.8)
+                            .lineLimit(1)
+                        offerCapabilities(offer)
+                    }
+                    Spacer(minLength: 0)
+                    Image(systemName: RIcon.chev)
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(theme.text3)
+                }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 14)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(.rect)
+            }
+        }
+        .buttonStyle(PressScaleStyle(scale: 0.98, dim: true))
+    }
+
+    /// What THIS number can do, when Telnyx told us.
+    ///
+    /// `features` is optional on the model because the deployed server does not
+    /// always send it, and an absent list means "we do not know" — never "it
+    /// cannot". So the strip renders nothing at all rather than four gray
+    /// glyphs, which would read as a number that does nothing. When the list IS
+    /// present the same rule as the country strip applies: green means
+    /// supported, gray means not, never red. The region, when the search names
+    /// one, stands in when there are no features to show.
+    @ViewBuilder
+    private func offerCapabilities(_ offer: LineNumberOffer) -> some View {
+        if offer.features != nil {
+            HStack(spacing: 9) {
+                capabilityIcon("phone.fill", on: offer.supports("voice") == true,
+                               label: String(localized: "Calls"))
+                capabilityIcon("message.fill", on: offer.supports("sms") == true,
+                               label: String(localized: "Texts"))
+                capabilityIcon("photo.fill", on: offer.supports("mms") == true,
+                               label: String(localized: "Picture messages"))
+                capabilityIcon("cross.case.fill", on: offer.supports("emergency") == true,
+                               label: String(localized: "Emergency calls"))
+            }
+        } else if let region = offer.region, !region.isEmpty {
+            Text(verbatim: region)
+                .font(RFont.text(12))
+                .foregroundStyle(theme.text2)
+                .lineLimit(1)
+        }
+    }
+
+    /// Real rows at the real height, so the section does not jump when it
+    /// fills. A spinner gives no sense of what is coming; these do. Three of
+    /// them, matching `visibleOffers` — a five-row skeleton resolving to three
+    /// rows is a collapse, which reads as something having gone wrong.
+    private var numberSkeleton: some View {
+        VStack(spacing: 8) {
+            ForEach(0..<Self.visibleOffers, id: \.self) { i in
+                RoundedRectangle(cornerRadius: RRadius.md, style: .continuous)
+                    .fill(theme.elev)
+                    // Matches the contact card exactly — 42pt avatar plus 14+14
+                    // of padding — so the list does not jump as it fills.
+                    .frame(height: 70)
+                    .overlay(alignment: .leading) {
+                        HStack(spacing: 13) {
+                            Circle()
+                                .fill(theme.chipBg)
+                                .frame(width: 42, height: 42)
+                            VStack(alignment: .leading, spacing: 7) {
+                                RoundedRectangle(cornerRadius: 4)
+                                    .fill(theme.chipBg)
+                                    .frame(width: 140, height: 15)
+                                RoundedRectangle(cornerRadius: 3)
+                                    .fill(theme.chipBg)
+                                    .frame(width: 72, height: 10)
+                            }
+                        }
+                        .padding(.leading, 14)
+                    }
+                    .opacity(1 - Double(i) * 0.15)
+            }
+        }
+        .transition(.opacity)
+    }
+
+    /// Carried here AND on checkout, deliberately twice.
+    ///
+    /// A user who picks a voice-only country and discovers it after paying is
+    /// an Apple refund and, on this product, a `CONSUMPTION_REQUEST` — the
+    /// same failure the "Not yet" ledger rows exist to prevent. `warnSoft` and
+    /// not `failSoft`: it is a property of the number, not a fault.
+    private var voiceOnlyNotice: some View {
+        // Through `Card` with a semantic fill and hairline, which is the one
+        // sanctioned use of `border`: an amber caution surface. Identical
+        // treatment to `LineCheckoutScreen`'s own copy of this notice and to
+        // its emergency block, so a caution looks like a caution everywhere in
+        // the funnel instead of three hand-rolled backgrounds drifting apart.
+        Card(radius: RRadius.md, elevation: .flat,
+             fill: theme.warnSoft, border: theme.warn.opacity(0.28)) {
+            HStack(alignment: .top, spacing: 10) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(theme.warn)
+                    .padding(.top, 1)
+                Text("Calls only. This number can't send or receive texts.")
+                    .font(RFont.text(12, weight: .medium))
+                    .foregroundStyle(theme.text)
+                    .lineSpacing(2)
+                    .fixedSize(horizontal: false, vertical: true)
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 12)
+        }
+    }
+
+    // MARK: - Nothing to sell
+
+    /// Three causes, and we only ever know one of them.
+    ///
+    /// `paused` is something the server told us and can be stated outright. An
+    /// empty search is an observation about ONE city and nothing more — and a
+    /// failed fetch looks identical from here, which is why the third case
+    /// claims no reason at all. Same discipline as
+    /// `EsimStoreScreen.emptyCatalog`.
+    /// Through the shared `EmptyState`, which is the app's one answer to
+    /// "there is nothing here" — and which carries the rule this screen was
+    /// already following by hand: an empty state with an obvious next action
+    /// must offer it, and a genuine LOAD FAILURE must not look like a healthy
+    /// absence. Hence the `fail` tint on the unknown case only; a paused line
+    /// or a dry city is not an error.
+    private var unavailable: some View {
+        EmptyState(
+            icon: state.lineUnavailableReason == .paused
+                  ? "pause.circle" : "phone.badge.waveform",
+            title: unavailableTitle,
+            message: unavailableBody,
+            tint: state.lineUnavailableReason == nil ? theme.fail : nil,
+            // A refused COUNTRY cannot be fixed by another city, so that one
+            // escape opens the sheet on the country list instead.
+            secondary: (label: state.lineUnavailableReason == .countryNotSellable
+                        ? String(localized: "Try another country")
+                        : String(localized: "Try another city"),
+                        action: {
+                            sheetShowsCountries =
+                                state.lineUnavailableReason == .countryNotSellable
+                                && showsCountryStep
+                            showsPlaceSheet = true
+                        }))
+        .padding(.top, 12)
+    }
+
+    private var unavailableTitle: LocalizedStringKey {
+        switch state.lineUnavailableReason {
+        case .paused:  "Second numbers are unavailable"
+        case .noStock: "No numbers here right now"
+        case .countryNotSellable: "We don't sell numbers here yet"
+        default:       "We couldn't load any numbers"
+        }
+    }
+
+    private var unavailableBody: LocalizedStringKey {
+        switch state.lineUnavailableReason {
+        case .paused:  "We've paused new numbers while we make some improvements. Check back soon."
+        case .noStock: "Stock moves through the day. Another city will have some."
+        case .countryNotSellable: "We're working on this country. Another one is ready now."
+        default:       "Check your connection and try again."
+        }
+    }
+
+    // MARK: - The place sheet
+    //
+    // Both lists render with zero network dependency — the countries fall back
+    // to `LineCountry.seeded` and the cities to `LineCity.seeded` — so the
+    // sheet is never a blank page waiting on Telnyx.
+
+    private var placeSheet: some View {
+        VStack(spacing: 0) {
+            SheetHeader(title: sheetShowsCountries
+                        ? String(localized: "Where should it be?")
+                        : String(localized: "Which city?"))
+            ScrollView {
+                VStack(alignment: .leading, spacing: 0) {
+                    if sheetShowsCountries {
+                        countryList
+                    } else if state.lineCities.isEmpty {
+                        // A country with no curated localities sells
+                        // country-wide, and an empty list mid-load must not
+                        // render as "nowhere".
+                        if state.isLoadingLineNumbers {
+                            rowSkeleton
+                        } else {
+                            countryWide
+                        }
+                    } else {
+                        cityList
+                    }
+                }
+                .padding(.horizontal, 20)
+                .padding(.bottom, 24)
+            }
+            .scrollIndicators(.hidden)
+        }
+        .background(theme.bg)
+    }
+
+    /// Only sellable countries count toward "is there a choice here". A list
+    /// of one buyable country and eleven grayed ones is a wall of "no"
     /// standing between the user and the only thing they can actually do — so
-    /// with a single sellable country the step is skipped entirely and the
-    /// grayed rows are simply not shown anywhere.
+    /// with a single sellable country the sheet opens straight on the cities
+    /// and the grayed rows are simply not shown anywhere.
     private var sellableCountries: [LineCountry] {
         state.lineCountries.filter(\.isAvailable)
     }
@@ -188,20 +570,6 @@ struct LineStoreScreen: View {
         state.lineCountries.sorted {
             if $0.isAvailable != $1.isAvailable { return $0.isAvailable }
             return $0.displayName.localizedCaseInsensitiveCompare($1.displayName) == .orderedAscending
-        }
-    }
-
-    private var countryStep: some View {
-        VStack(spacing: 0) {
-            backHeader(title: "Where should it be?", subtitle: nil, back: .intro)
-            ScrollView {
-                VStack(alignment: .leading, spacing: 0) {
-                    countryList
-                    priceNote.padding(.top, 14)
-                }
-                .padding(.horizontal, 20)
-                .padding(.bottom, 120)
-            }
         }
     }
 
@@ -308,6 +676,10 @@ struct LineStoreScreen: View {
     /// The city list, the offers and any hold all describe the PREVIOUS
     /// country, and leaving them in place would show Toronto under a Polish
     /// flag for as long as the search takes. Cleared first, loaded second.
+    ///
+    /// The sheet stays up and moves to that country's cities — the ordering
+    /// the two steps had, without taking the store screen away from someone
+    /// who only wanted to look.
     private func select(_ country: LineCountry) {
         state.lineCountry = country.countryCode
         state.lineCity = nil
@@ -316,170 +688,8 @@ struct LineStoreScreen: View {
         state.lineOffer = nil
         state.lineReservation = nil
         state.lineUnavailableReason = nil
-        go(to: .city, forward: true)
-        Task {
-            await state.loadLineNumbers(using: LineAPI(client: api),
-                                        country: country.countryCode)
-        }
-    }
-
-    // MARK: - Step 3 · city
-    //
-    // Renders with zero network dependency: the city list is seeded and only
-    // replaced once a search has run. See `LineCity.seeded`.
-
-    private var cityStep: some View {
-        VStack(spacing: 0) {
-            // The question IS the title here, so there is no separate
-            // `SectionHeader` — printing "Where should it be?" twice, once as
-            // a heading and once as a section label, is the shape this screen
-            // just got rid of.
-            backHeader(title: "Which city?", subtitle: countryLabel,
-                       back: showsCountryStep ? .country : .intro)
-            ScrollView {
-                VStack(alignment: .leading, spacing: 0) {
-                    // A country with no curated localities sells country-wide,
-                    // and an empty list mid-load must not render as "nowhere".
-                    if state.lineCities.isEmpty {
-                        if state.isLoadingLineNumbers {
-                            rowSkeleton
-                        } else {
-                            countryWide
-                        }
-                    } else {
-                        cityList
-                    }
-                    priceNote.padding(.top, 14)
-                    usSoon.padding(.top, 16)
-                }
-                .padding(.horizontal, 20)
-                .padding(.bottom, 120)
-            }
-        }
-    }
-
-    /// ⚠️ **Only sell what ships.** Calling was absent from this card for as
-    /// long as `flow = .dialer` was assigned nowhere, and was restored in the
-    /// same commit that linked the SDK and wired the dialer. Keep that
-    /// ordering for anything added here.
-    ///
-    /// 🔴 **OUTBOUND SMS WAS DROPPED ENTIRELY (owner decision, 2026-08-18) and
-    /// every promise of it came off this card in the same change.** Lifetime
-    /// outbound is 1 sent against 6 failed — every cross-border attempt refused
-    /// by the carrier for want of 10DLC registration, which the owner is not
-    /// pursuing. Inbound is 3 of 3. So the card now leads with the half that
-    /// demonstrably works and sells the half that was invisible: international
-    /// calling existed only inside the dialer and was never mentioned to anyone
-    /// deciding whether to buy.
-    ///
-    /// 🔴 **CODES-FIRST since 2026-09-01 (owner decision).** The pitch is "a
-    /// real US or Canadian number that receives verification codes" — not
-    /// calling, not texting. It names ONLY services that have delivered a real
-    /// code to a rented number (WhatsApp, TikTok, DoorDash — each verified in
-    /// `line_messages`), says plainly that some platforms refuse virtual
-    /// numbers, and sells the switch as the remedy at its live price. Calling
-    /// is demoted to one secondary row: it works, it is not why people buy.
-    private var pitch: some View {
-        Card(elevation: .raised) {
-            VStack(alignment: .leading, spacing: 0) {
-                Text("A real US or Canadian number that receives your verification codes.")
-                    .font(RFont.display(17, weight: .semibold))
-                    .tracking(-0.3)
-                    .foregroundStyle(theme.text)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .padding(.horizontal, 16)
-                    .padding(.top, 18)
-                    .padding(.bottom, 8)
-
-                // Only proven names. Adding a service here requires a real
-                // code on a rented line, not a guess.
-                Text("Works with WhatsApp, TikTok, DoorDash and most other apps. The code lands here, with one tap to copy it.")
-                    .font(RFont.text(13))
-                    .lineSpacing(2)
-                    .foregroundStyle(theme.text2)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .padding(.horizontal, 16)
-                    .padding(.bottom, 10)
-
-                // The honest line, and the remedy priced live. NO client
-                // default for the price — `app_config.line_swap_credits`
-                // changes without a release; when it is unknown the sentence
-                // drops the figure rather than inventing one.
-                Group {
-                    if let cost = state.appStatus.lineSwapCredits {
-                        Text("Some platforms refuse virtual numbers. If a code doesn't arrive, switch to a new number for \(cost) credits.")
-                    } else {
-                        Text("Some platforms refuse virtual numbers. If a code doesn't arrive, switch to a new number for a few credits.")
-                    }
-                }
-                .font(RFont.text(12))
-                .lineSpacing(2)
-                .foregroundStyle(theme.text3)
-                .fixedSize(horizontal: false, vertical: true)
-                .padding(.horizontal, 16)
-                .padding(.bottom, 14)
-
-                RowRule(inset: 54)
-                BenefitRow(icon: RIcon.message,
-                           label: "Receive verification codes in the app",
-                           tint: theme.live,
-                           dense: true)
-                RowRule(inset: 54)
-                BenefitRow(icon: "arrow.triangle.2.circlepath",
-                           label: "Switch to a new number whenever you need",
-                           hint: state.appStatus.lineSwapCredits.map { "\($0) credits" },
-                           dense: true)
-                RowRule(inset: 54)
-                // The actual reason to buy, and it used to be the last clause
-                // of a paragraph. It is the only line here that names a
-                // problem rather than a feature.
-                BenefitRow(icon: RIcon.shield,
-                           label: "Keep your own number private",
-                           dense: true)
-                RowRule(inset: 54)
-                // Demoted, not removed: outbound calling is live and proven.
-                // Inbound has never connected once; it is a "Not yet" row
-                // below. Mirror of LineCheckoutScreen.
-                BenefitRow(icon: RIcon.phone,
-                           label: "Also makes calls to 50+ countries, priced per minute",
-                           tint: theme.text2,
-                           dense: true)
-
-                // ── What it does NOT do, stated on the same ledger ──────────
-                //
-                // Owner decision 2026-08-18: say plainly what the number can
-                // and cannot do "for now". Every affordance for sending is
-                // gone from the app, so a user who wants to text back finds
-                // out by hunting for a button that is not there — which is
-                // the refund moment. Naming it here, in the same row style as
-                // the benefits, turns a surprise into a known limitation the
-                // buyer accepted. Muted tint + a "Not yet" hint so it reads
-                // as a ledger line, not an alarm. Same on the checkout screen,
-                // which is the 3.1.2(a) disclosure surface.
-                RowRule(inset: 54)
-                BenefitRow(icon: RIcon.message,
-                           label: "Sending texts from this number",
-                           hint: "Not yet",
-                           tint: theme.text3,
-                           dense: true)
-                    .opacity(0.72)
-                RowRule(inset: 54)
-                BenefitRow(icon: RIcon.globe,
-                           label: "Receiving texts from outside the US and Canada",
-                           hint: "Not yet",
-                           tint: theme.text3,
-                           dense: true)
-                    .opacity(0.72)
-                RowRule(inset: 54)
-                BenefitRow(icon: RIcon.phone,
-                           label: "Taking incoming calls",
-                           hint: "Not yet",
-                           tint: theme.text3,
-                           dense: true)
-                    .opacity(0.72)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-        }
+        sheetShowsCountries = false
+        changePlace(country: country.countryCode)
     }
 
     /// The cities, as ONE grouped object.
@@ -488,8 +698,7 @@ struct LineStoreScreen: View {
     /// every other list in this app avoids. `CountrySheet` and `ServiceSheet`
     /// both put their rows inside a single `Card` divided by `RowRule`, which
     /// is what makes a stack read as one list to choose from rather than seven
-    /// unrelated objects competing for the same tap. Seven detached cards also
-    /// cost ~8pt of dead space each and made a trivial choice fill the screen.
+    /// unrelated objects competing for the same tap.
     ///
     /// The rows stay deliberately plain. There is nothing honest to put on
     /// them: `search-line-numbers` walks a city's area codes until one has
@@ -506,108 +715,6 @@ struct LineStoreScreen: View {
         }
     }
 
-    /// The country the user is shopping in, for the city step's subtitle.
-    /// Reads the SEARCH's answer first — it is what the stock on screen came
-    /// from — and the catalogue row only as a fallback.
-    private var countryLabel: String? {
-        guard let iso = state.lineCountry else { return nil }
-        if let c = state.lineSearchCountry, c.countryCode == iso { return c.displayName }
-        return state.lineCountries.first { $0.countryCode == iso }?.displayName
-            ?? Locale.current.localizedString(forRegionCode: iso)
-    }
-
-    /// Same height and rhythm as the rows it stands in for, without the
-    /// outer padding `numberSkeleton` applies — this one sits inside a stack
-    /// that is already inset.
-    private var rowSkeleton: some View {
-        VStack(spacing: 8) {
-            ForEach(0..<4, id: \.self) { i in
-                RoundedRectangle(cornerRadius: RRadius.md, style: .continuous)
-                    .fill(theme.elev)
-                    .frame(height: 56)
-                    .opacity(1 - Double(i) * 0.18)
-            }
-        }
-        .transition(.opacity)
-    }
-
-    /// Some countries have no curated cities — the server sells country-wide.
-    /// One honest row beats an empty list, which reads as "sold out".
-    private var countryWide: some View {
-        Card(elevation: .flat) {
-            Button {
-                Task {
-                    go(to: .number, forward: true)
-                    await state.loadLineNumbers(using: LineAPI(client: api))
-                }
-            } label: {
-                HStack(spacing: 12) {
-                    leadingTile(RIcon.globe)
-                    Text(countryLabel.map { String(localized: "Anywhere in \($0)") }
-                         ?? String(localized: "Anywhere available"))
-                        .font(RFont.display(16, weight: .semibold))
-                        .tracking(-0.3)
-                        .foregroundStyle(theme.text)
-                    Spacer(minLength: 8)
-                    Image(systemName: RIcon.chev)
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundStyle(theme.text3)
-                }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 11)
-                .frame(minHeight: 56)
-                .contentShape(.rect)
-            }
-            .buttonStyle(PressScaleStyle())
-        }
-    }
-
-    /// What this costs, stated on the city step.
-    ///
-    /// ⚠️ **THIS REVERSES AN EARLIER OWNER DECISION** (2026-08-06: "there is
-    /// deliberately no price on this screen … read, pick a city, get a number,
-    /// and meet the paywall once — in that order"). That note said the removal
-    /// would be the first thing to re-examine if a surprise subscription
-    /// showed up in refunds or reviews, and it did: every subscriber so far
-    /// cancelled auto-renew at a median of 3.9 minutes, with the two
-    /// no-trial monthlies killed at 6 seconds and 9.7 minutes. Owner decision
-    /// 2026-08-23 — a $9.99/month recurring charge is now named BEFORE the two
-    /// choices, so someone who will not pay leaves before investing in a
-    /// number.
-    ///
-    /// This does not move the App Store 3.1.2(a) disclosure: price, billing
-    /// period, renewal terms and the Terms/Privacy links stay on
-    /// `LineCheckoutScreen`, which is the screen immediately before the
-    /// purchase and the one the guideline is about. This is one line of
-    /// context, not the disclosure.
-    ///
-    /// 🔴 **NEVER A HARDCODED "$9.99".** The price is StoreKit's own localized
-    /// `displayPrice` for the MONTHLY product, and when StoreKit has not
-    /// answered — which is the normal state for the first moment of the app's
-    /// launch surface, and permanently in the simulator — this renders
-    /// NOTHING. A stale or assumed figure here is exactly the drift that put
-    /// $4.99 against €5.99 on the credit ladder's top product.
-    ///
-    /// ⚠️ `monthlyPriceDisplay`, not `displayPrice`: the latter follows the
-    /// paywall's `selectedPlan`, so a user who had tapped Yearly would read
-    /// "$99.99 a month" here. Same trap that misstated the plan row by 12×.
-    ///
-    /// ⚠️ **NO TRIAL IS MENTIONED.** The line's 3-day trial was deleted in App
-    /// Store Connect on 2026-08-23 after all three conversions to $99.99 were
-    /// declined, so a trial claim would be false — and `trialLabel` is nil per
-    /// Apple ID eligibility anyway, which is why no trial copy may ever be
-    /// written as a literal.
-    @ViewBuilder
-    private var priceNote: some View {
-        if let price = subs.monthlyPriceDisplay {
-            Text("\(price) a month. Cancel any time in Settings.")
-                .font(RFont.text(12))
-                .foregroundStyle(theme.text2)
-                .fixedSize(horizontal: false, vertical: true)
-                .frame(maxWidth: .infinity, alignment: .leading)
-        }
-    }
-
     /// Cities, never area codes.
     ///
     /// Canada's prestige codes are exhausted — 416 and 647 (Toronto), 514
@@ -617,20 +724,18 @@ struct LineStoreScreen: View {
     /// in order until one has stock.
     private func cityRow(_ city: LineCity) -> some View {
         Button {
-            Task {
-                // Move first, load second. The tap is the commitment, so the
-                // next screen appears immediately and fills in — rather than
-                // the user waiting on this one with nothing happening.
-                go(to: .number, forward: true)
-                await state.loadLineNumbers(using: LineAPI(client: api), city: city.id)
-            }
+            // Dismiss on the tap. The store behind the sheet already holds the
+            // skeleton and fills in — leaving the sheet up until the search
+            // returned would make the choice feel unacknowledged.
+            showsPlaceSheet = false
+            changePlace(city: city.id)
         } label: {
             HStack(spacing: 12) {
                 // The same 34pt leading slot the country rows use, so the two
-                // steps read as one sequence rather than two list styles. A
-                // place glyph, not a flag: every city on screen is in the one
-                // country already named in the header, so a repeated flag would
-                // be seven copies of information the subtitle carries once.
+                // lists read as one sequence rather than two list styles. A
+                // place glyph, not a flag: every city here is in the one
+                // country already chosen, so a repeated flag would be seven
+                // copies of the same information.
                 leadingTile("mappin.and.ellipse")
                 Text(city.label)
                     .font(RFont.display(16, weight: .semibold))
@@ -660,12 +765,41 @@ struct LineStoreScreen: View {
         .buttonStyle(PressScaleStyle())
     }
 
+    /// Some countries have no curated cities — the server sells country-wide.
+    /// One honest row beats an empty list, which reads as "sold out".
+    private var countryWide: some View {
+        Card(elevation: .flat) {
+            Button {
+                showsPlaceSheet = false
+                changePlace()
+            } label: {
+                HStack(spacing: 12) {
+                    leadingTile(RIcon.globe)
+                    Text(countryLabel.map { String(localized: "Anywhere in \($0)") }
+                         ?? String(localized: "Anywhere available"))
+                        .font(RFont.display(16, weight: .semibold))
+                        .tracking(-0.3)
+                        .foregroundStyle(theme.text)
+                    Spacer(minLength: 8)
+                    Image(systemName: RIcon.chev)
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(theme.text3)
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 11)
+                .frame(minHeight: 56)
+                .contentShape(.rect)
+            }
+            .buttonStyle(PressScaleStyle())
+        }
+    }
+
     /// The leading glyph slot shared by the city and country-wide rows.
     ///
-    /// Sized to match `CodeFlag(size: 34)` exactly so a step that leads with a
-    /// flag and a step that leads with an icon put their titles on the same
-    /// x-position — the thing that makes a multi-step picker feel like one
-    /// screen changing rather than four different lists.
+    /// Sized to match `CodeFlag(size: 34)` exactly so a list that leads with a
+    /// flag and a list that leads with an icon put their titles on the same
+    /// x-position — the thing that makes the sheet feel like one screen
+    /// changing rather than two different lists.
     private func leadingTile(_ symbol: String) -> some View {
         Image(systemName: symbol)
             .font(.system(size: 14, weight: .semibold))
@@ -674,7 +808,34 @@ struct LineStoreScreen: View {
             .background(theme.chipBg, in: .circle)
     }
 
-    // MARK: - Step 3 · number
+    /// Same rhythm as the city rows it stands in for, at their height.
+    private var rowSkeleton: some View {
+        VStack(spacing: 8) {
+            ForEach(0..<4, id: \.self) { i in
+                RoundedRectangle(cornerRadius: RRadius.md, style: .continuous)
+                    .fill(theme.elev)
+                    .frame(height: 56)
+                    .opacity(1 - Double(i) * 0.18)
+            }
+        }
+        .transition(.opacity)
+    }
+
+    // MARK: - Labels
+
+    /// The country the user is shopping in. Reads the SEARCH's answer first —
+    /// it is what the stock on screen came from — and the catalogue row only
+    /// as a fallback.
+    private var countryLabel: String? {
+        guard let iso = state.lineCountry else { return nil }
+        if let c = state.lineSearchCountry, c.countryCode == iso { return c.displayName }
+        return state.lineCountries.first { $0.countryCode == iso }?.displayName
+            ?? Locale.current.localizedString(forRegionCode: iso)
+    }
+
+    private var cityLabel: String? {
+        state.lineCities.first { $0.id == state.lineCity }?.label
+    }
 
     /// What the store currently knows about the country being shopped. The
     /// search's own answer wins: it describes the stock on screen, and it is
@@ -694,280 +855,6 @@ struct LineStoreScreen: View {
         return c.supportsSms == false && c.supportsVoice != false
     }
 
-    private var numberStep: some View {
-        VStack(spacing: 0) {
-            backHeader(title: "Pick your number", subtitle: cityLabel, back: .city)
-            if isVoiceOnly { voiceOnlyNotice }
-            if state.isLoadingLineNumbers, state.lineOffers.isEmpty {
-                numberSkeleton
-            } else if state.lineOffers.isEmpty {
-                unavailable
-            } else {
-                numberList
-            }
-        }
-    }
-
-    /// Carried on the number step AND on checkout, deliberately twice.
-    ///
-    /// A user who picks a voice-only country and discovers it after paying is
-    /// an Apple refund and, on this product, a `CONSUMPTION_REQUEST` — the
-    /// same failure the "Not yet" ledger rows exist to prevent. `warnSoft` and
-    /// not `failSoft`: it is a property of the number, not a fault.
-    private var voiceOnlyNotice: some View {
-        // Through `Card` with a semantic fill and hairline, which is the one
-        // sanctioned use of `border`: an amber caution surface. Identical
-        // treatment to `LineCheckoutScreen`'s own copy of this notice and to
-        // its emergency block, so a caution looks like a caution everywhere in
-        // the funnel instead of three hand-rolled backgrounds drifting apart.
-        Card(radius: RRadius.md, elevation: .flat,
-             fill: theme.warnSoft, border: theme.warn.opacity(0.28)) {
-            HStack(alignment: .top, spacing: 10) {
-                Image(systemName: "exclamationmark.triangle.fill")
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(theme.warn)
-                    .padding(.top, 1)
-                Text("Calls only. This number can't send or receive texts.")
-                    .font(RFont.text(12, weight: .medium))
-                    .foregroundStyle(theme.text)
-                    .lineSpacing(2)
-                    .fixedSize(horizontal: false, vertical: true)
-                Spacer(minLength: 0)
-            }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 12)
-        }
-        .padding(.horizontal, 20)
-        .padding(.bottom, 10)
-    }
-
-    /// Shared by steps 2 and 3, so the two inner pages cannot drift apart in
-    /// title weight, back-button size or spacing.
-    private func backHeader(title: LocalizedStringKey, subtitle: String?,
-                            back: Step) -> some View {
-        HStack(spacing: 12) {
-            Button {
-                go(to: back, forward: false)
-            } label: {
-                Image(systemName: RIcon.back)
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(theme.text2)
-                    .frame(width: 34, height: 34)
-                    .background(theme.chipBg, in: .circle)
-            }
-            .buttonStyle(.plain)
-            // Without this VoiceOver reads the SF Symbol's name.
-            .accessibilityLabel("Back")
-
-            VStack(alignment: .leading, spacing: 1) {
-                Text(title)
-                    .font(RFont.display(19, weight: .bold))
-                    .tracking(-0.4)
-                    .foregroundStyle(theme.text)
-                if let subtitle {
-                    Text(subtitle)
-                        .font(RFont.text(12))
-                        .foregroundStyle(theme.text2)
-                }
-            }
-            Spacer(minLength: 0)
-        }
-        .padding(.horizontal, 20)
-        .padding(.top, 8)
-        .padding(.bottom, 12)
-    }
-
-    /// Real rows at the real height, so the list does not jump when it fills.
-    /// A spinner in the middle of an empty screen gives no sense of what is
-    /// coming; these do.
-    private var numberSkeleton: some View {
-        VStack(spacing: 8) {
-            ForEach(0..<5, id: \.self) { i in
-                RoundedRectangle(cornerRadius: RRadius.md, style: .continuous)
-                    .fill(theme.elev)
-                    // Matches the contact card exactly — 42pt avatar plus 14+14
-                    // of padding — so the list does not jump as it fills.
-                    .frame(height: 70)
-                    .overlay(alignment: .leading) {
-                        HStack(spacing: 13) {
-                            Circle()
-                                .fill(theme.chipBg)
-                                .frame(width: 42, height: 42)
-                            VStack(alignment: .leading, spacing: 7) {
-                                RoundedRectangle(cornerRadius: 4)
-                                    .fill(theme.chipBg)
-                                    .frame(width: 140, height: 15)
-                                RoundedRectangle(cornerRadius: 3)
-                                    .fill(theme.chipBg)
-                                    .frame(width: 72, height: 10)
-                            }
-                        }
-                        .padding(.leading, 14)
-                    }
-                    .opacity(1 - Double(i) * 0.15)
-            }
-            Spacer(minLength: 0)
-        }
-        .padding(.horizontal, 20)
-        .transition(.opacity)
-    }
-
-    private var numberList: some View {
-        ScrollView {
-            VStack(spacing: 8) {
-                ForEach(Array(state.lineOffers.enumerated()), id: \.element.id) { i, offer in
-                    numberRow(offer, index: i)
-                }
-
-                // The app's one secondary-action shape, rather than a bespoke
-                // borderless row that gave no press feedback at all.
-                GhostButton(label: "Show different numbers",
-                            icon: RIcon.refresh,
-                            fillsWidth: false) {
-                    Task { await state.loadLineNumbers(using: LineAPI(client: api)) }
-                }
-                .disabled(state.isLoadingLineNumbers)
-                .opacity(state.isLoadingLineNumbers ? 0.5 : 1)
-                .padding(.top, 6)
-            }
-            .padding(.horizontal, 20)
-            .padding(.bottom, 120)
-        }
-    }
-
-    /// One candidate number, presented as a contact card.
-    ///
-    /// `PeerAvatar` is the same deterministic circle the recents and thread
-    /// rows use, keyed on the E.164 — so the colour a user sees beside a number
-    /// here is the colour it keeps on the checkout hero and, once bought,
-    /// everywhere in the tab. That continuity is the whole reason to spend the
-    /// leading slot on it: it makes the number feel like a thing being adopted
-    /// rather than a row in a stock list.
-    ///
-    /// ⚠️ **No price is rendered here, deliberately.** `monthlyCents` /
-    /// `upfrontCents` on this model are the WHOLESALE quote — the cost book,
-    /// which the app never shows a user — and the retail figure is the same
-    /// subscription price on every row, so printing it would be noise on top
-    /// of a leak. The price is stated once, on `LineCheckoutScreen`, which is
-    /// the 3.1.2(a) surface.
-    private func numberRow(_ offer: LineNumberOffer, index: Int) -> some View {
-        Button {
-            state.lineOffer = offer
-            state.intent = .line
-            state.flow = .lineCheckout
-        } label: {
-            Card(radius: RRadius.md, elevation: .raised) {
-                HStack(spacing: 13) {
-                    PeerAvatar(e164: offer.phoneNumber, size: 42)
-                    VStack(alignment: .leading, spacing: 5) {
-                        Text(PhoneFormat.national(offer.phoneNumber))
-                            .font(RFont.mono(18, weight: .medium))
-                            .foregroundStyle(theme.text)
-                            .minimumScaleFactor(0.8)
-                            .lineLimit(1)
-                        offerCapabilities(offer)
-                    }
-                    Spacer(minLength: 0)
-                    Image(systemName: RIcon.chev)
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundStyle(theme.text3)
-                }
-                .padding(.horizontal, 14)
-                .padding(.vertical, 14)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .contentShape(.rect)
-            }
-        }
-        .buttonStyle(PressScaleStyle(scale: 0.98, dim: true))
-    }
-
-    /// What THIS number can do, when Telnyx told us.
-    ///
-    /// `features` is optional on the model because the deployed server does not
-    /// always send it, and an absent list means "we do not know" — never "it
-    /// cannot". So the strip renders nothing at all rather than four gray
-    /// glyphs, which would read as a number that does nothing. When the list IS
-    /// present the same rule as the country strip applies: green means
-    /// supported, gray means not, never red. The region, when the search names
-    /// one, stands in when there are no features to show.
-    @ViewBuilder
-    private func offerCapabilities(_ offer: LineNumberOffer) -> some View {
-        if offer.features != nil {
-            HStack(spacing: 9) {
-                capabilityIcon("phone.fill", on: offer.supports("voice") == true,
-                               label: String(localized: "Calls"))
-                capabilityIcon("message.fill", on: offer.supports("sms") == true,
-                               label: String(localized: "Texts"))
-                capabilityIcon("photo.fill", on: offer.supports("mms") == true,
-                               label: String(localized: "Picture messages"))
-                capabilityIcon("cross.case.fill", on: offer.supports("emergency") == true,
-                               label: String(localized: "Emergency calls"))
-            }
-        } else if let region = offer.region, !region.isEmpty {
-            Text(verbatim: region)
-                .font(RFont.text(12))
-                .foregroundStyle(theme.text2)
-                .lineLimit(1)
-        }
-    }
-
-    // MARK: - Nothing to sell
-
-    /// Three causes, and we only ever know one of them.
-    ///
-    /// `paused` is something the server told us and can be stated outright. An
-    /// empty search is an observation about ONE city and nothing more — and a
-    /// failed fetch looks identical from here, which is why the third case
-    /// claims no reason at all. Same discipline as
-    /// `EsimStoreScreen.emptyCatalog`.
-    /// Through the shared `EmptyState`, which is the app's one answer to
-    /// "there is nothing here" — and which carries the rule this screen was
-    /// already following by hand: an empty state with an obvious next action
-    /// must offer it, and a genuine LOAD FAILURE must not look like a healthy
-    /// absence. Hence the `fail` tint on the unknown case only; a paused line
-    /// or a dry city is not an error.
-    private var unavailable: some View {
-        EmptyState(
-            icon: state.lineUnavailableReason == .paused
-                  ? "pause.circle" : "phone.badge.waveform",
-            title: unavailableTitle,
-            message: unavailableBody,
-            tint: state.lineUnavailableReason == nil ? theme.fail : nil,
-            // A refused COUNTRY cannot be fixed by another city, so the escape
-            // has to point one step further back.
-            secondary: (label: state.lineUnavailableReason == .countryNotSellable
-                        ? String(localized: "Try another country")
-                        : String(localized: "Try another city"),
-                        action: {
-                            go(to: state.lineUnavailableReason == .countryNotSellable
-                               && showsCountryStep ? .country : .city,
-                               forward: false)
-                        }))
-        .padding(.top, 24)
-    }
-
-    private var unavailableTitle: LocalizedStringKey {
-        switch state.lineUnavailableReason {
-        case .paused:  "Second numbers are unavailable"
-        case .noStock: "No numbers here right now"
-        case .countryNotSellable: "We don't sell numbers here yet"
-        default:       "We couldn't load any numbers"
-        }
-    }
-
-    private var unavailableBody: LocalizedStringKey {
-        switch state.lineUnavailableReason {
-        case .paused:  "We've paused new numbers while we make some improvements. Check back soon."
-        case .noStock: "Stock moves through the day. Another city will have some."
-        case .countryNotSellable: "We're working on this country. Another one is ready now."
-        default:       "Check your connection and try again."
-        }
-    }
-
-    private var cityLabel: String? {
-        state.lineCities.first { $0.id == state.lineCity }?.label
-    }
-
     // MARK: - Chrome
 
     private func header(kicker: LocalizedStringKey, title: LocalizedStringKey) -> some View {
@@ -979,6 +866,53 @@ struct LineStoreScreen: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.top, 6)
+    }
+
+    /// What this costs, stated directly under the numbers.
+    ///
+    /// ⚠️ **THIS REVERSES AN EARLIER OWNER DECISION** (2026-08-06: "there is
+    /// deliberately no price on this screen … read, pick a city, get a number,
+    /// and meet the paywall once — in that order"). That note said the removal
+    /// would be the first thing to re-examine if a surprise subscription
+    /// showed up in refunds or reviews, and it did: every subscriber so far
+    /// cancelled auto-renew at a median of 3.9 minutes, with the two no-trial
+    /// monthlies killed at 6 seconds and 9.7 minutes. Owner decision
+    /// 2026-08-23 — the monthly charge is named before any choice is invested
+    /// in, so someone who will not pay leaves before picking a number.
+    ///
+    /// This does not move the App Store 3.1.2(a) disclosure: price, billing
+    /// period, renewal terms and the Terms/Privacy links stay on
+    /// `LineCheckoutScreen`, which is the screen immediately before the
+    /// purchase and the one the guideline is about. This is one line of
+    /// context, not the disclosure.
+    ///
+    /// 🔴 **NEVER A HARDCODED PRICE.** It is StoreKit's own localized
+    /// `displayPrice` for the MONTHLY product — $5.99 in the USA since
+    /// 2026-09-02, and a different numeral in most storefronts — and when
+    /// StoreKit has not answered, which is the normal state for the first
+    /// moment of the app's launch surface and permanent in the simulator, this
+    /// renders NOTHING. A stale or assumed figure here is exactly the drift
+    /// that put $4.99 against €5.99 on the credit ladder's top product.
+    ///
+    /// ⚠️ `monthlyPriceDisplay`, not `displayPrice`: the latter follows the
+    /// paywall's `selectedPlan`, so a user who had tapped Yearly would read
+    /// the yearly figure "a month" here. Same trap that misstated the plan row
+    /// by 12×.
+    ///
+    /// ⚠️ **NO TRIAL IS MENTIONED.** The line's 3-day trial was deleted in App
+    /// Store Connect on 2026-08-23 after all three conversions were declined,
+    /// so a trial claim would be false — and `trialLabel` is nil per Apple ID
+    /// eligibility anyway, which is why no trial copy may ever be written as a
+    /// literal.
+    @ViewBuilder
+    private var priceNote: some View {
+        if let price = subs.monthlyPriceDisplay {
+            Text("\(price) a month. Cancel any time in Settings.")
+                .font(RFont.text(12))
+                .foregroundStyle(theme.text2)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
     }
 
     private var usSoon: some View {
@@ -1021,18 +955,8 @@ struct LineStoreScreen: View {
     /// Temp SMS is second in the business, not retired. Now that this screen is
     /// the launch surface, it is the only thing standing between a user who
     /// wants a one-off code and a monthly subscription pitch.
-    /// Rendered as a real secondary button — full width, 48pt, `chipBg`, the
-    /// same shape `GhostButton` gives every other "the other way" action in the
-    /// app. It used to be a 13pt regular line in `text2`, which read as a
-    /// caption; combined with the layout bug above (see `introStep`) it was
-    /// both faint and off-screen. The copy is unchanged.
-    /// Now the shared `GhostButton` itself rather than a hand-rolled copy of
-    /// its shape. It was already styled to imitate one — same 48pt height,
-    /// `chipBg` capsule, same press scale — so this is the same button with
-    /// one definition instead of two, and it picks up any future change to the
-    /// app's secondary action for free. The copy is unchanged; the trailing
-    /// arrow goes, because `GhostButton` places its glyph leading and one
-    /// consistent shape beats a bespoke affordance.
+    /// The shared `GhostButton` rather than a hand-rolled copy of its shape, so
+    /// it picks up any future change to the app's secondary action for free.
     private var smsEscape: some View {
         GhostButton(label: "Just need a one-off verification code?",
                     action: onOpenSms)

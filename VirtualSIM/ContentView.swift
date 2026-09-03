@@ -658,12 +658,34 @@ extension ContentView {
             // the server's; 8 is what it read on 2026-09-01.
             state.appStatus = AppStatus(announcement: nil, esimPaused: false, lineSwapCredits: 8)
             if shot == .lineStore {
-                // The city step now prints the monthly price (see
+                // The store prints the monthly price (see
                 // `LineStoreScreen.priceNote`), and it renders NOTHING until
                 // StoreKit answers — which `simctl` never makes it do, because
                 // it does not apply the scheme's StoreKit configuration. Same
                 // shim, same reason, as the paywall frames below.
                 subs.screenshotPricing = .init()
+                // The store is ONE screen as of 2026-09-03, so this frame is
+                // the numbers themselves rather than a city list — and the
+                // search that would fill them is skipped in screenshot mode
+                // (see `LineStoreScreen`'s root task), so the offers are
+                // seeded here or the frame renders its empty state.
+                //
+                // ⚠️ 555 numbers, as everywhere in this harness: a screenshot
+                // is marketing, and a plausible real number would be both a
+                // claim and, if it ever belonged to someone, a leak.
+                state.lineCountry = "CA"
+                state.lineCity = "toronto"
+                state.lineOffers = [
+                    LineNumberOffer(phoneNumber: "+14375550128",
+                                    region: "Toronto, Ontario",
+                                    monthlyCents: 100, upfrontCents: 100),
+                    LineNumberOffer(phoneNumber: "+16475550164",
+                                    region: "Toronto, Ontario",
+                                    monthlyCents: 100, upfrontCents: 100),
+                    LineNumberOffer(phoneNumber: "+14165550193",
+                                    region: "Toronto, Ontario",
+                                    monthlyCents: 100, upfrontCents: 100),
+                ]
             }
             if shot == .linePaywall || shot == .linePaywallYearly {
                 state.lineCity = "toronto"

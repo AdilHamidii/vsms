@@ -4890,6 +4890,46 @@
         }
       }
     },
+    "Available now in %@": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Jetzt verfügbar in %@"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Disponible ahora en %@"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Disponible maintenant à %@"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Disponibile ora a %@"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@で今すぐ利用可能"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Disponível agora em %@"
+          }
+        }
+      }
+    },
     "A–Z": {
       "localizations": {
         "de": {
@@ -13443,6 +13483,46 @@
         }
       }
     },
+    "Good to know": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gut zu wissen"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Conviene saber"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bon à savoir"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Da sapere"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "知っておきたいこと"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bom saber"
+          }
+        }
+      }
+    },
     "Green": {
       "localizations": {
         "de": {
@@ -16507,6 +16587,86 @@
           "stringUnit": {
             "state": "translated",
             "value": "Mensagens"
+          }
+        }
+      }
+    },
+    "Might not work on every service — if a code doesn't arrive, switch to a new number for %lld credits": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Funktioniert nicht bei jedem Dienst — kommt kein Code an, wechsle für %lld Credits zu einer neuen Nummer"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Puede no funcionar en todos los servicios: si no llega el código, cambia a un número nuevo por %lld créditos"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ne fonctionne pas avec tous les services — si le code n'arrive pas, changez de numéro pour %lld crédits"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Potrebbe non funzionare con tutti i servizi: se il codice non arriva, passa a un nuovo numero per %lld crediti"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "一部のサービスでは使えないことがあります。コードが届かない場合は%lldクレジットで新しい番号に切り替えられます"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pode não funcionar em todos os serviços — se o código não chegar, troque por um novo número por %lld créditos"
+          }
+        }
+      }
+    },
+    "Might not work on every service — if a code doesn't arrive, switch to a new number for a few credits": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Funktioniert nicht bei jedem Dienst — kommt kein Code an, wechsle für ein paar Credits zu einer neuen Nummer"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Puede no funcionar en todos los servicios: si no llega el código, cambia a un número nuevo por unos créditos"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ne fonctionne pas avec tous les services — si le code n'arrive pas, changez de numéro pour quelques crédits"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Potrebbe non funzionare con tutti i servizi: se il codice non arriva, passa a un nuovo numero per pochi crediti"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "一部のサービスでは使えないことがあります。コードが届かない場合は数クレジットで新しい番号に切り替えられます"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pode não funcionar em todos os serviços — se o código não chegar, troque por um novo número por alguns créditos"
           }
         }
       }

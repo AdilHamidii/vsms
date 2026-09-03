@@ -1904,6 +1904,19 @@ repo, so they are kept here — losing them costs a device-only debugging sessio
    at sheet height. **In this app, "above everything" cannot be a root
    overlay.**
 
+7. 🔴 **LONG-PRESSING 0 TYPED `+0` THROUGH TWO SHIPPED FIXES (1725a73,
+   7a65606 — both in 2.7 build 48, and the owner's phone still did it).**
+   Both relied on a flag handed between two `.simultaneousGesture`
+   recognisers; how SwiftUI sequences them on hardware is not ours to
+   assume. Since 2026-09-03 `DialKey` is ONE `DragGesture(minimumDistance:
+   0)` plus a `Task` hold timer, all on the main actor, so a press emits
+   exactly one key by construction; `Dialpad.onKey` returns Bool so a
+   refused non-leading `+` lets the `0` through on release (the second fix
+   typed nothing there). The in-call DTMF pad refuses `+` the same way.
+   ⚠️ Unverified on a device as of the commit — the simulator harness has no
+   touch injection and the dialer sits behind a live line. **Press it on the
+   phone before believing it**; the last two passed reading and failed there.
+
 4. ⚠️ **`UUID.uuidString` is UPPERCASE and Telnyx's detail records are
    lowercase.** `sync-telnyx-cdr` matches with an exact-string lookup, so
    `providerSessionId` lowercases both ids. Uppercase would settle nothing and
@@ -2099,7 +2112,28 @@ N credits" button directly under the number. **Every plan / renewal /
 manage-subscription affordance is GONE from the Number tab**; Apple's
 manage-subscriptions sheet is reachable from **Account → Support** only.
 Calling stays, demoted to one secondary row. `LineSwitchNumberButton` is the
-single definition of the swap price/confirmation/call. Ops: `opsFormat.ts`
+single definition of the swap price/confirmation/call.
+**2.8 (2026-09-03, owner decision): the store is ONE screen, not four.**
+2.7's flow (pitch → country → city → number → checkout) measured 162
+`line_store_view` / 106 viewers / **0 subscriptions** in its first days, and
+the line was the only product with NO funnel event between "opened the tab"
+and "subscribed". `LineStoreScreen` now renders pitch + three real numbers +
+the price on one scroll (default place = the device storefront country when
+sellable, else the server default CA/Toronto; `Storefront.countryCode` is
+ALPHA-3 and is mapped explicitly), with the pickers behind a "Change" sheet;
+tap a number → `LineCheckoutScreen` unchanged except the three "Not yet" rows
+moved into a collapsed "Good to know" BELOW the price. The pitch names the
+limit plainly — "Might not work on every service — … switch to a new number
+for N credits" — with N from `appStatus.lineSwapCredits` and a figure-free
+variant when nil; never a literal. **Seven line events now exist**
+(`line_numbers_shown`, `line_place_changed`, `line_number_picked`,
+`line_checkout_view`, `line_plan_selected`, `line_purchase_result{outcome,
+plan}`, `line_provisioned`); `line_purchase_result` is emitted ONLY from
+`SubscriptionStore.purchase`, never from `handle()`, which renewals and
+restores also reach. Read the funnel at ~100 `line_numbers_shown` before the
+next redesign. `ScreenshotPricing` reads $5.99/$59.99 (it said $9.99/$99.99
+for two days after the reprice); the `-screenshot lineStore` frame is now the
+numbers screen, so the ASC screenshot must be re-taken. Ops: `opsFormat.ts`
 `LINE_PRICE_USD` is 5.99 (the MRR line over-counts yearly subscribers; exact
 figures wait on subscriptions entering `revenue_snapshot`). ⚠️ Margin: $5.99
 nets ~$5.09 against $1/mo rent + $1 upfront; a heavy CALLER (100 domestic

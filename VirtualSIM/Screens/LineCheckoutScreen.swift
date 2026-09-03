@@ -8,7 +8,7 @@ import SwiftUI
 /// Everything before it asks the user to choose — a city, then their actual
 /// digits. By the time they land here the number on screen is already theirs in
 /// every sense except the payment, which is the moment a price is worth
-/// reading. Leading with "$9.99/month" asks someone to value a product they
+/// reading. Leading with "$5.99/month" asks someone to value a product they
 /// have not seen.
 ///
 /// The previous version failed on exactly one measurable thing: `theme.text`
@@ -33,6 +33,8 @@ struct LineCheckoutScreen: View {
     @State private var now = Date()
     @State private var isReserving = false
     @State private var isRestoring = false
+    /// The "Good to know" disclosure. Collapsed on open — see `goodToKnow`.
+    @State private var limitsShown = false
 
     /// Scroll anchor for the plan picker. Only the screenshot harness uses it,
     /// but it is a plain view id rather than DEBUG-only state so the scroll
@@ -63,6 +65,15 @@ struct LineCheckoutScreen: View {
                             planPicker.padding(.top, 20).riseIn(appeared, index: 3)
                                 .id(Self.planAnchor)
                             priceBlock.padding(.top, 12).riseIn(appeared, index: 3)
+                            // What this number does NOT do, collapsed. It used
+                            // to be the tail of the benefit ledger, directly
+                            // above the plan picker — so the last thing read
+                            // before choosing a plan was three "Not yet" rows.
+                            // It stays ON the purchase screen (3.1.2(a): the
+                            // limitations are terms the buyer accepts before
+                            // paying, not a footnote), one tap away instead of
+                            // in the way.
+                            goodToKnow.padding(.top, 14).riseIn(appeared, index: 4)
                             // The safety disclosure sits ABOVE the action, not
                             // between the price and the button. Price -> CTA has to
                             // be adjacent: the last thing read before a purchase
@@ -96,6 +107,14 @@ struct LineCheckoutScreen: View {
             }
         }
         .task {
+            // The middle of the line funnel, and until 2.8 the whole product
+            // had exactly one event (`line_store_view`) — so "162 store views,
+            // 0 subscriptions" could not be split into "never reached checkout"
+            // and "left at Apple's sheet". The plan is carried because the
+            // paywall opens on monthly and the choice is the thing we are
+            // asking about.
+            Analytics.shared.track("line_checkout_view", [
+                "plan": .string(subs.selectedPlan.rawValue)])
             withAnimation(RMotion.content) { appeared = true }
             // Loads the localized price. Cheap and idempotent, and without it
             // the CTA falls back to a label with no price at all.
@@ -426,39 +445,90 @@ struct LineCheckoutScreen: View {
                     RowRule()
                     BenefitRow(icon: "lock.fill",
                                label: "Your own number never leaves your phone")
-
-                    // ── What it does NOT do, on the same ledger ─────────────
-                    //
-                    // This is the 3.1.2(a) disclosure screen — the one
-                    // immediately before the purchase. Owner decision
-                    // 2026-08-18: state the limitations plainly here, "for
-                    // now". A limitation named before the buy is a term the
-                    // user accepted; the same limitation discovered after is
-                    // a refund and, on this product, an Apple
-                    // CONSUMPTION_REQUEST. Muted tint + "Not yet" hint keeps
-                    // it a ledger line rather than an alarm; it MUST stay
-                    // adjacent to the benefits, never in a footnote a buyer
-                    // can skip. Mirrors LineStoreScreen.pitch.
                     RowRule()
-                    BenefitRow(icon: RIcon.message,
-                               label: "Sending texts from this number",
-                               hint: "Not yet",
-                               tint: theme.text3)
-                        .opacity(0.72)
-                    RowRule()
-                    BenefitRow(icon: RIcon.globe,
-                               label: "Receiving texts from outside the US and Canada",
-                               hint: "Not yet",
-                               tint: theme.text3)
-                        .opacity(0.72)
-                    RowRule()
-                    BenefitRow(icon: RIcon.phone,
-                               label: "Taking incoming calls",
-                               hint: "Not yet",
-                               tint: theme.text3)
-                        .opacity(0.72)
+                    // The honest line, and the remedy priced live. Some
+                    // platforms refuse virtual numbers, and a buyer who
+                    // discovers that after paying is a refund; naming it here
+                    // makes it a term they accepted. NO client default for the
+                    // price — `app_config.line_swap_credits` moves without a
+                    // release, so when it is unknown the sentence drops the
+                    // figure rather than inventing one. Mirrors
+                    // `LineStoreScreen.pitch`.
+                    if let cost = state.appStatus.lineSwapCredits {
+                        BenefitRow(icon: "arrow.triangle.2.circlepath",
+                                   label: "Might not work on every service — if a code doesn't arrive, switch to a new number for \(cost) credits")
+                    } else {
+                        BenefitRow(icon: "arrow.triangle.2.circlepath",
+                                   label: "Might not work on every service — if a code doesn't arrive, switch to a new number for a few credits")
+                    }
                 }
                 .padding(.vertical, 4)
+            }
+        }
+    }
+
+    // MARK: - What it does NOT do
+
+    /// The three "Not yet" rows, collapsed by default.
+    ///
+    /// ⚠️ It must stay ON this screen. This is the 3.1.2(a) disclosure screen —
+    /// the one immediately before the purchase — and owner decision 2026-08-18
+    /// is to state the limitations plainly, "for now": a limitation named
+    /// before the buy is a term the user accepted, the same limitation
+    /// discovered after is a refund and, on this product, an Apple
+    /// CONSUMPTION_REQUEST. What changed is its POSITION: it used to be the
+    /// tail of `included`, so the last thing read before the plan picker was a
+    /// list of things the product cannot do.
+    ///
+    /// Hand-rolled rather than `DisclosureGroup`, which brings its own label
+    /// typography and chevron and would be the only one of its kind in the app.
+    @ViewBuilder
+    private var goodToKnow: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Button {
+                RHaptic.select()
+                withAnimation(RMotion.panel) { limitsShown.toggle() }
+            } label: {
+                HStack(spacing: 8) {
+                    MicroLabel("Good to know")
+                    Image(systemName: RIcon.chevDn)
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(theme.text3)
+                        .rotationEffect(.degrees(limitsShown ? 0 : -90))
+                }
+                .contentShape(.rect)
+            }
+            .buttonStyle(.plain)
+            .frame(minHeight: 44, alignment: .leading)
+            .accessibilityAddTraits(.isButton)
+
+            if limitsShown {
+                Card(elevation: .raised) {
+                    VStack(spacing: 0) {
+                        // Muted tint + "Not yet" hint keeps each one a ledger
+                        // line rather than an alarm.
+                        BenefitRow(icon: RIcon.message,
+                                   label: "Sending texts from this number",
+                                   hint: "Not yet",
+                                   tint: theme.text3)
+                            .opacity(0.72)
+                        RowRule()
+                        BenefitRow(icon: RIcon.globe,
+                                   label: "Receiving texts from outside the US and Canada",
+                                   hint: "Not yet",
+                                   tint: theme.text3)
+                            .opacity(0.72)
+                        RowRule()
+                        BenefitRow(icon: RIcon.phone,
+                                   label: "Taking incoming calls",
+                                   hint: "Not yet",
+                                   tint: theme.text3)
+                            .opacity(0.72)
+                    }
+                    .padding(.vertical, 4)
+                }
+                .padding(.top, 6)
+                .transition(.opacity)
             }
         }
     }
@@ -516,6 +586,13 @@ struct LineCheckoutScreen: View {
         let active = subs.selectedPlan == plan
         return Button {
             RHaptic.select()
+            // Only on a real change. Re-tapping the selected row is not a
+            // decision, and counting it would inflate the one number this
+            // event exists to answer: how many buyers move off monthly.
+            if !active {
+                Analytics.shared.track("line_plan_selected", [
+                    "plan": .string(plan.rawValue)])
+            }
             withAnimation(RMotion.select) { subs.selectedPlan = plan }
         } label: {
             // `Card` with a semantic fill + border — exactly what `border` is
