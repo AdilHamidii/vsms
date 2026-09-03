@@ -40,7 +40,11 @@ struct InCallOverlay: View {
                 Spacer(minLength: 0)
                 if showKeypad {
                     Dialpad { digit in
+                        // DTMF has no `+`: a held 0 is refused, so the key
+                        // sends its 0 on release instead.
+                        guard digit != "+" else { return false }
                         Task { await calls.sendDigit(digit) }
+                        return true
                     }
                     .padding(.bottom, 26)
                     .transition(.opacity.combined(with: .scale(scale: 0.96)))

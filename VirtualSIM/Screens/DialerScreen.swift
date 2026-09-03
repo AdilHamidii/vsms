@@ -80,18 +80,25 @@ struct DialerScreen: View {
                 readout
                 Spacer(minLength: 0)
                 Dialpad { key in
-                    RHaptic.select()
                     if key == "⌫" {
+                        RHaptic.select()
                         if !digits.isEmpty { digits.removeLast() }
-                    } else if key == "+" {
+                        return true
+                    }
+                    if key == "+" {
                         // Only ever leading, as on every real dialer. A `+`
                         // mid-number is not a country code, it is a typo, and
                         // accepting it would produce a string `toE164` refuses
-                        // AFTER the user has finished typing.
-                        if digits.isEmpty { digits = "+" }
-                    } else {
-                        digits.append(key)
+                        // AFTER the user has finished typing. Refusing it
+                        // (false) tells the key to type its `0` on release.
+                        guard digits.isEmpty else { return false }
+                        RHaptic.select()
+                        digits = "+"
+                        return true
                     }
+                    RHaptic.select()
+                    digits.append(key)
+                    return true
                 }
                 .riseIn(appeared, index: 1)
                 callRow.padding(.top, 22).riseIn(appeared, index: 2)
@@ -325,7 +332,8 @@ struct DialerScreen: View {
 /// A 4×3 keypad. Digits carry their letters because a phone keypad without
 /// them does not read as one.
 struct Dialpad: View {
-    var onKey: (String) -> Void
+    /// Returns whether the key was accepted — see `DialKey` for why that matters.
+    var onKey: (String) -> Bool
 
     private static let keys: [[(String, String)]] = [
         [("1", ""),    ("2", "ABC"), ("3", "DEF")],
@@ -363,29 +371,47 @@ struct Dialpad: View {
 /// not work: **the Button fires on FINGER-UP, not at the 0.4s threshold**.
 /// Holding 0 for two seconds — exactly what a person does, hold until the `+`
 /// appears and then a moment longer — expired the window and typed `"+0"`
-/// again. It also left the stamp set when the finger was dragged off (the
-/// Button action never runs), swallowing the next genuine tap on 0.
+/// again.
 ///
-/// The correct signal is not elapsed time. It is "this gesture already
-/// produced a `+`", cleared when the GESTURE ENDS. Both gestures below are
-/// ours, so their ordering is guaranteed rather than hoped for: the long press
-/// resolves at 0.4s with the finger still down, and the drag always ends later,
-/// on finger-up. The flag is cleared at BOTH points a press can end — on
-/// release, and on the first movement of the next press — so a cancelled or
-/// dragged-away press can never leave it set and eat a later tap.
+/// The second fix ran a `LongPressGesture` and a `DragGesture` as two
+/// `.simultaneousGesture`s sharing an "already emitted `+`" flag, and it did
+/// not work either: it shipped in 2.7 (build 48) and the owner's phone still
+/// typed `"+0"`. Whatever the exact interleaving on hardware, the lesson is
+/// the same as the first attempt's — **a flag handed between two recognisers
+/// relies on how SwiftUI sequences them, and that sequencing is not ours.**
+///
+/// 🔴 THIRD FIX (2026-09-03): ONE gesture, ONE timer. The press is a single
+/// `DragGesture(minimumDistance: 0)`; the hold is a `Task` that this view
+/// starts on touch-down and cancels on touch-up. Both callbacks and the task
+/// body run on the main actor, so "the timer fired" and "the finger lifted"
+/// happen in a definite order, and a press can emit exactly one key by
+/// construction: either the task ran (the `+` is out, the release is
+/// swallowed) or the release cancelled it (the `0` is typed). There is no
+/// second recogniser to disagree with.
+///
+/// `onKey` returns whether the consumer actually took the key. The screen
+/// refuses a non-leading `+`, and a hold that produced nothing must still type
+/// its `0` on release — otherwise a long press mid-number types nothing at all,
+/// which the second fix also got wrong.
 private struct DialKey: View {
     @Environment(\.theme) private var theme
     let key: String
     let letters: String
-    let onKey: (String) -> Void
+    /// Returns true when the consumer accepted the key.
+    let onKey: (String) -> Bool
 
     private static let size = CGSize(width: 72, height: 62)
     /// Release slop, matching the forgiveness a `Button` gives: a finger that
     /// drifts a few points during a tap still means that key.
     private static let slop: CGFloat = 12
+    /// How long 0 must be held before it becomes `+`, like every phone dialer.
+    private static let holdDuration: Duration = .milliseconds(400)
 
     @State private var isPressed = false
-    @State private var emittedPlus = false
+    /// Set by the hold task the moment a `+` has actually been accepted; the
+    /// release that follows must then type nothing.
+    @State private var plusFired = false
+    @State private var holdTask: Task<Void, Never>?
 
     var body: some View {
         VStack(spacing: 1) {
@@ -406,44 +432,51 @@ private struct DialKey: View {
         // these keys carried while they were Buttons. One press vocabulary.
         .scaleEffect(isPressed ? 0.9 : 1)
         .animation(.easeOut(duration: 0.12), value: isPressed)
-        .simultaneousGesture(
-            // Resolves at the threshold, with the finger still down. Only 0
-            // carries a `+`, exactly as its printed subtitle has always
-            // promised — nothing was bound to that glyph before.
-            LongPressGesture(minimumDuration: 0.4, maximumDistance: Self.slop)
-                .onEnded { _ in
-                    guard key == "0" else { return }
-                    emittedPlus = true
-                    // No haptic here: `onKey` already fires one for every key,
-                    // and two in the same instant read as a stutter.
-                    onKey("+")
-                }
-        )
-        .simultaneousGesture(
+        .gesture(
             DragGesture(minimumDistance: 0)
-                .onChanged { _ in
-                    guard !isPressed else { return }
-                    isPressed = true
-                    // A press cancelled without ever ending cannot leave its
-                    // `+` behind to swallow this one.
-                    emittedPlus = false
+                .onChanged { v in
+                    if !isPressed {
+                        isPressed = true
+                        plusFired = false
+                        // Only 0 carries a `+`, exactly as its printed subtitle
+                        // has always promised.
+                        guard key == "0" else { return }
+                        holdTask?.cancel()
+                        holdTask = Task { @MainActor in
+                            try? await Task.sleep(for: Self.holdDuration)
+                            guard !Task.isCancelled else { return }
+                            // No haptic here: `onKey` already fires one for
+                            // every key, and two in the same instant read as
+                            // a stutter.
+                            plusFired = onKey("+")
+                        }
+                        return
+                    }
+                    // A finger that wanders off the key while holding is not
+                    // asking for a `+` — the same distance rule the release
+                    // hit-test applies.
+                    if abs(v.translation.width) > Self.slop || abs(v.translation.height) > Self.slop {
+                        holdTask?.cancel()
+                    }
                 }
                 .onEnded { v in
+                    holdTask?.cancel()
+                    holdTask = nil
                     isPressed = false
-                    let alreadyPlus = emittedPlus
-                    emittedPlus = false
+                    let alreadyPlus = plusFired
+                    plusFired = false
                     guard !alreadyPlus else { return }
                     // Dragging off a key types nothing, as on every dialer.
                     guard CGRect(origin: .zero, size: Self.size)
                         .insetBy(dx: -Self.slop, dy: -Self.slop)
                         .contains(v.location) else { return }
-                    onKey(key)
+                    _ = onKey(key)
                 }
         )
         .accessibilityElement(children: .combine)
         .accessibilityAddTraits(.isButton)
-        // VoiceOver activation drives neither gesture, so the key needs its own
+        // VoiceOver activation drives no gesture, so the key needs its own
         // action or it becomes untappable for anyone using it.
-        .accessibilityAction { onKey(key) }
+        .accessibilityAction { _ = onKey(key) }
     }
 }
