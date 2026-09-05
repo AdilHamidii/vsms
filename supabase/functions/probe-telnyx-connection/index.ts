@@ -5,6 +5,7 @@
 //  1. GET  ?connection_id=<digits>          — the credential-connection probe
 //  2. POST {"probe":"cdr", …}               — the detail-record probe
 //  3. POST {"probe":"coverage"}             — the country-catalogue probe
+//  4. POST {"probe":"numbers"}              — every number Telnyx says we own, joined to phone_lines
 //
 // The API key never leaves the platform: this runs edge-side. Mode 1 returns a
 // projection. Mode 2 returns RAW response bodies (truncated) on purpose — the
@@ -163,6 +164,8 @@ const ID_FILTER_KEYS = [
 /** Hard ceiling on outbound requests. The edge runtime dies at ~150s and a
  *  full sweep is a few dozen calls; a runaway matrix would look like a hang. */
 const MAX_REQUESTS = 90;
+
+const UUID_LIKE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 interface Probe {
   url: string;
@@ -560,6 +563,73 @@ Deno.serve(async (req) => {
       value: result,
     });
 
+    return Response.json({ ...result, stored: writeErr ? `error: ${writeErr.message}` : true });
+  }
+
+  // ── Mode 4: the owned-numbers reconciliation ──────────────────────────────
+  // POST {"probe":"numbers"}. Answers "why does the Telnyx dashboard say N
+  // active numbers" by putting Telnyx's own list beside ours. The orphan sweep
+  // in `release-lines` deliberately judges ONLY numbers carrying a UUID
+  // `customer_reference`; a number without one is invisible to it and still
+  // bills every month. This mode lists every number, tagged with how (or
+  // whether) it joins back to `phone_lines` / `line_number_swaps`, and writes
+  // the result to `app_config.telnyx_numbers_probe` (service-role only).
+  if (body.probe === "numbers") {
+    const r = await fetch(`${TELNYX}/phone_numbers?page[size]=250`, {
+      headers: { Authorization: `Bearer ${key}` },
+    });
+    const j = await r.json().catch(() => ({})) as { data?: Array<Record<string, unknown>>; meta?: unknown };
+    const owned = Array.isArray(j.data) ? j.data : [];
+    const sb = admin();
+    const e164s = owned.map((n) => String(n.phone_number));
+    const refs = owned.map((n) => String(n.customer_reference ?? "")).filter((s) => UUID_LIKE.test(s));
+    const [{ data: byE164 }, { data: byRef }, { data: swaps }] = await Promise.all([
+      sb.from("phone_lines").select("id, e164, status, billing, user_id, released_at").in("e164", e164s),
+      refs.length
+        ? sb.from("phone_lines").select("id, e164, status, billing, user_id, released_at").in("id", refs)
+        : Promise.resolve({ data: [] as Array<Record<string, unknown>> }),
+      sb.from("line_number_swaps").select("old_e164, new_e164, state, old_released_at")
+        .or(`old_e164.in.(${e164s.join(",")}),new_e164.in.(${e164s.join(",")})`),
+    ]);
+    const lineByE164 = new Map((byE164 ?? []).map((l) => [String(l.e164), l]));
+    const lineById = new Map((byRef ?? []).map((l) => [String(l.id), l]));
+    const numbers = owned.map((n) => {
+      const e164 = String(n.phone_number);
+      const ref = (n.customer_reference as string | null) ?? null;
+      const viaE164 = lineByE164.get(e164) ?? null;
+      const viaRef = ref && UUID_LIKE.test(ref) ? lineById.get(ref) ?? null : null;
+      const swap = (swaps ?? []).filter((s) => s.old_e164 === e164 || s.new_e164 === e164);
+      const line = viaE164 ?? viaRef;
+      const verdict = !line
+        ? (ref ? "ref_points_nowhere" : "no_reference_no_row")
+        : line.status === "released" || line.status === "failed"
+          ? `row_${line.status}_but_still_at_telnyx`
+          : `held_by_${line.status}_line`;
+      return {
+        e164, id: String(n.id), telnyx_status: n.status ?? null,
+        created_at: n.created_at ?? null, purchased_at: n.purchased_at ?? null,
+        customer_reference: ref, tags: n.tags ?? null,
+        connection_id: n.connection_id ?? null,
+        messaging_profile_id: n.messaging_profile_id ?? null,
+        line: line ? {
+          id: String(line.id), status: line.status, billing: line.billing,
+          user: String(line.user_id).slice(0, 8), released_at: line.released_at,
+          matched_by: viaE164 ? "e164" : "reference",
+        } : null,
+        swaps: swap.map((s) => ({ role: s.old_e164 === e164 ? "old" : "new", state: s.state, old_released_at: s.old_released_at })),
+        verdict,
+      };
+    });
+    const result = {
+      mode: "numbers", at: new Date().toISOString(), http: r.status,
+      telnyx_count: owned.length, meta: j.meta ?? null,
+      by_verdict: numbers.reduce<Record<string, number>>((acc, n) => {
+        acc[n.verdict] = (acc[n.verdict] ?? 0) + 1; return acc;
+      }, {}),
+      numbers,
+    };
+    const { error: writeErr } = await sb.from("app_config").upsert(
+      { key: "telnyx_numbers_probe", value: result }, { onConflict: "key" });
     return Response.json({ ...result, stored: writeErr ? `error: ${writeErr.message}` : true });
   }
 

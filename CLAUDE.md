@@ -1554,6 +1554,26 @@ one: it catches the leak even if the heartbeat is never written, which is
 exactly the case that shipped. A heartbeat-only check would have stayed silent
 for the same reason the bug did.
 
+⚠️ **THE ORPHAN SWEEP CANNOT SEE A NUMBER WITH NO LINE-ID REFERENCE, AND TWO
+SUCH NUMBERS HAVE BILLED SINCE 2026-08-05.** `findOrphans` in `release-lines`
+judges only numbers whose `customer_reference` is a UUID — a number with no
+reference, or a non-UUID one, is "never ours to judge" (deliberate: it is the
+guard against deleting a manually bought number). Found 2026-09-05 when the
+owner's Telnyx dashboard read **13 active numbers** against 6 paying lines:
+11 were ours and accounted for (6 active, 3 `grace`, 2 `suspended` — the last
+five all in the lapse pipeline and due to release by ~09-17), and **2 were
+probe numbers from the 2026-08-05 adapter test** — `+14153293816`
+(reference `vsms-test…`) and `+13435131580` (no reference) — attached to no
+line, referenced by no row, skipped by the sweep every 15 minutes for a month
+with `orphans: 0` in the heartbeat. **Reconcile with
+`probe-telnyx-connection {"probe":"numbers"}`** (mode 4, read-only, writes
+`app_config.telnyx_numbers_probe`): it lists every number Telnyx says we own
+with a verdict per number (`held_by_<status>_line`, `row_released_but_still_
+at_telnyx`, `ref_points_nowhere`, `no_reference_no_row`). Anything in the last
+two verdicts is rent nobody is paying for; anything in the third is a release
+that did not land. Run it whenever the dashboard count and the paying-line
+count disagree — the heartbeat cannot tell you.
+
 🔴 **`reclaim_lapsed_lines()` SWEEPS `grace` AND `past_due` TOO, AS OF
 `20260830120000` — before that it swept only `status='active'` and the other
 two leaked $1/month per number forever.** The `current_period_end` backstop
@@ -1677,7 +1697,9 @@ minutes, whereas a CDR-settled call is exactly one that does NOT carry a
 `no_cdr%` hangup cause, since those three values are written only by the
 backstop.
 
-**`probe-telnyx-connection` gained a second mode for diagnosing it:**
+**`probe-telnyx-connection` gained a second mode for diagnosing it** (it now
+has four: `connection_id=`, `cdr`, `coverage`, and `numbers` — the owned-number
+reconciliation, see the orphan-sweep note above):
 `POST {"probe":"cdr","session_ids":[…],"days":30}` (same cron-secret gate,
 still read-only, writes nothing). It sweeps every window-filter shape × every
 plausible `record_type`, looks each session id up under five filter keys in
