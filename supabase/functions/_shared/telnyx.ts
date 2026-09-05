@@ -606,7 +606,12 @@ export async function releaseNumber(numberId: string): Promise<true | TelnyxFaul
  *  join back to phone_lines.id — a number with no live line is money leaking. */
 export async function listOwnedNumbers(
   page = 1, size = 250,
-): Promise<Array<{ id: string; e164: string; status: string; reference: string | null }> | TelnyxFault> {
+): Promise<Array<{
+  id: string; e164: string; status: string; reference: string | null;
+  /** Telnyx's `created_at` (falls back to `purchased_at`); null if absent. The
+   *  orphan sweep's age guard reads it. */
+  createdAt: string | null;
+}> | TelnyxFault> {
   const r = await call<Array<Record<string, unknown>>>(
     "GET", `/phone_numbers?page[number]=${page}&page[size]=${size}`);
   if (faultOf(r)) return r;
@@ -615,6 +620,7 @@ export async function listOwnedNumbers(
     e164: String(n.phone_number),
     status: String(n.status),
     reference: (n.customer_reference as string | null) ?? null,
+    createdAt: (n.created_at as string | null) ?? (n.purchased_at as string | null) ?? null,
   }));
 }
 

@@ -36,10 +36,14 @@ import { sendMessage, esc } from "../_shared/telegram.ts";
 import { alertHtml } from "../_shared/tgAlert.ts";
 import { parisFull } from "../_shared/tgFormat.ts";
 
-/** How long a suspended number is held before release. A DID costs cents for a
- *  week, and this is the difference between "fix your card and everything is as
- *  you left it" and "your number is gone, and so is everyone who knew it". */
-const HOLD_DAYS = 7;
+// There is NO hold on a lapsed number any more (owner decision 2026-09-05,
+// migration 20260905130000). `suspend_line_claim` ignores the `p_hold_until`
+// it is passed and writes now(); `reclaim_lapsed_lines` (pg_cron */15) moves
+// the row to `releasing` on its next run and `release-lines` deletes it at
+// Telnyx. The 7-day hold this file used to justify ("fix your card and
+// everything is as you left it") kept five numbers billing for $0 in its
+// first month, and every lapsed subscriber had auto-renew off — there was
+// never anything to recover.
 
 declare const EdgeRuntime: { waitUntil(p: Promise<unknown>): void } | undefined;
 
@@ -356,6 +360,22 @@ async function process(sb: ReturnType<typeof admin>, n: Awaited<ReturnType<typeo
           assn_renewal_no_live_line: originalTx, reason: data?.reason ?? null,
         }));
       }
+      // Money landed on a subscription whose number is already gone: the
+      // customer has paid and holds no line, and nothing re-provisions one
+      // for them. This is the accepted residual of releasing with no hold
+      // (20260905130000) — accepted on the condition that it PAGES rather
+      // than sits in a log. `already_applied` is a retry, not this case.
+      if (data?.ok === true && data?.reason !== "already_applied" && !data?.line_id) {
+        await alertOwner(alertHtml({
+          sev: "🟠", title: "Renewal landed on a released line",
+          what: `tx ${esc(originalTx)} · ${esc(linePlanLabel(tx))}` +
+            (tx.price != null && tx.currency
+              ? ` — ${(tx.price / 1000).toFixed(2)} ${esc(tx.currency)}` : ""),
+          why: "Apple billed the subscriber after we released their number (no hold). They have paid and hold no line.",
+          action: "Reach out; they can provision a new number from the Number tab, or refund via Apple.",
+          at: new Date(),
+        }), sb, `renew_noline:${n.notificationUUID}`, "line_event");
+      }
       // Alerts AFTER the state write succeeded — an alert must never describe
       // a transition that did not commit. Sandbox events (the reviewer's
       // subscription is always Sandbox) are labelled so they cannot be read
@@ -420,17 +440,16 @@ async function process(sb: ReturnType<typeof admin>, n: Awaited<ReturnType<typeo
     // ── Lapsed ─────────────────────────────────────────────────────────────
     case "GRACE_PERIOD_EXPIRED":
     case "EXPIRED": {
-      // SUSPEND, do not release. The 7-day hold is the highest-leverage
-      // decision in this whole product: a number costs cents for a week, and
-      // losing it costs the user everyone who knew it.
-      const hold = new Date(Date.now() + HOLD_DAYS * 86_400_000).toISOString();
+      // Suspend; the reclaim sweep releases on its next run. No hold — see
+      // the note at the top of this file. The argument is ignored by the RPC
+      // and passed only because the signature still has it.
       const { error } = await sb.rpc("suspend_line_claim", {
-        p_original_tx: originalTx, p_hold_until: hold,
+        p_original_tx: originalTx, p_hold_until: new Date().toISOString(),
       });
       if (error) throw new Error(`suspend_line_claim: ${error.message}`);
       await alertOwner(
-        `❌ <b>Line subscription ended</b>\nnumber suspended — held ` +
-        `${HOLD_DAYS} days, then released (rent stops)`,
+        `❌ <b>Line subscription ended</b>\nnumber released on the next ` +
+        `sweep (within ~30 min) — rent stops`,
         sb, `expired:${n.notificationUUID}`, "line_event");
       return;
     }

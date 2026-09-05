@@ -739,7 +739,7 @@ looking like success.
 
 **Pausing lines stops NEW rentals only**, and the reply says so: existing lines
 keep sending, receiving and calling — and keep costing us rent until they lapse
-through the normal suspend → hold → release path.
+through the normal suspend → release path (no hold since 2026-09-05).
 
 **`app_config` is RLS-restricted to an explicit key WHITELIST, and that is the
 only safe way to widen it.** The table also holds `herosms_health` /
@@ -1554,25 +1554,28 @@ one: it catches the leak even if the heartbeat is never written, which is
 exactly the case that shipped. A heartbeat-only check would have stayed silent
 for the same reason the bug did.
 
-⚠️ **THE ORPHAN SWEEP CANNOT SEE A NUMBER WITH NO LINE-ID REFERENCE, AND TWO
-SUCH NUMBERS HAVE BILLED SINCE 2026-08-05.** `findOrphans` in `release-lines`
-judges only numbers whose `customer_reference` is a UUID — a number with no
-reference, or a non-UUID one, is "never ours to judge" (deliberate: it is the
-guard against deleting a manually bought number). Found 2026-09-05 when the
-owner's Telnyx dashboard read **13 active numbers** against 6 paying lines:
-11 were ours and accounted for (6 active, 3 `grace`, 2 `suspended` — the last
-five all in the lapse pipeline and due to release by ~09-17), and **2 were
-probe numbers from the 2026-08-05 adapter test** — `+14153293816`
-(reference `vsms-test…`) and `+13435131580` (no reference) — attached to no
-line, referenced by no row, skipped by the sweep every 15 minutes for a month
-with `orphans: 0` in the heartbeat. **Reconcile with
+🔴 **THE ORPHAN SWEEP RELEASES ANY NUMBER NO LIVE LINE HOLDS — BY e164, NOT
+BY REFERENCE (owner decision 2026-09-05).** Until that day `findOrphans` in
+`release-lines` judged only numbers whose `customer_reference` was a line-id
+UUID and skipped the rest as "never ours to judge" (the guard against
+deleting a manually bought number). That guard let **two probe numbers from
+the 2026-08-05 adapter test** — `+14153293816` (reference `vsms-test…`) and
+`+13435131580` (no reference) — bill for a month with `orphans: 0` in the
+heartbeat every 15 minutes; found when the owner's Telnyx dashboard read
+**13 active numbers** against 6 paying lines (11 ours: 6 active, 3 `grace`,
+2 `suspended`; 2 nobody's). Now: a number is an orphan when NO non-released
+`phone_lines` row carries its e164, it is not owned by a pending
+`line_number_swaps` row (the swap drain's job), and Telnyx created it more
+than **24 h** ago (`ORPHAN_MIN_AGE_MS` — an in-flight rental or swap orders
+its number before the row carries the e164; unreadable timestamps count as
+young). `MAX_ORPHANS = 5` per run still caps a matching bug. The heartbeat
+gains `young_unmatched`. Both probe numbers were released by the first run of
+the new sweep (16:01Z, `orphans_released: 2`). **Reconcile any time with
 `probe-telnyx-connection {"probe":"numbers"}`** (mode 4, read-only, writes
-`app_config.telnyx_numbers_probe`): it lists every number Telnyx says we own
-with a verdict per number (`held_by_<status>_line`, `row_released_but_still_
-at_telnyx`, `ref_points_nowhere`, `no_reference_no_row`). Anything in the last
-two verdicts is rent nobody is paying for; anything in the third is a release
-that did not land. Run it whenever the dashboard count and the paying-line
-count disagree — the heartbeat cannot tell you.
+`app_config.telnyx_numbers_probe`): every number Telnyx says we own with a
+verdict (`held_by_<status>_line`, `row_released_but_still_at_telnyx`,
+`ref_points_nowhere`, `no_reference_no_row`). Run it whenever the dashboard
+count and the paying-line count disagree — the heartbeat cannot tell you.
 
 🔴 **`reclaim_lapsed_lines()` SWEEPS `grace` AND `past_due` TOO, AS OF
 `20260830120000` — before that it swept only `status='active'` and the other
@@ -1591,11 +1594,24 @@ its own**, only a status flip. Disabling grace would otherwise have turned
 every future billing failure into a permanent rent leak.
 
 Three properties that are load-bearing:
-- **Both new branches suspend with the SAME 7-day hold `suspend_line_claim`
-  writes**, so `releasing` → `release-lines` is unchanged, and the hold IS
-  the billing-recovery window: `apply_line_renewal` restores a `suspended`
-  line to `active` and clears `hold_until`, so a late Apple recovery inside
-  those 7 days costs the subscriber nothing.
+- 🔴 **THERE IS NO HOLD ANY MORE (owner decision 2026-09-05, migration
+  `20260905130000`).** A lapsed line goes `suspended` AND `releasing` in the
+  SAME `reclaim_lapsed_lines` run (`hold_until = now()` everywhere it is
+  written, branch (a) promotes on `<=`), and `release-lines` deletes it at
+  Telnyx on its next :03/:18/:33/:48 run — worst case ~30 min from Apple's
+  EXPIRED. `suspend_line_claim` keeps its 2-arg signature but IGNORES
+  `p_hold_until`; the policy lives in the migration, not in callers. Why:
+  measured against Telnyx's own list, the account held 13 numbers for 6
+  paying lines, and every lapsed subscriber in the product's history had
+  auto-renew OFF at expiry — the 7-day "fix your card" window protected a
+  recovery that never once happened. **Accepted residual:** a billing
+  recovery landing after the release (Apple retries a declined card for up
+  to 60 days) finds no line — `apply_line_renewal` activates the
+  subscription and revives nothing; the customer has paid and holds no
+  number until they provision one in the app. `apple-notifications` PAGES
+  this (`renew_noline:<uuid>`, 🟠) instead of console.logging it.
+  `scripts/verify-line-lapse-backstop.sql` (6 cases) asserts `releasing`,
+  not a hold.
 - **A `grace` row with a NULL `grace_until`** (the renewal-info JWS carried no
   `gracePeriodExpiresDate`) falls back to `current_period_end + 16 days` —
   Apple's MAXIMUM grace. The fallback can only ever fire LATER than a real
@@ -1619,10 +1635,11 @@ that; a 1st-of-month run of ~$13 can. Consequences: (1) the 2026-08-31
 claim that suspending grace lines early "saves $0 because their anniversaries
 are Sep 18–24" reasoned from the wrong model — the outcome held only because
 nothing could release before midnight; (2) **every lapsed number still held
-on the last day of a month costs a full month** — the backstop's 7-day hold
-+ `release-lines` cadence must finish before the 1st to save anything, so
-when reasoning about a lapse near month-end, count days to the 1st, not to
-an anniversary. Verify against Telnyx's own billing page before quoting.
+on the last day of a month costs a full month** — since the hold was retired
+(2026-09-05) lapse-to-release is ~30 min, so this now only bites a lapse in
+the last half-hour of a month; still, when reasoning about a lapse near
+month-end, count to the 1st, not to an anniversary. Verify against Telnyx's
+own billing page before quoting.
 
 ⚠️ **`swiftc -typecheck` NO LONGER WORKS** — the `TelnyxRTC` dependency landed
 on 2026-08-06 and retired it exactly as the plan predicted. Use `xcodebuild`.

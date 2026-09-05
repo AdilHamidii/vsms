@@ -43,6 +43,11 @@ const MAX_RELEASE = 25;
  *  matching, not fifty orphans. */
 const MAX_ORPHANS = 5;
 
+/** A number Telnyx created less than this long ago is never judged an orphan:
+ *  a rental or swap in flight has ordered it and not yet written the e164 onto
+ *  its row. Rent is monthly, so waiting a day costs nothing. */
+const ORPHAN_MIN_AGE_MS = 24 * 3_600_000;
+
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function cronOk(req: Request): boolean {
@@ -162,6 +167,12 @@ Deno.serve(async (req) => {
   let swapReleased = 0, swapFailed = 0;
   const { data: swapPending, error: swapErr } = await sb
     .rpc("swaps_pending_release", { p_limit: 20 });
+  // Whatever a swap row still owns is this loop's to release, never the orphan
+  // sweep's — even when the DELETE below fails and the number is still listed.
+  const swapOwned = new Set<string>(
+    ((swapPending ?? []) as Array<Record<string, unknown>>)
+      .map((r) => String(r.provider_number_id)),
+  );
   if (swapErr) {
     console.error(JSON.stringify({
       alert: "line_swap_release_lookup_failed", detail: swapErr.message,
@@ -190,7 +201,7 @@ Deno.serve(async (req) => {
   }
 
   // ── The orphan sweep ─────────────────────────────────────────────────────
-  const orphans = await findOrphans(sb);
+  const orphans = await findOrphans(sb, swapOwned);
 
   // Heartbeat for run_watchdog, written on EVERY run including a quiet one:
   // "nothing to release" and "this job stopped running" have to be
@@ -201,6 +212,7 @@ Deno.serve(async (req) => {
       at, pending: (pending ?? []).length, released, failed, no_number: noNumber,
       swap_released: swapReleased, swap_failed: swapFailed,
       orphans: orphans.list.length, orphans_released: orphans.releasedCount,
+      young_unmatched: orphans.young,
       orphan_release_enabled: orphans.enabled,
       orphan_error: orphans.error,
     },
@@ -223,25 +235,36 @@ interface OrphanResult {
   releasedCount: number;
   enabled: boolean;
   error: string | null;
+  /** Unmatched numbers skipped for being younger than ORPHAN_MIN_AGE_MS. */
+  young: number;
 }
 
-/** Numbers Telnyx says we own that no live line points at.
+/** Numbers Telnyx says we own that no live line holds.
  *
- *  `customer_reference` is set to the line id at purchase, and that single
- *  field is the only join back — the number resource carries no cost and no
- *  account metadata, so without it an orphan is invisible until the invoice.
- *
- *  ⚠️ Three guards, and every one of them is the difference between a cleanup
- *  and taking a paying customer's number away:
- *   - a number with NO reference is never touched. That covers the manually
- *     bought probe numbers and anything predating the reference convention.
- *   - a reference that is not a UUID is never touched.
- *   - only a reference matching NO row, or a row that is already
- *     released/failed, counts. A `releasing` row is handled by the loop above;
- *     an active one is a live customer.
+ *  THE RULE (owner decision 2026-09-05): a number that no non-released
+ *  `phone_lines` row holds by e164 is rent nobody is paying for, and it is
+ *  released — whatever its `customer_reference` says. Until that day the sweep
+ *  judged ONLY numbers whose reference was a line-id UUID and skipped the rest
+ *  as "never ours to judge"; that guard let two probe numbers from the
+ *  2026-08-05 adapter test bill for a month while the heartbeat read
+ *  `orphans: 0` every 15 minutes. The safety now comes from three guards that
+ *  do not depend on metadata being right:
+ *   - the e164 check runs against EVERY non-released row, so a live customer's
+ *     number can never qualify, whatever else is wrong with its reference;
+ *   - a number younger than ORPHAN_MIN_AGE_MS is skipped and counted as
+ *     `young_unmatched`: an in-flight rental or swap has ordered its number
+ *     before the row carries the e164 (`complete_line_swap` writes it last);
+ *   - a number a `line_number_swaps` row still owns (old number whose release
+ *     has not landed) belongs to the swap drain above, not to this sweep.
+ *  Plus MAX_ORPHANS per run: a sweep that suddenly wants to delete fifty
+ *  numbers is a bug in the matching, not fifty orphans.
  */
-async function findOrphans(sb: ReturnType<typeof admin>): Promise<OrphanResult> {
-  const empty: OrphanResult = { list: [], releasedCount: 0, enabled: false, error: null };
+async function findOrphans(
+  sb: ReturnType<typeof admin>, swapOwned: Set<string>,
+): Promise<OrphanResult> {
+  const empty: OrphanResult = {
+    list: [], releasedCount: 0, enabled: false, error: null, young: 0,
+  };
 
   const { data: flag } = await sb.from("app_config")
     .select("value").eq("key", "line_orphan_release_enabled").maybeSingle();
@@ -252,33 +275,41 @@ async function findOrphans(sb: ReturnType<typeof admin>): Promise<OrphanResult> 
     return { ...empty, enabled, error: `${owned.type}` };
   }
 
-  const refs = owned
-    .map((n) => n.reference)
-    .filter((r): r is string => !!r && UUID_RE.test(r));
-
-  // One query for every referenced line, rather than one per number.
-  const known = new Map<string, string>();
-  if (refs.length) {
-    const { data: rows, error } = await sb.from("phone_lines")
-      .select("id, status").in("id", refs);
-    if (error) return { ...empty, enabled, error: error.message };
-    for (const r of rows ?? []) known.set(String(r.id), String(r.status));
+  // Every row that still holds a number, by e164 AND by id. Small table.
+  const { data: rows, error } = await sb.from("phone_lines")
+    .select("id, e164, status")
+    .not("status", "in", "(released,failed)");
+  if (error) return { ...empty, enabled, error: error.message };
+  const liveE164 = new Set<string>();
+  const liveIds = new Set<string>();
+  for (const r of rows ?? []) {
+    if (r.e164) liveE164.add(String(r.e164));
+    liveIds.add(String(r.id));
   }
 
+  const cutoff = Date.now() - ORPHAN_MIN_AGE_MS;
   const list: OrphanResult["list"] = [];
+  let young = 0;
   for (const n of owned) {
+    if (liveE164.has(n.e164)) continue;      // held by a live line
+    if (swapOwned.has(n.id)) continue;       // the swap drain owns it
+    const created = n.createdAt ? new Date(n.createdAt).getTime() : NaN;
+    // An unreadable timestamp is treated as young: skipping costs one more
+    // sweep, releasing a number mid-order costs a customer their line.
+    if (!Number.isFinite(created) || created > cutoff) { young++; continue; }
     const ref = n.reference;
-    if (!ref || !UUID_RE.test(ref)) continue;   // never ours to judge
-    const status = known.get(ref);
-    if (status === undefined) {
-      list.push({ id: n.id, e164: n.e164, reference: ref, why: "no_line_row" });
-    } else if (status === "released" || status === "failed") {
-      list.push({ id: n.id, e164: n.e164, reference: ref, why: `line_${status}` });
-    }
+    const why = !ref
+      ? "no_reference"
+      : !UUID_RE.test(ref)
+        ? "non_uuid_reference"
+        : liveIds.has(ref)
+          ? "reference_live_but_number_replaced"
+          : "reference_no_live_line";
+    list.push({ id: n.id, e164: n.e164, reference: ref, why });
   }
 
   if (!enabled || list.length === 0) {
-    return { list, releasedCount: 0, enabled, error: null };
+    return { list, releasedCount: 0, enabled, error: null, young };
   }
 
   let releasedCount = 0;
@@ -293,7 +324,7 @@ async function findOrphans(sb: ReturnType<typeof admin>): Promise<OrphanResult> 
     releasedCount++;
     console.log(JSON.stringify({ line_orphan_released: o.e164, why: o.why }));
   }
-  return { list, releasedCount, enabled, error: null };
+  return { list, releasedCount, enabled, error: null, young };
 }
 
 /** Ops ping. NOT the exactly-once `telegram_events` claim shape used for
