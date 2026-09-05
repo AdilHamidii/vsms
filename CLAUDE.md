@@ -4502,13 +4502,19 @@ owner fixed billing and the two campaigns were CREATED the same day**
 (`create-number-campaigns --yes`): `2144619440` "vSMS Number US" (3 ad
 groups, 27 exact keywords) and `2144617614` "vSMS WhatsApp EU" (DE/FR/ES/
 IT/NL/GB, 5 ad groups, 30 exact keywords), €10/day each, 26 negatives
-each, every keyword read back. **Bids are €1.50 on every ad group and every
-keyword of all 7 ENABLED vRoam + vSMS campaigns (owner decision 2026-09-05
-evening; 15 ad groups, 506 keywords, all read back).** They were created at
-€0.40–0.90 fixed CPT, and at those bids the whole account won **6 auctions
-lifetime** (all vSMS Number US, 0 taps, €0) — the dashboard read as dead.
-Daily budgets were NOT raised (€66/day cap across the 7); the plan doc's
-"no bid above €1.00" rule is superseded. The old EN/EU temp-SMS campaigns
+each, every keyword read back. **Bids are TIERED by intent (owner decision
+2026-09-05 evening; 15 ad groups, 506 keywords, ad-group default AND every
+keyword, all read back):** vSMS US "Second number" + "WhatsApp" **€1.50**;
+vRoam exact Destinations / Buy intent / Problem-aware / EU destinations
+**€1.20**; vSMS EU DE/FR/ES/IT/EN-intl **€1.00**; vSMS US Conquest
+(competitor brands) **€0.80**; vRoam broad seeds + Search-match research
+**€0.70**; vRoam Brand **€0.50**. They were created at €0.40–0.90 fixed CPT,
+and at those bids the whole account won **6 auctions lifetime** (all vSMS
+Number US, 0 taps, €0) — the dashboard read as dead; a flat €1.50 was
+applied for ~1h and then tiered because broad/discovery groups at €1.50 buy
+junk queries fast. Daily budgets were NOT raised (€66/day cap across the 7);
+the plan doc's "no bid above €1.00" rule is superseded. Read live bids with
+`asa.py keywords <c> <g>`, never from this line. The old EN/EU temp-SMS campaigns
 stay PAUSED as the control. Kill rules are in the plan doc; the 30-day stop
 is ≥ 1 paid sub per €25 spent.
 🔴 **Two ASA facts that cost an afternoon on 2026-09-05 — do not re-learn

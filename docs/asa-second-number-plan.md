@@ -121,11 +121,17 @@ back. The old EN/EU campaigns stay paused as the temp-SMS control.
 
 > **Bids below are the LAUNCH values and are superseded.** At €0.40–0.90 the
 > whole account won 6 auctions in its first day (all US, 0 taps, €0), so on
-> the evening of 2026-09-05 the owner raised **every ad group default and
-> every keyword bid to €1.50** across all 7 enabled vRoam + vSMS campaigns
-> (15 ad groups, 506 keywords, read back). Daily budgets are unchanged and
-> remain the hard cap. Read live bids with `asa.py keywords <c> <g>`; the
-> tables keep the launch numbers only to record the reasoning.
+> the evening of 2026-09-05 the owner raised bids across all 7 enabled
+> vRoam + vSMS campaigns (15 ad groups, 506 keywords — ad-group default and
+> every keyword, read back), **tiered by intent**: US Second-number +
+> WhatsApp €1.50 · vRoam exact (Destinations, Buy intent, Problem-aware, EU
+> destinations) €1.20 · EU WhatsApp DE/FR/ES/IT/EN-intl €1.00 · US Conquest
+> €0.80 · vRoam broad seeds + Search-match research €0.70 · vRoam Brand
+> €0.50. Rationale: second-price auction means the max rarely binds on cheap
+> terms, but broad/discovery groups at a high max buy irrelevant taps fast,
+> and competitor-brand searches convert worst. Daily budgets are unchanged
+> and remain the hard cap. Read live bids with `asa.py keywords <c> <g>`;
+> the tables keep the launch numbers only to record the reasoning.
 
 ### A · "vSMS Number US" — US only — **€10/day**
 
