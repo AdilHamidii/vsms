@@ -4501,11 +4501,28 @@ reads as an unbilled account; billing is gate zero before any spend. **The
 owner fixed billing and the two campaigns were CREATED the same day**
 (`create-number-campaigns --yes`): `2144619440` "vSMS Number US" (3 ad
 groups, 27 exact keywords) and `2144617614` "vSMS WhatsApp EU" (DE/FR/ES/
-IT/NL/GB, 5 ad groups, 30 exact keywords), €10/day each, FIXED CPT bids
-(0.40–0.90), 26 negatives each, every keyword read back. The old EN/EU
-temp-SMS campaigns stay PAUSED as the control. Kill rules are in the plan
-doc; the 30-day stop is ≥ 1 paid sub per €25 spent. ASA
-tooling runs from `/Users/adyl` with
+IT/NL/GB, 5 ad groups, 30 exact keywords), €10/day each, 26 negatives
+each, every keyword read back. **Bids are €1.50 on every ad group and every
+keyword of all 7 ENABLED vRoam + vSMS campaigns (owner decision 2026-09-05
+evening; 15 ad groups, 506 keywords, all read back).** They were created at
+€0.40–0.90 fixed CPT, and at those bids the whole account won **6 auctions
+lifetime** (all vSMS Number US, 0 taps, €0) — the dashboard read as dead.
+Daily budgets were NOT raised (€66/day cap across the 7); the plan doc's
+"no bid above €1.00" rule is superseded. The old EN/EU temp-SMS campaigns
+stay PAUSED as the control. Kill rules are in the plan doc; the 30-day stop
+is ≥ 1 paid sub per €25 spent.
+🔴 **Two ASA facts that cost an afternoon on 2026-09-05 — do not re-learn
+them:** (1) **`APPSTORE_SEARCH_RESULTS` campaigns take NO ad objects.**
+`GET …/adgroups/{id}/ads` returns `[]` for every healthy Search Results
+group; that is normal, not the reason for zero impressions. `POST …/ads`
+answers `AD_CAMPAIGN_SUPPLY_SOURCES_NOT_SUPPORTED`. Diagnose zero delivery
+from `servingStateReasons`, bids and age — never from the ad count.
+(2) Two `DEFAULT_PRODUCT_PAGE` creatives exist as a by-product of that wrong
+hypothesis (vSMS `4064308`, vRoam `4062164`); they are inert and the API
+cannot delete them (`DELETE /creatives/{id}` → 403 "Only internal users").
+Also: `POST /creatives/find` takes the selector fields at the TOP LEVEL
+(`conditions`, `pagination`, …) — wrapping them in `"selector"` is a 500.
+ASA tooling runs from `/Users/adyl` with
 `ASA_PRIVATE_KEY=/Users/adyl/private-key.pem` (the key in `~/.searchads/` is
 a different pair and fails `invalid_client`).
 

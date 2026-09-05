@@ -119,6 +119,14 @@ Two new campaigns, **fixed CPT bids** (`pricingModel: CPC`, per-keyword
 `bidAmount`), Search Results placement only, EXACT match, every write read
 back. The old EN/EU campaigns stay paused as the temp-SMS control.
 
+> **Bids below are the LAUNCH values and are superseded.** At €0.40–0.90 the
+> whole account won 6 auctions in its first day (all US, 0 taps, €0), so on
+> the evening of 2026-09-05 the owner raised **every ad group default and
+> every keyword bid to €1.50** across all 7 enabled vRoam + vSMS campaigns
+> (15 ad groups, 506 keywords, read back). Daily budgets are unchanged and
+> remain the hard cap. Read live bids with `asa.py keywords <c> <g>`; the
+> tables keep the launch numbers only to record the reasoning.
+
 ### A · "vSMS Number US" — US only — **€10/day**
 
 | ad group | bid | keywords |
@@ -226,4 +234,9 @@ scale, on **€ per paid subscription** only (`attribution_summary()`).
 
 Not doing: touching the paused temp-SMS campaigns (they are the control),
 Search Match / Search Tab (awareness placements with no query behind them),
-LATAM, or any bid above €1.00.
+or LATAM. ~~any bid above €1.00~~ — superseded 2026-09-05: bids are €1.50
+(see the note under §4); the €10/day budgets, not the bid, are the cap.
+
+Also learned day 1: Search Results campaigns take **no ad objects** — an
+empty `…/ads` list is normal and is NOT why impressions are zero. Zero
+delivery on a `RUNNING` campaign with no `servingStateReasons` is bids/age.
