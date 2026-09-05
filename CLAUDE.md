@@ -4447,6 +4447,22 @@ Not built: a `/attribution` Telegram command. `attribution_summary()` is the
 payoff and is queryable by hand; the bot surface needs a formatter in
 `_shared/opsFormat.ts` and is worth doing once there is data in the table.
 
+**2026-09-05: `attribution_summary()` also returns `line_subs` and
+`line_paid`** (migration `20260905120000`; DROP + CREATE because the
+RETURNS TABLE shape changed) — per-user existence counts over
+`line_subscriptions`, so an ASA keyword can be judged on the SUBSCRIPTION it
+bought, not only on credit packs. Built for the second-number campaign the
+owner asked for that day; the plan, the keyword scores per storefront, the
+kill rules and the honest breakeven (≈ €0.49/install at today's conversion,
+against €0.60 EU / €1.38 US CPA) are in **`docs/asa-second-number-plan.md`**.
+State found that day: every vSMS campaign PAUSED (EN by user; EU's ad group
+hit its end date), 8 attributed installs / 0 buyers lifetime, and the
+sibling app's five ENABLED campaigns at 0 impressions in 30 days — which
+reads as an unbilled account; billing is gate zero before any spend. ASA
+tooling runs from `/Users/adyl` with
+`ASA_PRIVATE_KEY=/Users/adyl/private-key.pem` (the key in `~/.searchads/` is
+a different pair and fails `invalid_client`).
+
 ### Behavioural analytics + device geography (2026-08-28)
 
 Built to diagnose the 08-17 organic surge (signups doubled, buyer rate fell
