@@ -230,11 +230,24 @@ struct LineAPI {
     /// nil-means-oldest fallback is worse than a failure, and it is worse
     /// again here: guessing wrong would give away a number the user is still
     /// using.
-    func swapNumber(lineId: String) async throws -> LineSwapResult {
-        struct Body: Encodable { let line_id: String }
+    ///
+    /// `phoneNumber` / `country` / `city` name the number the user CHOSE in
+    /// the picker (2026-09-05). The server re-quotes it through the same walk
+    /// the picker ran and refuses `number_taken` if it is gone — the number
+    /// is a request, never a fact. All three nil is the legacy same-area-code
+    /// reroll shipped in 2.8, kept server-side for that build.
+    func swapNumber(lineId: String, phoneNumber: String? = nil,
+                    country: String? = nil, city: String? = nil) async throws -> LineSwapResult {
+        struct Body: Encodable {
+            let line_id: String
+            let phone_number: String?
+            let country: String?
+            let city: String?
+        }
         return try await client.request(
             .post, path: "functions/v1/swap-line-number",
-            body: Body(line_id: lineId)
+            body: Body(line_id: lineId, phone_number: phoneNumber,
+                       country: country, city: city)
         )
     }
 

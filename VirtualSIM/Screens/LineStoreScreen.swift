@@ -319,116 +319,24 @@ struct LineStoreScreen: View {
         }
     }
 
-    /// One candidate number, presented as a contact card.
-    ///
-    /// `PeerAvatar` is the same deterministic circle the recents and thread
-    /// rows use, keyed on the E.164 — so the colour a user sees beside a number
-    /// here is the colour it keeps on the checkout hero and, once bought,
-    /// everywhere in the tab. That continuity is the whole reason to spend the
-    /// leading slot on it: it makes the number feel like a thing being adopted
-    /// rather than a row in a stock list.
-    ///
-    /// ⚠️ **No price is rendered here, deliberately.** `monthlyCents` /
-    /// `upfrontCents` on this model are the WHOLESALE quote — the cost book,
-    /// which the app never shows a user — and the retail figure is the same
-    /// subscription price on every row, so printing it would be noise on top
-    /// of a leak. The price is stated once below this list, and in full on
+    /// One candidate number — `LineOfferRow`, shared with the swap picker
+    /// (`LineSwapSheet`). No price on the row, deliberately: see the row's own
+    /// doc. The price is stated once above this list and in full on
     /// `LineCheckoutScreen`, which is the 3.1.2(a) surface.
     private func numberRow(_ offer: LineNumberOffer) -> some View {
-        Button {
+        LineOfferRow(offer: offer) {
             Analytics.shared.track("line_number_picked", [
                 "country": .string(offer.countryCode ?? state.lineCountry ?? "unknown")])
             state.lineOffer = offer
             state.intent = .line
             state.flow = .lineCheckout
-        } label: {
-            Card(radius: RRadius.md, elevation: .raised) {
-                HStack(spacing: 13) {
-                    PeerAvatar(e164: offer.phoneNumber, size: 42)
-                    VStack(alignment: .leading, spacing: 5) {
-                        Text(PhoneFormat.national(offer.phoneNumber))
-                            .font(RFont.mono(18, weight: .medium))
-                            .foregroundStyle(theme.text)
-                            .minimumScaleFactor(0.8)
-                            .lineLimit(1)
-                        offerCapabilities(offer)
-                    }
-                    Spacer(minLength: 0)
-                    Image(systemName: RIcon.chev)
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundStyle(theme.text3)
-                }
-                .padding(.horizontal, 14)
-                .padding(.vertical, 14)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .contentShape(.rect)
-            }
-        }
-        .buttonStyle(PressScaleStyle(scale: 0.98, dim: true))
-    }
-
-    /// What THIS number can do, when Telnyx told us.
-    ///
-    /// `features` is optional on the model because the deployed server does not
-    /// always send it, and an absent list means "we do not know" — never "it
-    /// cannot". So the strip renders nothing at all rather than four gray
-    /// glyphs, which would read as a number that does nothing. When the list IS
-    /// present the same rule as the country strip applies: green means
-    /// supported, gray means not, never red. The region, when the search names
-    /// one, stands in when there are no features to show.
-    @ViewBuilder
-    private func offerCapabilities(_ offer: LineNumberOffer) -> some View {
-        if offer.features != nil {
-            HStack(spacing: 9) {
-                capabilityIcon("phone.fill", on: offer.supports("voice") == true,
-                               label: String(localized: "Calls"))
-                capabilityIcon("message.fill", on: offer.supports("sms") == true,
-                               label: String(localized: "Texts"))
-                capabilityIcon("photo.fill", on: offer.supports("mms") == true,
-                               label: String(localized: "Picture messages"))
-                capabilityIcon("cross.case.fill", on: offer.supports("emergency") == true,
-                               label: String(localized: "Emergency calls"))
-            }
-        } else if let region = offer.region, !region.isEmpty {
-            Text(verbatim: region)
-                .font(RFont.text(12))
-                .foregroundStyle(theme.text2)
-                .lineLimit(1)
         }
     }
 
-    /// Real rows at the real height, so the section does not jump when it
-    /// fills. A spinner gives no sense of what is coming; these do. Three of
-    /// them, matching `visibleOffers` — a five-row skeleton resolving to three
-    /// rows is a collapse, which reads as something having gone wrong.
+    /// Three rows, matching `visibleOffers` — a five-row skeleton resolving to
+    /// three rows is a collapse, which reads as something having gone wrong.
     private var numberSkeleton: some View {
-        VStack(spacing: 8) {
-            ForEach(0..<Self.visibleOffers, id: \.self) { i in
-                RoundedRectangle(cornerRadius: RRadius.md, style: .continuous)
-                    .fill(theme.elev)
-                    // Matches the contact card exactly — 42pt avatar plus 14+14
-                    // of padding — so the list does not jump as it fills.
-                    .frame(height: 70)
-                    .overlay(alignment: .leading) {
-                        HStack(spacing: 13) {
-                            Circle()
-                                .fill(theme.chipBg)
-                                .frame(width: 42, height: 42)
-                            VStack(alignment: .leading, spacing: 7) {
-                                RoundedRectangle(cornerRadius: 4)
-                                    .fill(theme.chipBg)
-                                    .frame(width: 140, height: 15)
-                                RoundedRectangle(cornerRadius: 3)
-                                    .fill(theme.chipBg)
-                                    .frame(width: 72, height: 10)
-                            }
-                        }
-                        .padding(.leading, 14)
-                    }
-                    .opacity(1 - Double(i) * 0.15)
-            }
-        }
-        .transition(.opacity)
+        LineOfferSkeleton(rows: Self.visibleOffers)
     }
 
     /// Carried here AND on checkout, deliberately twice.
@@ -499,21 +407,11 @@ struct LineStoreScreen: View {
     }
 
     private var unavailableTitle: LocalizedStringKey {
-        switch state.lineUnavailableReason {
-        case .paused:  "Second numbers are unavailable"
-        case .noStock: "No numbers here right now"
-        case .countryNotSellable: "We don't sell numbers here yet"
-        default:       "We couldn't load any numbers"
-        }
+        LineUnavailableCopy.title(for: state.lineUnavailableReason)
     }
 
     private var unavailableBody: LocalizedStringKey {
-        switch state.lineUnavailableReason {
-        case .paused:  "We've paused new numbers while we make some improvements. Check back soon."
-        case .noStock: "Stock moves through the day. Another city will have some."
-        case .countryNotSellable: "We're working on this country. Another one is ready now."
-        default:       "Check your connection and try again."
-        }
+        LineUnavailableCopy.body(for: state.lineUnavailableReason)
     }
 
     // MARK: - The place sheet
@@ -552,122 +450,22 @@ struct LineStoreScreen: View {
         .background(theme.bg)
     }
 
-    /// Only sellable countries count toward "is there a choice here". A list
-    /// of one buyable country and eleven grayed ones is a wall of "no"
-    /// standing between the user and the only thing they can actually do — so
-    /// with a single sellable country the sheet opens straight on the cities
-    /// and the grayed rows are simply not shown anywhere.
-    private var sellableCountries: [LineCountry] {
-        state.lineCountries.filter(\.isAvailable)
-    }
+    /// See `Array<LineCountry>.sellable` — one sellable country means the
+    /// sheet opens straight on the cities and the grayed rows are not shown.
+    private var sellableCountries: [LineCountry] { state.lineCountries.sellable }
 
-    private var showsCountryStep: Bool { sellableCountries.count > 1 }
+    private var showsCountryStep: Bool { state.lineCountries.offersCountryChoice }
 
-    /// Available first, then A–Z by the name the reader actually sees. Sorting
-    /// by the server's English `country_name` would scramble the order on
-    /// every non-English locale.
-    private var sortedCountries: [LineCountry] {
-        state.lineCountries.sorted {
-            if $0.isAvailable != $1.isAvailable { return $0.isAvailable }
-            return $0.displayName.localizedCaseInsensitiveCompare($1.displayName) == .orderedAscending
-        }
-    }
+    private var sortedCountries: [LineCountry] { state.lineCountries.pickerOrder }
 
     private var countryList: some View {
         Card(elevation: .flat) {
             VStack(spacing: 0) {
                 ForEach(Array(sortedCountries.enumerated()), id: \.element.id) { i, country in
-                    countryRow(country)
+                    LineCountryRow(country: country) { select(country) }
                     if i < sortedCountries.count - 1 { RowRule(inset: 16) }
                 }
             }
-        }
-    }
-
-    /// Flag, name, and what the number can DO.
-    ///
-    /// The capability strip is the whole point of showing unsellable countries
-    /// at all: a voice-only country is an honest "call out" line, and a user
-    /// who buys one expecting texts is a refund. Green means supported, GRAY
-    /// means not — never red. Red is an error, and a number that simply does
-    /// not carry MMS is not an error.
-    private func countryRow(_ country: LineCountry) -> some View {
-        Button {
-            select(country)
-        } label: {
-            HStack(spacing: 12) {
-                // A real flag asset rather than the emoji, at the 44pt leading
-                // slot every other list row in the redesigned tab uses — the
-                // emoji renders as a tofu box wherever the font lacks the pair,
-                // and `CodeFlag` cascades bundled PNG → flagcdn → emoji.
-                CodeFlag(code: country.countryCode, size: 34)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(verbatim: country.displayName)
-                        .font(RFont.display(16, weight: .semibold))
-                        .tracking(-0.3)
-                        .foregroundStyle(theme.text)
-                        .lineLimit(1)
-                    if !country.isAvailable {
-                        Text("Not available yet")
-                            .font(RFont.text(12))
-                            .foregroundStyle(theme.text3)
-                    }
-                }
-                Spacer(minLength: 8)
-                capabilityStrip(country)
-                if country.isAvailable {
-                    Image(systemName: RIcon.chev)
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundStyle(theme.text3)
-                }
-            }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 11)
-            .frame(minHeight: 56)
-            .contentShape(.rect)
-        }
-        .buttonStyle(PressScaleStyle())
-        .opacity(country.isAvailable ? 1 : 0.45)
-        .disabled(!country.isAvailable)
-        .accessibilityHint(country.isAvailable ? Text("") : Text(unavailableHint(country)))
-    }
-
-    /// Four glyphs, always all four, in a fixed order. A strip that only shows
-    /// what IS supported reads as a feature list and hides the absence — which
-    /// is the thing the buyer needs to see.
-    private func capabilityStrip(_ country: LineCountry) -> some View {
-        HStack(spacing: 9) {
-            capabilityIcon("phone.fill", on: country.canVoice,
-                           label: String(localized: "Calls"))
-            capabilityIcon("message.fill", on: country.canSms,
-                           label: String(localized: "Texts"))
-            capabilityIcon("photo.fill", on: country.canMms,
-                           label: String(localized: "Picture messages"))
-            capabilityIcon("cross.case.fill", on: country.canEmergency,
-                           label: String(localized: "Emergency calls"))
-        }
-    }
-
-    private func capabilityIcon(_ symbol: String, on: Bool, label: String) -> some View {
-        Image(systemName: symbol)
-            .font(.system(size: 12, weight: .semibold))
-            // `live` is the semantic success green, and that is exactly the
-            // claim being made here: this works. Absence is `text3`, the same
-            // muted ink every other "nothing to report" uses.
-            .foregroundStyle(on ? theme.live : theme.text3)
-            .opacity(on ? 1 : 0.55)
-            .accessibilityLabel(Text(verbatim: label))
-            .accessibilityValue(on ? Text("Supported") : Text("Not supported"))
-    }
-
-    /// The machine key becomes a sentence HERE, never on the server. Anything
-    /// unrecognised falls back to the vaguer line rather than rendering a raw
-    /// key — an untranslated `documents_required` on a French phone is worse
-    /// than saying less.
-    private func unavailableHint(_ country: LineCountry) -> LocalizedStringKey {
-        switch country.sellReason {
-        case "documents_required": "Requires local registration we don't support yet"
-        default:                   "Coming soon"
         }
     }
 
@@ -692,150 +490,43 @@ struct LineStoreScreen: View {
         changePlace(country: country.countryCode)
     }
 
-    /// The cities, as ONE grouped object.
-    ///
-    /// They were seven separate `theme.elev` cards with 8pt gaps — the pattern
-    /// every other list in this app avoids. `CountrySheet` and `ServiceSheet`
-    /// both put their rows inside a single `Card` divided by `RowRule`, which
-    /// is what makes a stack read as one list to choose from rather than seven
-    /// unrelated objects competing for the same tap.
-    ///
-    /// The rows stay deliberately plain. There is nothing honest to put on
-    /// them: `search-line-numbers` walks a city's area codes until one has
-    /// stock (416, 647, 514, 613 and 403 are all exhausted), so printing "437"
-    /// beside Toronto would promise digits the reservation may not deliver.
+    /// The cities, as ONE grouped object — a single `Card` divided by
+    /// `RowRule`, the shape every other list in this app uses. The rows are
+    /// `LineCityRow`, shared with the swap picker.
     private var cityList: some View {
         Card(elevation: .flat) {
             VStack(spacing: 0) {
                 ForEach(Array(state.lineCities.enumerated()), id: \.element.id) { i, city in
-                    cityRow(city)
+                    LineCityRow(city: city) {
+                        // Dismiss on the tap. The store behind the sheet already
+                        // holds the skeleton and fills in — leaving the sheet up
+                        // until the search returned would make the choice feel
+                        // unacknowledged.
+                        showsPlaceSheet = false
+                        changePlace(city: city.id)
+                    }
                     if i < state.lineCities.count - 1 { RowRule(inset: 16) }
                 }
             }
         }
     }
 
-    /// Cities, never area codes.
-    ///
-    /// Canada's prestige codes are exhausted — 416 and 647 (Toronto), 514
-    /// (Montreal), 613 (Ottawa) and 403 (Calgary) all return zero stock — while
-    /// their overlays are full. A raw area-code picker would offer "416 —
-    /// Toronto" and then fail, so the server takes a CITY and walks its codes
-    /// in order until one has stock.
-    private func cityRow(_ city: LineCity) -> some View {
-        Button {
-            // Dismiss on the tap. The store behind the sheet already holds the
-            // skeleton and fills in — leaving the sheet up until the search
-            // returned would make the choice feel unacknowledged.
-            showsPlaceSheet = false
-            changePlace(city: city.id)
-        } label: {
-            HStack(spacing: 12) {
-                // The same 34pt leading slot the country rows use, so the two
-                // lists read as one sequence rather than two list styles. A
-                // place glyph, not a flag: every city here is in the one
-                // country already chosen, so a repeated flag would be seven
-                // copies of the same information.
-                leadingTile("mappin.and.ellipse")
-                Text(city.label)
-                    .font(RFont.display(16, weight: .semibold))
-                    .tracking(-0.3)
-                    .foregroundStyle(theme.text)
-                Spacer(minLength: 8)
-                // The province is a disambiguator, not a second title — two
-                // Ontario rows (Toronto, Ottawa) are the only reason it is on
-                // screen at all. Trailing and secondary, so the column of city
-                // names stays the thing the eye scans.
-                Text(city.region)
-                    .font(RFont.text(13))
-                    .foregroundStyle(theme.text2)
-                    .lineLimit(1)
-                Image(systemName: RIcon.chev)
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(theme.text3)
-            }
-            .padding(.horizontal, 16)
-            // 11 + 11 around a 34pt tile clears the 44pt minimum target with
-            // room to spare; the explicit `minHeight` is what guarantees it if
-            // the tile ever shrinks.
-            .padding(.vertical, 11)
-            .frame(minHeight: 56)
-            .contentShape(.rect)
-        }
-        .buttonStyle(PressScaleStyle())
-    }
-
     /// Some countries have no curated cities — the server sells country-wide.
-    /// One honest row beats an empty list, which reads as "sold out".
     private var countryWide: some View {
-        Card(elevation: .flat) {
-            Button {
-                showsPlaceSheet = false
-                changePlace()
-            } label: {
-                HStack(spacing: 12) {
-                    leadingTile(RIcon.globe)
-                    Text(countryLabel.map { String(localized: "Anywhere in \($0)") }
-                         ?? String(localized: "Anywhere available"))
-                        .font(RFont.display(16, weight: .semibold))
-                        .tracking(-0.3)
-                        .foregroundStyle(theme.text)
-                    Spacer(minLength: 8)
-                    Image(systemName: RIcon.chev)
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundStyle(theme.text3)
-                }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 11)
-                .frame(minHeight: 56)
-                .contentShape(.rect)
-            }
-            .buttonStyle(PressScaleStyle())
+        LineCountryWideRow(countryLabel: countryLabel) {
+            showsPlaceSheet = false
+            changePlace()
         }
     }
 
-    /// The leading glyph slot shared by the city and country-wide rows.
-    ///
-    /// Sized to match `CodeFlag(size: 34)` exactly so a list that leads with a
-    /// flag and a list that leads with an icon put their titles on the same
-    /// x-position — the thing that makes the sheet feel like one screen
-    /// changing rather than two different lists.
-    private func leadingTile(_ symbol: String) -> some View {
-        Image(systemName: symbol)
-            .font(.system(size: 14, weight: .semibold))
-            .foregroundStyle(theme.text2)
-            .frame(width: 34, height: 34)
-            .background(theme.chipBg, in: .circle)
-    }
-
-    /// Same rhythm as the city rows it stands in for, at their height.
-    private var rowSkeleton: some View {
-        VStack(spacing: 8) {
-            ForEach(0..<4, id: \.self) { i in
-                RoundedRectangle(cornerRadius: RRadius.md, style: .continuous)
-                    .fill(theme.elev)
-                    .frame(height: 56)
-                    .opacity(1 - Double(i) * 0.18)
-            }
-        }
-        .transition(.opacity)
-    }
+    private var rowSkeleton: some View { LinePickerRowSkeleton() }
 
     // MARK: - Labels
 
-    /// The country the user is shopping in. Reads the SEARCH's answer first —
-    /// it is what the stock on screen came from — and the catalogue row only
-    /// as a fallback.
-    private var countryLabel: String? {
-        guard let iso = state.lineCountry else { return nil }
-        if let c = state.lineSearchCountry, c.countryCode == iso { return c.displayName }
-        return state.lineCountries.first { $0.countryCode == iso }?.displayName
-            ?? Locale.current.localizedString(forRegionCode: iso)
-    }
+    /// Shared with the swap picker — see `AppState.linePlaceCountryLabel`.
+    private var countryLabel: String? { state.linePlaceCountryLabel }
 
-    private var cityLabel: String? {
-        state.lineCities.first { $0.id == state.lineCity }?.label
-    }
+    private var cityLabel: String? { state.linePlaceCityLabel }
 
     /// What the store currently knows about the country being shopped. The
     /// search's own answer wins: it describes the stock on screen, and it is

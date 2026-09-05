@@ -60,6 +60,9 @@ private struct LiveLineView: View {
     @Environment(APIClient.self) private var api
     @Environment(SubscriptionStore.self) private var subs
     @Environment(CallController.self) private var calling
+    /// Threaded through `LineEnv` for the settings sheet, whose "Change
+    /// number" button opens a picker that can end on a credits top-up.
+    @Environment(IAPStore.self) private var iap
 
     let line: Line
 
@@ -129,7 +132,7 @@ private struct LiveLineView: View {
                 // objects from its presenter. `SubscriptionStore` in
                 // particular is a crash on presentation, not a blank screen.
                 .modifier(LineEnv(theme: theme, state: state, api: api,
-                                  subs: subs, calling: calling))
+                                  subs: subs, calling: calling, iap: iap))
                 .presentationDetents([.large])
                 .presentationDragIndicator(.visible)
                 .presentationBackground(theme.bg)
@@ -137,7 +140,7 @@ private struct LiveLineView: View {
         .sheet(item: $naming) { peer in
             PeerNameSheet(e164: peer.id)
                 .modifier(LineEnv(theme: theme, state: state, api: api,
-                                  subs: subs, calling: calling))
+                                  subs: subs, calling: calling, iap: iap))
                 .presentationDetents([.medium])
                 .presentationDragIndicator(.visible)
                 .presentationBackground(theme.bg)
@@ -553,6 +556,11 @@ struct LineEnv: ViewModifier {
     let api: APIClient
     let subs: SubscriptionStore
     let calling: CallController
+    /// Added 2026-09-05: `LineSwitchNumberButton` (rendered inside
+    /// `LineSettingsScreen`) presents a picker whose last page can open the
+    /// credits sheet, and `CreditsSheet` reads `IAPStore` from the
+    /// environment — a crash on presentation without it.
+    let iap: IAPStore
 
     func body(content: Content) -> some View {
         content
@@ -561,6 +569,7 @@ struct LineEnv: ViewModifier {
             .environment(api)
             .environment(subs)
             .environment(calling)
+            .environment(iap)
     }
 }
 

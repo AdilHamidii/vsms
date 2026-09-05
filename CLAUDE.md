@@ -2107,12 +2107,13 @@ Refocus (2.7, build 48): the Number tab sells "a real US/Canada number that
 receives your verification codes" — names ONLY services proven on a rented
 line (WhatsApp, TikTok, DoorDash — each has a real code in `line_messages`),
 states that some platforms refuse virtual numbers, and sells the switch
-(`line_swap_credits`, live) as the remedy with a full-width "Switch number ·
-N credits" button directly under the number. **Every plan / renewal /
-manage-subscription affordance is GONE from the Number tab**; Apple's
-manage-subscriptions sheet is reachable from **Account → Support** only.
-Calling stays, demoted to one secondary row. `LineSwitchNumberButton` is the
-single definition of the swap price/confirmation/call.
+(`line_swap_credits`, live) as the remedy with a full-width button directly
+under the number. **Every plan / renewal / manage-subscription affordance is
+GONE from the Number tab**; Apple's manage-subscriptions sheet is reachable
+from **Account → Support** only. Calling stays, demoted to one secondary row.
+`LineSwitchNumberButton` is the single entry point; since 2026-09-05 it reads
+**"Change number"** with NO price and opens `LineSwapSheet` — see "Swapping a
+line's number" for the choose-first-pay-last flow and why.
 **2.8 (2026-09-03, owner decision): the store is ONE screen, not four.**
 2.7's flow (pitch → country → city → number → checkout) measured 162
 `line_store_view` / 106 viewers / **0 subscriptions** in its first days, and
@@ -2389,12 +2390,60 @@ yearly's trial was removed the same week and then REINSTATED on 2026-08-27**
 — see the mail-subscription section; the LINE products are the ones with no
 trial, and that part of this section stands.
 
-### Swapping a line's number — 8 credits (2026-08-21, repriced 2026-08-23)
+### Swapping a line's number — 8 credits (2026-08-21, repriced 2026-08-23, picker 2026-09-05)
 
-`swap-line-number` replaces a rented line's phone number with a fresh one in
-the **same area code**, charging `app_config.line_swap_credits` — **8** as of
-2026-08-23 (was 5 at launch; `line_swap_cooldown_days` is **0**, i.e. no
-cooldown). Owner rule: **≥ 3× margin on the swap.** Cost basis is Telnyx's
+`swap-line-number` replaces a rented line's phone number with one the **user
+chooses** — country → city → number, the store's own picker — charging
+`app_config.line_swap_credits` — **8** as of 2026-08-23 (was 5 at launch;
+`line_swap_cooldown_days` is **0**, i.e. no cooldown).
+
+🔴 **CHOOSE FIRST, PAY LAST (owner decision 2026-09-05), and the button never
+names the price.** Until 2.8 the button read "Switch number · 8 credits", its
+confirm bought the first free number in the OLD area code, and `canSwap`
+never read the wallet — so a user with 6 credits was invited to tap an
+8-credit button and got 402 `insufficient_credits`. That was the first real
+swap complaint ("changing my number doesn't work", user `d580…`, 03:15Z; the
+swap then succeeded at 03:17Z after they freed 2 credits). Now:
+- `LineSwitchNumberButton` reads **"Change number"** (no figure; still hidden
+  when `lineSwapCredits` is nil — a sheet that cannot quote a price cannot ask
+  for money) and opens **`LineSwapSheet`**.
+- The sheet walks country → city → number using the SAME rows as the store
+  (`Components/LinePickerRows.swift` — `LineCountryRow`, `LineCityRow`,
+  `LineCountryWideRow`, `LineOfferRow`, skeletons, `LineUnavailableCopy`,
+  `AppState.linePlaceLabel`; extracted from `LineStoreScreen` so there is one
+  definition of a picker row). It reuses the Number tab's search state via
+  `AppState.loadLineNumbers` / `loadLineCountries`; the presenter calls
+  `clearLineDraft()` on dismiss so the store never inherits a swap's place.
+- The LAST page shows old → new, **price and balance**, the "given up for
+  good" warning, and ONE of two CTAs: **Switch** when `balance ≥ cost`, or
+  **"Top up · N more credits"** opening `CreditsSheet(needed: shortfall)` when
+  not. Nothing is ever offered that `begin_line_swap` would refuse for money.
+  Errors render INLINE (`state.showError` drives the root banner, which draws
+  under a sheet); `number_taken` bounces back to a fresh list.
+- **The server has TWO modes.** `phone_number` present ⇒ CHOSEN: re-quoted
+  through the same area-code/locality walk `rent-line-credits` uses, `number_taken`
+  if it is gone, all before the charge. Absent ⇒ LEGACY same-area-code
+  reroll, kept byte-for-byte because shipped 2.8 sends `{line_id}` alone.
+- **A country change is allowed in chosen mode and is gated as a NEW SALE**
+  (`sellableCountry()`, fails closed, `country_not_sellable`); a same-country
+  pick keeps the retention rule and is NOT gated (`searchProfileFor`). A
+  `requirement-info-pending` on a moved country self-heals the catalog
+  (`order_rejected`) exactly as the rental path does.
+- **`complete_line_swap` is now 8-arg** (`20260905100000`): `p_country`,
+  `p_number_type`, `p_locality`, `p_monthly_cost_cents`, all default null so
+  the old 4-arg bundle still resolves (DROP + CREATE, never `or replace` —
+  an overload makes PostgREST refuse the RPC). With a country it REPLACES
+  `locality` (null for country-wide) rather than coalescing — the old city
+  under a new flag is what the next swap would search on. The cost written
+  is the re-quote we PAY, and only when Telnyx quoted one (`costKnown`).
+- Funnel events: `line_swap_open`, `line_swap_numbers_shown`,
+  `line_swap_number_picked`, `line_swap_confirm_view{affordable,
+  changed_country}`, `line_swap_topup_shown{shortfall}`,
+  `line_swap_result{outcome, changed_country}`.
+- `LineEnv` now carries `IAPStore` (the settings sheet hosts the same button,
+  and `CreditsSheet` reads it from the environment — a crash without it).
+Client-side, so it ships with the next build; 2.8 users keep the blind
+same-area-code reroll and its 402. Owner rule: **≥ 3× margin on the swap.** Cost basis is Telnyx's
 flat **$1.00 upfront** per number (the new number's $1/month replaces the
 old one's); at the measured $0.40 net per credit, 8 credits nets $3.20 =
 3.2×. The old number's unused remainder of the month is sunk and not in
@@ -2439,11 +2488,18 @@ only record it is still ours. `release-lines` drains
 `line_orphan_release_enabled`, because an orphan is a number we cannot prove
 is unused while a swap row names exactly which number was replaced.
 
-Verified by `scripts/verify-line-swap.sql` — 10 behavioural groups in a
+Verified by `scripts/verify-line-swap.sql` — 11 behavioural groups in a
 rolled-back transaction, including double-cutover, double-refund,
-cross-user, and refuse-without-charge. ⚠️ **The Telnyx order/release half has
-never run against the live API** (doing so would spend float and give away a
-real customer's number); the call shapes are copied verbatim from
+cross-user, refuse-without-charge, a legacy cutover leaving country/locality
+untouched, and a chosen cutover moving them. ⚠️ **It reads the LIVE price
+from `app_config`** — it was pinned to the launch literal 5 and had been
+failing on its first assertion since the 08-23 reprice (found 2026-09-05; run
+it, don't trust the "verified" here). ✅ **The Telnyx order/release half HAS
+now run live: two real swaps on 2026-09-05** (`d580…` +19295430380 →
++19293090076, and the owner's credits line +14375243048 → +14375243093),
+both `done` in ~6s with the old number released. *(Historical: it was
+written from `reserve-line-number`'s proven shapes and untested until then;
+the note below is kept for that reason.)* The call shapes are copied verbatim from
 `reserve-line-number`, which is proven. **The first real swap is the probe.**
 
 ### Line country catalog — data-driven sellability (2026-08-27)

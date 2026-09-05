@@ -679,6 +679,46 @@
         }
       }
     },
+    "%@ is given up for good — you can't get it back, and anything still sending codes to it won't reach you.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ wird endgültig aufgegeben — du bekommst sie nicht zurück, und Codes an diese Nummer erreichen dich nicht mehr."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ se abandona para siempre: no podrás recuperarlo y los códigos que aún se envíen ahí no te llegarán."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ est abandonné définitivement — impossible de le récupérer, et les codes encore envoyés dessus ne vous parviendront pas."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ viene abbandonato per sempre: non potrai recuperarlo e i codici ancora inviati lì non ti arriveranno."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ は完全に手放されます。元に戻すことはできず、この番号に送られるコードは届きません。"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ será abandonado para sempre — você não poderá recuperá-lo, e códigos ainda enviados para ele não chegarão até você."
+          }
+        }
+      }
+    },
     "%@ left": {
       "localizations": {
         "de": {
@@ -7599,6 +7639,46 @@
         }
       }
     },
+    "Choose your new number": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Wähle deine neue Nummer"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Elige tu nuevo número"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Choisissez votre nouveau numéro"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Scegli il tuo nuovo numero"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "新しい番号を選ぶ"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Escolha seu novo número"
+          }
+        }
+      }
+    },
     "Claim": {
       "extractionState": "stale",
       "localizations": {
@@ -8202,6 +8282,46 @@
           "stringUnit": {
             "state": "translated",
             "value": "Confirme seu e-mail primeiro — enviamos um código."
+          }
+        }
+      }
+    },
+    "Confirm your new number": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Neue Nummer bestätigen"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Confirma tu nuevo número"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Confirmez votre nouveau numéro"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Conferma il tuo nuovo numero"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "新しい番号を確認"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Confirme seu novo número"
           }
         }
       }
@@ -10182,6 +10302,46 @@
           "stringUnit": {
             "state": "translated",
             "value": "Créditos gastos"
+          }
+        }
+      }
+    },
+    "Current": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aktuell"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Actual"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Actuel"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Attuale"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "現在"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Atual"
           }
         }
       }
@@ -13276,6 +13436,46 @@
           "stringUnit": {
             "state": "translated",
             "value": "Obtendo seu endereço"
+          }
+        }
+      }
+    },
+    "Getting your new number…": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Neue Nummer wird geholt…"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Obteniendo tu nuevo número…"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Obtention de votre nouveau numéro…"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Recupero del nuovo numero…"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "新しい番号を取得中…"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Obtendo seu novo número…"
           }
         }
       }
@@ -17404,6 +17604,46 @@
         }
       }
     },
+    "New": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Neu"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nuevo"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nouveau"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nuovo"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "新規"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Novo"
+          }
+        }
+      }
+    },
     "New accounts are paused right now. Try signing in with Apple.": {
       "localizations": {
         "de": {
@@ -20038,6 +20278,46 @@
         }
       }
     },
+    "Number changed": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nummer geändert"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Número cambiado"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Numéro changé"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Numero cambiato"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "番号を変更しました"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Número alterado"
+          }
+        }
+      }
+    },
     "Number is reserved for 20 minutes.": {
       "extractionState": "manual",
       "localizations": {
@@ -21907,6 +22187,46 @@
           "stringUnit": {
             "state": "translated",
             "value": "Escolha um país com porcentagem alta. É com que frequência os códigos chegam lá em toda a rede nos últimos 30 dias. Não é o nosso próprio registro de entrega."
+          }
+        }
+      }
+    },
+    "Pick a different number": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Andere Nummer wählen"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Elegir otro número"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Choisir un autre numéro"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Scegli un altro numero"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "別の番号を選ぶ"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Escolher outro número"
           }
         }
       }
@@ -24421,6 +24741,46 @@
           "stringUnit": {
             "state": "translated",
             "value": "Repita"
+          }
+        }
+      }
+    },
+    "Replacing %@": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ersetzt %@"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Reemplazando %@"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Remplace %@"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sostituisce %@"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ を置き換えます"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Substituindo %@"
           }
         }
       }
@@ -28205,6 +28565,46 @@
         }
       }
     },
+    "Switch to %@": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Zu %@ wechseln"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cambiar a %@"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Passer au %@"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Passa a %@"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ に切り替える"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mudar para %@"
+          }
+        }
+      }
+    },
     "Switch to a new number whenever you need": {
       "localizations": {
         "de": {
@@ -30976,6 +31376,46 @@
         }
       }
     },
+    "This is your number now. Share it wherever you used the old one — codes sent to the old number won't reach you.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Das ist jetzt deine Nummer. Teile sie überall, wo du die alte benutzt hast — Codes an die alte Nummer erreichen dich nicht mehr."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Este es tu número ahora. Compártelo donde usabas el anterior: los códigos enviados al número antiguo no te llegarán."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "C'est désormais votre numéro. Partagez-le partout où vous utilisiez l'ancien — les codes envoyés à l'ancien numéro ne vous parviendront pas."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Questo è il tuo numero adesso. Condividilo ovunque usavi quello vecchio: i codici inviati al vecchio numero non ti arriveranno."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "これがあなたの番号です。以前の番号を使っていた場所で共有してください。以前の番号に送られたコードは届きません。"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Este é o seu número agora. Compartilhe onde usava o antigo — códigos enviados ao número antigo não chegarão até você."
+          }
+        }
+      }
+    },
     "This number can't call 911 or any emergency service. Always use your phone's own number for emergencies.": {
       "localizations": {
         "de": {
@@ -32100,6 +32540,46 @@
           "stringUnit": {
             "state": "translated",
             "value": "Recarregar créditos"
+          }
+        }
+      }
+    },
+    "Top up · %lld more credits": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aufladen · noch %lld Credits"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Recargar · %lld créditos más"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Recharger · %lld crédits de plus"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ricarica · altri %lld crediti"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "チャージ · あと%lldクレジット"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Recarregar · mais %lld créditos"
           }
         }
       }
@@ -36047,6 +36527,46 @@
         }
       }
     },
+    "You need %lld more credits to switch.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dir fehlen noch %lld Credits für den Wechsel."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Necesitas %lld créditos más para cambiar."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Il vous manque %lld crédits pour changer."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ti servono altri %lld crediti per cambiare."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "切り替えにはあと%lldクレジット必要です。"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Você precisa de mais %lld créditos para mudar."
+          }
+        }
+      }
+    },
     "You only pay when the code arrives.": {
       "extractionState": "manual",
       "localizations": {
@@ -37111,6 +37631,46 @@
           "stringUnit": {
             "state": "translated",
             "value": "Seu número canadense só envia mensagens para números do Canadá por enquanto. Ele continua recebendo mensagens de qualquer lugar."
+          }
+        }
+      }
+    },
+    "Your balance": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dein Guthaben"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tu saldo"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Votre solde"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Il tuo saldo"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "残高"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Seu saldo"
           }
         }
       }

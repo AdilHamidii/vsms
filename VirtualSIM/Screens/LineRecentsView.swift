@@ -17,6 +17,7 @@ struct LineRecentsView: View {
     @Environment(APIClient.self) private var api
     @Environment(SubscriptionStore.self) private var subs
     @Environment(CallController.self) private var calling
+    @Environment(IAPStore.self) private var iap
 
     let line: Line
 
@@ -74,7 +75,7 @@ struct LineRecentsView: View {
         .sheet(item: $naming) { peer in
             PeerNameSheet(e164: peer.id)
                 .modifier(LineEnv(theme: theme, state: state, api: api,
-                                  subs: subs, calling: calling))
+                                  subs: subs, calling: calling, iap: iap))
                 .presentationDetents([.medium])
                 .presentationDragIndicator(.visible)
                 .presentationBackground(theme.bg)

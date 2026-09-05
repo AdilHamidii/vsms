@@ -1,20 +1,29 @@
 import SwiftUI
 
-/// "Switch number · N credits" — the one affordance the second-number product
-/// is built around since 2026-09-01 (owner decision): a number that receives
+/// "Change number" — the one affordance the second-number product is built
+/// around since 2026-09-01 (owner decision): a number that receives
 /// verification codes, and a fresh one for a few credits when a platform
 /// refuses the current one.
 ///
-/// It lived only behind the gear (in `LineSettingsScreen`) as "Change this
-/// number", beneath the plan card and next to "Manage subscription". It now
-/// renders on the live line itself, directly under the number, and the
-/// settings sheet reuses the same view so the confirmation, the price and the
-/// swap call have exactly one definition.
+/// It renders on the live line itself, directly under the number, and the
+/// settings sheet reuses the same view so the entry point has exactly one
+/// definition. What it opens is `LineSwapSheet`.
 ///
-/// Price rules, unchanged from the settings-sheet original:
+/// ── No price on the button (owner decision 2026-09-05) ────────────────────
+///
+/// It used to read "Switch number · 8 credits" and, on confirm, bought the
+/// first free number in the same area code without checking the wallet. The
+/// first real complaint ("changing my number doesn't work") was a user with 6
+/// credits tapping an 8-credit button and getting a 402. Now the button names
+/// the action only; the price, the balance and the top-up path live on the
+/// LAST page of the sheet, after the user has chosen a country, a city and a
+/// number — so nothing is ever offered that the server would refuse for money.
+///
+/// Price rules, unchanged:
 /// - `app_config.line_swap_credits` is read live (`state.appStatus`). NO client
-///   default — a stale price in a confirmation dialog is the "+3 credits" card
-///   that outlived its grant. Nil hides the button entirely.
+///   default — a stale price in a confirmation is the "+3 credits" card that
+///   outlived its grant. Nil hides the button entirely, because a sheet that
+///   cannot quote a price cannot ask for money honestly.
 /// - Only an ACTIVE line can be swapped; `begin_line_swap` refuses anything
 ///   else, and a button the server will refuse teaches the user the feature
 ///   is broken.
@@ -22,6 +31,7 @@ struct LineSwitchNumberButton: View {
     @Environment(\.theme) private var theme
     @Environment(AppState.self) private var state
     @Environment(APIClient.self) private var api
+    @Environment(IAPStore.self) private var iap
 
     let line: Line
     /// `.primary` is the filled capsule for the live-line screen; `.ghost` is
@@ -30,8 +40,7 @@ struct LineSwitchNumberButton: View {
 
     enum Style { case primary, ghost }
 
-    @State private var confirming = false
-    @State private var swapping = false
+    @State private var choosing = false
     /// The number we moved to, held only long enough to confirm it on screen.
     /// Without this the row simply changes underneath the user and nothing
     /// says the thing they paid for actually happened.
@@ -45,23 +54,17 @@ struct LineSwitchNumberButton: View {
             VStack(alignment: .leading, spacing: 8) {
                 switch style {
                 case .primary:
-                    PrimaryButton(label: swapping
-                                  ? String(localized: "Getting a new number…")
-                                  : String(localized: "Switch number · \(cost) credits"),
-                                  icon: "arrow.triangle.2.circlepath",
-                                  disabled: swapping) {
+                    PrimaryButton(label: String(localized: "Change number"),
+                                  icon: "arrow.triangle.2.circlepath") {
                         RHaptic.select()
-                        confirming = true
+                        choosing = true
                     }
                 case .ghost:
-                    GhostButton(label: swapping
-                                ? String(localized: "Getting a new number…")
-                                : String(localized: "Switch number · \(cost) credits"),
+                    GhostButton(label: String(localized: "Change number"),
                                 icon: "arrow.triangle.2.circlepath") {
                         RHaptic.select()
-                        confirming = true
+                        choosing = true
                     }
-                    .disabled(swapping)
                 }
 
                 if let to = swappedTo {
@@ -71,48 +74,25 @@ struct LineSwitchNumberButton: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
-            // The one fact that has to survive being skim-read: the current
-            // number is gone for good. A released number goes into a
-            // hold-then-aging path nobody can pull it back from. Anyone still
-            // receiving codes on it must be told BEFORE they tap, not after.
-            .alert(String(localized: "Switch to a new number?"), isPresented: $confirming) {
-                Button(String(localized: "Cancel"), role: .cancel) { }
-                Button(String(localized: "Switch number"), role: .destructive) {
-                    Task { await performSwap() }
-                }
-            } message: {
-                Text("You'll get a new number in the same area code for \(cost) credits. \(PhoneFormat.national(line.e164)) is given up for good — you can't get it back, and anything still sending codes to it won't reach you.")
+            // The picker borrows the Number tab's search state; on the way out
+            // it is cleared so the store never inherits a swap's country, city
+            // or offers. `clearLineDraft` is the same reset the tab runs on
+            // leaving — the dialer cannot be open under this sheet, so the
+            // call-price fields it also clears are already idle.
+            .sheet(isPresented: $choosing, onDismiss: { state.clearLineDraft() }) {
+                LineSwapSheet(line: line, cost: cost) { swappedTo = $0 }
+                    // 🔴 Sheet content does NOT inherit `@Observable`
+                    // environment objects from its presenter. `IAPStore` is
+                    // what the top-up path inside needs, and it is a crash on
+                    // presentation rather than a blank screen.
+                    .environment(\.theme, theme)
+                    .environment(state)
+                    .environment(api)
+                    .environment(iap)
+                    .presentationDetents([.large])
+                    .presentationDragIndicator(.visible)
+                    .presentationBackground(theme.bg)
             }
-        }
-    }
-
-    /// Buy a replacement number for this line.
-    ///
-    /// `swapping` is the re-entrancy guard as well as the button's busy state.
-    /// Reloading the line afterwards is not cosmetic: every other surface —
-    /// the header, the share sheet, the thread list — reads `state.lines`, so
-    /// skipping it leaves the whole tab showing a number we just gave away.
-    @MainActor
-    private func performSwap() async {
-        guard !swapping else { return }
-        swapping = true
-        swappedTo = nil
-        defer { swapping = false }
-
-        do {
-            let result = try await LineAPI(client: api).swapNumber(lineId: line.id)
-            await state.loadLine(using: LineAPI(client: api))
-            // The wallet moved, and the credits pill reads AppState.
-            await state.refreshWallet(using: WalletAPI(client: api))
-            swappedTo = result.phoneNumber
-            RHaptic.success()
-        } catch let error as APIError {
-            // Every failure path server-side refunds before returning, so the
-            // banner is the whole story — there is no "and you were charged"
-            // case to explain.
-            state.showError(error)
-        } catch {
-            state.lastError = APIError.badResponse.userMessage
         }
     }
 }
