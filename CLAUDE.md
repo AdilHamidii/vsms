@@ -2618,6 +2618,22 @@ SET** — today no such field exists on `line_calls`.
 
 ### Support chat — user types in-app, owner answers from Telegram (2026-07-30)
 
+🔴 **THE IN-APP CHAT IS GONE FROM THE CLIENT AS OF 2.9 (owner decision
+2026-09-05). Support is a `wa.me` deep link to the owner's WhatsApp Business
+(`LegalLinks.supportWhatsAppE164` = `+14375243093` — the owner's OWN rented
+vSMS line, verified with WhatsApp Business).** Two entry points, both
+client-only: Account → Support → "Message us on WhatsApp", and a "Have any
+questions? Contact support on WhatsApp" card at the bottom of Home. The
+prefilled first message carries the build and the first 8 chars of the user
+id so the account can be found without asking. `SupportChatScreen.swift` and
+`SupportAPI.swift` are DELETED. **Everything below — the tables,
+`support-send`, the Telegram relay, `/support`, the Accept button — stays
+deployed** because 2.8 and older still send through it; do not tear it down
+until 2.9 is adopted. Why: the Telegram path was answered late or not at all
+(a refund request sat 11 days unanswered; the 09-05 swap complaint was
+answered 2h25m later), and WhatsApp is where the owner actually is.
+*Historical below.*
+
 `support_threads` + `support_messages`, `support-send`, and a widened
 `telegram-webhook`. Built at this size because the measured failure is
 impatience: cancels land at a median of 57s while codes land at 58s, and a human
@@ -4974,8 +4990,8 @@ refused.
   (`grep -rn 'value: "\*"' VirtualSIM/Networking` must return nothing). The
   lists live next to the fetch that uses them — `CatalogAPI.serviceColumns` /
   `.countryColumns` (routes was already explicit), `OrdersAPI.columns`,
-  `EsimOrdersAPI.orderColumns`, `EmailAPI.orderColumns`, and the inline list in
-  `SupportAPI.messages()`. Each is exactly the decoding model's stored
+  `EsimOrdersAPI.orderColumns`, `EmailAPI.orderColumns` (the inline list in
+  `SupportAPI.messages()` went with that file on 2026-09-05). Each is exactly the decoding model's stored
   properties — a column dropped from one of these lists makes an OPTIONAL
   property silently nil and throws on a non-optional one, so re-derive the list
   from the model whenever the model changes. **The server-side revoke must still

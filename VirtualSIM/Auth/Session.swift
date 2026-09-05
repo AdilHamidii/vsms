@@ -21,6 +21,14 @@ final class Session {
     /// does not, and offering the row would be a dead end.
     var isEmailUser: Bool { providers.contains("email") }
 
+    /// The signed-in user's id, nil otherwise. For surfaces that want to
+    /// mention the account without owning the status enum (the WhatsApp
+    /// support prefill).
+    var userId: String? {
+        if case .signedIn(let id) = status { return id }
+        return nil
+    }
+
     private var refreshToken: String?
     private let api: APIClient
     private let auth: AuthAPI

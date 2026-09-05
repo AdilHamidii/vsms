@@ -37,6 +37,7 @@ struct HomeScreen: View {
     @Environment(\.theme) private var theme
     @Environment(AppState.self) private var state
     @Environment(APIClient.self) private var api
+    @Environment(Session.self) private var session
     // Home renders the e-mail price, so it needs the same entitlement input the
     // domain sheet uses. Without it Home said "Free" to a user whose one free
     // address was already spent, and the tap was refused into a paywall.
@@ -125,6 +126,16 @@ struct HomeScreen: View {
                         .padding(.top, 26)
                         .riseIn(appeared, index: 4)
                 }
+
+                // Last, and on the launch surface on purpose (owner decision
+                // 2026-09-05): the question people have is "is my code
+                // coming?", and it is asked here, in the first session, at
+                // the moment they are about to give up. The row opens the
+                // WhatsApp Business inbox the owner actually reads.
+                supportRow
+                    .padding(.horizontal, 16)
+                    .padding(.top, 26)
+                    .riseIn(appeared, index: 5)
             }
             .padding(.top, 8)
             .padding(.bottom, 140)
@@ -827,6 +838,43 @@ struct HomeScreen: View {
                 }
             }
         }
+    }
+
+    /// "Have any questions?" → WhatsApp. Same card shape as `esimTeaser`, so
+    /// it reads as one more thing the app offers rather than an alert. The
+    /// prefilled message carries the build and a short account id
+    /// (`LegalLinks.supportWhatsApp`), so the owner never has to ask.
+    private var supportRow: some View {
+        Button {
+            RHaptic.select()
+            Analytics.shared.track("support_whatsapp_open", ["source": .string("home")])
+            UIApplication.shared.open(LegalLinks.supportWhatsApp(userId: session.userId))
+        } label: {
+            HStack(spacing: 12) {
+                Image(systemName: "message.fill")
+                    .font(.system(size: 18, weight: .medium))
+                    .foregroundStyle(theme.accent2)
+                    .frame(width: 40, height: 40)
+                    .background(theme.inkSoft, in: .rect(cornerRadius: RRadius.sm))
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Have any questions?")
+                        .font(RFont.display(15, weight: .semibold))
+                        .tracking(-0.2)
+                        .foregroundStyle(theme.text)
+                    Text("Contact support on WhatsApp")
+                        .font(RFont.text(12))
+                        .foregroundStyle(theme.text2)
+                }
+                Spacer(minLength: 0)
+                Image(systemName: RIcon.chev)
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(theme.text3)
+            }
+            .padding(14)
+            .background(theme.elev, in: .rect(cornerRadius: RRadius.md))
+            .contentShape(.rect)
+        }
+        .pressable()
     }
 
     /// Entry point into the eSIM line from Home.

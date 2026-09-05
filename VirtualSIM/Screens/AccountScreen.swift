@@ -45,7 +45,6 @@ struct AccountScreen: View {
 
     var openCredits: () -> Void
 
-    @State private var showSupport = false
     @State private var showChangePassword = false
     @State private var showDeleteConfirm = false
     @State private var deleteInProgress = false
@@ -97,11 +96,6 @@ struct AccountScreen: View {
             profileChecked = true
         }
         .onDisappear { restoreTask?.cancel() }
-        .sheet(isPresented: $showSupport) {
-            SupportChatScreen()
-                .environment(\.theme, theme)
-                .environment(api)
-        }
         // A sheet rather than a `FlowStage`: changing a password is a settings
         // errand, not one of the app's product flows, and it has no business
         // in the enum that drives the full-screen cover.
@@ -572,8 +566,14 @@ struct AccountScreen: View {
                     // "is my code coming?", which is the question people
                     // actually have, and it is asked at the exact moment they
                     // are about to cancel a working order.
-                    SettingRow(label: "Chat with us", icon: "bubble.left.and.bubble.right.fill",
-                               onTap: { showSupport = true })
+                    //
+                    // WhatsApp since 2.9 (owner decision 2026-09-05). The
+                    // in-app chat relayed to Telegram and sat unanswered; a
+                    // `wa.me` link lands in the inbox the owner actually
+                    // reads. The prefilled text carries the build and a short
+                    // account id — see `LegalLinks.supportWhatsApp`.
+                    SettingRow(label: "Message us on WhatsApp", icon: "message.fill",
+                               onTap: { open(LegalLinks.supportWhatsApp(userId: session.userId)) })
                     SettingRow(label: "Help center", icon: "questionmark.circle",
                                onTap: { open(LegalLinks.help) })
                     // A user-triggerable recovery for a purchase whose

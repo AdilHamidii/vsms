@@ -8447,6 +8447,46 @@
         }
       }
     },
+    "Contact support on WhatsApp": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Support über WhatsApp kontaktieren"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Contacta con soporte por WhatsApp"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Contactez le support sur WhatsApp"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Contatta il supporto su WhatsApp"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "WhatsAppでサポートに連絡"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Fale com o suporte no WhatsApp"
+          }
+        }
+      }
+    },
     "Continue": {
       "extractionState": "manual",
       "localizations": {
@@ -13723,6 +13763,86 @@
         }
       }
     },
+    "Great for WhatsApp": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ideal für WhatsApp"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ideal para WhatsApp"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Idéal pour WhatsApp"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ideale per WhatsApp"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "WhatsAppに最適"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ideal para WhatsApp"
+          }
+        }
+      }
+    },
+    "Great for WhatsApp and WhatsApp Business verification": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ideal zur Verifizierung von WhatsApp und WhatsApp Business"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ideal para verificar WhatsApp y WhatsApp Business"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Idéal pour vérifier WhatsApp et WhatsApp Business"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ideale per verificare WhatsApp e WhatsApp Business"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "WhatsAppやWhatsApp Businessの認証に最適"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ideal para verificar o WhatsApp e o WhatsApp Business"
+          }
+        }
+      }
+    },
     "Green": {
       "localizations": {
         "de": {
@@ -13919,6 +14039,46 @@
           "stringUnit": {
             "state": "translated",
             "value": "Tem um código de convite?"
+          }
+        }
+      }
+    },
+    "Have any questions?": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hast du Fragen?"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "¿Tienes preguntas?"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Des questions ?"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hai domande?"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ご質問はありますか？"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tem alguma dúvida?"
           }
         }
       }
@@ -16747,6 +16907,46 @@
           "stringUnit": {
             "state": "translated",
             "value": "Mensagem"
+          }
+        }
+      }
+    },
+    "Message us on WhatsApp": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Schreib uns auf WhatsApp"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Escríbenos por WhatsApp"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Écrivez-nous sur WhatsApp"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Scrivici su WhatsApp"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "WhatsAppで問い合わせる"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Fale conosco no WhatsApp"
           }
         }
       }
@@ -33809,6 +34009,46 @@
           "stringUnit": {
             "state": "translated",
             "value": "Verificação em andamento"
+          }
+        }
+      }
+    },
+    "Verify WhatsApp or WhatsApp Business with it — also works with TikTok, DoorDash and most other apps. The code lands here, with one tap to copy it.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Verifiziere damit WhatsApp oder WhatsApp Business — funktioniert auch mit TikTok, DoorDash und den meisten anderen Apps. Der Code landet hier, mit einem Tipp kopiert."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Verifica WhatsApp o WhatsApp Business con él; también funciona con TikTok, DoorDash y la mayoría de las apps. El código llega aquí y se copia con un toque."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vérifiez WhatsApp ou WhatsApp Business avec ce numéro — fonctionne aussi avec TikTok, DoorDash et la plupart des applis. Le code arrive ici, copié en un geste."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Verifica WhatsApp o WhatsApp Business con questo numero: funziona anche con TikTok, DoorDash e la maggior parte delle app. Il codice arriva qui, un tocco per copiarlo."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "WhatsAppやWhatsApp Businessの認証に使えます。TikTok、DoorDashなどほとんどのアプリにも対応。コードはここに届き、ワンタップでコピーできます。"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Verifique o WhatsApp ou o WhatsApp Business com ele — também funciona com TikTok, DoorDash e a maioria dos apps. O código chega aqui, com um toque para copiar."
           }
         }
       }

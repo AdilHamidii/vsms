@@ -425,6 +425,15 @@ struct LineCheckoutScreen: View {
                     //
                     // Figures come from `LineProduct`, the single client-side
                     // mirror of the schema defaults — never inline literals.
+                    //
+                    // WhatsApp first (owner decision 2026-09-05): the service
+                    // these numbers verify most reliably, with real codes in
+                    // `line_messages` behind the claim. Mirrors the store
+                    // pitch; keep the two in step.
+                    BenefitRow(icon: "checkmark.seal.fill",
+                               label: "Great for WhatsApp and WhatsApp Business verification",
+                               tint: theme.live)
+                    RowRule()
                     BenefitRow(icon: RIcon.message,
                                label: "Receive texts and verification codes from US and Canadian senders")
                     RowRule()

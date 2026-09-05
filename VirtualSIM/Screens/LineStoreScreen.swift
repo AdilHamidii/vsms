@@ -208,18 +208,34 @@ struct LineStoreScreen: View {
     private var pitch: some View {
         Card(elevation: .raised) {
             VStack(alignment: .leading, spacing: 0) {
+                // WhatsApp, named first and on its own line (owner decision
+                // 2026-09-05): it is the service these numbers verify most
+                // reliably — real codes in `line_messages`, and the owner's
+                // own WhatsApp Business runs on one. `live` green because that
+                // is the claim: this works. It is the one service singled out;
+                // anything else added here needs the same evidence.
+                HStack(spacing: 6) {
+                    Image(systemName: "checkmark.seal.fill")
+                        .font(.system(size: 12, weight: .semibold))
+                    Text("Great for WhatsApp")
+                        .font(RFont.text(12, weight: .semibold))
+                }
+                .foregroundStyle(theme.live)
+                .padding(.horizontal, 16)
+                .padding(.top, 16)
+                .padding(.bottom, 6)
+
                 Text("A real US or Canadian number that receives your verification codes.")
                     .font(RFont.display(17, weight: .semibold))
                     .tracking(-0.3)
                     .foregroundStyle(theme.text)
                     .fixedSize(horizontal: false, vertical: true)
                     .padding(.horizontal, 16)
-                    .padding(.top, 18)
                     .padding(.bottom, 8)
 
                 // Only proven names. Adding a service here requires a real
                 // code on a rented line, not a guess.
-                Text("Works with WhatsApp, TikTok, DoorDash and most other apps. The code lands here, with one tap to copy it.")
+                Text("Verify WhatsApp or WhatsApp Business with it — also works with TikTok, DoorDash and most other apps. The code lands here, with one tap to copy it.")
                     .font(RFont.text(13))
                     .lineSpacing(2)
                     .foregroundStyle(theme.text2)
