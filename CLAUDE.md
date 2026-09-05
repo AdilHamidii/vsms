@@ -2116,7 +2116,11 @@ from **Account → Support** only. Calling stays, demoted to one secondary row.
 line's number" for the choose-first-pay-last flow and why.
 **2.8 (2026-09-03, owner decision): the store is ONE screen, not four.**
 2.7's flow (pitch → country → city → number → checkout) measured 162
-`line_store_view` / 106 viewers / **0 subscriptions** in its first days, and
+`line_store_view` / 106 viewers / **0 subscriptions** in its first days
+(⚠️ **confounded — found 2026-09-05: the store was refusing EVERY country as
+`country_not_sellable` for most of that window; see "THE STORE WAS DARK" in
+the line country catalog section. Re-measure before drawing conclusions from
+the 2.7 numbers.**), and
 the line was the only product with NO funnel event between "opened the tab"
 and "subscribed". `LineStoreScreen` now renders pitch + three real numbers +
 the price on one scroll (default place = the device storefront country when
@@ -2516,6 +2520,34 @@ from all three functions). Clients read the **views** `line_country_menu` /
 record and are service-role-only. Bootstrapped 2026-08-26: 125 rows, 3
 sellable (US, CA, PR — all $1.00/mo except PR $3.00), GB/DE/FR/NL/PL/AU
 blocked `documents_required` (3–6 docs each).
+
+🔴 **THE STORE WAS DARK IN EVERY COUNTRY FOR ~5 OF THE FIRST 9 DAYS, AND
+NOTHING PAGED (found 2026-09-05 when the owner hit it by hand).**
+`sellableCountry()` fails closed when `coverage_checked_at` or (no approved
+group) `requirements_checked_at` is older than
+`line_country_catalog_max_age_hours` = **48**; `sync-line-countries`
+re-probed requirements every **7 days**. Two constants in two files, never
+reconciled: every sellable country went "We don't sell numbers here yet"
+48h after its probe and stayed there until the weekly sweep came round.
+Measured from function logs (`line_catalog_stale`): **89 refusals on 08-30,
+97 on 09-01, 53 on 09-02**, and 03:40–06:51Z on 09-05. ⚠️ **That is the
+whole window in which 2.7's store was measured at "162 views / 0
+subscriptions" and redesigned on that evidence** — the redesign may still be
+right, but the measurement was of a store answering "not sold here" to
+everyone. The watchdog stayed green because `line-country-catalog-stale`
+tests the sync HEARTBEAT, and the sync was running fine; it just was not
+touching the rows that mattered. Fixed the same day:
+- `sync-line-countries` now re-probes every `sellable` row whose
+  requirements stamp is older than **half the gate** (`SELLABLE_REPROBE_
+  FRACTION = 0.5`, reading `loadLineCatalogConfig().maxAgeHours`), FIRST in
+  each run, before the priority list and the weekly rotation. The two
+  constants are now tied in one place.
+- `watchdog_line_catalog_checks()` gained **`line-country-sellable-stale`**
+  (`20260905110000`): a STATE check mirroring `sellableCountry()`'s exact
+  predicate over the sellable rows. It fired on the live state before the
+  re-probe and cleared after — verified, not assumed. Copy in `tgAlert.ts`.
+- Rule for the future: **a freshness gate and the job that keeps it fresh
+  must reference the same number.** Check the state, not just the heartbeat.
 
 Rules that are load-bearing:
 - **A country sells ⇔ probed AND (zero ordering documents OR an APPROVED

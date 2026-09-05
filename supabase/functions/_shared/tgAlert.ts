@@ -208,6 +208,11 @@ export const WATCHDOG_COPY: Record<string, WatchdogCopy> = {
     what: (d) => `The country catalog has stopped refreshing. ${esc(d)}`,
     action: "Check relay-sync-line-countries — every sell state, capability flag and wholesale sample the store shows is being served from an old probe, and a country Telnyx has since closed still reads sellable.",
   },
+  "line-country-sellable-stale": {
+    group: "Lines", sev: "🔴",
+    what: (d) => `The Number store is refusing every country. ${esc(d)}`,
+    action: "A sellable row's probe is past the 48h gate, so search/reserve/verify all answer country_not_sellable while the sync heartbeat looks fine. Run sync-line-countries now (it re-probes sellable rows first); this is the 2026-09-05 outage.",
+  },
   "line-country-none-sellable": {
     group: "Lines", sev: "🔴",
     what: (d) => `No country can sell a second number. ${esc(d)}`,

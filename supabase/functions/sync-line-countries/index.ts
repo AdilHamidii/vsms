@@ -26,6 +26,7 @@
 
 import { handleCors, json } from "../_shared/cors.ts";
 import { admin } from "../_shared/supabaseAdmin.ts";
+import { loadLineCatalogConfig } from "../_shared/lineCatalog.ts";
 import {
   faultOf,
   getCountryCoverage,
@@ -54,8 +55,20 @@ const REQ_SPACING_MS = 450;
 const SAMPLES_PER_RUN = 10;
 const SAMPLE_SPACING_MS = 450;
 
-/** Re-probe a country's paperwork when the reading is older than this. */
+/** Re-probe a country's paperwork when the reading is older than this —
+ *  for rows we are NOT selling. */
 const REQUIREMENTS_MAX_AGE_DAYS = 7;
+
+/** 🔴 SELLABLE rows are re-probed on a much shorter leash: at HALF the gate's
+ *  `line_country_catalog_max_age_hours`, so the daily run always refreshes
+ *  them before `sellableCountry()` starts refusing. This is the fix for the
+ *  outage found 2026-09-05: the weekly cadence above versus the 48h gate meant
+ *  every sellable country went dark 48h after its probe and stayed dark until
+ *  the sweep came round — measured 89/97/53 `line_catalog_stale` refusals on
+ *  08-30, 09-01 and 09-02, i.e. the ENTIRE "2.7 sold nothing" window, plus
+ *  three hours on 09-05 before anyone noticed. The gate and the sweep are two
+ *  constants in two files; this is the one place that ties them together. */
+const SELLABLE_REPROBE_FRACTION = 0.5;
 
 /** Bootstrap/ops convenience: these are probed FIRST regardless of rotation,
  *  because they are the countries the product actually depends on today.
@@ -209,6 +222,22 @@ Deno.serve(async (req) => {
       .order("last_checked_at", { ascending: true })
       .limit(limit);
 
+  // FIRST: every row we currently SELL whose probe is past half the gate's
+  // max age. Three rows today; the whole product depends on them being fresh,
+  // and the weekly rotation below has no idea the gate exists.
+  const gate = await loadLineCatalogConfig(sb);
+  const sellableCutoff = new Date(
+    Date.now() - gate.maxAgeHours * SELLABLE_REPROBE_FRACTION * 3_600_000,
+  ).toISOString();
+  const { data: freshRows, error: freshErr } = await sb.from("line_country_catalog")
+    .select("country_code, number_type")
+    .in("number_type", NUMBER_TYPES as unknown as string[])
+    .eq("sell_state", "sellable")
+    .or(`requirements_checked_at.is.null,requirements_checked_at.lt.${sellableCutoff}`)
+    .order("requirements_checked_at", { ascending: true, nullsFirst: true })
+    .limit(REQ_PER_RUN);
+  if (freshErr) faults.push(`requirements_select_sellable: ${freshErr.message}`);
+
   const { data: prioRows, error: prioErr } = priority.length
     ? await dueQuery(REQ_PER_RUN).in("country_code", priority)
     : { data: [], error: null };
@@ -219,11 +248,13 @@ Deno.serve(async (req) => {
 
   const key = (r: { country_code: string; number_type: string }) =>
     `${r.country_code}:${r.number_type}`;
-  const taken = new Set((prioRows ?? []).map(key));
-  const due = [
-    ...(prioRows ?? []),
-    ...(restRows ?? []).filter((r) => !taken.has(key(r))),
-  ];
+  const taken = new Set<string>();
+  const due: Array<{ country_code: string; number_type: string }> = [];
+  for (const r of [...(freshRows ?? []), ...(prioRows ?? []), ...(restRows ?? [])]) {
+    if (taken.has(key(r))) continue;
+    taken.add(key(r));
+    due.push(r);
+  }
   const ordered = due.slice(0, REQ_PER_RUN);
 
   let reqOk = 0;
