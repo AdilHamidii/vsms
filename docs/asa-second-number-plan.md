@@ -207,15 +207,22 @@ Ads cannot fix a €0.49 breakeven. These can, and each is a small release:
    (attribution resolves after boot), but the store is already reachable in
    one tap and now works.
 
-## 7. What "go" executes
+## 7. Executed 2026-09-05 (owner: "billing fixed, go ahead with both")
 
-1. You fix billing at ads.apple.com and confirm one vRoam campaign shows
-   impressions the next day (proof the account serves again).
-2. `scripts/asa.py create-number-campaigns` (to be added: A + B above, all
-   keywords with bids, both negative lists, read-back of every id) — dry run
-   first, then `--yes`.
-3. Day 1: confirm impressions > 0 on both campaigns; day 7 and 14: the rules
-   in §5; day 30: stop or scale, on **€ per paid subscription** only.
+`scripts/asa.py create-number-campaigns --yes` created, and read back:
+
+| campaign | id | ad groups | keywords | state |
+|---|---|---|---|---|
+| vSMS Number US | **2144619440** | `2150866068` WhatsApp · `2150867040` Second number · `2150865771` Conquest | 27 | ENABLED / RUNNING, €10/day |
+| vSMS WhatsApp EU | **2144617614** | `2150866615` DE · `2150867343` FR · `2150867590` ES · `2150866468` IT · `2150865817` EN intl | 30 | ENABLED / RUNNING, €10/day |
+
+Every keyword count read back equal to what was sent; negatives 20 broad + 6
+exact per campaign. The old vSMS EN / EU campaigns remain PAUSED as the
+temp-SMS control.
+
+Next: day 1 confirm impressions > 0 on both (`report 1`) — if zero, it is
+billing again, not keywords; day 7 and 14: the rules in §5; day 30: stop or
+scale, on **€ per paid subscription** only (`attribution_summary()`).
 
 Not doing: touching the paused temp-SMS campaigns (they are the control),
 Search Match / Search Tab (awareness placements with no query behind them),

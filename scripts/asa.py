@@ -877,12 +877,181 @@ def cmd_rewrite_keywords():
     print("it is 38.3% today, and organic on the same page does 68.4%.")
 
 
+# ------------------------------------------ the second-number campaigns (2026-09-05)
+# Plan, scores and kill rules: docs/asa-second-number-plan.md. Two NEW campaigns
+# with FIXED CPT bids (pricingModel CPC + per-keyword bidAmount) so a keyword
+# can actually be steered — the old EN campaign is MAX_CONVERSIONS and has no
+# bid knob. The old EN/EU campaigns stay paused as the temp-SMS control.
+#
+# Keywords are EXACT only. Bids are in the org currency (EUR). Every write is
+# read back below; this account answers HTTP 200 to writes it ignores.
+
+NUMBER_DAILY_BUDGET = 10          # per campaign → €20/day total
+
+NUMBER_US = {
+    "name": "vSMS Number US",
+    "countries": ["US"],
+    "adgroups": [
+        ("WhatsApp — exact", 0.90, [
+            "second number for whatsapp", "virtual number for whatsapp",
+            "whatsapp number", "number for whatsapp business",
+            "whatsapp verification number",
+        ]),
+        ("Second number — exact", 0.80, [
+            "second phone number", "second number", "2nd phone number",
+            "burner number", "burner phone", "temporary phone number",
+            "virtual phone number", "private number", "us phone number",
+            "canada phone number", "phone number app",
+        ]),
+        ("Conquest — exact", 0.45, [
+            "burner", "hushed", "textnow", "text free", "2ndline", "sideline",
+            "line2", "phoner", "dingtone", "talkatone", "google voice alternative",
+        ]),
+    ],
+}
+
+NUMBER_EU = {
+    "name": "vSMS WhatsApp EU",
+    "countries": ["DE", "FR", "ES", "IT", "NL", "GB"],
+    "adgroups": [
+        ("DE — exact", 0.45, [
+            "zweite whatsapp nummer", "virtuelle nummer whatsapp", "whatsapp nummer",
+            "virtuelle nummer", "temporäre nummer", "us nummer",
+        ]),
+        ("FR — exact", 0.45, [
+            "deuxième numéro whatsapp", "numéro virtuel whatsapp", "numéro whatsapp",
+            "numéro virtuel", "numéro temporaire", "numéro jetable",
+        ]),
+        ("ES — exact", 0.40, [
+            "segundo número whatsapp", "número virtual whatsapp", "número whatsapp",
+            "número virtual", "número temporal", "recibir sms",
+        ]),
+        ("IT — exact", 0.40, [
+            "secondo numero whatsapp", "numero virtuale whatsapp",
+            "numero temporaneo whatsapp", "numero virtuale", "numero temporaneo",
+            "ricevere sms",
+        ]),
+        ("EN intl — exact", 0.50, [
+            "second number for whatsapp", "virtual number for whatsapp",
+            "whatsapp number", "virtual number", "us phone number",
+            "second phone number",
+        ]),
+    ],
+}
+
+# The two campaigns share one negative list. `esim` / `data plan` keep vSMS out
+# of the sibling app's auctions; the EXACT set blocks bare navigational brand
+# searches ONLY — a BROAD "whatsapp" would kill "whatsapp verification number".
+NUMBER_NEGATIVES_BROAD = NEGATIVES + ["spy", "esim", "data plan"]
+NUMBER_NEGATIVES_EXACT = NEGATIVES_EXACT
+
+
+def _create_number_campaign(tok, org, spec):
+    """Create one campaign + ad groups + keywords + negatives, reading back each.
+    Returns (campaign_id, [(adgroup_id, name, wanted, live)])."""
+    body = {
+        "name": spec["name"],
+        "adamId": ADAM_ID,
+        "countriesOrRegions": spec["countries"],
+        "dailyBudgetAmount": _eur(NUMBER_DAILY_BUDGET),
+        "billingEvent": "TAPS",
+        # Search Results ONLY — the Search Tab has no query behind it.
+        "supplySources": ["APPSTORE_SEARCH_RESULTS"],
+        "adChannelType": "SEARCH",
+        "status": "ENABLED",
+    }
+    code, res = call("POST", "/campaigns", tok, org, body=body)
+    if code not in (200, 201):
+        die(f"campaign '{spec['name']}' create failed HTTP {code}: {json.dumps(res)[:500]}")
+    cid = res["data"]["id"]
+    print(f"campaign {cid} '{spec['name']}' created "
+          f"({','.join(spec['countries'])}, {NUMBER_DAILY_BUDGET} {CURRENCY}/day)")
+
+    code, res = call("POST", f"/campaigns/{cid}/negativekeywords/bulk", tok, org,
+                     body=[{"text": t, "matchType": "BROAD"} for t in NUMBER_NEGATIVES_BROAD]
+                        + [{"text": t, "matchType": "EXACT"} for t in NUMBER_NEGATIVES_EXACT])
+    print(f"  negatives -> HTTP {code}")
+
+    start = time.strftime("%Y-%m-%dT00:00:00.000")
+    groups = []
+    for name, bid, kws in spec["adgroups"]:
+        gbody = {"name": name, "startTime": start,
+                 "defaultBidAmount": _eur(bid),
+                 "automatedKeywordsOptIn": False,
+                 "pricingModel": "CPC", "status": "ENABLED"}
+        code, res = call("POST", f"/campaigns/{cid}/adgroups", tok, org, body=gbody)
+        if code not in (200, 201):
+            print(f"  adgroup '{name}' FAILED HTTP {code}: {json.dumps(res)[:300]}")
+            continue
+        gid = res["data"]["id"]
+        code, res = call(
+            "POST", f"/campaigns/{cid}/adgroups/{gid}/targetingkeywords/bulk", tok, org,
+            body=[{"text": t, "matchType": "EXACT", "bidAmount": _eur(bid),
+                   "status": "ACTIVE"} for t in kws])
+        # READ BACK — the only evidence that counts on this API.
+        rc, live = call("GET", f"/campaigns/{cid}/adgroups/{gid}/targetingkeywords?limit=1000",
+                        tok, org)
+        live_n = len((live.get("data") or [])) if rc == 200 else -1
+        print(f"  adgroup {gid} '{name}' bid {bid} {CURRENCY}: "
+              f"{len(kws)} keywords sent (HTTP {code}), {live_n} live")
+        groups.append((gid, name, len(kws), live_n))
+    return cid, groups
+
+
+def cmd_create_number_campaigns():
+    """Stand up the two second-number campaigns from docs/asa-second-number-plan.md."""
+    for spec in (NUMBER_US, NUMBER_EU):
+        n_kw = sum(len(k) for _, _, k in spec["adgroups"])
+        print(f"{spec['name']}: {','.join(spec['countries'])} · "
+              f"{NUMBER_DAILY_BUDGET} {CURRENCY}/day · {len(spec['adgroups'])} ad groups · "
+              f"{n_kw} exact keywords")
+        for name, bid, kws in spec["adgroups"]:
+            print(f"    {name:<24} bid {bid:.2f}  {len(kws):>2} kw  e.g. \"{kws[0]}\"")
+    print(f"negatives: {len(NUMBER_NEGATIVES_BROAD)} broad + {len(NUMBER_NEGATIVES_EXACT)} exact, per campaign")
+    total_kw = sum(len(k) for spec in (NUMBER_US, NUMBER_EU) for _, _, k in spec["adgroups"])
+    total_groups = sum(len(spec["adgroups"]) for spec in (NUMBER_US, NUMBER_EU))
+    if not _confirm(f"would create 2 campaigns, {total_groups} ad groups, "
+                    f"{total_kw} keywords, negatives"):
+        return
+
+    tok = access_token()
+    org = org_id(tok)
+    code, existing = call("GET", "/campaigns?limit=1000", tok, org)
+    names = {c.get("name") for c in (existing.get("data") or [])} if code == 200 else set()
+    for spec in (NUMBER_US, NUMBER_EU):
+        if spec["name"] in names:
+            die(f"campaign '{spec['name']}' already exists — edit it, do not duplicate it")
+
+    results = [_create_number_campaign(tok, org, spec) for spec in (NUMBER_US, NUMBER_EU)]
+
+    # Final read-back: status + serving state per campaign, straight from the API.
+    print("\nread-back:")
+    code, data = call("GET", "/campaigns?limit=1000", tok, org)
+    by_id = {str(c["id"]): c for c in (data.get("data") or [])} if code == 200 else {}
+    bad = []
+    for cid, groups in results:
+        c = by_id.get(str(cid), {})
+        print(f"  {cid} {c.get('name')}: status {c.get('status')} · "
+              f"serving {c.get('servingStatus')} {c.get('servingStateReasons') or ''} · "
+              f"daily {money(c.get('dailyBudgetAmount'))}")
+        for gid, name, wanted, live in groups:
+            if wanted != live:
+                bad.append(f"{cid}/{gid} '{name}': sent {wanted} keywords, {live} live")
+    if bad:
+        print(f"  ✗ {len(bad)} discrepancy(ies):")
+        for b in bad:
+            print(f"      {b}")
+        sys.exit(1)
+    print("  ✓ every keyword read back. Check impressions tomorrow: ./scripts/asa.py report 1")
+
+
 COMMANDS = {
     "doctor": cmd_doctor, "acls": cmd_acls, "campaigns": cmd_campaigns,
     "adgroups": cmd_adgroups, "keywords": cmd_keywords, "report": cmd_report,
     "consolidate": cmd_consolidate, "create-us": cmd_create_us,
     "budget": cmd_budget, "optimize-us": cmd_optimize_us,
     "rewrite-keywords": cmd_rewrite_keywords,
+    "create-number-campaigns": cmd_create_number_campaigns,
 }
 
 

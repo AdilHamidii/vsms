@@ -4458,7 +4458,14 @@ against €0.60 EU / €1.38 US CPA) are in **`docs/asa-second-number-plan.md`**
 State found that day: every vSMS campaign PAUSED (EN by user; EU's ad group
 hit its end date), 8 attributed installs / 0 buyers lifetime, and the
 sibling app's five ENABLED campaigns at 0 impressions in 30 days — which
-reads as an unbilled account; billing is gate zero before any spend. ASA
+reads as an unbilled account; billing is gate zero before any spend. **The
+owner fixed billing and the two campaigns were CREATED the same day**
+(`create-number-campaigns --yes`): `2144619440` "vSMS Number US" (3 ad
+groups, 27 exact keywords) and `2144617614` "vSMS WhatsApp EU" (DE/FR/ES/
+IT/NL/GB, 5 ad groups, 30 exact keywords), €10/day each, FIXED CPT bids
+(0.40–0.90), 26 negatives each, every keyword read back. The old EN/EU
+temp-SMS campaigns stay PAUSED as the control. Kill rules are in the plan
+doc; the 30-day stop is ≥ 1 paid sub per €25 spent. ASA
 tooling runs from `/Users/adyl` with
 `ASA_PRIVATE_KEY=/Users/adyl/private-key.pem` (the key in `~/.searchads/` is
 a different pair and fails `invalid_client`).
