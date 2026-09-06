@@ -96,8 +96,12 @@ extension ScreenshotMode {
         let now = Date()
         return Line(
             id: "sample-line",
-            e164: "+14375550128",
-            countryCode: "CA",
+            // A US number since 2026-09-06: the store defaults every reader to
+            // the US and the listing leads with "USA", so the owned-number
+            // frames show the same country the store sells first. 555-01xx is
+            // the reserved fictional range in every NANP area code.
+            e164: "+12125550128",
+            countryCode: "US",
             numberType: "local",
             status: .active,
             currentPeriodStart: now.addingTimeInterval(-11 * 86_400),
@@ -139,12 +143,12 @@ extension ScreenshotMode {
                        lastPreview: "Your verification code is 123456",
                        unreadCount: 2, blocked: false,
                        createdAt: now.addingTimeInterval(-3_600)),
-            LineThread(id: "t2", lineId: "sample-line", peerE164: "+14165550199",
+            LineThread(id: "t2", lineId: "sample-line", peerE164: "+13105550199",
                        lastMessageAt: now.addingTimeInterval(-2_400),
                        lastPreview: "Is the bike still available?",
                        unreadCount: 0, blocked: false,
                        createdAt: now.addingTimeInterval(-86_400)),
-            LineThread(id: "t3", lineId: "sample-line", peerE164: "+16135550144",
+            LineThread(id: "t3", lineId: "sample-line", peerE164: "+13125550144",
                        lastMessageAt: now.addingTimeInterval(-7_200),
                        lastPreview: "Sorry, running 10 min late",
                        unreadCount: 0, blocked: false,
@@ -169,8 +173,8 @@ extension ScreenshotMode {
                  _ ago: TimeInterval) -> LineMessage {
             LineMessage(
                 id: id, threadId: "t1", lineId: "sample-line", direction: dir,
-                e164From: dir == .inbound ? "+18885550111" : "+14375550128",
-                e164To: dir == .inbound ? "+14375550128" : "+18885550111",
+                e164From: dir == .inbound ? "+18885550111" : "+12125550128",
+                e164To: dir == .inbound ? "+12125550128" : "+18885550111",
                 body: body, status: .delivered, segments: 1,
                 sentAt: dir == .outbound ? now.addingTimeInterval(-ago) : nil,
                 receivedAt: dir == .inbound ? now.addingTimeInterval(-ago) : nil,
