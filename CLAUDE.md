@@ -4590,7 +4590,14 @@ Number US, 0 taps, €0) — the dashboard read as dead; a flat €1.50 was
 applied for ~1h and then tiered because broad/discovery groups at €1.50 buy
 junk queries fast. Daily budgets were NOT raised (€66/day cap across the 7);
 the plan doc's "no bid above €1.00" rule is superseded. Read live bids with
-`asa.py keywords <c> <g>`, never from this line. The old EN/EU temp-SMS campaigns
+`asa.py keywords <c> <g>`, never from this line. **2026-09-06 (owner:
+"unlimited budget, I just need more impressions"): the two vSMS campaigns
+went to €50/day (US) and €30/day (EU), the earning groups to €2.00 (US) /
+€1.30 (EU), and 30 "US number" keywords were added (`us number`, `usa
+number`, `american number`, `numero usa`…) via the new `asa.py add-keywords`
+command — see `docs/asa-second-number-plan.md` §8. Day 2 had shown delivery
+was BUDGET-capped (€15 spent on a €10 cap), and that the Apple Ads web UI
+lags the API by most of a day: read `report 1`, not the dashboard.** The old EN/EU temp-SMS campaigns
 stay PAUSED as the control. Kill rules are in the plan doc; the 30-day stop
 is ≥ 1 paid sub per €25 spent.
 🔴 **Two ASA facts that cost an afternoon on 2026-09-05 — do not re-learn

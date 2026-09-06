@@ -287,9 +287,17 @@ nummer **0**). FR — numéro usa 50, numéro us 48 (numéro américain **0**).
 ES — número usa whatsapp 47, número usa 41 (número americano 7). IT —
 numero usa 57, numero usa whatsapp 51, numero americano 33.
 
-Add them with the new `add-keywords` command (EXACT, dedupes against what
-is live, dry-run by default, reads back). The seven calls, all dry-run
-verified on 2026-09-06 — append `--yes` to apply:
+**APPLIED 2026-09-06 evening (owner: "go, add all the keywords" and
+"unlimited budget, I just need more impressions"):** all 30 keywords below
+are live and read back (US 22 + 7, EU 14 / 8 / 8 / 8 / 9). Daily budgets
+raised **€10 → €50 (US) and €10 → €30 (EU)**; bids raised on every earning
+group and every active keyword in it — US Second number + WhatsApp
+**€1.50 → €2.00**, EU EN-intl/DE/FR/ES/IT **€1.00 → €1.30**; Conquest stays
+€0.80. Read back per keyword, zero mismatches. The old §5 kill rules still
+apply, and "unlimited" is bounded by those two daily caps — raise again with
+`asa.py budget <id> <eur> --yes` if `report 1` shows the cap being hit.
+The seven calls as run (`add-keywords` is EXACT, dedupes against what is
+live, dry-run without `--yes`, reads back):
 
 ```
 asa.py add-keywords 2144619440 2150867040 1.50 "us number,usa number,usa phone number,american number,american phone number,us virtual number,us mobile number,united states phone number,temporary us number,get us number,fake us number"
