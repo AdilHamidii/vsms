@@ -4592,8 +4592,9 @@ junk queries fast. Daily budgets were NOT raised (€66/day cap across the 7);
 the plan doc's "no bid above €1.00" rule is superseded. Read live bids with
 `asa.py keywords <c> <g>`, never from this line. **2026-09-06 (owner:
 "unlimited budget, I just need more impressions"): the two vSMS campaigns
-went to €50/day (US) and €30/day (EU), the earning groups to €2.00 (US) /
-€1.30 (EU), and 30 "US number" keywords were added (`us number`, `usa
+went to €50/day (US) and €30/day (EU), the EU earning groups to €1.30
+(US groups STAY at €1.50 — a €2.00 raise was reverted within the hour, owner
+call), and 30 "US number" keywords were added (`us number`, `usa
 number`, `american number`, `numero usa`…) via the new `asa.py add-keywords`
 command — see `docs/asa-second-number-plan.md` §8. Day 2 had shown delivery
 was BUDGET-capped (€15 spent on a €10 cap), and that the Apple Ads web UI

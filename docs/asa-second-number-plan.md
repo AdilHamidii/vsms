@@ -290,12 +290,17 @@ numero usa 57, numero usa whatsapp 51, numero americano 33.
 **APPLIED 2026-09-06 evening (owner: "go, add all the keywords" and
 "unlimited budget, I just need more impressions"):** all 30 keywords below
 are live and read back (US 22 + 7, EU 14 / 8 / 8 / 8 / 9). Daily budgets
-raised **€10 → €50 (US) and €10 → €30 (EU)**; bids raised on every earning
-group and every active keyword in it — US Second number + WhatsApp
-**€1.50 → €2.00**, EU EN-intl/DE/FR/ES/IT **€1.00 → €1.30**; Conquest stays
-€0.80. Read back per keyword, zero mismatches. The old §5 kill rules still
-apply, and "unlimited" is bounded by those two daily caps — raise again with
-`asa.py budget <id> <eur> --yes` if `report 1` shows the cap being hit.
+raised **€10 → €50 (US) and €10 → €30 (EU)**; EU EN-intl/DE/FR/ES/IT bids
+**€1.00 → €1.30** on the group default and every active keyword; **US
+groups stay at €1.50** (they were pushed to €2.00 for ~20 minutes and
+reverted the same evening — owner: "2 euro bids are a bit too high"; the
+budget raise alone removes the cap that actually bound, and at €1.50 the
+Second-number terms cleared €0.99–1.45 per tap). Conquest stays €0.80. Read
+back per keyword, zero mismatches. The old §5 kill rules still apply, and
+"unlimited" is bounded by those two daily caps — raise again with `asa.py
+budget <id> <eur> --yes` if `report 1` shows the cap being hit. Nudge US
+bids in €0.25 steps ONLY if spend sits well under €50 with impressions flat
+(the rank-capped signature).
 The seven calls as run (`add-keywords` is EXACT, dedupes against what is
 live, dry-run without `--yes`, reads back):
 
