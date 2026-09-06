@@ -17,6 +17,14 @@ struct LineScreen: View {
         Group {
             if let line = state.line, line.status.isLive {
                 LiveLineView(line: line)
+            } else if !state.linesLoaded {
+                // Not asked yet. Rendering the store here is the one-frame
+                // flash a subscriber saw before their number appeared: an
+                // empty `lines` is not "no line" until the first read has
+                // answered. `coldStart` answers it before the reveal, so this
+                // branch is normally never on screen; it exists so the store
+                // can only ever mean "we asked, and there is none".
+                theme.bg.ignoresSafeArea()
             } else {
                 // A RELEASED line falls here on purpose: the number is gone and
                 // cannot come back, so the honest next step is the store. Its

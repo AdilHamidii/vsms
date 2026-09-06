@@ -184,7 +184,10 @@ struct LineStoreScreen: View {
     /// ordering for anything added here.
     ///
     /// 🔴 **CODES-FIRST since 2026-09-01 (owner decision).** The pitch is "a
-    /// real US or Canadian number that receives verification codes" — not
+    /// real American or Canadian number that receives verification codes"
+    /// ("American", not "US", since 2026-09-06 — the owner read "US or
+    /// Canadian" as leading with Canada, and American is what most buyers
+    /// come for) — not
     /// calling, not texting. It names ONLY services that have delivered a real
     /// code to a rented number (WhatsApp, TikTok, DoorDash — each verified in
     /// `line_messages`), says plainly that some platforms refuse virtual
@@ -220,7 +223,7 @@ struct LineStoreScreen: View {
                 .padding(.top, 16)
                 .padding(.bottom, 6)
 
-                Text("A real US or Canadian number that receives your verification codes.")
+                Text("A real American or Canadian number that receives your verification codes.")
                     .font(RFont.display(17, weight: .semibold))
                     .tracking(-0.3)
                     .foregroundStyle(theme.text)

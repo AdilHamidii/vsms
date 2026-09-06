@@ -3223,6 +3223,46 @@
         }
       }
     },
+    "A real American or Canadian number that receives your verification codes.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Eine echte amerikanische oder kanadische Nummer, die deine Bestätigungscodes empfängt."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Un número real estadounidense o canadiense que recibe tus códigos de verificación."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Un vrai numéro américain ou canadien qui reçoit vos codes de vérification."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Un vero numero americano o canadese che riceve i tuoi codici di verifica."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "認証コードを受け取れる、本物のアメリカ・カナダの電話番号。"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Um número real americano ou canadense que recebe seus códigos de verificação."
+          }
+        }
+      }
+    },
     "A real Canadian phone number that stays yours.": {
       "localizations": {
         "de": {

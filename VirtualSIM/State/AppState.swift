@@ -395,6 +395,16 @@ final class AppState {
     /// one; a `.released` line is still returned so its history survives.
     /// EVERY line the user holds, newest first. Credits can rent several.
     var lines: [Line] = []
+    /// Whether `lines` has been ANSWERED at least once — success or failure.
+    ///
+    /// Until it has, `lines.isEmpty` means "we have not asked yet", not "no
+    /// line", and the Number tab must not render the store on it: a
+    /// subscriber opening the tab saw the store for one frame before their
+    /// own number replaced it (owner report 2026-09-06). `coldStart` now
+    /// loads the line before the reveal, so this is normally true by the
+    /// time any tab renders; the flag is what makes the ordering a rule
+    /// rather than a coincidence.
+    var linesLoaded = false
     /// Which one the Number tab is showing. nil = the first live one.
     var selectedLineId: String?
 
@@ -859,7 +869,7 @@ final class AppState {
         bootPhase = .loading
         bootProgress = 0
 
-        let total = 5.0
+        let total = 6.0
         var done = 0.0
         func step() {
             done += 1
@@ -891,6 +901,11 @@ final class AppState {
         await refreshWallet(using: WalletAPI(client: api));   step()
         await refreshProfile(using: ProfileAPI(client: api)); step()
         await loadOrders(using: OrdersAPI(client: api));      step()
+        // The rented line, BEFORE the reveal (owner decision 2026-09-06): one
+        // RLS-scoped row, and without it the Number tab rendered the store for
+        // a frame before a subscriber's own number replaced it. Swallows its
+        // own failure and sets `linesLoaded` regardless — see that flag.
+        await loadLine(using: LineAPI(client: api));          step()
 
         // Both must run before the reveal — they decide WHICH screen and which
         // service/country the user lands on.
@@ -1905,8 +1920,13 @@ final class AppState {
         // Screenshot frames seed this collection directly. The read below is
         // RLS-filtered and would succeed with an EMPTY list, silently wiping
         // the sample — which is how the thread frame came back black.
-        if ScreenshotMode.isActive { return }
-        guard let fresh = try? await api.fetchAll() else { return }
+        if ScreenshotMode.isActive { linesLoaded = true; return }
+        let fresh = try? await api.fetchAll()
+        // Answered, either way. A failed read keeps the previous value (see
+        // above) but must still count as an answer, or a subscriber with a
+        // flaky connection would be shown nothing at all instead of the store.
+        linesLoaded = true
+        guard let fresh else { return }
         lines = fresh
         // Drop a selection whose line is gone — released, or refunded away —
         // rather than leaving the tab pointed at a number that no longer

@@ -416,7 +416,9 @@ migration `20260801150000`) — and the CLIENT code is REMOVED as of the 1.8
 branch (2026-08-02):** the claim card, banner, AppState state/methods and the
 WalletAPI RPC wrappers are gone, `register-push` no longer calls
 `claim_daily_credit_for` (it keeps returning `daily_credits: null`, which
-shipped builds decode), and coldStart is 5 steps, not 6. The no-op DB
+shipped builds decode), and coldStart was 5 steps from then until 2026-09-06,
+when the rented-line read joined it as the SIXTH (see the Number tab note
+below). The no-op DB
 functions survive ONLY for 1.6/1.7 users.** 93 grants / 101 credits lifetime, 92 of them in
 the final week. Do not re-enable it casually — read the whole of this note first.
 
@@ -2179,7 +2181,15 @@ with the country's flag** (`LineOfferRow` → `CodeFlag`, same 2026-09-06
 decision; the flag code is the offer's `country_code`, else the search
 country, and only an offer with neither falls back to `PeerAvatar`);
 `BundledFlags/pr.png` was added so all three sellable countries render
-offline;
+offline. **The headline reads "A real American or Canadian number…"**
+("American", not "US" — same day; the owner read the old wording as
+leading with Canada). **`coldStart` loads the rented line BEFORE the
+reveal and `AppState.linesLoaded` gates the Number tab** (same day): a
+subscriber opening the tab saw the store for one frame before their own
+number replaced it, because `lines` was only fetched by the tab's own
+`.task`. `LineScreen` now renders the store only when the first read has
+ANSWERED (success or failure); until then, bare background. Screenshot
+frames set the flag through `loadLine`'s early return;
 tap a number → `LineCheckoutScreen` unchanged except the three "Not yet" rows
 moved into a collapsed "Good to know" BELOW the price. The pitch names the
 limit plainly — "Might not work on every service — … switch to a new number
