@@ -2189,7 +2189,19 @@ subscriber opening the tab saw the store for one frame before their own
 number replaced it, because `lines` was only fetched by the tab's own
 `.task`. `LineScreen` now renders the store only when the first read has
 ANSWERED (success or failure); until then, bare background. Screenshot
-frames set the flag through `loadLine`'s early return;
+frames set the flag through `loadLine`'s early return. **The same fix, one
+collection down, for the flash that survived it:** the edge logs showed
+the new build opening the tab with `my_line` + `line_threads` and NO
+`line_country_menu` (so the store was gone), yet the owner still saw "the
+initial page" — the Messages segment's "Your number is live" instruction
+card, rendered on an empty thread list until the first `line_threads`
+read answered. `coldStart` now loads the threads too when a line exists
+(same step) and `AppState.lineThreadsLoaded` gates the card. Diagnose
+this class from the edge logs, not the code: which REST paths fire, in
+what order, on the tab open. **The "Rent another number" cover
+(`flow == .lineStoreMore`) had NO way out** — a cover has no tab bar and
+no swipe; `LineStoreScreen` now takes `onClose` (rendered as the ✕ the
+Orders cover uses) and the cover passes `{ state.flow = nil }`;
 tap a number → `LineCheckoutScreen` unchanged except the three "Not yet" rows
 moved into a collapsed "Good to know" BELOW the price. The pitch names the
 limit plainly — "Might not work on every service — … switch to a new number

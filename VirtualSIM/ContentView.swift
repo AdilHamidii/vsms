@@ -508,7 +508,8 @@ struct ContentView: View {
             // The same store, presented as a cover so it inherits EnvBundle —
             // covers do NOT reliably inherit @Observable env objects, which is
             // the trap this app wraps every cover for.
-            LineStoreScreen(onOpenSms: { state.flow = nil; state.tab = .home })
+            LineStoreScreen(onOpenSms: { state.flow = nil; state.tab = .home },
+                            onClose: { state.flow = nil })
         case .lineCheckout:
             LineCheckoutScreen()
         case .lineProvisioning:

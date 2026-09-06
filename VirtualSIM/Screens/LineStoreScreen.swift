@@ -40,6 +40,14 @@ struct LineStoreScreen: View {
     /// `HomeScreen(onOpenEsim:)`.
     var onOpenSms: () -> Void
 
+    /// Present only when the store is a COVER (`flow == .lineStoreMore`,
+    /// "Rent another number" from a live line's settings). As a tab the tab
+    /// bar is the way out; as a cover there was none at all — a subscriber
+    /// who opened it was stuck with the pitch for a number they did not want
+    /// and no ✕ (owner report 2026-09-06). Same shape as `OrdersScreen`,
+    /// which learned this the day it stopped being a tab.
+    var onClose: (() -> Void)? = nil
+
     @State private var appeared = false
 
     /// The place pickers, which are no longer steps in a flow. They are a
@@ -608,13 +616,26 @@ struct LineStoreScreen: View {
     // MARK: - Chrome
 
     private func header(kicker: LocalizedStringKey, title: LocalizedStringKey) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text(kicker).font(RFont.text(13)).foregroundStyle(theme.text2)
-            Text(title)
-                .font(RFont.display(28, weight: .bold))
-                .tracking(-0.7).foregroundStyle(theme.text)
+        HStack(alignment: .top, spacing: 12) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(kicker).font(RFont.text(13)).foregroundStyle(theme.text2)
+                Text(title)
+                    .font(RFont.display(28, weight: .bold))
+                    .tracking(-0.7).foregroundStyle(theme.text)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            if let onClose {
+                Button(action: onClose) {
+                    Image(systemName: RIcon.close)
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(theme.text2)
+                        .frame(width: 34, height: 34)
+                        .background(theme.chipBg, in: .circle)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Close")
+            }
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.top, 6)
     }
 

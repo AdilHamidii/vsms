@@ -427,6 +427,15 @@ final class AppState {
     var hasMultipleLines: Bool { lines.filter { $0.status.isLive }.count > 1 }
 
     var lineThreads: [LineThread] = []
+    /// Whether `lineThreads` has been ANSWERED at least once — the same
+    /// contract as `linesLoaded`, one collection down. The Messages segment
+    /// renders its "Your number is live — use it to sign up for…" card on an
+    /// empty list, and an empty list before the first read is not an empty
+    /// inbox: a subscriber with real conversations saw that card for a beat
+    /// on every launch before their threads replaced it (owner report
+    /// 2026-09-06, the second half of "the flash"). `coldStart` answers it
+    /// before the reveal whenever a line exists.
+    var lineThreadsLoaded = false
     /// Messages keyed by thread id, so opening a thread the user has already
     /// read does not blank the screen while the fetch runs.
     var lineMessages: [String: [LineMessage]] = [:]
@@ -905,7 +914,14 @@ final class AppState {
         // RLS-scoped row, and without it the Number tab rendered the store for
         // a frame before a subscriber's own number replaced it. Swallows its
         // own failure and sets `linesLoaded` regardless — see that flag.
-        await loadLine(using: LineAPI(client: api));          step()
+        await loadLine(using: LineAPI(client: api))
+        // And its conversations, for the same reason: the Messages segment is
+        // the tab's opening view, and on an empty list it renders the
+        // "your number is live" card — which is a lie for a beat to anyone
+        // who already has threads. Only when a line exists; one RLS-scoped
+        // read, folded into the same progress step.
+        if line != nil { await loadLineThreads(using: LineAPI(client: api)) }
+        step()
 
         // Both must run before the reveal — they decide WHICH screen and which
         // service/country the user lands on.
@@ -2031,8 +2047,10 @@ final class AppState {
         // Screenshot frames seed this collection directly. The read below is
         // RLS-filtered and would succeed with an EMPTY list, silently wiping
         // the sample — which is how the thread frame came back black.
-        if ScreenshotMode.isActive { return }
-        if let fresh = try? await api.threads() { lineThreads = fresh }
+        if ScreenshotMode.isActive { lineThreadsLoaded = true; return }
+        let fresh = try? await api.threads()
+        lineThreadsLoaded = true
+        if let fresh { lineThreads = fresh }
     }
 
     @MainActor

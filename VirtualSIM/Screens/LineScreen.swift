@@ -470,9 +470,16 @@ private struct LiveLineView: View {
     @ViewBuilder
     private var messages: some View {
         if state.threadsForSelectedLine.isEmpty {
-            proofOfLife
-                .padding(.horizontal, 20)
-                .padding(.top, 24)
+            // Only once the first read has answered. Before that an empty
+            // list means "not asked yet", and showing the instruction card
+            // over an inbox that is about to fill is the flash a subscriber
+            // reported on 2026-09-06. `coldStart` answers it before the
+            // reveal, so this is normally never blank on screen.
+            if state.lineThreadsLoaded {
+                proofOfLife
+                    .padding(.horizontal, 20)
+                    .padding(.top, 24)
+            }
         } else {
             ScrollView {
                 LazyVStack(spacing: 8) {
