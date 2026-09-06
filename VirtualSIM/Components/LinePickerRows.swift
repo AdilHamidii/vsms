@@ -141,6 +141,49 @@ extension Array where Element == LineCountry {
     }
 }
 
+// MARK: - Country chips
+
+/// One sellable country as a chip — its flag where `ChipButton` would put an
+/// SF symbol, otherwise the same capsule, type and active treatment.
+///
+/// The store renders every sellable country as a row of these ABOVE the
+/// numbers (owner decision 2026-09-06). Until then the country picker lived
+/// one tap behind "Change", and a reader who landed on the US default could
+/// not see that Canada and Puerto Rico were a choice at all — the owner's own
+/// words were "I can't choose". Sellable countries only: the grayed "not yet"
+/// rows stay in the sheet, where a wall of "no" is not standing between the
+/// reader and the three things they can buy.
+struct LineCountryChip: View {
+    @Environment(\.theme) private var theme
+    let country: LineCountry
+    let active: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button {
+            RHaptic.select()
+            action()
+        } label: {
+            HStack(spacing: 7) {
+                CodeFlag(code: country.countryCode, size: 20)
+                Text(verbatim: country.displayName)
+                    .font(RFont.text(13, weight: .medium))
+                    .tracking(-0.2)
+                    .lineLimit(1)
+            }
+            .foregroundStyle(active ? theme.onInk : theme.text2)
+            .padding(.leading, 6)
+            .padding(.trailing, 12)
+            .padding(.vertical, 5)
+            .background(active ? theme.ink : theme.chipBg, in: .capsule)
+            .fixedSize(horizontal: true, vertical: false)
+            .contentShape(.capsule)
+        }
+        .pressable(0.94)
+        .accessibilityAddTraits(active ? .isSelected : [])
+    }
+}
+
 // MARK: - Cities
 
 /// Cities, never area codes.

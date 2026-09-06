@@ -279,6 +279,8 @@ struct LineStoreScreen: View {
 
     private var numbers: some View {
         VStack(alignment: .leading, spacing: 10) {
+            countryChips
+
             HStack(spacing: 12) {
                 if let place = placeLabel {
                     MicroLabel("Available now in \(place)")
@@ -286,8 +288,12 @@ struct LineStoreScreen: View {
                     MicroLabel("Available now")
                 }
                 Spacer(minLength: 0)
+                // The CITY. The country is chosen on the screen itself (the
+                // chips above), so the sheet opens straight on the cities of
+                // the country already selected — never on the country list,
+                // which would ask the same question twice.
                 GhostButton(label: "Change", fillsWidth: false) {
-                    sheetShowsCountries = showsCountryStep
+                    sheetShowsCountries = false
                     showsPlaceSheet = true
                 }
             }
@@ -308,6 +314,39 @@ struct LineStoreScreen: View {
             } else {
                 numberList
             }
+        }
+    }
+
+    /// Every sellable country, one tap each — see `LineCountryChip`. Renders
+    /// nothing when there is only one, for the same reason the sheet skips
+    /// its country step then: a choice of one is not a choice.
+    ///
+    /// The default country leads, then A–Z by the name the reader sees, so
+    /// the row opens on the chip that is already selected.
+    @ViewBuilder
+    private var countryChips: some View {
+        if showsCountryStep {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    ForEach(chipOrder, id: \.id) { country in
+                        LineCountryChip(country: country,
+                                        active: country.countryCode == state.lineCountry) {
+                            guard country.countryCode != state.lineCountry else { return }
+                            selectCountry(country)
+                        }
+                    }
+                }
+            }
+            .padding(.bottom, 2)
+        }
+    }
+
+    private var chipOrder: [LineCountry] {
+        sellableCountries.sorted {
+            let a = $0.countryCode == Self.defaultCountryCode
+            let b = $1.countryCode == Self.defaultCountryCode
+            if a != b { return a }
+            return $0.displayName.localizedCaseInsensitiveCompare($1.displayName) == .orderedAscending
         }
     }
 
@@ -490,6 +529,13 @@ struct LineStoreScreen: View {
     /// the two steps had, without taking the store screen away from someone
     /// who only wanted to look.
     private func select(_ country: LineCountry) {
+        sheetShowsCountries = false
+        selectCountry(country)
+    }
+
+    /// The one definition of "a different country", shared by the sheet's
+    /// list and the chips on the store. Clears everything downstream FIRST.
+    private func selectCountry(_ country: LineCountry) {
         state.lineCountry = country.countryCode
         state.lineCity = nil
         state.lineCities = []
@@ -497,7 +543,6 @@ struct LineStoreScreen: View {
         state.lineOffer = nil
         state.lineReservation = nil
         state.lineUnavailableReason = nil
-        sheetShowsCountries = false
         changePlace(country: country.countryCode)
     }
 

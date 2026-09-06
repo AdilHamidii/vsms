@@ -2166,8 +2166,15 @@ the price on one scroll (default place = **the US for everyone, owner
 decision 2026-09-06**, when the catalogue says US is sellable, else the
 server default CA/Toronto — 2.8/2.9 used the device storefront country when
 sellable, which showed every EU reader a Toronto number; the alpha-3
-`Storefront` mapping is deleted), with the pickers behind a "Change" sheet
-(every sellable country, then Canada's cities). **Every number row leads
+`Storefront` mapping is deleted). **The sellable countries are a row of
+flag CHIPS on the store itself** (`LineCountryChip`, same 2026-09-06
+decision — the owner landed on the US default and "couldn't choose"
+Canada or Puerto Rico because the country list lived one tap behind
+"Change"); the "Change" button now opens the sheet on the CITIES of the
+chosen country only (the country list survives in the sheet for the
+`country_not_sellable` escape). The server curates cities for all three:
+US 12 (New York first — so the live default label reads "New York", not
+"United States"), CA 7, PR 1; re-query `line_localities`. **Every number row leads
 with the country's flag** (`LineOfferRow` → `CodeFlag`, same 2026-09-06
 decision; the flag code is the offer's `country_code`, else the search
 country, and only an offer with neither falls back to `PeerAvatar`);

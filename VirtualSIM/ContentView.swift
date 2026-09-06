@@ -678,7 +678,22 @@ extension ContentView {
                 // so the frame shows the state a real reader lands in. No city
                 // — the US has no curated localities and sells country-wide.
                 state.lineCountry = "US"
-                state.lineCity = nil
+                // The three sellable countries, so the chip row above the
+                // numbers renders all three; `simctl` never fetches the menu.
+                state.lineCountries = LineCountry.seeded + [
+                    .init(countryCode: "PR", countryName: "Puerto Rico",
+                          supportsVoice: true, supportsSms: true, supportsMms: true,
+                          supportsEmergency: true, available: true, sellReason: nil,
+                          hasLocalities: true),
+                ]
+                // New York, as the live default search lands (first curated
+                // US locality), so the label reads as it does for a real user.
+                state.lineCities = [
+                    .init(id: "new-york", label: "New York"),
+                    .init(id: "los-angeles", label: "Los Angeles"),
+                    .init(id: "chicago", label: "Chicago"),
+                ]
+                state.lineCity = "new-york"
                 state.lineOffers = [
                     LineNumberOffer(phoneNumber: "+12125550128",
                                     region: "New York, NY",
