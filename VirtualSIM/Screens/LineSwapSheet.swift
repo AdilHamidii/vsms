@@ -153,7 +153,7 @@ struct LineSwapSheet: View {
             } else {
                 VStack(spacing: 8) {
                     ForEach(state.lineOffers, id: \.id) { offer in
-                        LineOfferRow(offer: offer) { pick(offer) }
+                        LineOfferRow(offer: offer, country: state.lineCountry) { pick(offer) }
                     }
                     GhostButton(label: "Show different numbers",
                                 icon: RIcon.refresh,

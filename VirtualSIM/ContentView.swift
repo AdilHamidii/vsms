@@ -673,18 +673,25 @@ extension ContentView {
                 // ⚠️ 555 numbers, as everywhere in this harness: a screenshot
                 // is marketing, and a plausible real number would be both a
                 // claim and, if it ever belonged to someone, a leak.
-                state.lineCountry = "CA"
-                state.lineCity = "toronto"
+                // The US, country-wide, since 2026-09-06: that is what every
+                // untouched store opens on (see `LineStoreScreen.defaultCountry`),
+                // so the frame shows the state a real reader lands in. No city
+                // — the US has no curated localities and sells country-wide.
+                state.lineCountry = "US"
+                state.lineCity = nil
                 state.lineOffers = [
-                    LineNumberOffer(phoneNumber: "+14375550128",
-                                    region: "Toronto, Ontario",
-                                    monthlyCents: 100, upfrontCents: 100),
-                    LineNumberOffer(phoneNumber: "+16475550164",
-                                    region: "Toronto, Ontario",
-                                    monthlyCents: 100, upfrontCents: 100),
-                    LineNumberOffer(phoneNumber: "+14165550193",
-                                    region: "Toronto, Ontario",
-                                    monthlyCents: 100, upfrontCents: 100),
+                    LineNumberOffer(phoneNumber: "+12125550128",
+                                    region: "New York, NY",
+                                    monthlyCents: 100, upfrontCents: 100,
+                                    countryCode: "US"),
+                    LineNumberOffer(phoneNumber: "+13105550164",
+                                    region: "Los Angeles, CA",
+                                    monthlyCents: 100, upfrontCents: 100,
+                                    countryCode: "US"),
+                    LineNumberOffer(phoneNumber: "+13125550193",
+                                    region: "Chicago, IL",
+                                    monthlyCents: 100, upfrontCents: 100,
+                                    countryCode: "US"),
                 ]
             }
             if shot == .linePaywall || shot == .linePaywallYearly {

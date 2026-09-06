@@ -280,13 +280,16 @@ struct LinePickerRowSkeleton: View {
 struct LineOfferRow: View {
     @Environment(\.theme) private var theme
     let offer: LineNumberOffer
+    /// The country the search ran in, for the flag when the offer itself
+    /// carries none (older server bundles omit `country_code`).
+    var country: String? = nil
     let action: () -> Void
 
     var body: some View {
         Button(action: action) {
             Card(radius: RRadius.md, elevation: .raised) {
                 HStack(spacing: 13) {
-                    PeerAvatar(e164: offer.phoneNumber, size: 42)
+                    leading
                     VStack(alignment: .leading, spacing: 5) {
                         Text(PhoneFormat.national(offer.phoneNumber))
                             .font(RFont.mono(18, weight: .medium))
@@ -307,6 +310,25 @@ struct LineOfferRow: View {
             }
         }
         .buttonStyle(PressScaleStyle(scale: 0.98, dim: true))
+    }
+
+    /// The country's flag, not a contact avatar (owner decision 2026-09-06).
+    ///
+    /// A candidate number is not a person: `PeerAvatar`'s hashed colour and
+    /// person glyph said "contact" about a row that is a thing to buy, and
+    /// carried no information. The flag answers the one question a list of
+    /// three look-alike numbers raises — which country is this — and matches
+    /// the leading slot of the country picker it came from. Same cascade as
+    /// every other flag in the app (bundled PNG → flagcdn → emoji), so US,
+    /// CA and PR render offline. The avatar survives only for an offer whose
+    /// country nobody knows, which no current server produces.
+    @ViewBuilder
+    private var leading: some View {
+        if let code = offer.countryCode ?? country {
+            CodeFlag(code: code, size: 42)
+        } else {
+            PeerAvatar(e164: offer.phoneNumber, size: 42)
+        }
     }
 
     /// What THIS number can do, when Telnyx told us.

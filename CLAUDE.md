@@ -2162,9 +2162,17 @@ the line country catalog section. Re-measure before drawing conclusions from
 the 2.7 numbers.**), and
 the line was the only product with NO funnel event between "opened the tab"
 and "subscribed". `LineStoreScreen` now renders pitch + three real numbers +
-the price on one scroll (default place = the device storefront country when
-sellable, else the server default CA/Toronto; `Storefront.countryCode` is
-ALPHA-3 and is mapped explicitly), with the pickers behind a "Change" sheet;
+the price on one scroll (default place = **the US for everyone, owner
+decision 2026-09-06**, when the catalogue says US is sellable, else the
+server default CA/Toronto — 2.8/2.9 used the device storefront country when
+sellable, which showed every EU reader a Toronto number; the alpha-3
+`Storefront` mapping is deleted), with the pickers behind a "Change" sheet
+(every sellable country, then Canada's cities). **Every number row leads
+with the country's flag** (`LineOfferRow` → `CodeFlag`, same 2026-09-06
+decision; the flag code is the offer's `country_code`, else the search
+country, and only an offer with neither falls back to `PeerAvatar`);
+`BundledFlags/pr.png` was added so all three sellable countries render
+offline;
 tap a number → `LineCheckoutScreen` unchanged except the three "Not yet" rows
 moved into a collapsed "Good to know" BELOW the price. The pitch names the
 limit plainly — "Might not work on every service — … switch to a new number

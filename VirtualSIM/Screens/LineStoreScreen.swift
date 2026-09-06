@@ -105,7 +105,7 @@ struct LineStoreScreen: View {
             // before the default place is chosen, because "is this country
             // sellable" is a question only the catalogue can answer.
             await state.loadLineCountries(using: LineAPI(client: api))
-            if state.lineCountry == nil, let iso = await storefrontCountry() {
+            if state.lineCountry == nil, let iso = defaultCountry() {
                 state.lineCountry = iso
             }
             // Numbers before the product: the search is the slow half and it
@@ -155,30 +155,25 @@ struct LineStoreScreen: View {
         Task { await reloadNumbers(city: city, country: country) }
     }
 
-    /// ISO-3166 alpha-3 → alpha-2, for the countries this store can sell.
+    /// Where an untouched store looks first: the United States, for everyone.
     ///
-    /// ⚠️ `Storefront.countryCode` is **alpha-3** ("USA", "CAN") while the
-    /// catalogue speaks alpha-2, and Foundation offers no conversion. So the
-    /// map is explicit and deliberately covers the sellable set only —
-    /// anything outside it resolves to nil and the server's own default
-    /// stands. Add a row here when a country becomes sellable; a wrong guess
-    /// (the first two letters happen to work for these three and not for
-    /// DEU/GBR) would search the wrong country.
-    private static let storefrontISO2: [String: String] =
-        ["USA": "US", "CAN": "CA", "PRI": "PR"]
+    /// Owner decision 2026-09-06. Until then the default was the device's App
+    /// Store country when sellable and Toronto otherwise — which put a
+    /// Canadian number in front of every European reader, i.e. exactly the
+    /// audience the "vSMS WhatsApp EU" campaign sends here. A US number is
+    /// what "second number" means to a buyer anywhere, and the "Change" sheet
+    /// still offers every sellable country (and Canada's cities) one tap away.
+    /// Canadian storefronts default to the US too, deliberately — "everyone".
+    ///
+    /// Gated on the catalogue: if the US is not sellable right now (a stale
+    /// catalogue fails closed — see `sellableCountry()` server-side) this
+    /// returns nil and the server's own default stands, rather than opening
+    /// on a country the first search would refuse.
+    private static let defaultCountryCode = "US"
 
-    /// The device's App Store country, when we can actually sell there.
-    ///
-    /// 41 of the last 50 signups are USA and the server's default is Toronto,
-    /// so an untouched screen showed most users a foreign number. The
-    /// storefront is the payment geography, which is the closest thing to
-    /// "where this person is" that costs no permission prompt.
-    private func storefrontCountry() async -> String? {
-        guard let iso3 = await Storefront.current?.countryCode,
-              let iso2 = Self.storefrontISO2[iso3],
-              sellableCountries.contains(where: { $0.countryCode == iso2 })
-        else { return nil }
-        return iso2
+    private func defaultCountry() -> String? {
+        sellableCountries.contains(where: { $0.countryCode == Self.defaultCountryCode })
+            ? Self.defaultCountryCode : nil
     }
 
     // MARK: - The pitch
@@ -340,7 +335,7 @@ struct LineStoreScreen: View {
     /// doc. The price is stated once above this list and in full on
     /// `LineCheckoutScreen`, which is the 3.1.2(a) surface.
     private func numberRow(_ offer: LineNumberOffer) -> some View {
-        LineOfferRow(offer: offer) {
+        LineOfferRow(offer: offer, country: state.lineCountry) {
             Analytics.shared.track("line_number_picked", [
                 "country": .string(offer.countryCode ?? state.lineCountry ?? "unknown")])
             state.lineOffer = offer
