@@ -3830,24 +3830,43 @@ SMS provider again, walk this list:
 Every number below has been wrong within a day of being written at least once.
 It is a starting point for "is this roughly right", never a citation.
 
-- **iOS**: `MARKETING_VERSION 2.10`, `CURRENT_PROJECT_VERSION 51` (bumped
-  2026-09-06; NOT yet archived or uploaded). **Version 2.10 EXISTS in ASC
-  (`61c4b4d0-…`, `PREPARE_FOR_SUBMISSION`, created 2026-09-06) and already
-  carries the new SUBTITLE in all 13 locales (`USA Phone Line &
+- **iOS**: `MARKETING_VERSION 2.10`, `CURRENT_PROJECT_VERSION 51`.
+  **2.10 (build 51) SUBMITTED 2026-09-06 17:06Z — `WAITING_FOR_REVIEW`,
+  version `61c4b4d0-…`, submission `7d060143-…`, build uploaded via altool
+  with `BuildMachineOSBuild` patched to 25F84 (verified inside the IPA),
+  release notes on all 13 locales (read back matching).** Carries: US-default
+  store with country chips and flag rows, the thread preload, the cover
+  close button, "American or Canadian" headline. The version also carries
+  the new SUBTITLE in all 13 locales (`USA Phone Line &
   Verification`; es "Linea USA y SMS temporal", pt-BR "Numero USA e SMS
   temporario", it "Linea USA e SMS temporanei", fr "Ligne USA & SMS
   temporaire", de "USA-Nummer & SMS-Code", ja "米国の電話番号・認証コード受信")
-  and the NUMBER-FIRST SCREENSHOT SETS** (en-US only — the other 12 locales
-  fall back to it): 7 slides per size, `lineStore` / `lineInbox` / `thread`
-  composited in the house style by `scripts/screenshots/` (capture-frames.sh
-  → make-set.py → asc-upload-screenshots.py, all read back `COMPLETE`) then
-  the four temp-SMS/e-mail/checkout slides from 2.9. 🔴 The 2.9 number slides
+  and NEW SCREENSHOT SETS** (en-US only — the other 12 locales fall back to
+  it): **5 slides per size, as submitted** — the OWNER's own "Get a real USA
+  number" slide (made in Claude Design from the raw `lineStore` frame;
+  1284×2778 native, upscaled 3% to 1320×2868 for the 6.9" set, so a native
+  6.9" export is a worthwhile follow-up) then the four temp-SMS / code /
+  e-mail / checkout slides from 2.9. The owner rejected the three slides
+  composited by `scripts/screenshots/` (capture-frames.sh → make-set.py →
+  asc-upload-screenshots.py); the pipeline stays for raw captures and
+  uploads. ⚠️ Two traps in that pipeline: (1) a file downloaded from ASC's
+  `templateUrl` with `{f}=png` is PNG whatever its `fileName` says, and
+  re-uploading it under a `.jpg` name reads `assetDeliveryState: FAILED` —
+  re-encode through PIL first; (2) ASC's web UI shows "6.9-inch" and
+  "6.5-inch" as SEPARATE sets, and the owner's upload landed only in 6.5"
+  — the 6.9" set (what every current iPhone shows) is `APP_IPHONE_67`; check
+  both sizes after any manual upload. The owner's slide carries a "Texts and
+  calls" badge — receives texts and calls OUT is the honest reading; if
+  Review objects, it is that badge. 🔴 The 2.9 number slides
   it replaced claimed "Send and receive texts", "Make and take calls", showed
   OUTGOING bubbles and said "US numbers are coming soon" — every one a
   claim the product does not honour; they were live until 2.10 ships. The
-  sample line fixture is now a US number (`+12125550128`). Ship 2.10 with
-  build 51 through the `release-prep` skill; nothing else on the version was
-  touched (keywords still lack `american`; promotional text still empty).
+  sample line fixture is now a US number (`+12125550128`). Nothing else on
+  the version was touched (keywords still lack `american`; promotional
+  text still empty). ⚠️ ASC showed a notice on 2026-09-06: **new age-rating
+  questions about social-networking capabilities, due 2026-09-07**, not
+  mandatory for this submission but answerable only in the web UI (App
+  Information → Age Rating) — owner action.
   **2.8 (build 49) is `READY_FOR_SALE` (approved by 2026-09-04; users
   were on it that day); 2.9 (build 50 — "Change number" picker with the
   paywall last, chosen-number swap, WhatsApp support link on Home + Account,
