@@ -29,8 +29,8 @@ never by displacing SMS terms from the name. Changed for 1.6:
 
 | field | from | to |
 |---|---|---|
-| name | `vSMS: Temp Number, Receive SMS` | unchanged (30/30) |
-| subtitle | `Second Phone Number & eSIM` | `Temp Mail & Phone Verification` (30/30) |
+| name | `vSMS: Temp Number, Receive SMS` | unchanged (30/30) — **SUPERSEDED: live name is `vSMS: Second Number & Temp SMS` as of the 2.7–2.9 number refocus (read from ASC 2026-09-06)** |
+| subtitle | `Second Phone Number & eSIM` | `Temp Mail & Phone Verification` (30/30) — **SUPERSEDED: live subtitle is `2nd Phone Line & Verification`** |
 
 `Temp Mail` is intact by owner decision — it duplicates `Temp` from the name at a
 cost of 5 characters, deliberately, because an exact phrase in a high-weight

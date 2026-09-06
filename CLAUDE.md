@@ -3835,8 +3835,11 @@ It is a starting point for "is this roughly right", never a citation.
   were on it that day); 2.9 (build 50 — "Change number" picker with the
   paywall last, chosen-number swap, WhatsApp support link on Home + Account,
   in-app chat deleted, "Great for WhatsApp" pitch) SUBMITTED 2026-09-05
-  06:38Z, version `05a960ec-…`, submission `b4dc7f3a-…`,
-  `WAITING_FOR_REVIEW`.** ⚠️ Neither the swap sheet nor the WhatsApp link was
+  06:38Z, version `05a960ec-…`, submission `b4dc7f3a-…`, and
+  **`READY_FOR_SALE` by 2026-09-06 (read from ASC that day).** The next
+  release (the US-default store, country chips, flag rows, thread preload,
+  cover close button — all on this branch) needs a NEW version and build
+  51.** ⚠️ Neither the swap sheet nor the WhatsApp link was
   run on a device before submission (owner chose review; XcodeBuildMCP was
   down). The 2.8 dialer `+0` fix is also still unconfirmed on a phone. Read
   the live state with `python3 scripts/asc-release.py status 2.9`.
@@ -5321,8 +5324,22 @@ Moved to the `aso-listing` skill (`.claude/skills/aso-listing/SKILL.md`).
 Search is the app's ENTIRE acquisition channel — invoke it before touching
 the store listing, keywords or screenshots.
 
-**The name stays `vSMS: Temp Number, Receive SMS` — owner decision
-2026-08-22, do not re-open it on feel.** The case was made and accepted: the
+🔴 **THE LIVE NAME IS `vSMS: Second Number & Temp SMS` / subtitle
+`2nd Phone Line & Verification` — read from ASC 2026-09-06, on 2.9
+`READY_FOR_SALE`, in all 13 locales (es-MX: "Segundo Numero & SMS" / "2a
+linea y SMS temporal").** The paragraph below recorded the 2026-08-22
+decision to KEEP `vSMS: Temp Number, Receive SMS`; the rename to lead with
+the second number was queued in `8fa79e1` and shipped with the number
+refocus — this file said "the name stays" for a week after it did not. Also
+read that day: keyword field `email,virtual,disposable,temporary,online,
+otp,code,inbox,fake,spam,signup,burner,text,call,receive` (98/100, no
+`usa`/`american`), **promotional text EMPTY** on every version (the one
+lever that needs no review), 6 screenshots per size with the rented number
+at slide 5–6 on the 6.7" set (slides 1–3, the ones search shows, are temp
+SMS / code / e-mail), **no app preview, no custom product page, no in-app
+event**. `docs/asa-handoff.md` had already caught the name drift.
+*Historical, kept for the reasoning:* the case for keeping the SMS name was
+made and accepted on 2026-08-22: the
 30-char name carries the two highest-weight search terms and search is the
 only channel; cross-day retention is ~5 users, so brand equity lives in
 ranking and ratings, not in users; and 2.0's umbrella-first onboarding
