@@ -246,3 +246,61 @@ or LATAM. ~~any bid above €1.00~~ — superseded 2026-09-05: bids are €1.50
 Also learned day 1: Search Results campaigns take **no ad objects** — an
 empty `…/ads` list is normal and is NOT why impressions are zero. Zero
 delivery on a `RUNNING` campaign with no `servingStateReasons` is bids/age.
+
+## 8. Day-2 read (2026-09-06) and the "US number" cluster
+
+Read from the API, not the dashboard — the Apple Ads web UI lagged the API
+by most of a day on 09-06 (it showed 132 impressions / 1 tap / €0.62 for
+vSMS Number US while the API and `install_attributions` both said 388 / 15 /
+11 installs / €15.12). **Always read `report 1` and the keyword report; the
+dashboard's "Last 7 days" excludes today.**
+
+- 09-05 (bids raised in the evening): 63 impressions, 0 taps. **09-06: 325
+  impressions, 15 taps, 11 installs, €15.12** — on a €10/day budget. So
+  delivery is BUDGET-capped, not bid-capped: adding keywords redistributes
+  the same €10, it does not raise impressions. More impressions = more
+  budget, and that decision waits on € per paid sub (§5).
+- CPT €1.01, tap→install 73% (organic is 68%), CPA €1.37 — 2.8× the €0.49
+  breakeven at a hoped 5% sub conversion. Expensive for OUR economics, not
+  for the market (US clears €1.50–4.00 on these terms).
+- Where the money went: the Second-number group converted **9 taps → 9
+  installs** (€10.99, CPA €1.22); Conquest took **285 of 388 impressions**
+  for 2 installs (€4.10) — `text free`, `line2`, `hushed`, `sideline` are 83
+  impressions / 0 taps (people typing an app's name want that app). Too
+  early to kill (§5 says day 7), but this is where budget goes to die.
+- 7 US installs attributed in our DB: 3 reached the line checkout, 2 hit
+  Apple's sheet and **cancelled**, 0 subscribed (n=7, hours old).
+- `us phone number` (in both campaigns since 09-05) has **0–1 impressions**.
+  Two causes, both fixable: the keyword is alone in its cluster, and the
+  listing carries no `usa`/`american` anywhere until 2.10's subtitle ships
+  (keyword field still lacks `usa` — add on 2.11; Apple's ad relevance is
+  the organic relevance).
+
+**The cluster, scored (App Store popularity, 0–100):** US storefront — us
+phone number 63, us number for whatsapp 64, get us number 62, us number 61,
+usa number 61, american number 61, fake us number 61, us mobile number 60,
+us virtual number 59, american phone number 58, usa number for whatsapp 58,
+temporary us number 56, usa phone number 54, united states phone number 53.
+GB — us number 52, us phone number 52, american number 50, usa number 47.
+DE — usa nummer 51, us nummer 43, us telefonnummer 42 (amerikanische
+nummer **0**). FR — numéro usa 50, numéro us 48 (numéro américain **0**).
+ES — número usa whatsapp 47, número usa 41 (número americano 7). IT —
+numero usa 57, numero usa whatsapp 51, numero americano 33.
+
+Add them with the new `add-keywords` command (EXACT, dedupes against what
+is live, dry-run by default, reads back). The seven calls, all dry-run
+verified on 2026-09-06 — append `--yes` to apply:
+
+```
+asa.py add-keywords 2144619440 2150867040 1.50 "us number,usa number,usa phone number,american number,american phone number,us virtual number,us mobile number,united states phone number,temporary us number,get us number,fake us number"
+asa.py add-keywords 2144619440 2150866068 1.50 "us number for whatsapp,usa number for whatsapp"
+asa.py add-keywords 2144617614 2150865817 1.00 "us number,usa number,usa phone number,american number,american phone number,us virtual number,us number for whatsapp,usa number for whatsapp"
+asa.py add-keywords 2144617614 2150866615 1.00 "usa nummer,us telefonnummer"
+asa.py add-keywords 2144617614 2150867343 1.00 "numéro usa,numéro us"
+asa.py add-keywords 2144617614 2150867590 1.00 "número usa,número usa whatsapp"
+asa.py add-keywords 2144617614 2150866468 1.00 "numero usa,numero usa whatsapp,numero americano"
+```
+
+Where the cluster really lives: a "US number" searcher INSIDE the US wants
+a second line; OUTSIDE the US (the EU campaign) wants a US number for
+WhatsApp — the exact product. Expect the EU half to be the cheaper one.

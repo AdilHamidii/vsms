@@ -44,6 +44,8 @@ Write commands — these SPEND MONEY and all require an explicit --yes:
     ./scripts/asa.py consolidate --yes   # pause every campaign but the US one
     ./scripts/asa.py create-us --yes     # build the one US campaign
     ./scripts/asa.py budget <id> <eur> --yes
+    ./scripts/asa.py add-keywords <campaign> <adgroup> <bid> "kw1,kw2,..." --yes
+                                         # EXACT, skips duplicates, reads back
 
 Without --yes each prints exactly what it would send and changes nothing.
 
@@ -1045,6 +1047,55 @@ def cmd_create_number_campaigns():
     print("  ✓ every keyword read back. Check impressions tomorrow: ./scripts/asa.py report 1")
 
 
+def cmd_add_keywords(campaign, adgroup, bid, keywords):
+    """Add EXACT keywords to one ad group at one bid, skipping any already live.
+
+    keywords is ONE comma-separated argument. Dry-run by default; --yes sends
+    and READS BACK (the only evidence that counts on this API).
+
+    Why exact: same reason as every earning group here — exact buys the query
+    verbatim, so intent is known rather than guessed, and a bad keyword costs
+    exactly its own taps and nothing else."""
+    wanted = [k.strip().lower() for k in keywords.split(",") if k.strip()]
+    if not wanted:
+        die("no keywords given (pass one comma-separated argument)")
+    try:
+        float(bid)
+    except ValueError:
+        die(f"bid must be a number, got {bid!r}")
+    tok = access_token()
+    org = org_id(tok)
+    path = f"/campaigns/{campaign}/adgroups/{adgroup}/targetingkeywords"
+    code, data = call("GET", path + "?limit=1000", tok, org)
+    if code != 200:
+        die(f"cannot read ad group {campaign}/{adgroup} (HTTP {code}): {json.dumps(data)[:300]}")
+    live = {(k.get("text") or "").lower(): k for k in data.get("data", [])}
+    new = [k for k in wanted if k not in live]
+    dup = [k for k in wanted if k in live]
+    print(f"ad group {adgroup} in campaign {campaign}: {len(live)} keywords live")
+    if dup:
+        print(f"  already live, skipped: {', '.join(dup)}")
+    if not new:
+        print("  nothing to add.")
+        return
+    print(f"  to add at {bid} {CURRENCY} EXACT ({len(new)}): {', '.join(new)}")
+    if not _confirm(f"Would add {len(new)} keyword(s)."):
+        return
+    code, res = call("POST", path + "/bulk", tok, org,
+                     body=[{"text": t, "matchType": "EXACT", "bidAmount": _eur(bid),
+                            "status": "ACTIVE"} for t in new])
+    print(f"  sent -> HTTP {code}")
+    if code not in (200, 201):
+        die(f"bulk add failed: {json.dumps(res)[:500]}")
+    rc, after = call("GET", path + "?limit=1000", tok, org)
+    now = {(k.get("text") or "").lower() for k in (after.get("data") or [])} if rc == 200 else set()
+    missing = [k for k in new if k not in now]
+    if missing:
+        die(f"read-back: {len(missing)} keyword(s) NOT live: {', '.join(missing)}")
+    print(f"  ✓ read back: {len(now)} live, all {len(new)} new keyword(s) present. "
+          f"Check delivery tomorrow: ./scripts/asa.py report 1")
+
+
 COMMANDS = {
     "doctor": cmd_doctor, "acls": cmd_acls, "campaigns": cmd_campaigns,
     "adgroups": cmd_adgroups, "keywords": cmd_keywords, "report": cmd_report,
@@ -1052,6 +1103,7 @@ COMMANDS = {
     "budget": cmd_budget, "optimize-us": cmd_optimize_us,
     "rewrite-keywords": cmd_rewrite_keywords,
     "create-number-campaigns": cmd_create_number_campaigns,
+    "add-keywords": cmd_add_keywords,
 }
 
 
