@@ -55,9 +55,10 @@ credential connection, our own push credential on all 9, cert valid to
 already connected is never handed to the SDK (`handleVoIPPush` returns on a
 nil voice token), the app only logs in to Telnyx when the Number tab is
 opened, and answering does not use `answerFromCallkit`. So the phone may
-ring and the call can never connect. **Those client defects are FIXED IN THE
-REPO on 2026-09-07 — unshipped, and unverified by any real call.** See
-Known-open → INBOUND CALLING.
+ring and the call can never connect. **Those client defects are FIXED in
+build 52 (2.10, submitted 2026-09-07 07:56Z, `WAITING_FOR_REVIEW`) — still
+unverified by any real call at submission.** See Known-open → INBOUND
+CALLING.
 "Take calls from anywhere" is not a claim this product can make. Meanwhile
 **outbound SMS is 1 sent against 6 failed** (`40010`, 10DLC).
 Inbound SMS works, 3 of 3. See "Rentable second numbers". iOS frontend in SwiftUI + Supabase backend (Postgres + Auth + Edge Functions + pg_cron).
@@ -3862,8 +3863,21 @@ SMS provider again, walk this list:
 Every number below has been wrong within a day of being written at least once.
 It is a starting point for "is this roughly right", never a citation.
 
-- **iOS**: `MARKETING_VERSION 2.10`, `CURRENT_PROJECT_VERSION 51`.
-  **2.10 (build 51) SUBMITTED 2026-09-06 17:06Z — `WAITING_FOR_REVIEW`,
+- **iOS**: `MARKETING_VERSION 2.10`, `CURRENT_PROJECT_VERSION 52`.
+  **2.10 is now BUILD 52, SUBMITTED 2026-09-07 07:56Z — `WAITING_FOR_REVIEW`,
+  submission `9377bdbc-…` on the SAME version `61c4b4d0-…`** (build 51's
+  submission `7d060143-…` was cancelled by owner instruction the same
+  morning — the version went `DEVELOPER_REJECTED`, kept every localization
+  and both screenshot sets, and took build 52 + a fresh reviewSubmission;
+  4th exercise of that recovery path). Build 52 = build 51 + the inbound-
+  calling client fixes (see Known-open → INBOUND CALLING; unverified on a
+  device at submission). Build 52 is also in the INTERNAL TestFlight group
+  "Friends" (`f35b99cf-…`, owner added as its first tester, state INVITED) —
+  the owner's iPhone could not be reached from the Mac over USB or Wi-Fi
+  (CoreDevice `unavailable`, error 4016), so TestFlight is the install path
+  for the device test. Release notes were NOT changed (no calling claim).
+  *(Older text below, kept for history:)* 2.10 (build 51) SUBMITTED
+  2026-09-06 17:06Z — `WAITING_FOR_REVIEW`,
   version `61c4b4d0-…`, submission `7d060143-…`, build uploaded via altool
   with `BuildMachineOSBuild` patched to 25F84 (verified inside the IPA),
   release notes on all 13 locales (read back matching).** Carries: US-default
@@ -4843,8 +4857,9 @@ built plist carries `audio` + `voip`; `provider(_:didActivate:)` hands the
 session to the SDK without `setActive`. The 2.5 list below is what was
 fixed then and is still true.
 
-✅ **(1)–(5) ARE FIXED IN THE REPO as of 2026-09-07 — UNSHIPPED and
-UNVERIFIED ON A DEVICE.** Nothing below has been proved by a real call; the
+✅ **(1)–(5) ARE FIXED IN BUILD 52 (2.10, submitted 2026-09-07 07:56Z,
+`WAITING_FOR_REVIEW`; also in internal TestFlight) — UNVERIFIED ON A DEVICE
+at submission.** Nothing below has been proved by a real call; the
 build is green and the reasoning is against the resolved 4.1.2 source, which
 is exactly the evidence that was not enough last time. What changed:
 - **`VirtualSIM/Calling/VoiceCredentialStore.swift` (new)** persists the
