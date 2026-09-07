@@ -810,6 +810,58 @@ Deno.serve(async (req) => {
   // in still had Telnyx clear every inbound leg in under a second. Secrets
   // Telnyx returns on the credential (`sip_password` and friends) are REDACTED
   // before the result is stored in `app_config.telnyx_line_voice_probe`.
+  // ── Mode 8: the ONE write. Deliberately narrow. ───────────────────────────
+  //
+  // 🔴 Every other mode in this file is read-only and must stay that way. This
+  // one exists to test a single reversible hypothesis: inbound dies because the
+  // DID is addressed to the CONNECTION, whose own SIP user has never
+  // registered, while the app registers as an on-demand telephony credential
+  // that Telnyx documents as outbound-only. Rewriting the called number to the
+  // credential's username is the only fix that needs no client release.
+  //
+  // Reverting is passing `""`. It touches ONE line's number and nothing else.
+  if (body.probe === "set_translated_number") {
+    const lineId = String(body.line_id ?? "");
+    if (!UUID_LIKE.test(lineId)) return Response.json({ error: "line_id (uuid) required" }, { status: 400 });
+    if (typeof body.value !== "string") {
+      return Response.json({ error: 'value (string) required; "" reverts' }, { status: 400 });
+    }
+    const value = String(body.value);
+    const sb = admin();
+    const { data: line } = await sb.from("phone_lines")
+      .select("id, e164, provider_number_id").eq("id", lineId).maybeSingle();
+    if (!line?.provider_number_id) return Response.json({ error: "line_not_found" }, { status: 404 });
+    const numPath = `https://api.telnyx.com/v2/phone_numbers/${encodeURIComponent(String(line.provider_number_id))}/voice`;
+    const before = await fetch(numPath, { headers: { Authorization: `Bearer ${key}` } });
+    const beforeJson = await before.text();
+    const patch = await fetch(numPath, {
+      method: "PATCH",
+      headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ translated_number: value }),
+    });
+    const patchBody = (await patch.text()).slice(0, 900);
+    // A 200 is not evidence on this API — read it back.
+    const after = await fetch(numPath, { headers: { Authorization: `Bearer ${key}` } });
+    const afterJson = await after.text();
+    const readBack = (t: string): unknown => {
+      try { return (JSON.parse(t) as { data?: Record<string, unknown> }).data?.translated_number ?? null; }
+      catch { return null; }
+    };
+    const result = {
+      mode: "set_translated_number", at: new Date().toISOString(),
+      line: { id: line.id, e164: line.e164, number_id: line.provider_number_id },
+      requested: value,
+      before: readBack(beforeJson),
+      patch_http: patch.status,
+      patch_body: patch.ok ? null : patchBody,
+      after: readBack(afterJson),
+      took_effect: readBack(afterJson) === value,
+    };
+    await sb.from("app_config").upsert(
+      { key: "telnyx_translated_number_probe", value: result }, { onConflict: "key" });
+    return Response.json(result);
+  }
+
   if (body.probe === "line_voice") {
     const lineId = String(body.line_id ?? "");
     if (!UUID_LIKE.test(lineId)) return Response.json({ error: "line_id (uuid) required" }, { status: 400 });
