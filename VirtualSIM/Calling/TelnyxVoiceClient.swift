@@ -1,4 +1,5 @@
 import AVFoundation
+import CallKit
 import Foundation
 import TelnyxRTC
 
@@ -47,6 +48,14 @@ final class TelnyxVoiceClient: NSObject, VoiceClient, @unchecked Sendable {
     private var _voiceToken: String?
     private var _isReady = false
     private var _lastError: Error?
+    /// Whether the call in flight arrived as a VoIP push.
+    ///
+    /// Decides which CallKit path is correct, and the SDK does not expose its
+    /// own `isCallFromPush`. Cleared the moment the call goes ACTIVE, because
+    /// the SDK clears its flag then too (`TxClient.swift:1426`,
+    /// `resetPushVariables`) — after that an end must take the ordinary
+    /// hangup path.
+    private var _fromPush = false
 
     override init() {
         super.init()
@@ -77,13 +86,7 @@ final class TelnyxVoiceClient: NSObject, VoiceClient, @unchecked Sendable {
             _lastError = nil
         }
 
-        let config = TxConfig(
-            token: token,
-            pushDeviceToken: lock.withLock { _pushToken },
-            pushEnvironment: pushEnvironment,
-            logLevel: .error)
-
-        try client.connect(txConfig: config)
+        try client.connect(txConfig: config(token: token))
 
         // Polled rather than awaited on a continuation: `onClientReady` and
         // `onClientError` can both fire, or neither, and a continuation resumed
@@ -100,7 +103,34 @@ final class TelnyxVoiceClient: NSObject, VoiceClient, @unchecked Sendable {
         lock.withLock {
             _call = nil
             _isReady = false
+            _fromPush = false
+            // Dropped too: a credential outlives the session it was minted
+            // for, and the next sign-in on this device is a different account.
+            _voiceToken = nil
         }
+    }
+
+    var isConnected: Bool { client.isConnected() }
+
+    /// One definition of the login configuration.
+    ///
+    /// 🔴 **`enableMissedCallNotifications` must be true and must be identical
+    /// on every path.** It defaults to false, and the v4 migration is explicit
+    /// (`docs-markdown/migrations/v3-to-v4.md:53`): *"the default (`false`)
+    /// means Telnyx servers will not send missed call pushes to your app"* —
+    /// so without it the "Missed call!" / "Answered Elsewhere" dismissal
+    /// handling in `CallController` can never run and a caller who hangs up
+    /// leaves the CallKit screen ringing until iOS times it out. The SDK's own
+    /// guidance (`v3-to-v4.md:50`) is to pass it consistently at every
+    /// connection point, `processVoIPNotification` included — the login it
+    /// produces is what tags the user agent.
+    private func config(token: String) -> TxConfig {
+        TxConfig(
+            token: token,
+            pushDeviceToken: lock.withLock { _pushToken },
+            pushEnvironment: pushEnvironment,
+            enableMissedCallNotifications: true,
+            logLevel: .error)
     }
 
     // MARK: - Calls
@@ -124,14 +154,47 @@ final class TelnyxVoiceClient: NSObject, VoiceClient, @unchecked Sendable {
         return providerSessionId
     }
 
-    func answer() async throws {
+    func answer(action: CXAnswerCallAction) throws -> CallKitHandoff {
+        // A push-woken call: there is normally NO `Call` object yet, because
+        // the INVITE only follows the login this very call triggers. The SDK
+        // holds the action and fulfills it when the INVITE lands
+        // (`TxClient.swift:1423-1426`), or ends the call on its own 10-second
+        // INVITE timeout (`:838-858`) — which it starts ONLY when it is
+        // holding an answer action (`:1121-1124`). Answering `currentCall`
+        // here instead is what made every push call fail on the spot.
+        if lock.withLock({ _fromPush }) {
+            client.answerFromCallkit(answerAction: action)
+            return .sdkOwnsAction
+        }
+        // Delivered over a live socket: `onIncomingCall` has already handed us
+        // the call, so this is the proven path and stays untouched.
         guard let call = currentCall else { throw Fault.noActiveCall }
         call.answer()
+        return .callerMustResolve
+    }
+
+    func end(action: CXEndCallAction) -> CallKitHandoff {
+        // Declining a push call has to reach Telnyx as `decline_push` on the
+        // login (`TxClient.swift:871-916`); a local hangup on a call object we
+        // do not have yet reaches nobody and the caller keeps hearing ringback.
+        if lock.withLock({ _fromPush }) {
+            lock.withLock { _fromPush = false }
+            client.endCallFromCallkit(endAction: action)
+            currentCall = nil
+            return .sdkOwnsAction
+        }
+        // ⚠️ Everything else deliberately does NOT go through the SDK:
+        // `endCallFromCallkit` FAILS the action when it holds no call under
+        // that UUID (`TxClient.swift:927-930`), and an outbound call's CallKit
+        // UUID is ours, not the SDK's — so routing outbound through it would
+        // make ending a call impossible.
+        return .callerMustResolve
     }
 
     func hangup() async {
         currentCall?.hangup()
         currentCall = nil
+        lock.withLock { _fromPush = false }
     }
 
     func setMuted(_ muted: Bool) async {
@@ -192,33 +255,42 @@ final class TelnyxVoiceClient: NSObject, VoiceClient, @unchecked Sendable {
 
     // MARK: - Push
 
-    func registerPushToken(_ token: String) {
-        lock.withLock { _pushToken = token }
+    @discardableResult
+    func registerPushToken(_ token: String) -> Bool {
+        lock.withLock {
+            guard _pushToken != token else { return false }
+            _pushToken = token
+            return true
+        }
     }
 
     /// Hand the push to the SDK so it can attach to the ringing call.
     ///
     /// Telnyx nests what it needs under `metadata`; `CallController` passes
-    /// that dictionary through untouched. A push that arrives before we ever
-    /// held a voice token cannot be attached — the call still rings via
-    /// CallKit, and answering it fails loudly rather than silently muting.
-    func handleVoIPPush(metadata: [String: Any]) {
-        let token = lock.withLock { _voiceToken }
-        guard let token else { return }
-
-        let config = TxConfig(
-            token: token,
-            pushDeviceToken: lock.withLock { _pushToken },
-            pushEnvironment: pushEnvironment,
-            logLevel: .error)
-
+    /// that dictionary through untouched. The credential comes from the caller
+    /// — see `handleVoIPPush` on the protocol.
+    ///
+    /// `TxServerConfiguration()` is the bare default on purpose: the SDK
+    /// rebuilds it from the push metadata itself, keying the region off
+    /// `voice_sdk_id` (`TxClient.swift:1474-1479`).
+    func handleVoIPPush(metadata: [String: Any], token: String) throws {
+        // Kept so a later `connect()` and any re-login reuse the same
+        // credential the push flow authenticated with.
+        lock.withLock {
+            _voiceToken = token
+            _fromPush = true
+        }
         do {
             try client.processVoIPNotification(
-                txConfig: config,
+                txConfig: config(token: token),
                 serverConfiguration: TxServerConfiguration(),
                 pushMetaData: metadata)
         } catch {
-            lock.withLock { _lastError = error }
+            lock.withLock {
+                _lastError = error
+                _fromPush = false
+            }
+            throw error
         }
     }
 
@@ -285,8 +357,14 @@ extension TelnyxVoiceClient: TxClientDelegate {
     func onCallStateUpdated(callState: CallState, callId: UUID) {
         switch callState {
         case .ACTIVE:
+            // The SDK clears its own push state once an answered push call is
+            // established (`TxClient.swift:1426`); ours has to follow, or
+            // ending the call would take the decline path for a call that is
+            // already up.
+            lock.withLock { _fromPush = false }
             delegate?.voiceMediaConnected()
         case .DONE:
+            lock.withLock { _fromPush = false }
             delegate?.voiceRemoteEnded()
         case .DROPPED:
             delegate?.voiceFailed(String(localized: "The call dropped."))

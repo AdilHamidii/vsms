@@ -1,5 +1,21 @@
 import AVFoundation
+import CallKit
 import Foundation
+
+/// Who is responsible for resolving a CallKit action.
+///
+/// 🔴 **The SDK resolves some actions itself and it is not optional to know
+/// which.** `TxClient.answerFromCallkit` stores the action and fulfills it only
+/// once the INVITE arrives (`TxClient.swift:1423-1426`) or its own 10-second
+/// INVITE timeout fires (`:838-858`); fulfilling it ourselves as well is a
+/// double-fulfill. Conversely an action nobody resolves is a call CallKit
+/// eventually kills on its own.
+enum CallKitHandoff {
+    /// The SDK now owns the action and will `fulfill()` or `fail()` it.
+    case sdkOwnsAction
+    /// Nothing else will touch it — the caller must resolve it.
+    case callerMustResolve
+}
 
 /// Events the WebRTC SDK raises that our call logic has to act on.
 ///
@@ -62,8 +78,34 @@ protocol VoiceClient: AnyObject, Sendable {
     /// which is what `sync-telnyx-cdr` matches a detail record against.
     func dial(to: String, from: String) async throws -> String?
 
-    /// Answer the call currently ringing.
-    func answer() async throws
+    /// Answer the call CallKit is asking us to answer.
+    ///
+    /// 🔴 **Takes the `CXAnswerCallAction` rather than answering blind, because
+    /// a push-woken call has no `Call` object yet.** The INVITE only arrives
+    /// after the SDK logs in and sends `attachCall`, which is a websocket round
+    /// trip after the phone has already started ringing — so answering in the
+    /// first second or two found nothing to answer and threw. Telnyx's own
+    /// rule (`docs-markdown/index.md:409`): *"When receiving calls from push
+    /// notifications, it is always required to wait for the connection to the
+    /// WebSocket before fulfilling the call answer action"*, via
+    /// `answerFromCallkit(answerAction:)` — which also starts the SDK's INVITE
+    /// timeout (`TxClient.swift:1121-1124`), the thing that ends a call whose
+    /// INVITE never comes.
+    ///
+    /// Synchronous on purpose: it is called from the main actor and
+    /// `CXAnswerCallAction` is not `Sendable`, so an `async` signature would
+    /// hop executors and stop compiling under strict concurrency.
+    func answer(action: CXAnswerCallAction) throws -> CallKitHandoff
+
+    /// End the call CallKit is asking us to end.
+    ///
+    /// The push case must go through the SDK so a DECLINE is sent as
+    /// `decline_push` on the login (`TxClient.swift:871-916`) instead of
+    /// leaving the caller listening to ringback. Every other case stays on
+    /// `hangup()`, which is proven — note `endCallFromCallkit` FAILS the action
+    /// when it holds no call under that exact UUID (`TxClient.swift:927-930`),
+    /// and our outbound calls carry a CallKit UUID the SDK has never seen.
+    func end(action: CXEndCallAction) -> CallKitHandoff
 
     /// End whatever call is live. Must be safe to call when there is none —
     /// CallKit can deliver an end action for a call the SDK already dropped.
@@ -117,13 +159,30 @@ protocol VoiceClient: AnyObject, Sendable {
 
     /// The APNs VoIP token, so Telnyx can ring this device. Supplied whenever
     /// PushKit hands us one, which may be before or after `connect`.
-    func registerPushToken(_ token: String)
+    ///
+    /// Returns true when the value CHANGED. Telnyx only learns a token from a
+    /// login message (`TxClient.swift:1779-1804`), and the config is captured
+    /// at `connect` time — so a token that rotates while the socket is up has
+    /// to force a re-login or Telnyx keeps pushing to the dead one.
+    @discardableResult
+    func registerPushToken(_ token: String) -> Bool
+
+    /// Whether a socket session is currently established.
+    var isConnected: Bool { get }
 
     /// Hand an incoming VoIP push to the SDK so it can attach to the call.
     ///
     /// Called only AFTER `reportNewIncomingCall` has satisfied iOS — see the
     /// PushKit note in `CallController`.
-    func handleVoIPPush(metadata: [String: Any])
+    ///
+    /// `token` is passed in rather than read from the live session: the whole
+    /// point is that this path runs when there is no live session, from a
+    /// credential the caller either restored from the Keychain or just minted.
+    /// It THROWS so the caller can tell a failed handoff from a silent one —
+    /// `TxClient.processVoIPNotification` rejects metadata with no
+    /// `voice_sdk_id` (`TxClient.swift:1459-1467`), which is the single most
+    /// diagnostic failure on this path and used to be discarded.
+    func handleVoIPPush(metadata: [String: Any], token: String) throws
 }
 
 /// The stand-in used on the simulator and any build without a working SDK
@@ -147,7 +206,10 @@ final class NullVoiceClient: VoiceClient, @unchecked Sendable {
     func dial(to: String, from: String) async throws -> String? {
         throw Unavailable.noVoiceSDK
     }
-    func answer() async throws { throw Unavailable.noVoiceSDK }
+    func answer(action: CXAnswerCallAction) throws -> CallKitHandoff {
+        throw Unavailable.noVoiceSDK
+    }
+    func end(action: CXEndCallAction) -> CallKitHandoff { .callerMustResolve }
     func hangup() async {}
     func setMuted(_ muted: Bool) async {}
     func setSpeaker(_ on: Bool) async {}
@@ -159,6 +221,10 @@ final class NullVoiceClient: VoiceClient, @unchecked Sendable {
     func audioSessionActivated(_ session: AVAudioSession) {}
     func audioSessionDeactivated(_ session: AVAudioSession) {}
     func reassertAudioSession() {}
-    func registerPushToken(_ token: String) {}
-    func handleVoIPPush(metadata: [String: Any]) {}
+    @discardableResult
+    func registerPushToken(_ token: String) -> Bool { false }
+    var isConnected: Bool { false }
+    func handleVoIPPush(metadata: [String: Any], token: String) throws {
+        throw Unavailable.noVoiceSDK
+    }
 }

@@ -245,6 +245,30 @@ struct ContentView: View {
             // the user had opened the paywall at least once. `iap` is `@State`
             // in `AuthGate`, so that was true on EVERY cold launch.
             await iap.loadProducts()
+
+            // 🔴 REGISTER WITH TELNYX AT LAUNCH WHEN THE USER HOLDS A NUMBER.
+            //
+            // Telnyx learns a device's VoIP token from a LOGIN and can only
+            // push to a token it has seen — *"You will need to login at least
+            // once to send your device token to Telnyx before start getting
+            // Push notifications"* (`push-notification/app-setup.md`). Until
+            // this existed the only logins in the app were `LineScreen.task`
+            // and the dialer, so a subscriber who never opened the Number tab
+            // could not be rung at all, and one who opened it once was
+            // reachable only until their token rotated.
+            //
+            // Behind the reveal, like the other work here: it is a background
+            // registration, not something Home waits for. `prepareVoice()` is
+            // idempotent and returns immediately when the socket is already up,
+            // so this is one mint on a cold launch and nothing on a warm one.
+            await connectVoiceIfLineIsLive()
+        }
+        // A line that lapses, is released, or is signed away stops being
+        // something we should hold a voice session for — the credential is
+        // rent we no longer pay for. Keyed on the receiving line's identity, so
+        // renting a number mid-session registers it too.
+        .onChange(of: receivingLineId) { _, _ in
+            Task { await connectVoiceIfLineIsLive() }
         }
         // Keep polling a live email activation even when no screen shows it.
         // check-email-order is the ONLY thing that ever fetches an email code
@@ -538,6 +562,31 @@ struct ContentView: View {
                 comingSoonFlow("Calling isn't available in this build.")
             }
         }
+    }
+
+    /// The line that can currently RECEIVE, if any.
+    ///
+    /// `canReceive`, not `canSend`: a `past_due` number still rings, and the
+    /// user does not control who calls them. Identity rather than a Bool so
+    /// swapping a number also re-registers.
+    private var receivingLineId: String? {
+        state.lines.first(where: { $0.status.canReceive })?.id
+    }
+
+    /// Hold a Telnyx session exactly while the user holds a number that rings.
+    private func connectVoiceIfLineIsLive() async {
+        guard calls.isVoiceAvailable, !calls.isLive else { return }
+        guard let id = receivingLineId else {
+            // Nothing to receive on. Drop the session and the stored
+            // credential rather than remaining a push target for a number that
+            // is no longer ours.
+            await calls.releaseVoice()
+            return
+        }
+        // Only when nothing has claimed it: `LineScreen` sets this to the line
+        // actually on screen, and that choice must win.
+        if calls.activeLineId == nil { calls.activeLineId = id }
+        await calls.prepareVoice()
     }
 
     private var emptyFlow: some View {

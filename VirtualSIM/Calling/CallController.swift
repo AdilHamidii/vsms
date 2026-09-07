@@ -125,10 +125,23 @@ final class CallController: NSObject {
             self.voice.registerPushToken(token)
             Task { await uploadVoIPToken(token) }
         }
+        // A push can wake a terminated app and reach `pushRegistry` before
+        // there is any way to mint a credential. Whatever it could not finish
+        // then is finished here — see `completePendingPushHandoff`.
+        if pendingPush != nil {
+            Task { await completePendingPushHandoff() }
+        }
     }
 
     /// The most recent VoIP token, kept until `attach` can act on it.
     private var pendingVoIPToken: String?
+
+    /// An incoming push whose handoff to the SDK has not completed yet.
+    private var pendingPush: (metadata: [String: Any], uuid: UUID)?
+
+    /// The handoff in flight, if any. Awaited by anything that needs the SDK to
+    /// know about the call — answering, above all.
+    private var pushHandoffTask: Task<Void, Never>?
 
     /// How much of calling actually works right now.
     ///
@@ -157,8 +170,25 @@ final class CallController: NSObject {
     /// call it again without paying for a second handshake. Doing it on appear
     /// means the socket is usually up before the user finishes typing, which
     /// is the difference between a call that rings and one that pauses first.
+    ///
+    /// ⚠️ Concurrent callers SHARE one attempt. There are four entry points now
+    /// (launch, the line changing, the Number tab, the dialer) and two of them
+    /// fire within the same second of a cold launch — `connect(token:)`
+    /// short-circuits on `isReady`, which is still false during the handshake,
+    /// so without this the app would mint twice and open two sockets.
     @discardableResult
     func prepareVoice() async -> Bool {
+        if let running = voicePrepareTask { return await running.value }
+        let task = Task { @MainActor in await self.performPrepareVoice() }
+        voicePrepareTask = task
+        let ok = await task.value
+        voicePrepareTask = nil
+        return ok
+    }
+
+    private var voicePrepareTask: Task<Bool, Never>?
+
+    private func performPrepareVoice() async -> Bool {
         // Screenshot frames are marketing assets and must never render a fault.
         // `loadLine` already returns early for the same reason.
         if ScreenshotMode.isActive { readiness = .ready; return false }
@@ -173,6 +203,10 @@ final class CallController: NSObject {
         do {
             let grant = try await LineAPI(client: api).mintVoiceToken(lineId: activeLineId)
             lineE164 = grant.e164
+            // Persisted BEFORE the connect: a push can wake a terminated app,
+            // and the credential is the one thing that path cannot obtain in
+            // time. See `VoiceCredentialStore`.
+            VoiceCredentialStore.save(token: grant.token)
             try await voice.connect(token: grant.token)
             inboundReady = grant.inboundReady
             readiness = grant.inboundReady ? .ready : .outboundOnly
@@ -202,6 +236,22 @@ final class CallController: NSObject {
             }
             return false
         }
+    }
+
+    /// Drop the Telnyx session and the stored credential.
+    ///
+    /// Called on sign-out and when the user stops holding a line that can
+    /// receive. 🔴 **`disconnect()` had no caller anywhere**, so a device kept
+    /// a registered credential — and therefore kept being a valid push target —
+    /// for a line it no longer owned and an account nobody was signed in to.
+    /// The credential is a bearer token for a paid voice line; it does not
+    /// survive the thing it was minted for.
+    func releaseVoice() async {
+        VoiceCredentialStore.clear()
+        pendingPush = nil
+        readiness = .unknown
+        inboundReady = false
+        await voice.disconnect()
     }
 
     /// Whether the number is attached to the voice application yet. Outbound
@@ -535,9 +585,23 @@ extension CallController: CXProviderDelegate {
     nonisolated func provider(_ provider: CXProvider, perform action: CXAnswerCallAction) {
         Task { @MainActor in
             phase = .connecting
+            // A user can answer faster than the handoff completes — the push
+            // callback hands off AFTER satisfying iOS, and that may include a
+            // mint. Answering into a client that has not been told about the
+            // call is exactly the failure this whole change exists to remove,
+            // so wait for the handoff rather than racing it. A no-op for an
+            // outbound call and for one delivered over the socket.
+            await runPushHandoff()
             do {
-                try await voice.answer()
-                action.fulfill()
+                // 🔴 On the push path the SDK resolves this action ITSELF: the
+                // call being answered does not exist yet, and it fulfills once
+                // the INVITE lands or fails on its own timeout. Fulfilling it
+                // here as well is a double-fulfill; not fulfilling it on the
+                // socket path is a call CallKit eventually kills. See
+                // `VoiceClient.answer(action:)`.
+                if try voice.answer(action: action) == .callerMustResolve {
+                    action.fulfill()
+                }
             } catch {
                 // The phase MUST be reset. Leaving it on `.connecting` left the
                 // in-call overlay showing "Connecting…" with no timer and no
@@ -567,9 +631,17 @@ extension CallController: CXProviderDelegate {
             // suspended, so `currentCallId` has NOT been cleared yet and the
             // old "cannot double-report" reasoning did not hold.
             reportFinalOnce()
-            await voice.hangup()
+            // Declining a call that arrived as a push has to be sent to Telnyx
+            // as `decline_push`, and the SDK owns the action while it does
+            // that. Every other end — outbound, and a call answered over the
+            // socket — stays on the proven hangup path, because
+            // `endCallFromCallkit` FAILS an action for a UUID it does not hold
+            // and an outbound call's CallKit UUID is ours alone.
+            if voice.end(action: action) == .callerMustResolve {
+                await voice.hangup()
+                action.fulfill()
+            }
             resetState()
-            action.fulfill()
         }
     }
 
@@ -638,7 +710,17 @@ extension CallController: PKPushRegistryDelegate {
             }
             // The SDK needs it too: Telnyx sends the VoIP push itself, and a
             // credential registered without this token can never ring.
-            voice.registerPushToken(token)
+            let changed = voice.registerPushToken(token)
+            // 🔴 Telnyx only ever learns a token from a LOGIN message, and the
+            // config is captured at connect time — so handing the SDK a new
+            // token while the socket is up changes nothing on the server, and
+            // Telnyx keeps pushing to a token this device no longer has. A
+            // rotation (restore from backup, reinstall, iOS token churn) has
+            // to force a fresh login. Cheap: this fires once per rotation.
+            if changed, voice.isConnected {
+                await voice.disconnect()
+                await prepareVoice()
+            }
             await uploadVoIPToken(token)
         }
     }
@@ -749,15 +831,116 @@ extension CallController: PKPushRegistryDelegate {
                 self.peer = from
                 self.isOutbound = false
                 self.phase = .ringing
-                if let metadata { self.voice.handleVoIPPush(metadata: metadata) }
+                // Recorded BEFORE `completion()` — a property write, not work —
+                // so that an answer arriving in the same instant finds a handoff
+                // to wait for rather than a client that has never heard of this
+                // call. Doing the handoff itself here would be the violation.
+                if let metadata { self.pendingPush = (metadata, uuid) }
                 completion()
                 // STRICTLY AFTER `completion()`. iOS is waiting on that call and
-                // nothing may sit in front of it — registering the call is
-                // bookkeeping, and bookkeeping never delays the obligation that
-                // keeps VoIP push delivery alive for this app.
+                // nothing may sit in front of it — handing the push to the SDK
+                // can take a network round trip, and registering the call is
+                // bookkeeping. Neither may delay the obligation that keeps VoIP
+                // push delivery alive for this app.
+                await self.runPushHandoff()
                 await self.registerInboundCall(peer: from)
             }
         }
+        }
+    }
+
+    /// `attach` is the second entry point: it is where a cold-launched app
+    /// finally gets an API client, which may be after the push gave up trying.
+    private func completePendingPushHandoff() async {
+        guard pendingPush != nil else { return }
+        await runPushHandoff()
+    }
+
+    /// Serialises every entry point. A second attempt while one is running
+    /// waits for it rather than racing it into a double `processVoIPNotification`.
+    private func runPushHandoff() async {
+        guard pendingPush != nil || pushHandoffTask != nil else { return }
+        if let running = pushHandoffTask {
+            await running.value
+            return
+        }
+        let task = Task { @MainActor in await self.performPushHandoff() }
+        pushHandoffTask = task
+        await task.value
+        pushHandoffTask = nil
+    }
+
+    /// Give the push to the SDK, minting a credential if we do not hold a live
+    /// one.
+    ///
+    /// 🔴 **This is the fix for the defect that made every inbound call
+    /// impossible.** `handleVoIPPush` used to read a credential held only in
+    /// memory by `connect(token:)`, which runs only when the user opens the
+    /// Number tab — so a push into a terminated app found nil and returned
+    /// silently. `TxClient.isCallFromPush` stayed false, so `sendAttachCall()`
+    /// (`TxClient.swift:1117-1118`) never asked Telnyx for the INVITE, no
+    /// `Call` was ever created, and answering threw. Measured at the provider:
+    /// 116 inbound sessions in 30 days, every one 0 seconds with no WebRTC leg.
+    ///
+    /// Order of preference is latency-driven: the Keychain first, because it
+    /// answers in microseconds while the phone is ringing, and a mint only when
+    /// there is nothing usable stored. The retries exist because a cold launch
+    /// restores the session AFTER this runs — `Session.bootstrap()` is the last
+    /// thing `AuthGate`'s task awaits — so the first mint can legitimately fail
+    /// with no credentials and succeed a second later.
+    private func performPushHandoff() async {
+        guard let pending = pendingPush else { return }
+
+        // The fast path, and the one that matters: no network, no session, no
+        // wait. This is what a terminated app has.
+        if let token = VoiceCredentialStore.validToken(), deliverPush(pending, token: token) {
+            return
+        }
+
+        for attempt in 0..<3 {
+            // The caller can hang up while we are still trying.
+            guard phase != .idle else { pendingPush = nil; return }
+            if let api = apiClient {
+                do {
+                    let grant = try await LineAPI(client: api).mintVoiceToken(lineId: activeLineId)
+                    VoiceCredentialStore.save(token: grant.token)
+                    lineE164 = grant.e164
+                    if deliverPush(pending, token: grant.token) { return }
+                } catch {
+                    print("CallController:: push credential mint failed (attempt \(attempt + 1)): \(error)")
+                }
+            }
+            // Short, because CallKit will not hold an unanswered action
+            // forever and the user is looking at a ringing phone.
+            try? await Task.sleep(for: .milliseconds(attempt == 0 ? 800 : 2000))
+        }
+
+        // Nothing left to try. Ending the call is the honest outcome: a call
+        // that rings, is answered, and then sits mute is worse than one that
+        // visibly fails, and it is the shape users reported.
+        print("CallController:: VoIP push handoff failed — no usable voice credential")
+        pendingPush = nil
+        provider.reportCall(with: pending.uuid, endedAt: Date(), reason: .failed)
+        if currentUUID == pending.uuid { resetState() }
+    }
+
+    /// One attempt. Returns false on a rejected handoff so the caller can try a
+    /// fresher credential.
+    private func deliverPush(
+        _ pending: (metadata: [String: Any], uuid: UUID), token: String
+    ) -> Bool {
+        do {
+            try voice.handleVoIPPush(metadata: pending.metadata, token: token)
+            pendingPush = nil
+            return true
+        } catch {
+            // ⚠️ This used to be swallowed into a field nobody read. It is the
+            // most diagnostic failure on the whole inbound path: the SDK
+            // rejects metadata carrying no `voice_sdk_id`
+            // (`TxClient.swift:1459-1467`), which means the push payload is not
+            // the shape we think it is.
+            print("CallController:: processVoIPNotification rejected the push: \(error)")
+            return false
         }
     }
 
@@ -772,8 +955,30 @@ extension CallController: PKPushRegistryDelegate {
     ///
     /// Registering does NOT bill the user: the server reserves zero for
     /// inbound, deliberately, because nobody controls who calls them.
+    ///
+    /// ⚠️ **It RETRIES, because the first attempt regularly cannot work.** A
+    /// push-woken app reaches this before `Session.bootstrap()` has restored
+    /// the access token — `AuthGate` awaits it last — so `APIClient` has no
+    /// `Authorization` header and the request fails with `.notAuthenticated`.
+    /// The old single attempt swallowed that, which is one reason a call that
+    /// really did ring could still leave no row at all, and why "zero inbound
+    /// rows" was never evidence that nobody called.
     private func registerInboundCall(peer: String) async {
-        guard let api = apiClient, currentCallId == nil, !peer.isEmpty else { return }
+        guard currentCallId == nil, !peer.isEmpty else { return }
+        for attempt in 0..<3 {
+            // The call can end while this round trip is in flight; adopting an
+            // id then would attach it to whatever comes next.
+            guard phase != .idle, currentUUID != nil, currentCallId == nil else { return }
+            if await attemptInboundRegistration(peer: peer) { return }
+            try? await Task.sleep(for: .seconds(attempt == 0 ? 1 : 3))
+        }
+        // Bookkeeping only — the call itself is unaffected, and nothing will
+        // mis-settle, because no row was created for a sweep to find.
+        print("CallController:: could not record inbound call from \(peer) — no line_calls row")
+    }
+
+    private func attemptInboundRegistration(peer: String) async -> Bool {
+        guard let api = apiClient else { return false }
         do {
             // `activeLineId` is the line the app was last showing. For an
             // inbound call that is a guess: the push names the CALLER, not
@@ -786,13 +991,14 @@ extension CallController: PKPushRegistryDelegate {
                 .beginCall(to: peer, direction: "inbound", lineId: activeLineId)
             // The call can end while this round trip is in flight; adopting the
             // id then would attach it to whatever comes next.
-            guard phase != .idle, currentUUID != nil else { return }
+            guard phase != .idle, currentUUID != nil else { return true }
             currentCallId = grant.callId
+            return true
         } catch {
-            // Never fail a ringing call over bookkeeping. The consequence is a
-            // missing history row, not a broken call — and the 6-hour sweep
-            // still has nothing to mis-settle, because no row was created.
-            lastError = nil
+            // Never fail a ringing call over bookkeeping — but never lose it
+            // in silence either. The caller retries.
+            print("CallController:: inbound call registration failed: \(error)")
+            return false
         }
     }
 

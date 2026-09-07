@@ -55,7 +55,9 @@ credential connection, our own push credential on all 9, cert valid to
 already connected is never handed to the SDK (`handleVoIPPush` returns on a
 nil voice token), the app only logs in to Telnyx when the Number tab is
 opened, and answering does not use `answerFromCallkit`. So the phone may
-ring and the call can never connect. See Known-open → INBOUND CALLING.
+ring and the call can never connect. **Those client defects are FIXED IN THE
+REPO on 2026-09-07 — unshipped, and unverified by any real call.** See
+Known-open → INBOUND CALLING.
 "Take calls from anywhere" is not a claim this product can make. Meanwhile
 **outbound SMS is 1 sent against 6 failed** (`40010`, 10DLC).
 Inbound SMS works, 3 of 3. See "Rentable second numbers". iOS frontend in SwiftUI + Supabase backend (Postgres + Auth + Edge Functions + pg_cron).
@@ -4840,6 +4842,38 @@ before any await; `PKPushRegistry` + `CXProvider` are created in
 built plist carries `audio` + `voip`; `provider(_:didActivate:)` hands the
 session to the SDK without `setActive`. The 2.5 list below is what was
 fixed then and is still true.
+
+✅ **(1)–(5) ARE FIXED IN THE REPO as of 2026-09-07 — UNSHIPPED and
+UNVERIFIED ON A DEVICE.** Nothing below has been proved by a real call; the
+build is green and the reasoning is against the resolved 4.1.2 source, which
+is exactly the evidence that was not enough last time. What changed:
+- **`VirtualSIM/Calling/VoiceCredentialStore.swift` (new)** persists the
+  minted credential in the Keychain (`kSecAttrAccessibleAfterFirstUnlock…`,
+  readable while locked) with its JWT `exp`, so a terminated app has a
+  credential BEFORE it has a session. `CallController.performPushHandoff`
+  tries the stored token first, then mints with 3 bounded retries (a cold
+  launch restores the session AFTER the push lands), then — if both fail —
+  ends the CallKit call `.failed` rather than leaving it ringing mute.
+- **`answerFromCallkit` / `endCallFromCallkit`** now carry the CallKit
+  actions, but ONLY on the push path (`_fromPush` in `TelnyxVoiceClient`).
+  🔴 They must NOT carry the others: `endCallFromCallkit` FAILS an action
+  whose UUID it does not hold (`TxClient.swift:927-930`), and an outbound
+  call's CallKit UUID is ours alone — routing outbound through it would make
+  ending a call impossible. `CallKitHandoff` says who fulfills; fulfilling
+  twice and fulfilling never are both real bugs.
+- **The app logs in to Telnyx at launch** whenever a line `canReceive`
+  (`ContentView.connectVoiceIfLineIsLive`, behind the reveal), re-logs in
+  when the PushKit token rotates while connected (Telnyx only learns a token
+  from a LOGIN), and `releaseVoice()` disconnects + clears the credential on
+  sign-out and when the last receiving line goes. `prepareVoice()` now
+  serialises concurrent callers — there are four entry points and two fire in
+  the same second of a cold launch.
+- `enableMissedCallNotifications: true` on every `TxConfig`, which is what
+  makes the existing dismissal code reachable at all; `registerInboundCall`
+  retries 3× instead of swallowing the `.notAuthenticated` a push-launched
+  app is guaranteed to get; `processVoIPNotification` failures are printed.
+- **(6) was deliberately NOT done** (owner/coordinator decision): CallKit is
+  the answer surface, `InCallOverlay` is unchanged.
 
 **Device protocol once (1)–(3) are fixed:** Test C first — force-quit, call
 the number, Answer; expect `TxClient:: processVoIPNotification` in the

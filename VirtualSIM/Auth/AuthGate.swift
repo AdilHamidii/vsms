@@ -109,7 +109,13 @@ struct AuthGate: View {
         // in, which is also what makes a mid-session sign-in correct.
         .onChange(of: session.status) { _, status in
             switch status {
-            case .signedOut:    mailStore.clearEntitlement()
+            case .signedOut:
+                mailStore.clearEntitlement()
+                // The Telnyx session and its stored credential belong to the
+                // account that minted them. Left alive, this device stays a
+                // valid push target for a line the next user does not own —
+                // and `disconnect()` had no caller anywhere until now.
+                Task { await calls.releaseVoice() }
             case .signedIn:     Task { await mailStore.refreshEntitlement() }
             case .bootstrapping: break
             }
