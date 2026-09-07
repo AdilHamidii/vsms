@@ -800,6 +800,64 @@ Deno.serve(async (req) => {
     return Response.json({ ...result, stored: writeErr ? `error: ${writeErr.message}` : true });
   }
 
+  // ── Mode 7: everything Telnyx holds for ONE line ──────────────────────────
+  // POST {"probe":"line_voice","line_id":"<uuid>"}. Reads the four objects an
+  // inbound call depends on and returns them nearly verbatim: the telephony
+  // credential the app logs in with (does it belong to THIS connection? is it
+  // expired?), the number (`connection_id`), the number's /voice settings
+  // (forwarding, screening — anything that could swallow a call), and the full
+  // credential connection. Added 2026-09-07 when a build that provably logged
+  // in still had Telnyx clear every inbound leg in under a second. Secrets
+  // Telnyx returns on the credential (`sip_password` and friends) are REDACTED
+  // before the result is stored in `app_config.telnyx_line_voice_probe`.
+  if (body.probe === "line_voice") {
+    const lineId = String(body.line_id ?? "");
+    if (!UUID_LIKE.test(lineId)) return Response.json({ error: "line_id (uuid) required" }, { status: 400 });
+    const sb = admin();
+    const { data: line } = await sb.from("phone_lines")
+      .select("id, e164, status, provider_number_id, provider_connection_id, provider_credential_id, provider_voice_profile_id, provider_voice_attached")
+      .eq("id", lineId).maybeSingle();
+    if (!line) return Response.json({ error: "line_not_found" }, { status: 404 });
+    const redact = (v: unknown): unknown => {
+      if (Array.isArray(v)) return v.map(redact);
+      if (v && typeof v === "object") {
+        const out: Record<string, unknown> = {};
+        for (const [k, x] of Object.entries(v as Record<string, unknown>)) {
+          out[k] = /password|secret|token|api_key/i.test(k) ? (x == null ? null : "<redacted>") : redact(x);
+        }
+        return out;
+      }
+      return v;
+    };
+    const budget = { left: 6 };
+    const read = async (path: string) => {
+      const r = await get(key, path, budget, true);
+      return { http: r.http, body: r.body ?? null, data: redact(r.data ?? null) };
+    };
+    const credential = line.provider_credential_id
+      ? await read(`/telephony_credentials/${encodeURIComponent(String(line.provider_credential_id))}`) : null;
+    const number = line.provider_number_id
+      ? await read(`/phone_numbers/${encodeURIComponent(String(line.provider_number_id))}`) : null;
+    const numberVoice = line.provider_number_id
+      ? await read(`/phone_numbers/${encodeURIComponent(String(line.provider_number_id))}/voice`) : null;
+    const connection = line.provider_connection_id
+      ? await read(`/credential_connections/${encodeURIComponent(String(line.provider_connection_id))}`) : null;
+    const credConn = (credential?.data as Record<string, unknown> | null)?.connection_id ?? null;
+    const numConn = (number?.data as Record<string, unknown> | null)?.connection_id ?? null;
+    const result = {
+      mode: "line_voice", at: new Date().toISOString(), line,
+      checks: {
+        credential_on_this_connection: credConn != null && String(credConn) === String(line.provider_connection_id),
+        number_on_this_connection: numConn != null && String(numConn) === String(line.provider_connection_id),
+        credential_expired: (credential?.data as Record<string, unknown> | null)?.expired ?? null,
+      },
+      credential, number, number_voice: numberVoice, connection,
+    };
+    const { error: writeErr } = await sb.from("app_config").upsert(
+      { key: "telnyx_line_voice_probe", value: result }, { onConflict: "key" });
+    return Response.json({ ...result, stored: writeErr ? `error: ${writeErr.message}` : true });
+  }
+
   // ── Mode 1: the credential-connection probe ───────────────────────────────
   const url = new URL(req.url);
   const id = url.searchParams.get("connection_id") ?? (body.connection_id as string | undefined) ?? null;
