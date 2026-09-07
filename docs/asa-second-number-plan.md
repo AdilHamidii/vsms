@@ -317,3 +317,53 @@ asa.py add-keywords 2144617614 2150866468 1.00 "numero usa,numero usa whatsapp,n
 Where the cluster really lives: a "US number" searcher INSIDE the US wants
 a second line; OUTSIDE the US (the EU campaign) wants a US number for
 WhatsApp — the exact product. Expect the EU half to be the cheaper one.
+
+## 9. Day-3 read (2026-09-07): who the installs were, and the burner pause
+
+Owner's question: "15 downloads from ASA yesterday, nobody ordered the US
+number they came for — why?" Answered from `install_attributions` joined to
+`app_events`, not from ASA alone. API figures: **12 installs on 09-06 +
+6 on 09-07 (US campaign), 0 from EU** (15 taps / 3 EU taps).
+
+**Nobody came for a US number.** All 30 `us number / usa number / american
+number` keywords had **0 impressions** in two days — the listing carries no
+`usa`/`american` anywhere until 2.10's subtitle ships, so exact-match terms
+get no relevance. The installs came from `burner number` 4, `burner phone`
+4, `phone number app` 3, `textnow` 2, `virtual phone number` 2,
+`2nd`/`second phone number` 2, `talkatone` 1 — two-way-texting, free-app
+intent, which the product does not serve (no sending, no incoming calls).
+
+Of 18 installs, **11 signed up** (the other 7 are invisible: the app shows
+nothing before sign-in). Of the 11: **3 spent their free credits on a
+temp-SMS code instead** (Home is the first tab; two landed on tiktok/CA),
+**4 looked at the eight New York numbers and tapped none**, **3 reached
+checkout**: 2 tapped Subscribe and cancelled at Apple's sheet within 11 s
+and 30 s, and the one EU install (Italy, `número whatsapp`) was shown
+TORONTO numbers by 2.9's storefront default and never tapped Subscribe.
+The 30-second canceller had first searched the SMS catalog for "usa"
+(`service_search_empty`), then hit a 21-credit WhatsApp paywall and opened
+WhatsApp support twice. **Not the cause:** the store was up every time
+(`line_numbers_shown count: 8`), catalog fresh, lines not paused, and the
+sheet works — 4 organic users paid $5.99 on 09-04/05, one right after a
+cancel. App-wide over the same 33 h: 59 store viewers → 29 checkouts →
+7 Subscribe taps → 7 cancels (median 15 s) → 0 paid.
+
+**APPLIED 2026-09-07 (owner: "pause the burner keywords"):** `burner`
+(Conquest), `burner number` and `burner phone` (Second number) are
+**PAUSED**, read back. The rest of Conquest (textnow, talkatone, hushed…)
+is still live — same intent class, owner's call. Owner's stated premise
+for keeping calling-intent terms: with 2.10 the numbers make calls and
+"even receive". Checked in `line_calls` the same morning: **outbound is
+proven at volume** (131 completed calls settled from Telnyx detail
+records, up to 249 s, last 2026-09-06); **inbound has ZERO rows ever** —
+no `direction='inbound'` call has been recorded on any build, so "receive
+calls" is still a claim without evidence, and the burner objection was
+about TEXTING, which 2.10 does not change.
+
+**Both campaigns read `PAUSED_BY_USER` at 09:00 Paris on 09-07** — not
+done from this repo. Resume with the web UI or `PUT /campaigns/{id}`
+`{"campaign":{"status":"ENABLED"}}`; the keyword pauses hold either way.
+Next levers, in evidence order: route ASA installs to the Number tab off
+`record-attribution`'s response; the sign-in wall (7 of 18 lost); revisit
+the US cluster only after 2.10 is live and `report 1` shows it earning
+impressions.

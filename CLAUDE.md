@@ -1666,6 +1666,18 @@ Number tab's Calls segment), **call history**, the **allowance gate**
 (`begin-line-call`), **session reporting** (`report-line-call`) and **CDR
 settlement** (`sync-telnyx-cdr`, on cron).
 
+✅ **SUPERSEDED 2026-09-07: OUTBOUND CALLING IS PROVEN AT VOLUME.** Read
+from `line_calls` that morning: **131 completed outbound calls settled from
+Telnyx detail records** (`hangup_cause = 'NORMAL_CLEARING'`, `billed_seconds`
+up to 249, last one 2026-09-06 18:37Z), against 21 `missed`. A 249-second
+CDR-settled call is not "connected but silent"; audio is inferred from the
+durations, not from a device report, but the two paragraphs below describe
+the state BEFORE 2026-08-19 and are kept as history only. Re-derive:
+`select direction, status, hangup_cause, count(*), max(billed_seconds) from
+line_calls group by 1,2,3;`. 🔴 **INBOUND is still ZERO rows** — no
+`direction='inbound'` call has ever been recorded on any build (see
+Known-open). "The numbers receive calls" has no evidence yet; do not sell it.
+
 🟠 **CALLS CONNECT; AUDIO PROBABLY DID NOT — corrected 2026-08-19.** Three
 calls to France (`+33`, 6s / 2s / 23s) and one attempt to Poland connected on
 2026-08-18, every row carrying a `provider_call_session_id`, i.e. the leg
@@ -4598,7 +4610,14 @@ call), and 30 "US number" keywords were added (`us number`, `usa
 number`, `american number`, `numero usa`…) via the new `asa.py add-keywords`
 command — see `docs/asa-second-number-plan.md` §8. Day 2 had shown delivery
 was BUDGET-capped (€15 spent on a €10 cap), and that the Apple Ads web UI
-lags the API by most of a day: read `report 1`, not the dashboard.** The old EN/EU temp-SMS campaigns
+lags the API by most of a day: read `report 1`, not the dashboard.**
+**2026-09-07: `burner`, `burner number`, `burner phone` PAUSED (owner).**
+Day 2's 18 installs were burner/TextNow intent (11 of 18 from those terms
++ Conquest), all 30 `us number` keywords had 0 impressions (no `usa`/
+`american` in the listing until 2.10), and of the 11 who signed up 3 spent
+free credits on temp SMS, 4 stopped at the number list, 2 cancelled at
+Apple's sheet inside 30 s, 0 subscribed — plan doc §9. Both campaigns read
+`PAUSED_BY_USER` that morning, not from this repo. The old EN/EU temp-SMS campaigns
 stay PAUSED as the control. Kill rules are in the plan doc; the 30-day stop
 is ≥ 1 paid sub per €25 spent.
 🔴 **Two ASA facts that cost an afternoon on 2026-09-05 — do not re-learn
@@ -4728,7 +4747,8 @@ they like" does not satisfy.
 
 🟠 **INBOUND CALLING — the four client bugs are FIXED IN THE REPO (2026-08-27,
 2.5 work) but UNVERIFIED ON A DEVICE, and zero inbound calls have still ever
-happened.** A simulator cannot receive a PushKit push, so the first real
+happened — re-checked 2026-09-07 with 2.9 live: `line_calls` holds 0 rows
+with `direction='inbound'` against 152 outbound.** A simulator cannot receive a PushKit push, so the first real
 inbound call on a physical device is the probe. Watch for: the phone rings at
 all, the CallKit screen shows the caller's number, a `line_calls` row with
 `direction='inbound'` appears, and a missed call dismisses instead of ringing
