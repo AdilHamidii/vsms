@@ -649,7 +649,7 @@ Deno.serve(async (req) => {
   // -dates` can be run on it; Telnyx never returns the private key. Result is
   // stored in `app_config.telnyx_push_credentials_probe` (service-role only).
   if (body.probe === "push_credentials") {
-    const budget = { left: 6 };
+    const budget = { left: 24 };
     const configured = Deno.env.get("TELNYX_IOS_PUSH_CREDENTIAL_ID") ?? null;
     const list = await get(key, "/mobile_push_credentials?page[size]=50", budget, true);
     const rows = Array.isArray(list.data) ? list.data as Array<Record<string, unknown>> : [];
@@ -829,7 +829,7 @@ Deno.serve(async (req) => {
       }
       return v;
     };
-    const budget = { left: 6 };
+    const budget = { left: 24 };
     const read = async (path: string) => {
       const r = await get(key, path, budget, true);
       return { http: r.http, body: r.body ?? null, data: redact(r.data ?? null) };
@@ -842,8 +842,60 @@ Deno.serve(async (req) => {
       ? await read(`/phone_numbers/${encodeURIComponent(String(line.provider_number_id))}/voice`) : null;
     const connection = line.provider_connection_id
       ? await read(`/credential_connections/${encodeURIComponent(String(line.provider_connection_id))}`) : null;
-    const credConn = (credential?.data as Record<string, unknown> | null)?.connection_id ?? null;
+    // 🔴 A telephony credential names its owner in `resource_id`
+    // ("connection:<id>"), NOT in `connection_id` — which does not exist on
+    // this resource. Reading the wrong field made this check a permanent
+    // false negative while the credential was correctly attached.
+    const credRes = (credential?.data as Record<string, unknown> | null)?.resource_id ?? null;
+    const credConn = credRes == null ? null : String(credRes).replace(/^connection:/, "");
     const numConn = (number?.data as Record<string, unknown> | null)?.connection_id ?? null;
+
+    // Inbound needs a SIP REGISTRATION, outbound needs only authentication —
+    // so a connection that places calls happily can still be unreachable.
+    // Telnyx does not document one stable path for reading it, so sweep the
+    // candidates and keep every answer: a 404 here is data, not an error.
+    const sipUser = String(
+      (credential?.data as Record<string, unknown> | null)?.sip_username ?? "");
+    // The CONNECTION's own SIP user is a second address of record, and the
+    // docs say SDKs authenticate as it — so ask about both.
+    const connUser = String(
+      (connection?.data as Record<string, unknown> | null)?.user_name ?? "");
+    const connId = String(line.provider_connection_id ?? "");
+    const regPaths = [
+      `/connections/${encodeURIComponent(connId)}/registration_status`,
+      `/credential_connections/${encodeURIComponent(connId)}/registration_status`,
+      `/telephony_credentials/${encodeURIComponent(String(line.provider_credential_id ?? ""))}/status`,
+      // `/sip_registration_status` is real — it answered 400 naming the one
+      // param it wants. `credential_type` is undocumented at any path we can
+      // fetch, so sweep the plausible values and keep every answer.
+      // Shape learned from the API's own 400s: the param is `username` (NOT
+      // `filter[sip_username]`) and `credential_type` accepts exactly
+      // uac_external_credential | telephony_credential | sip_credential_connection.
+      // Ask about BOTH addresses of record: the on-demand telephony credential
+      // the app logs in as, and the connection's own SIP user.
+      sipUser
+        ? `/sip_registration_status?username=${encodeURIComponent(sipUser)}&credential_type=telephony_credential`
+        : null,
+      connUser
+        ? `/sip_registration_status?username=${encodeURIComponent(connUser)}&credential_type=sip_credential_connection`
+        : null,
+    ].filter((x): x is string => typeof x === "string" && !x.includes("//"));
+    const registration: Record<string, unknown> = {};
+    // ⚠️ `get()` unwraps `.data`, and this endpoint answers with a BARE object
+    // — so the generic reader stored null on a 200 and the answer looked
+    // empty. Keep the raw text here; a 200 is not evidence, the body is.
+    for (const path of regPaths) {
+      if (budget.left <= 0) { registration[path] = { http: 0, raw: "budget exhausted" }; continue; }
+      budget.left--;
+      try {
+        const rr = await fetch(`https://api.telnyx.com/v2${path}`, {
+          headers: { Authorization: `Bearer ${key}` },
+        });
+        registration[path] = { http: rr.status, raw: (await rr.text()).slice(0, 900) };
+      } catch (e) {
+        registration[path] = { http: 0, raw: `transport: ${String(e)}` };
+      }
+    }
     const result = {
       mode: "line_voice", at: new Date().toISOString(), line,
       checks: {
@@ -851,7 +903,7 @@ Deno.serve(async (req) => {
         number_on_this_connection: numConn != null && String(numConn) === String(line.provider_connection_id),
         credential_expired: (credential?.data as Record<string, unknown> | null)?.expired ?? null,
       },
-      credential, number, number_voice: numberVoice, connection,
+      credential, number, number_voice: numberVoice, connection, registration,
     };
     const { error: writeErr } = await sb.from("app_config").upsert(
       { key: "telnyx_line_voice_probe", value: result }, { onConflict: "key" });
