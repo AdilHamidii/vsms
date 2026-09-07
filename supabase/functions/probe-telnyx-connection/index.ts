@@ -6,6 +6,8 @@
 //  2. POST {"probe":"cdr", …}               — the detail-record probe
 //  3. POST {"probe":"coverage"}             — the country-catalogue probe
 //  4. POST {"probe":"numbers"}              — every number Telnyx says we own, joined to phone_lines
+//  5. POST {"probe":"push_credentials"}     — every mobile push credential + the configured one read back (cert PEM)
+//  6. POST {"probe":"inbound_cdr"}          — every detail record in the window, filtered client-side to INBOUND / to our numbers
 //
 // The API key never leaves the platform: this runs edge-side. Mode 1 returns a
 // projection. Mode 2 returns RAW response bodies (truncated) on purpose — the
@@ -630,6 +632,171 @@ Deno.serve(async (req) => {
     };
     const { error: writeErr } = await sb.from("app_config").upsert(
       { key: "telnyx_numbers_probe", value: result }, { onConflict: "key" });
+    return Response.json({ ...result, stored: writeErr ? `error: ${writeErr.message}` : true });
+  }
+
+  // ── Mode 5: the push-credential probe ─────────────────────────────────────
+  // POST {"probe":"push_credentials"}. Every live credential connection reads
+  // back `ios_push_credential_id = TELNYX_IOS_PUSH_CREDENTIAL_ID` (verified
+  // 2026-09-07, 9 of 9) — but nothing anywhere had ever read the CREDENTIAL
+  // itself. The account also holds two Telnyx demo credentials (`is_public:
+  // true`, issued to com.telnyx.webrtcapp, the iOS one expired 2026-04-12), so
+  // "the id matches the env var" proves nothing about whose certificate is
+  // behind it, and an expired VoIP certificate is silent: Telnyx keeps
+  // accepting the connection and the phone never rings. This lists every
+  // credential and reads the configured one back. The `certificate` field is
+  // the PUBLIC cert (PEM) — returned verbatim so `openssl x509 -noout -subject
+  // -dates` can be run on it; Telnyx never returns the private key. Result is
+  // stored in `app_config.telnyx_push_credentials_probe` (service-role only).
+  if (body.probe === "push_credentials") {
+    const budget = { left: 6 };
+    const configured = Deno.env.get("TELNYX_IOS_PUSH_CREDENTIAL_ID") ?? null;
+    const list = await get(key, "/mobile_push_credentials?page[size]=50", budget, true);
+    const rows = Array.isArray(list.data) ? list.data as Array<Record<string, unknown>> : [];
+    const slim = (c: Record<string, unknown>) => ({
+      id: c.id ?? null, alias: c.alias ?? null, type: c.type ?? null,
+      is_public: c.is_public ?? null, created_at: c.created_at ?? null,
+      updated_at: c.updated_at ?? null,
+      certificate: typeof c.certificate === "string" ? c.certificate : null,
+      certificate_present: typeof c.certificate === "string" && c.certificate.length > 0,
+      other_keys: Object.keys(c).filter((k) =>
+        !["id", "alias", "type", "is_public", "created_at", "updated_at", "certificate", "record_type"].includes(k)),
+      is_configured: configured != null && String(c.id) === configured,
+    });
+    const one = configured
+      ? await get(key, `/mobile_push_credentials/${encodeURIComponent(configured)}`, budget, true)
+      : null;
+    const oneRow = one && one.data && typeof one.data === "object" && !Array.isArray(one.data)
+      ? slim(one.data as Record<string, unknown>) : null;
+    const result = {
+      mode: "push_credentials", at: new Date().toISOString(),
+      configured_id: configured,
+      list: { http: list.http, rows: list.rows, body: list.body ?? null },
+      credentials: rows.map(slim),
+      configured: one ? { http: one.http, body: one.body ?? null, credential: oneRow } : null,
+      verdict: !configured
+        ? "env_missing"
+        : !oneRow
+          ? `configured_id_unreadable_http_${one?.http ?? 0}`
+          : oneRow.is_public === true
+            ? "CONFIGURED_ID_IS_A_PUBLIC_TELNYX_DEMO_CREDENTIAL"
+            : String(oneRow.type ?? "").toLowerCase() !== "ios"
+              ? `configured_id_type_${String(oneRow.type)}`
+              : "configured_id_is_private_ios_credential",
+    };
+    const { error: writeErr } = await admin().from("app_config").upsert(
+      { key: "telnyx_push_credentials_probe", value: result }, { onConflict: "key" });
+    return Response.json({ ...result, stored: writeErr ? `error: ${writeErr.message}` : true });
+  }
+
+  // ── Mode 6: the inbound detail-record sweep ───────────────────────────────
+  // POST {"probe":"inbound_cdr"} (optional "window": one of last_7_days /
+  // last_30_days / yesterday / today). `line_calls` has NEVER held a row with
+  // direction='inbound', and telnyx-webhook handles no call events, so our DB
+  // can only prove the app never RECORDED an inbound call — not that Telnyx
+  // never RECEIVED one. This pages every record type over the window and
+  // filters CLIENT-SIDE on `direction == inbound` or `cld` ∈ our numbers.
+  // Client-side on purpose: on this endpoint an unknown filter key returns
+  // 200-with-zero-rows (measured 2026-09-07 for four id-filter keys), so a
+  // server-side `filter[direction]` returning nothing would be uninterpretable.
+  // It also joins every session id against `line_calls`, so "sessions Telnyx
+  // holds that no row of ours names" gets a direction instead of a guess.
+  // Result stored in `app_config.telnyx_inbound_probe` (service-role only).
+  if (body.probe === "inbound_cdr") {
+    const allowed = ["last_7_days", "last_30_days", "yesterday", "today"];
+    const window = allowed.includes(String(body.window)) ? String(body.window) : "last_30_days";
+    const types = ["webrtc", "sip-trunking", "call-control", "conference"];
+    const SIZE = 50, MAX_PAGES = 12;
+    const budget = { left: types.length * MAX_PAGES };
+    const sb = admin();
+    const [{ data: lines }, { data: swaps }, { data: calls }] = await Promise.all([
+      sb.from("phone_lines").select("e164, status"),
+      sb.from("line_number_swaps").select("old_e164, new_e164"),
+      sb.from("line_calls").select("provider_call_session_id, direction, status")
+        .not("provider_call_session_id", "is", null),
+    ]);
+    const digits = (s: unknown) => String(s ?? "").replace(/\D/g, "");
+    const ours = new Set<string>();
+    for (const l of lines ?? []) ours.add(digits(l.e164));
+    for (const s of swaps ?? []) { ours.add(digits(s.old_e164)); ours.add(digits(s.new_e164)); }
+    ours.delete("");
+    const known = new Map<string, string>();
+    for (const c of calls ?? []) known.set(String(c.provider_call_session_id).toLowerCase(), `${c.direction}/${c.status}`);
+
+    const slimRec = (r: Record<string, unknown>) => ({
+      record_type: r.record_type ?? null, direction: r.direction ?? null,
+      cli: r.cli ?? null, cld: r.cld ?? null,
+      telnyx_session_id: r.telnyx_session_id ?? null, connection_id: r.connection_id ?? null,
+      started_at: r.started_at ?? r.created_at ?? null, answered_at: r.answered_at ?? null,
+      ended_at: r.ended_at ?? null, call_sec: r.call_sec ?? null, billed_sec: r.billed_sec ?? null,
+      hangup_cause: r.hangup_cause ?? null, hangup_source: r.hangup_source ?? null,
+      status: r.status ?? null, is_webrtc: r.is_webrtc ?? null,
+      cost: r.cost ?? null, currency: r.currency ?? null,
+      known_to_line_calls: known.get(String(r.telnyx_session_id ?? "").toLowerCase()) ?? null,
+    });
+
+    const pagesByType: Record<string, { pages: number; rows: number; http: number[] }> = {};
+    const byDirection: Record<string, number> = {};
+    const sessions = new Map<string, { direction: string; to_ours: boolean; known: string | null }>();
+    const inbound: Array<ReturnType<typeof slimRec>> = [];
+    const toOurs: Array<ReturnType<typeof slimRec>> = [];
+    let truncated = false;
+    for (const t of types) {
+      const stat = { pages: 0, rows: 0, http: [] as number[] };
+      pagesByType[t] = stat;
+      for (let page = 1; page <= MAX_PAGES; page++) {
+        const params = new URLSearchParams({
+          "filter[record_type]": t, "filter[date_range]": window,
+          "page[size]": String(SIZE), "page[number]": String(page),
+        });
+        const r = await get(key, `/detail_records?${params}`, budget, true);
+        stat.http.push(r.http);
+        if (r.http !== 200) break;
+        stat.pages++;
+        const rows = Array.isArray(r.data) ? r.data as Array<Record<string, unknown>> : [];
+        stat.rows += rows.length;
+        for (const x of rows) {
+          const dir = String(x.direction ?? "unknown").toLowerCase();
+          byDirection[dir] = (byDirection[dir] ?? 0) + 1;
+          const sid = String(x.telnyx_session_id ?? "").toLowerCase();
+          const isOurs = ours.has(digits(x.cld));
+          if (sid) {
+            const prev = sessions.get(sid);
+            sessions.set(sid, {
+              direction: prev?.direction === "inbound" ? "inbound" : dir,
+              to_ours: (prev?.to_ours ?? false) || isOurs,
+              known: known.get(sid) ?? null,
+            });
+          }
+          if (dir === "inbound" && inbound.length < 150) inbound.push(slimRec(x));
+          else if (isOurs && dir !== "outbound" && toOurs.length < 50) toOurs.push(slimRec(x));
+        }
+        if (rows.length < SIZE) break;
+        if (page === MAX_PAGES) truncated = true;
+      }
+    }
+    let unknownSessions = 0, unknownInbound = 0;
+    const unknownSample: Array<Record<string, unknown>> = [];
+    for (const [sid, s] of sessions) {
+      if (s.known) continue;
+      unknownSessions++;
+      if (s.direction === "inbound") unknownInbound++;
+      if (unknownSample.length < 20) unknownSample.push({ sid, ...s });
+    }
+    const result = {
+      mode: "inbound_cdr", at: new Date().toISOString(), window, truncated,
+      our_numbers: ours.size, pages_by_type: pagesByType, by_direction: byDirection,
+      sessions_total: sessions.size, sessions_known_to_line_calls: sessions.size - unknownSessions,
+      sessions_unknown: unknownSessions, sessions_unknown_inbound: unknownInbound,
+      unknown_sample: unknownSample,
+      inbound_count: inbound.length, inbound,
+      non_outbound_to_our_numbers: toOurs,
+      verdict: inbound.length === 0 && byDirection.inbound == null
+        ? "NO_INBOUND_RECORD_IN_WINDOW"
+        : `${byDirection.inbound ?? 0}_inbound_records`,
+    };
+    const { error: writeErr } = await sb.from("app_config").upsert(
+      { key: "telnyx_inbound_probe", value: result }, { onConflict: "key" });
     return Response.json({ ...result, stored: writeErr ? `error: ${writeErr.message}` : true });
   }
 
