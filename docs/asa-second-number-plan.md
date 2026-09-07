@@ -355,10 +355,14 @@ is still live — same intent class, owner's call. Owner's stated premise
 for keeping calling-intent terms: with 2.10 the numbers make calls and
 "even receive". Checked in `line_calls` the same morning: **outbound is
 proven at volume** (131 completed calls settled from Telnyx detail
-records, up to 249 s, last 2026-09-06); **inbound has ZERO rows ever** —
-no `direction='inbound'` call has been recorded on any build, so "receive
-calls" is still a claim without evidence, and the burner objection was
-about TEXTING, which 2.10 does not change.
+records, up to 249 s, last 2026-09-06); **inbound DOES NOT WORK** — the
+same-day three-agent audit plus a new Telnyx read-back found 13 real inbound
+calls to sold lines in 30 days (the owner's own included), 0 answered, 0
+reaching a device: the client never hands a VoIP push to the SDK unless the
+app was already connected (CLAUDE.md → Known-open → INBOUND CALLING). Do
+not put "receive calls" in any ad or listing until that is fixed and
+device-tested; and the burner objection was about TEXTING, which 2.10 does
+not change.
 
 **Both campaigns read `PAUSED_BY_USER` at 09:00 Paris on 09-07** — not
 done from this repo. Resume with the web UI or `PUT /campaigns/{id}`

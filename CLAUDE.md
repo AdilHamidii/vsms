@@ -43,9 +43,20 @@ Half the product works, and the halves are not the ones this file claimed:
 **calling connected for the first time on 2026-08-18** — 3 completed calls to
 France (6s / 2s / 23s), each carrying a `provider_call_session_id`, after 7
 earlier attempts that never reached the provider at all. Verified against
-`line_calls`, not inferred. ⚠️ **That is OUTBOUND calling only. INBOUND has
-never once worked** and carries four open client bugs, so "take calls from
-anywhere" is not a claim this product can make yet — see Known-open. Meanwhile
+`line_calls`, not inferred (and proven at volume since: 131 CDR-settled
+completed outbound calls by 2026-09-07). ⚠️ **That is OUTBOUND calling only.
+INBOUND DOES NOT WORK — final verdict 2026-09-07, three-agent audit + live
+Telnyx read-backs:** in the trailing 30 days **13 real inbound calls reached
+Telnyx on sold lines (plus 98 to the released probe number), 0 were answered,
+0 produced a device leg, 0 were recorded** — every one `call_sec 0`,
+`answered_at null`. Provisioning is correct (9/9 numbers routed to their
+credential connection, our own push credential on all 9, cert valid to
+2027-09-05); the break is in the CLIENT: a VoIP push into an app that is not
+already connected is never handed to the SDK (`handleVoIPPush` returns on a
+nil voice token), the app only logs in to Telnyx when the Number tab is
+opened, and answering does not use `answerFromCallkit`. So the phone may
+ring and the call can never connect. See Known-open → INBOUND CALLING.
+"Take calls from anywhere" is not a claim this product can make. Meanwhile
 **outbound SMS is 1 sent against 6 failed** (`40010`, 10DLC).
 Inbound SMS works, 3 of 3. See "Rentable second numbers". iOS frontend in SwiftUI + Supabase backend (Postgres + Auth + Edge Functions + pg_cron).
 
@@ -1729,8 +1740,15 @@ minutes, whereas a CDR-settled call is exactly one that does NOT carry a
 backstop.
 
 **`probe-telnyx-connection` gained a second mode for diagnosing it** (it now
-has four: `connection_id=`, `cdr`, `coverage`, and `numbers` — the owned-number
-reconciliation, see the orphan-sweep note above):
+has SIX: `connection_id=`, `cdr`, `coverage`, `numbers` — the owned-number
+reconciliation, see the orphan-sweep note above — and, since 2026-09-07,
+`push_credentials` (every `mobile_push_credential` + the configured one read
+back, public cert PEM included, → `app_config.telnyx_push_credentials_probe`)
+and `inbound_cdr` (every detail record in the window, filtered CLIENT-SIDE to
+`direction=inbound` / `cld` ∈ our numbers, joined to `line_calls` →
+`app_config.telnyx_inbound_probe`; client-side because an unknown filter key
+on this endpoint returns 200-with-zero-rows). ⚠️ Mode-1 reads in PARALLEL
+take 429 — one at a time.):
 `POST {"probe":"cdr","session_ids":[…],"days":30}` (same cron-secret gate,
 still read-only, writes nothing). It sweeps every window-filter shape × every
 plausible `record_type`, looks each session id up under five filter keys in
@@ -4745,10 +4763,89 @@ has a market today or is receive-only until toll-free verification or 10DLC
 clears — both of which require declaring a use case that "users send whatever
 they like" does not satisfy.
 
-🟠 **INBOUND CALLING — the four client bugs are FIXED IN THE REPO (2026-08-27,
-2.5 work) but UNVERIFIED ON A DEVICE, and zero inbound calls have still ever
-happened — re-checked 2026-09-07 with 2.9 live: `line_calls` holds 0 rows
-with `direction='inbound'` against 152 outbound.** A simulator cannot receive a PushKit push, so the first real
+🔴 **INBOUND CALLING DOES NOT WORK — FINAL VERDICT 2026-09-07 (three Opus
+audits: server provisioning vs Telnyx docs, client vs the resolved TelnyxRTC
+4.1.2 source, live Telnyx read-backs; the owner asked for a verdict after
+asserting 2.10 "even receives").** The decisive evidence is the new
+`inbound_cdr` probe: **155 inbound detail records / 116 sessions in 30
+days, EVERY ONE `call_sec 0`, `answered_at null`, no `webrtc` leg** — 98 to
+the released probe number `+14153293816` on 08-17 (`NO_USER_RESPONSE`), and
+**13 real sessions to sold lines** (`+14375243093` ×8 incl. the owner's own
+test calls from `+33…` on 09-06, `+14377825495` ×2, `+19295423486`,
+`+19295080350` from the number it had just called, `+14377826026`), all
+`NORMAL_CLEARING` at 0 s. `line_calls` holds 0 inbound rows against 152
+outbound. So it is NOT "untested": real people, including the owner, have
+called sold numbers and nobody's phone connected. Re-derive:
+`POST {"probe":"inbound_cdr"}` then `select value->'by_direction',
+value->'sessions_unknown_inbound' from app_config where
+key='telnyx_inbound_probe'`.
+
+**The server half is CORRECT and is not the cause** (read back, not
+inferred): all 9 live numbers carry `connection_id` = their line's credential
+connection; all 9 connections read `active: true`,
+`ios_push_credential_id = 65804c06-…` top-level (the documented field), the
+outbound profile nested; that credential is `type ios`, alias
+`com.anthersystems.VirtualSIM`, NOT `is_public`, cert `UID
+com.anthersystems.VirtualSIM.voip` valid **2026-08-06 → 2027-09-05**; the two
+Telnyx demo credentials are attached nowhere. A credential connection needs
+no Call Control app or webhook for inbound. Server defects that remain (none
+sufficient to explain the 0): `attachVoiceConnection` records a 200 with no
+read-back (`_shared/telnyx.ts` ~958, the same class as the 12-day outbound
+outage); **`ensurePushCredential` is NOT run hourly** — `sync-line-voice`
+calls `provisionLineVoice` only for rows its "broken" predicate matches,
+which is 0 rows today (`repaired: 0`), so the sentence below this section
+claiming the hourly heal was FALSE; nothing validates the credential id is
+ours or watches the cert expiry; `sync-line-voice` has no watchdog check
+(`pg_proc` has no reference to `line_voice_sync`).
+
+**The client half is where it breaks — 2.5 through 2.10 all carry this
+code (`VirtualSIM/Calling/TelnyxVoiceClient.swift`, `CallController.swift`):**
+1. 🔴 **A push into an app that is not already connected is never handed to
+   the SDK.** `TelnyxVoiceClient.handleVoIPPush` does `guard let token =
+   _voiceToken else { return }`, and `_voiceToken` is set only by
+   `connect(token:)`, in memory, on an instance rebuilt every launch. On a
+   VoIP push into a terminated app it is nil, `processVoIPNotification` is
+   never called, no socket, no login, no INVITE; CallKit rings, Answer →
+   `Fault.noActiveCall` → `action.fail()`. Its own comment admits it. Fix
+   shape: report to CallKit synchronously, THEN `await mintVoiceToken()`,
+   build `TxConfig`, `processVoIPNotification` — the async part is legal
+   after `reportNewIncomingCall`.
+2. 🔴 **`CXAnswerCallAction`/`CXEndCallAction` call `currentCall?.answer()` /
+   `.hangup()` instead of the SDK's `answerFromCallkit(answerAction:)` /
+   `endCallFromCallkit(endAction:)`**, which exist precisely to park the
+   action until the push-triggered login delivers the INVITE
+   (`TxClient.swift` ~1420: `if answerCallAction != nil { call.answer…;
+   fulfill }`). Even with (1) fixed, an answer before the INVITE lands
+   (~0.5–2 s) fails, and a decline never sends `decline_push` so the caller
+   keeps hearing ringback.
+3. 🟠 **The app logs in to Telnyx ONLY from `LineScreen` / `DialerScreen`
+   `prepareVoice()`** — never on cold launch. Telnyx docs: "You will need to
+   login at least once to send your device token to Telnyx before start
+   getting Push notifications." A rotated PushKit token reaches our
+   `push_devices` but not Telnyx until the tab is reopened; `disconnect()`
+   has NO caller, so sign-out never unregisters.
+4. 🟠 **A push-launched call writes no `line_calls` row**:
+   `registerInboundCall` needs `apiClient` + a restored access token, both
+   of which race process start, and the failure is swallowed — which is why
+   the DB shows 0 while Telnyx shows 116.
+5. 🟡 `TxConfig` never sets `enableMissedCallNotifications` (default false),
+   so Telnyx sends no "Missed call!" push and the dismissal code is dead: a
+   caller who hangs up leaves CallKit ringing until iOS times out.
+6. 🟡 `InCallOverlay` has no Answer button (in-app you can only hang up a
+   ringing call); `processVoIPNotification` throws are swallowed into
+   `_lastError`.
+Verified correct, do not "fix": `reportNewIncomingCall` IS synchronous
+before any await; `PKPushRegistry` + `CXProvider` are created in
+`AppDelegate` (AuthGate only adopts); payload keys match the SDK resolver;
+built plist carries `audio` + `voip`; `provider(_:didActivate:)` hands the
+session to the SDK without `setActive`. The 2.5 list below is what was
+fixed then and is still true.
+
+**Device protocol once (1)–(3) are fixed:** Test C first — force-quit, call
+the number, Answer; expect `TxClient:: processVoIPNotification` in the
+console, a `line_calls` inbound row, and a `webrtc` inbound record at
+Telnyx. Test A (foreground on the Number tab) is the only path that can
+work TODAY. A simulator cannot receive a PushKit push, so the first real
 inbound call on a physical device is the probe. Watch for: the phone rings at
 all, the CallKit screen shows the caller's number, a `line_calls` row with
 `direction='inbound'` appears, and a missed call dismisses instead of ringing
@@ -4777,9 +4874,12 @@ source (not docs):
 `mint-line-token`'s `inbound_ready` is fixed the same day: it now requires
 `provisionLineVoice`'s **read-back** proof that the connection genuinely holds
 the iOS push credential (`ensurePushCredential` in `_shared/telnyx.ts` — the
-verify-and-repair twin of `attachOutboundProfile`, run on every line every
-run, so hourly `sync-line-voice` heals any push-less connection among the sold
-lines). The env var alone no longer counts.
+verify-and-repair twin of `attachOutboundProfile`). ⚠️ **It is NOT run
+hourly** — this said "run on every line every run, so hourly
+`sync-line-voice` heals any push-less connection" until 2026-09-07, and that
+was false: the sweep reaches `provisionLineVoice` only for rows its broken
+predicate matches (0 today). A push-less connection is repaired only when
+its owner opens the Number tab. The env var alone no longer counts.
 
 
 ✅ **RESOLVED 2026-08-06 — `TELNYX_IOS_PUSH_CREDENTIAL_ID` EXISTS AND POINTS AT
