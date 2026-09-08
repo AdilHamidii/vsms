@@ -168,6 +168,20 @@ grants the reuse — see the third bullet):**
   it polls ~100s for `sms[].code`, then finishes if a code landed or cancels
   if not. ⚠️ Its order is INVISIBLE to our database — no `orders` row, no
   poller, no push — so a rescued code must be handed over by a human.
+- ✅ **THE MECHANISM THAT DOES WORK IS NOT REUSE — IT IS NOT HANGING UP.**
+  From the same FAQ: an activation that has NOT been finished takes an
+  unlimited number of SMS, on a named subset of pools, with **5 minutes from
+  the LAST message** (the clock restarts on each one, so it is never a budget
+  from the first). So `finish` was the whole problem: `markSuccess` →
+  `five.finish()` fired on code arrival and foreclosed everything.
+  Shipped 2026-09-08 — `supportsResend(country, operator)` in
+  `_shared/fivesim.ts` holds the pool list (virtual2/21/26/34/36/38/40/47/49/
+  51/52/53/54/58 anywhere, virtual8 in USA+Canada, virtual12 in Canada only)
+  and **fails closed**; `orders.resend_watch_until` holds the window and
+  `orders.otp_history` keeps every code with `otp` always the NEWEST.
+  ⚠️ **The pool list is 5SIM'S CLAIM, not our measurement** — the ~58% of
+  delivered codes it covers is unverified until a `resend_promoted` line
+  appears in the poller logs.
 - Incidental: both fresh buys read `status: RECEIVED` with `sms: null` at
   t=0. RECEIVED means "number received", never "code received" — live proof
   that `sms[].code` must stay the only authority. `?reuse=1` is accepted
@@ -3919,6 +3933,22 @@ for essentially every hidden route.
 
 ## Non-obvious gotchas (real bugs we've hit, do not re-introduce)
 
+- 🔴 **`markSuccess` IS DEFERRED FOR ELIGIBLE 5sim ORDERS — DO NOT MOVE IT
+  BACK TO CODE ARRIVAL.** For 5sim it is `five.finish()`, and 5sim's FAQ is
+  explicit that finishing an order permanently forecloses a second SMS on that
+  number. Calling it on arrival (which we did, 25 seconds after the code
+  landed) is what left a user who needed a re-sent code with no way to get it
+  on the number their account is registered on. Since 2026-09-08 the claim in
+  `poll-active-orders` and in `check-order` writes
+  `resend_watch_until = now() + 5 min` on a pool `fivesim.supportsResend()`
+  accepts and SKIPS the finish; the resend sweep at the top of
+  `poll-active-orders` promotes any newer code and makes the deferred call
+  when the window lapses. **Both call sites must stay in step** — the manual
+  "Check now" path silently lost the window when only the cron path had it.
+  The failure mode is safe by construction: if the sweep never runs, 5sim
+  closes the activation itself after five minutes, so the cost is a little
+  account rating, never money and never a code. No `order_status` value was
+  added, deliberately (the Swift enum has no unknown case).
 - **SMSPVA base URL is `https://api.smspva.com`**, NOT `smspva.com` (the docs spec lies — the marketing site 404s every `/activation/*` path).
 - **Edge functions die at ~150s wall clock** — a synchronous long request gets IDLE_TIMEOUT, and `EdgeRuntime.waitUntil` background tasks are killed at the same mark (both verified live 2026-07-21). Any job longer than ~2 minutes must be cursor-chunked across multiple invocations (see `sync-smspva-operators`: 12 countries/run, pg_cron fans 6 slots across a nightly maintenance window). Its public docs describe a *different, older* `priemnik.php` API; the v2 REST surface we use is undocumented but real.
 - **SMSPVA's official 174-page spec is NOT in this repo** (removed 2026-08-04 when the repo went public — it is the vendor's copyrighted document, not ours to redistribute). Keep a local copy at `docs/apidocs.pdf`, which is gitignored; obtain it from SMSPVA. Elsewhere this file has called that API "undocumented". Its status codes are load-bearing and `poll()` used to discard them: **407 = "we received the SMS but your balance is not enough to pay for it"**, so the code is being withheld, not missing. It now pages loudly on 407 and keeps the order alive (a top-up inside the window rescues the code), closes on 406/410 (order invalid/closed) via the atomic provider-close path, and logs 411 (karma/ratelimit). Treating 407 as "still waiting" polls to expiry and is indistinguishable from a stockout — which also corrupts the delivery evidence.
@@ -5146,6 +5176,29 @@ Behavioural checks: `scripts/verify-line-first-provision.sql` (8 groups, rolled
 back, including the 30-minute race guard and the one-attempt-per-day
 throttle).
 
+
+⚠️ **THE SECOND-CODE RESEND WINDOW HAS NEVER DELIVERED A SECOND CODE.**
+Shipped 2026-09-08 (see the `markSuccess` gotcha). Everything about it is
+verified except the thing that matters: 5sim's multi-SMS pool list is their
+published claim, and no second code has yet arrived on any of them. **The
+first `resend_promoted` line in the `poll-active-orders` logs is the proof.**
+Until one appears, treat the ~58%-of-delivered-codes coverage figure as
+unverified, and note the cost of the list being wrong is real but bounded —
+we hold an already-paid-for number open for five minutes and show the user a
+countdown for a code that cannot come. Re-derive coverage rather than quoting
+it: `select operator_used, count(*) filter (where otp is not null) as codes
+from public.orders where provider='5sim' and smspva_number is not null and
+created_at >= now() - interval '30 days' group by 1 order by codes desc;`
+
+⚠️ **HeroSMS can request another code on the same number and NOTHING CALLS
+IT.** `_shared/herosms.ts:645` defines `STATUS_RETRY = 3` — commented
+"request another code on the SAME number (free)" — with a wrapper at line 677
+and no caller anywhere in the repo, the same shape as the six
+`line_subscriptions` updaters that shipped with no INSERT. It was left out of
+the 2026-09-08 resend work deliberately: it is an explicit *request another*
+verb rather than a hold-open, so it needs its own semantics, and HeroSMS
+delivered 3 codes in the trailing 30 days. Worth doing when its volume
+justifies it.
 
 ⚠️ **The e-mail subscription's retroactive lifetime wall would end the app's
 highest-volume surface, and shipping it or parking it is an owner decision
