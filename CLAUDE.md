@@ -49,9 +49,16 @@ INBOUND DOES NOT WORK — final verdict 2026-09-07, three-agent audit + live
 Telnyx read-backs:** in the trailing 30 days **13 real inbound calls reached
 Telnyx on sold lines (plus 98 to the released probe number), 0 were answered,
 0 produced a device leg, 0 were recorded** — every one `call_sec 0`,
-`answered_at null`. 🔴 **THE CAUSE WAS FOUND 2026-09-08 AND IT IS THE LOGIN
-CREDENTIAL, NOT THE PUSH PATH: the app authenticated with a token minted from
-an ON-DEMAND telephony credential, which Telnyx documents as OUTBOUND-ONLY.**
+`answered_at null`. ✅ **INBOUND CALLING WORKS AS OF 2026-09-08 — PROVEN ON A
+DEVICE, APP OPEN AND APP CLOSED, with a real PSTN call from one of our own
+numbers to a rented line.** The cause was the ADDRESSING, not the push path:
+the app authenticates with a token minted from an ON-DEMAND telephony
+credential, and Telnyx will not route a DID to one — but it DOES support
+dialing that same credential from **Call Control**, which is the architecture
+now in place (number → Call Control application → `telnyx-webhook`
+`call.initiated` → `transfer` to the device's SIP URI). See Known-open →
+INBOUND CALLING for the full account. *Historical, and the reason the
+diagnosis took four attempts:*
 Read live from `/sip_registration_status` with the app connected — the
 telephony credential `gencredz…` was `registered: true` while the connection
 the DID actually points at, `vsmsvsms…`, was `registered: false` and had
@@ -1751,7 +1758,7 @@ minutes, whereas a CDR-settled call is exactly one that does NOT carry a
 backstop.
 
 **`probe-telnyx-connection` gained a second mode for diagnosing it** (it now
-has EIGHT: `connection_id=`, `cdr`, `coverage`, `numbers` — the owned-number
+has ELEVEN: `connection_id=`, `cdr`, `coverage`, `numbers` — the owned-number
 reconciliation, see the orphan-sweep note above — and, since 2026-09-07,
 `push_credentials` (every `mobile_push_credential` + the configured one read
 back, public cert PEM included, → `app_config.telnyx_push_credentials_probe`)
@@ -1762,9 +1769,16 @@ on this endpoint returns 200-with-zero-rows), plus, since 2026-09-08,
 `line_voice` (one line's credential + number + number/voice + connection,
 secrets redacted, AND `/sip_registration_status` for BOTH addresses of record
 — the read that found the inbound cause; → `app_config.telnyx_line_voice_probe`)
-and **`set_translated_number`, the ONE writing mode in the file** — every other
-mode is read-only and must stay that way; it takes `line_id` + `value` (`""`
-reverts) and touches a single line's number.
+plus THREE writing modes — every other mode is read-only and must stay that
+way. `set_translated_number` (`line_id` + `value`, `""` reverts; the
+DISPROVED experiment, see Known-open), `call_control_ring` (create the
+account-wide Call Control application, enable SIP-URI calling, place one
+~$0.01 call straight at the client's SIP URI), `route_inbound` (point one
+number's inbound at that application and pin its ANI; `value: "restore"`
+reverses it), and `ring_number` (`to` + `from`, both E.164 — a REAL PSTN call
+between two numbers we own, the only test that exercises the number, the
+application, the webhook and the transfer together, and the one that removes
+the confound of dialing from the handset that is meant to ring).
 ⚠️ Three shapes on `/sip_registration_status`, all learned from its own 400s
 rather than any fetchable doc: the param is **`username`**, NOT
 `filter[sip_username]`; **`credential_type`** accepts only
@@ -4806,8 +4820,66 @@ has a market today or is receive-only until toll-free verification or 10DLC
 clears — both of which require declaring a use case that "users send whatever
 they like" does not satisfy.
 
-🔴 **THE CAUSE OF INBOUND WAS FOUND ON 2026-09-08, AND IT IS NOT ANY OF THE
-CLIENT DEFECTS BELOW.** The app logged in with a token minted from an
+✅ **INBOUND CALLING WORKS — 2026-09-08, verified on a physical device with
+the app OPEN and with the app CLOSED, using a real PSTN call from one of our
+own Telnyx numbers to a rented line. The first ringing phone in the product's
+history.**
+
+**The architecture, and why it is this shape.** Telnyx refuses to route a DID
+to an on-demand telephony credential — *"inbound calls directly to on-demand
+generated credential is not currently supported … purely for outbound
+calls"* — but explicitly supports **dialing that same credential from Call
+Control**. Both sentences are in the same support article
+(support.telnyx.com/en/articles/7029684-telephony-credentials-types), and
+reconciling them is what four attempts missed. So:
+
+    PSTN → number → Call Control application
+         → telnyx-webhook `call.initiated` (direction "incoming")
+         → transfer to sip:<registered sip_username>@sip.telnyx.com
+
+Provisioned by `provisionLineVoice`, so a number sold tomorrow rings with
+nobody touching Telnyx. All 12 owned numbers are on it, read back.
+
+🔴 **Rules that are load-bearing, each one a bug that shipped today:**
+- **TRANSFER, never ANSWER.** Answering bills us and replaces the caller's
+  ringback with silence.
+- **The transfer's `from` MUST be a number we own.** With the real caller's
+  number Telnyx returns 200, raises `call.bridged`, and silently drops the
+  leg. The caller travels as `from_display_name`.
+- **Dial whichever identity is REGISTERED, never a hardcoded one.** Builds
+  ≤ 2.11(54) register as the telephony credential `gencred…`; 2.11(55)+ as
+  the credential connection's own user `vsms…`, and the client falls back
+  between them. `registeredSipUser` asks Telnyx. **This is why existing App
+  Store users need no update.**
+- 🔴 **`handleInboundCall` must select `provider_connection_id`.** Omitting it
+  made `registeredSipUser` skip the connection user entirely and fall back to
+  the wrong credential on every call — the final bug, and it produced exactly
+  "a missed call in Recents that never rang".
+- **`sip_uri_calling_preference` is TOP-LEVEL** (under `inbound` it 200s and
+  sets nothing — the fourth silent no-op in this adapter, after
+  `messaging_profile_id`, `outbound_voice_profile_id` and this). **"internal",
+  never "unrestricted"** — the latter lets anyone who guesses a username ring
+  a paying subscriber.
+- **Re-attach on the number's LIVE connection, not on
+  `provider_voice_attached`.** That flag predates Call Control, so every line
+  sold before today reads "attached" while pointing somewhere that cannot
+  ring; comparing the live value is what makes `sync-line-voice` self-healing.
+- **Inbound reserves ZERO allowance.** The caller pays their own carrier.
+- **A Call Control application needs an outbound voice profile to PLACE a
+  call** (403 / D38). That affects only the `ring_number` test probe — real
+  inbound transfers go to a SIP URI and need no profile.
+
+⚠️ **Not yet done:** the `call.answered` / `call.hangup` events are logged but
+do not yet close the `line_calls` row, so an inbound call stays `ringing`
+until the stale-call backstop or a CDR settles it. Inbound bills nothing, so
+this is a history-accuracy gap, not a money one.
+
+*Historical below — the four failed attempts, kept because three of them are
+documented dead ends and the reasoning shows how the wrong layer was blamed
+for five weeks.*
+
+🔴 **THE CAUSE OF INBOUND WAS THOUGHT TO BE THE LOGIN CREDENTIAL ON
+2026-09-08, AND THAT WAS ONLY HALF RIGHT.** The app logged in with a token minted from an
 **on-demand telephony credential**. Telnyx documents that credential type as
 outbound-only, verbatim: *"inbound calls directly to on-demand generated
 credential is not currently supported. The purpose for on demand generated
