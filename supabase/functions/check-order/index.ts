@@ -1,6 +1,7 @@
 import { handleCors, json } from "../_shared/cors.ts";
 import { admin, callerUserId } from "../_shared/supabaseAdmin.ts";
 import { markDead, markSuccess, poll, type OrderProvider } from "../_shared/providers.ts";
+import { RESEND_WINDOW_MS, supportsResend } from "../_shared/fivesim.ts";
 
 interface Body { order_id: string; }
 
@@ -73,14 +74,32 @@ Deno.serve(async (req) => {
     // the lifecycle that could hand out a number for free, and it was the one
     // status write here missing the guard that every other branch has,
     // including the expired/canceled branch directly below.
+    // 🔴 `finish` FORECLOSES A SECOND SMS, and this is the MANUAL "Check now"
+    // path — without the same deferral the cron path applies, a user who taps
+    // the button silently loses the resend window they would otherwise have
+    // had. See fivesim.supportsResend for the pool list and the reasoning.
+    const canResend = (order.provider ?? "smspva") === "5sim" &&
+      supportsResend(
+        order.country_id as string | null,
+        (order as { operator_used?: string | null }).operator_used ?? null,
+      );
+    const nowMs = Date.now();
+    const arrivedIso = new Date(nowMs).toISOString();
+
     const { data: rows, error: uErr } = await sb
       .from("orders")
       .update({
         status: "received",
         otp: result.code,
         raw_message: result.fullText ?? null,
-        arrived_at: new Date().toISOString(),
-        closed_at: new Date().toISOString(),
+        arrived_at: arrivedIso,
+        closed_at: arrivedIso,
+        otp_history: [
+          { code: result.code, text: result.fullText ?? null, at: arrivedIso },
+        ],
+        resend_watch_until: canResend
+          ? new Date(nowMs + RESEND_WINDOW_MS).toISOString()
+          : null,
       })
       .eq("id", order.id)
       .eq("status", "waiting")
@@ -88,9 +107,13 @@ Deno.serve(async (req) => {
     if (uErr) return json({ error: "update_failed", detail: uErr.message }, { status: 500 });
 
     if (rows && rows.length > 0) {
-      // Tell SMSPVA the activation succeeded — best-effort account-karma
-      // hygiene, never blocks handing the code to the user.
-      await markSuccess((order.provider ?? "smspva") as OrderProvider, order.smspva_id!);
+      // Tell the provider the activation succeeded — best-effort account-karma
+      // hygiene, never blocks handing the code to the user. DEFERRED while a
+      // resend window is open; poll-active-orders' sweep makes the call when
+      // the window closes.
+      if (!canResend) {
+        await markSuccess((order.provider ?? "smspva") as OrderProvider, order.smspva_id!);
+      }
       return json({ order: rows[0], arrived: true });
     }
 
