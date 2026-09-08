@@ -206,9 +206,29 @@ final class CallController: NSObject {
             // Persisted BEFORE the connect: a push can wake a terminated app,
             // and the credential is the one thing that path cannot obtain in
             // time. See `VoiceCredentialStore`.
-            let credential = grant.voiceCredential
-            VoiceCredentialStore.save(credential)
-            try await voice.connect(credential)
+            // 🔴 THE SIP LOGIN MUST NEVER BE ABLE TO TAKE OUTBOUND DOWN.
+            //
+            // `.sip` is the only credential an inbound call can be routed to,
+            // so it is tried first. But it is a login shape this app has never
+            // shipped before, and if Telnyx refuses it the user loses CALLING
+            // ENTIRELY — including the outbound half that has worked for 131
+            // calls. Trading a working feature for an unproven one is not a
+            // fix, so a failed `.sip` connect falls back to the token, which
+            // is exactly what shipped builds already use.
+            //
+            // `inboundReady` below is computed from the credential we actually
+            // CONNECTED with, never from the one the server offered — a
+            // fallback must not leave the app claiming it can receive calls.
+            var credential = grant.voiceCredential
+            do {
+                VoiceCredentialStore.save(credential)
+                try await voice.connect(credential)
+            } catch where credential.canReceiveInbound {
+                print("CallController:: SIP login failed, falling back to token: \(error)")
+                credential = .token(grant.token)
+                VoiceCredentialStore.save(credential)
+                try await voice.connect(credential)
+            }
             // 🔴 BOTH halves are required and they fail independently.
             // `grant.inboundReady` is the SERVER's provisioning (the number is
             // attached and the connection holds our push credential);
@@ -217,7 +237,7 @@ final class CallController: NSObject {
             // first and can still never ring, which is precisely how the app
             // advertised inbound for five weeks while no inbound call ever
             // connected. Reporting the conjunction is what keeps that honest.
-            let ready = grant.inboundReady && grant.canRegisterForInbound
+            let ready = grant.inboundReady && credential.canReceiveInbound
             inboundReady = ready
             readiness = ready ? .ready : .outboundOnly
             return true

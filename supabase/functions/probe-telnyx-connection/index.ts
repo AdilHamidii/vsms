@@ -894,6 +894,18 @@ Deno.serve(async (req) => {
       ? await read(`/phone_numbers/${encodeURIComponent(String(line.provider_number_id))}/voice`) : null;
     const connection = line.provider_connection_id
       ? await read(`/credential_connections/${encodeURIComponent(String(line.provider_connection_id))}`) : null;
+    // Read once, unredacted, and never store it — only its shape is reported.
+    let rawConnectionPassword: string | null = null;
+    if (line.provider_connection_id) {
+      try {
+        const rr = await fetch(
+          `https://api.telnyx.com/v2/credential_connections/${encodeURIComponent(String(line.provider_connection_id))}`,
+          { headers: { Authorization: `Bearer ${key}` } });
+        const jj = await rr.json().catch(() => ({}));
+        const pw = (jj as { data?: Record<string, unknown> }).data?.password;
+        rawConnectionPassword = pw == null ? null : String(pw);
+      } catch { /* shape stays absent */ }
+    }
     // 🔴 A telephony credential names its owner in `resource_id`
     // ("connection:<id>"), NOT in `connection_id` — which does not exist on
     // this resource. Reading the wrong field made this check a permanent
@@ -954,6 +966,19 @@ Deno.serve(async (req) => {
         credential_on_this_connection: credConn != null && String(credConn) === String(line.provider_connection_id),
         number_on_this_connection: numConn != null && String(numConn) === String(line.provider_connection_id),
         credential_expired: (credential?.data as Record<string, unknown> | null)?.expired ?? null,
+        // ⚠️ The credential is redacted in this output, so a MASKED value from
+        // Telnyx would look identical to a real one. Report its SHAPE instead:
+        // `createCredentialConnection` writes "v" + 24 hex chars, so anything
+        // else means the API is not handing back the password we set — which
+        // would make an app that logs in with it fail authentication and never
+        // register, with no server-side fault to see.
+        connection_password_shape: (() => {
+          const raw = rawConnectionPassword;
+          if (raw == null) return "absent";
+          if (/^v[0-9a-f]{24}$/.test(raw)) return "matches_generated_form";
+          return `unexpected(len=${raw.length},sample=${raw.slice(0, 2)}…)`;
+        })(),
+        connection_user_name: (connection?.data as Record<string, unknown> | null)?.user_name ?? null,
       },
       credential, number, number_voice: numberVoice, connection, registration,
     };
