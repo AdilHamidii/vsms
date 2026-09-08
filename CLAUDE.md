@@ -4130,14 +4130,23 @@ SMS provider again, walk this list:
 Every number below has been wrong within a day of being written at least once.
 It is a starting point for "is this roughly right", never a citation.
 
-- **iOS**: `MARKETING_VERSION 2.11`, `CURRENT_PROJECT_VERSION 53`.
+- **iOS**: `MARKETING_VERSION 2.11`, `CURRENT_PROJECT_VERSION 57`.
   **2.10 (build 52) is `READY_FOR_SALE` — approved and live, read from ASC
   2026-09-08.** Its train is therefore CLOSED to new builds (`altool` answers
   90186 *"The train version '2.10' is closed for new build submissions"*),
-  which is why the inbound fix is 2.11. **2.11 (build 53) is uploaded, VALID,
-  and in the internal TestFlight group "Friends" — NOT submitted for review**:
-  inbound calling has been claimed working twice on reasoning alone and was
-  wrong both times, so a real ringing phone comes before the submission.
+  which is why the inbound fix is 2.11.
+  🔴 **2.11 (build 57) is `DEVELOPER_REJECTED` as of 2026-09-08 — the owner
+  dev-rejected it after submission.** It had been submitted 10:43Z
+  (submission `c920cb30-…`, version `894db3da-…`); the cancel was safe
+  because that submission carried exactly ONE item and it was the
+  appStoreVersion — an IAP item would have made it a one-way door, so
+  **check `GET /v1/reviewSubmissions/<id>/items` before cancelling anything**.
+  Build 57 is still attached and VALID and all 13 localizations survived
+  untouched, so recovery is the documented path: attach a new build (or
+  re-attach 57), then a fresh `POST /v1/reviewSubmissions` + item +
+  `{submitted:true}`. Fifth exercise of the DEVELOPER_REJECTED recovery.
+  ⚠️ Read ASC rather than this bullet — it said "build 53 … NOT submitted for
+  review" while the live state was build 57 in review.
   **2.10 is now BUILD 52, SUBMITTED 2026-09-07 07:56Z — `WAITING_FOR_REVIEW`,
   submission `9377bdbc-…` on the SAME version `61c4b4d0-…`** (build 51's
   submission `7d060143-…` was cancelled by owner instruction the same
