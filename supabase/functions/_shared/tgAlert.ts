@@ -213,6 +213,46 @@ export const WATCHDOG_COPY: Record<string, WatchdogCopy> = {
     what: (d) => `The rescue sweep has stopped. ${esc(d)}`,
     action: "Check relay-rescue-unprovisioned-lines. While it is down, a subscriber whose purchase call never landed gets no number and no recovery — every other path to fixing that needs them to reopen an app that has given them nothing.",
   },
+  "line-paid-no-number": {
+    group: "Lines", sev: "🔴",
+    what: (d) => `Someone is paying for a number they do not have. ${esc(d)}`,
+    action: "Check the Telnyx balance FIRST — a number order is refused outright below it, and that is the likeliest cause. This is a STATE check, so it stays lit until they actually hold a line; the rescue sweep retries once a day per subscriber.",
+  },
+  "line-rescue-stale": {
+    group: "Lines", sev: "🟠",
+    what: (d) => `The rescue sweep has stopped. ${esc(d)}`,
+    action: "Check relay-rescue-unprovisioned-lines. While it is down, a subscriber whose purchase call never landed gets no number and no recovery — every other path to fixing that needs them to reopen an app that has given them nothing.",
+  },
+  "line-paid-no-number": {
+    group: "Lines", sev: "🔴",
+    what: (d) => `Someone is paying for a number they do not have. ${esc(d)}`,
+    action: "Check the Telnyx balance FIRST — a number order is refused outright below it, and that is the likeliest cause. This is a STATE check, so it stays lit until they actually hold a line; the rescue sweep retries once a day per subscriber.",
+  },
+  "line-rescue-stale": {
+    group: "Lines", sev: "🟠",
+    what: (d) => `The rescue sweep has stopped. ${esc(d)}`,
+    action: "Check relay-rescue-unprovisioned-lines. While it is down, a subscriber whose purchase call never landed gets no number and no recovery — every other path to fixing that needs them to reopen an app that has given them nothing.",
+  },
+  "line-paid-no-number": {
+    group: "Lines", sev: "🔴",
+    what: (d) => `Someone is paying for a number they do not have. ${esc(d)}`,
+    action: "Check the Telnyx balance FIRST — a number order is refused outright below it, and that is the likeliest cause. This is a STATE check, so it stays lit until they actually hold a line; the rescue sweep retries once a day per subscriber.",
+  },
+  "line-rescue-stale": {
+    group: "Lines", sev: "🟠",
+    what: (d) => `The rescue sweep has stopped. ${esc(d)}`,
+    action: "Check relay-rescue-unprovisioned-lines. While it is down, a subscriber whose purchase call never landed gets no number and no recovery — every other path to fixing that needs them to reopen an app that has given them nothing.",
+  },
+  "line-paid-no-number": {
+    group: "Lines", sev: "🔴",
+    what: (d) => `Someone is paying for a number they do not have. ${esc(d)}`,
+    action: "Check the Telnyx balance FIRST — a number order is refused outright below it, and that is the likeliest cause. This is a STATE check, so it stays lit until they actually hold a line; the rescue sweep retries once a day per subscriber.",
+  },
+  "line-rescue-stale": {
+    group: "Lines", sev: "🟠",
+    what: (d) => `The rescue sweep has stopped. ${esc(d)}`,
+    action: "Check relay-rescue-unprovisioned-lines. While it is down, a subscriber whose purchase call never landed gets no number and no recovery — every other path to fixing that needs them to reopen an app that has given them nothing.",
+  },
   "line-country-catalog-stale": {
     group: "Lines", sev: "🟠",
     what: (d) => `The country catalog has stopped refreshing. ${esc(d)}`,
