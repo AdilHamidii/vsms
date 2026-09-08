@@ -1,3 +1,27 @@
+-- ⛔ SUPERSEDED AND NEUTERED 2026-09-08 by
+--    20260908160000_revoke_wholesale_cost_columns.sql. DO NOT REINSTATE.
+--
+-- This file was never applied (absent from schema_migrations, verified
+-- 2026-09-08) and it must not be. Three defects, any one of which makes it
+-- wrong today:
+--
+--  1. IT WAS A NO-OP. `revoke select (col) ... from anon` only edits
+--     `pg_attribute.attacl`; `routes` carried a TABLE grant (`anon=rxtm`) in
+--     `pg_class.relacl`, which a column revoke cannot subtract from. Measured
+--     live: `has_column_privilege('anon','public.routes','last_cost_cents',
+--     'select')` was still true. The working shape is REVOKE the table grant,
+--     then GRANT the safe columns back — which is what the new file does.
+--  2. It names 3 of the 7 cost columns `routes` now has. herosms_cost_cents,
+--     herosms_smoothed_cost_cents, fivesim_cost_cents and
+--     fivesim_smoothed_cost_cents all landed after it was written.
+--  3. Its re-grant list omits `success_codes`, `real_sim_only` and
+--     `pool_rate_pct`, which every shipped client decodes — so applying it
+--     verbatim would break the catalog it was meant to protect.
+--
+-- The original text is kept below, commented out, because the WHY (the live
+-- curl that proved the leak, and the client-first/revoke-second ordering) is
+-- the reasoning the replacement is built on.
+--
 -- Stop publishing the margin book to anyone holding the publishable key.
 --
 -- ⚠️  DO NOT APPLY THIS UNTIL THE BUILD CONTAINING THE EXPLICIT-COLUMN
@@ -32,21 +56,21 @@
 -- The service role is unaffected (it bypasses grants), so sync-prices,
 -- sync-smspool and sync-smspva-operators keep reading and writing costs.
 
-revoke select (last_cost_cents, smoothed_cost_cents, smspva_operator_cents)
-  on public.routes from anon, authenticated;
+-- revoke select (last_cost_cents, smoothed_cost_cents, smspva_operator_cents)
+--   on public.routes from anon, authenticated;
 
 -- Re-assert the safe surface explicitly, so a future table-wide GRANT can't
 -- silently re-expose the costs by accident.
-grant select (
-  service_id, country_id, retail_credits, status,
-  success_rate, rate_source, success_sample,
-  premium_credits, smspva_operator, stock, last_checked_at
-) on public.routes to anon, authenticated;
+-- grant select (
+--   service_id, country_id, retail_credits, status,
+--   success_rate, rate_source, success_sample,
+--   premium_credits, smspva_operator, stock, last_checked_at
+-- ) on public.routes to anon, authenticated;
 
-comment on column public.routes.smoothed_cost_cents is
-  'WHOLESALE cost. NEVER expose to anon/authenticated — see migration '
-  '20260725130000. CatalogAPI must never select this column.';
-comment on column public.routes.last_cost_cents is
-  'WHOLESALE cost. NEVER expose to anon/authenticated — see migration 20260725130000.';
-comment on column public.routes.smspva_operator_cents is
-  'WHOLESALE per-operator cost. NEVER expose to anon/authenticated — see migration 20260725130000.';
+-- comment on column public.routes.smoothed_cost_cents is
+--   'WHOLESALE cost. NEVER expose to anon/authenticated — see migration '
+--   '20260725130000. CatalogAPI must never select this column.';
+-- comment on column public.routes.last_cost_cents is
+--   'WHOLESALE cost. NEVER expose to anon/authenticated — see migration 20260725130000.';
+-- comment on column public.routes.smspva_operator_cents is
+--   'WHOLESALE per-operator cost. NEVER expose to anon/authenticated — see migration 20260725130000.';

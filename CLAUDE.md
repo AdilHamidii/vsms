@@ -818,6 +818,20 @@ Backed by a new `active_subs` key on `ops_subs()` (migration
   place either half is checked: a live line with no subscription is rent we
   pay for nothing, a live subscription with no line is a customer paying for
   nothing, and both have happened.
+- 🔴 **IT COMPARES APPLE SUBSCRIPTIONS AGAINST APPLE-BILLED LINES ONLY — fixed
+  2026-09-08 (`lines_active_apple` / `lines_active_credits`, migration
+  `20260908220000`).** It used to count ALL live lines, so the owner's own
+  credits-billed test line made it fire permanently: 12 lines against 11 subs,
+  every single render. **A warning that is always lit is a warning nobody
+  reads**, which is precisely how the next real one gets missed — the same
+  reasoning that gave the e-mail domain check its cross-domain condition.
+  Verified live through `telegram-setup`'s `{"preview":"/subs"}`: 11 = 11 and
+  the warning is gone. Credits lines are SPLIT OUT rather than filtered away
+  (`plus N credits-billed line(s) — rent we pay outside Apple`), because a
+  credits line that has outlived its funding is still $1/month of Telnyx rent
+  — the same leak wearing a different label. The formatter falls back to the
+  old all-billing sum when the key is absent, so a stale bundle degrades to
+  the previous behaviour instead of reading zero and inverting the warning.
 
 Dropped from the rendering (available elsewhere, and they were not the
 question): the raw state histograms, the ASSN 7-day notification table, the
@@ -4953,6 +4967,60 @@ definitive "not attributed"; only 7 are ASA). Two tables, migration
 - The server never surfaces analytics failures to the app, and the client
   fires-and-forgets — measuring the product must never degrade it.
 
+### The cost book is COLUMN-GRANTED, never table-granted (2026-09-08)
+
+🔴 **`routes` and `esim_plans` no longer carry a table-wide SELECT grant for
+`anon`/`authenticated`. SELECT is granted on EXACTLY the columns the iOS client
+decodes, and nothing else. Never `grant select on public.routes to anon` — that
+one statement re-publishes the entire wholesale cost book.** Migration
+`20260908160000_revoke_wholesale_cost_columns.sql`.
+
+Both tables have a `public read` RLS policy (`esim_plans`' is granted to
+**PUBLIC**, so it read with no account at all), and RLS filters ROWS, not
+COLUMNS — so every wholesale figure was readable by anyone who unpacked the
+IPA for the publishable key. Verified leaking immediately before the fix and
+refused immediately after, over real HTTP:
+
+```
+GET /rest/v1/routes?select=service_id,smoothed_cost_cents,last_cost_cents
+  before: 200 + data      after: 401 42501 permission denied for table routes
+```
+
+- **What is granted:** `routes` — service_id, country_id, retail_credits,
+  status, success_rate, rate_source, success_sample, success_codes,
+  premium_credits, real_sim_only, pool_rate_pct (the 11 `Route` decodes).
+  `esim_plans` — id, name, country_code, region, data_mb, validity_days,
+  speed, extendable, retail_credits, status. Everything else — including all
+  **seven** `routes` cost columns (`last_`/`smoothed_cost_cents`,
+  `smspva_operator_cents`, `herosms_cost_cents`,
+  `herosms_smoothed_cost_cents`, `fivesim_cost_cents`,
+  `fivesim_smoothed_cost_cents`) and both `esim_plans` ones — is denied.
+  `service_role` bypasses grants, so every sync and poller is unaffected.
+- 🔴 **To let the client read a NEW column you must edit TWO places in one
+  commit:** the column grant here AND the explicit list in
+  `CatalogAPI`/`EsimPlansAPI`. A column that PostgREST *filters* or *orders*
+  on also needs the grant, not just one that is returned.
+- 🔴 **A column REVOKE cannot subtract from a table GRANT.** `revoke select
+  (col) on public.routes from anon` only edits `pg_attribute.attacl`; the
+  `anon=rxtm` in `pg_class.relacl` still answers. That is why
+  `20260725130000` changed nothing, and why the shape is REVOKE-then-GRANT.
+  Assert with `has_column_privilege('anon','public.routes','<col>','select')`
+  — a passing `revoke` statement proves nothing. Same class as the
+  PUBLIC-EXECUTE trap, one layer down.
+- **Why it was safe to apply, and how to re-run that gate for the order
+  tables:** the app sends its build in the User-Agent (`VirtualSIM/<build>`),
+  so the edge logs answer "is anyone still sending `select=*`" directly —
+  which beats any adoption proxy. Over 24h to 2026-09-08, 71 distinct client
+  IPs: builds 50/52/48/49/53/55 and **one** on 42 (2.2). Zero `select=*` on
+  `routes` or `esim_plans` from any of them (the explicit lists shipped in
+  build 19 / 1.6). Query shape:
+  `select extract(log_attributes['request.search'],'select=([^&]*)')` over
+  `source='edge_logs'` grouped by `request.path`.
+- ⚠️ **`services` and `countries` are deliberately NOT touched**: that one
+  build-42 device still sends `select=*` to both, and neither holds a
+  wholesale column (`services.cost` is the seed RETAIL credit price, which
+  the client decodes).
+
 ### Known-open
 
 ✅ **A SUBSCRIPTION COULD EXIST AT APPLE WITH NO TRACE IN OUR DATABASE — FIXED
@@ -4992,17 +5060,49 @@ Three halves, all landed together; none works alone:
   first provision and the caller's existing `DEFAULT_LINE_COUNTRY` fallback
   covers it, behind the same fail-closed sellability gate.
 
+✅ **AND IT ALSO FIRES ON A TIMER — `rescue-unprovisioned-lines`, cron
+`relay-rescue-unprovisioned-lines` at :08/:23/:38/:53.** The notification path
+alone was not enough: a yearly whose only Apple event is INITIAL_BUY would have
+waited up to a year. The sweep reads
+`line_unprovisioned_subscriptions(p_min_age_minutes, p_limit)` and provisions
+through the same `provisionForSubscription` the notification path uses, so a
+paid subscriber with no number is fixed within ~15 minutes with no user and no
+notification.
+
+🔴 **The provisioning glue lives in `_shared/lineProvision.ts::
+provisionForSubscription` and must not be copied again.** It was the FOURTH
+instance of "gate the country, pick a number, take the mutex, finish the
+sequence", and the third copy of the sequence itself is why five of six sold
+lines could not make a call. Callers keep only the alerting, which is the part
+that genuinely differs (a notification pages per delivery with a dedupe ref; a
+sweep summarises a run). `apple-notifications` imports no catalog code at all
+any more.
+
+Every guard is in SQL so it holds however the function is invoked: Production
+only, entitlement live now, no live Apple-billed line (the same predicate as
+`phone_lines_one_apple_line_per_user`, so a candidate is always one
+`begin_line_rental` accepts), older than 30 minutes, and **ONE ATTEMPT PER
+DAY** — `failed` sits outside that partial index by design so a retry CAN
+succeed, and without the throttle a permanently broken subscription would buy a
+$1 number every fifteen minutes. `begin_line_rental` is still the mutex; the
+loser is silent.
+
+**Watchdog: `line-rescue-stale` (heartbeat, `app_config.
+line_rescue_heartbeat`) and 🔴 `line-paid-no-number` (the STATE — is anyone
+paying for a number they do not have).** The second is the load-bearing one and
+fires even if the heartbeat is never written, which is exactly the case that
+ships broken; `sync-telnyx-cdr` ran green for twenty days matching nothing
+because only its heartbeat was checked. Both were proven to FIRE in a
+rolled-back transaction, not merely to exist.
+
 ⚠️ **The client half ships with the next build**, so purchases made by 2.10 and
-earlier remain unattributable if their verify call fails. ⚠️ **The rescue fires
-on a NOTIFICATION, not on a timer** — a yearly whose only notification is
-INITIAL_BUY waits until its next Apple event. `line_unprovisioned_subscriptions
-(p_min_age_minutes, p_limit)` exists and is the ready-made candidate list for a
-15-minute sweep (entitled + Production + no live Apple line + one attempt per
-day), but **no function calls it yet**; wiring it needs the ~150-line
-provisioning sequence in `reprovisionAfterRenewal` extracted into
-`_shared/lineProvision.ts` first. Behavioural checks:
-`scripts/verify-line-first-provision.sql` (8 groups, rolled back, including the
-30-minute race guard and the one-attempt-per-day throttle).
+earlier remain unattributable if their verify call fails — for those, the sweep
+is the only recovery, and it depends on a `line_subscriptions` row existing.
+⚠️ **A rescue needs Telnyx float**: below the balance floor an order is refused
+outright and the sweep pages `line-paid-no-number` instead of fixing it.
+Behavioural checks: `scripts/verify-line-first-provision.sql` (8 groups, rolled
+back, including the 30-minute race guard and the one-attempt-per-day
+throttle).
 
 
 ⚠️ **The e-mail subscription's retroactive lifetime wall would end the app's
@@ -5209,10 +5309,35 @@ nobody touching Telnyx. All 12 owned numbers are on it, read back.
   call** (403 / D38). That affects only the `ring_number` test probe — real
   inbound transfers go to a SIP URI and need no profile.
 
-⚠️ **Not yet done:** the `call.answered` / `call.hangup` events are logged but
-do not yet close the `line_calls` row, so an inbound call stays `ringing`
-until the stale-call backstop or a CDR settles it. Inbound bills nothing, so
-this is a history-accuracy gap, not a money one.
+✅ **Inbound history closes from Telnyx's own events (2026-09-08).**
+`telnyx-webhook`'s `call.answered` / `call.hangup` branches call
+`close_inbound_call_claim(p_session, p_event, p_at, p_hangup_cause)`
+(migration `20260908210000`). Before this an inbound call sat `ringing` until
+the six-hour backstop relabelled it, and a call nobody answered was
+indistinguishable from one still in progress.
+
+🔴 **IT MOVES NO MONEY AND MUST NEVER MOVE ANY.** It writes only status /
+`answered_at` / `ended_at` / `duration_seconds` / `hangup_cause`, and its
+`direction = 'inbound'` predicate is a SAFETY ASSERTION rather than a lookup
+aid — the session key is already unique, so the predicate exists purely to make
+the function structurally unable to touch an outbound row whose minutes and
+credits are real. It also refuses a row carrying any reservation
+(`not_free_inbound`).
+
+Two behaviours that are not derivable from the code: **both legs of one call
+raise both events and Telnyx redelivers**, so every call reaches this at least
+four times — the first event to find a non-terminal row wins and every later
+one is a no-op, which is also what makes an out-of-order delivery safe. And **a
+hangup with no answer is a MISSED call, never a zero-second answered one**;
+"answered for 0s" reads as a fault, and nobody-picked-up is the common inbound
+outcome. `unknown_call` is ordinary, not a fault: our own outbound legs share
+this event stream and match no inbound row. Checks:
+`scripts/verify-inbound-call-close.sql` (rolled back, with a negative control).
+
+⚠️ The `occurred_at` timestamp is read from the ENVELOPE (`data`), not the
+payload, and is NOT verified against a live call event — the SQL falls back to
+its own `now()` on a null or absurd stamp, which for a webhook arriving seconds
+later is accurate either way.
 
 *Historical below — the four failed attempts, kept because three of them are
 documented dead ends and the reasoning shows how the wrong layer was blamed
@@ -5785,18 +5910,11 @@ refused.
 - ⚠️ **`margin_too_low` tells an e-mail buyer to "try another country".** There
   is no country in the e-mail product. Needs its own copy or its own error code.
 
-- ⚠️ **`20260725130000_hide_route_cost_columns` deliberately NOT applied.**
-  Postgres needs SELECT on every column to answer `select=*`, and the shipped
-  `CatalogAPI` still sends it — applying this before build 19 is *adopted* makes
-  the catalog fail to load and every price render "Unavailable" for the whole
-  install base. Client-first, revoke-second, in that order.
-- ⚠️ **`esim_plans` publishes the wholesale cost book** to anyone with the
-  publishable key (`last_cost_cents`, `smoothed_cost_cents`) — the `routes` leak
-  repeated. **The CLIENT half is now done**: `EsimPlansAPI.fetch()` names its ten
-  columns instead of `select=*` (2026-07-30). The server-side column revoke is
-  still outstanding and **must wait until build 19 is adopted** — revoking while
-  the shipped 1.4 still sends `select=*` makes the eSIM catalog fail to load for
-  the whole install base. Client first, revoke second, same as `routes`.
+- ✅ **RESOLVED 2026-09-08 — the wholesale cost book on `routes` and
+  `esim_plans` is CLOSED to `anon`/`authenticated`.** See "The cost book is
+  column-granted" below; `20260725130000_hide_route_cost_columns` is
+  SUPERSEDED and must never be applied (it is a no-op AND its re-grant list
+  breaks the shipped client).
 - ⚠️ **`supabase_admin` default privileges not revoked** — needs membership in
   that role. Covers objects created via the dashboard rather than migrations.
   Statements in `20260727211000_default_privileges.sql`.
@@ -5823,25 +5941,19 @@ refused.
   defused, and the function itself is still wrong. Grep `pg_proc.prosrc` before
   trusting any statement about who calls it.
 
-- ⚠️ **The deferred column-revoke migration `20260725130000` is a NO-OP as
-  written, and would silently change nothing when finally applied.** It revokes
-  SELECT on three cost columns from `anon`/`authenticated`, but `routes` carries
-  a **table-level** SELECT grant (`anon=rxtm`) and has zero column-level ACLs — a
-  column REVOKE only edits `pg_attribute.attacl` and cannot subtract from
-  `pg_class.relacl`. Same shape as the PUBLIC-execute trap, one layer down. The
-  proof it is the right diagnosis is `profiles`, where column restriction DOES
-  work precisely because the table grant never included UPDATE. The fix is
-  `revoke select on public.routes from anon, authenticated;` followed by an
-  explicit `grant select (<columns>)`. Two further defects in the same file: it
-  predates the cutover so it never revokes **`herosms_cost_cents`** (the current
-  provider's wholesale, readable by `anon` today), and its re-grant list omits
-  `success_codes` and `real_sim_only`, so applying it verbatim breaks build 19.
-  Note also that `routes` and `esim_plans` both carry a **`public read`** RLS
-  policy, so the cost book reads with **no account at all**, not merely with the
-  publishable key.
+- ✅ **RESOLVED 2026-09-08 — see "The cost book is column-granted" below.**
+  `20260725130000` was a NO-OP as written and is superseded; the working shape
+  is REVOKE the table grant, then GRANT the safe columns back.
 
 - 🟠 **`orders.actual_cost_cents` — the CLIENT half is done, the server revoke
-  is still outstanding.** `orders`, `esim_orders` and `email_orders` all carry
+  is still outstanding.** ⚠️ **`routes` and `esim_plans` were closed on
+  2026-09-08** (see "The cost book is COLUMN-GRANTED"); the three ORDER tables
+  are what remains, and they are the SMALLER exposure — RLS is self-read, so a
+  user leaks only their own wholesale, not the book. The adoption gate is NOT
+  yet met for them: over 24h to 2026-09-08 the edge logs show `select=*` still
+  arriving on `/rest/v1/email_orders` (87 requests, **84** distinct IPs) and
+  `/rest/v1/orders` (61 / 34) — revoking today would break those clients.
+  Re-run that log query before acting. `orders`, `esim_orders` and `email_orders` all carry
   per-order wholesale, RLS self-read grants the row, and **no Swift model
   decodes it** — a pure leak. As of 2026-08-27 **every PostgREST fetch in the
   iOS client names its columns explicitly; there is no `select=*` left**

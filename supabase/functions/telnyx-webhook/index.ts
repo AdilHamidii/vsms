@@ -111,20 +111,54 @@ Deno.serve(async (req) => {
       case "call.initiated":
         await handleInboundCall(sb, payload);
         break;
-      // Temporary, and deliberately loud. The transfer leg's own outcome is
-      // the one fact nobody can see: `call.bridged` fires, no `webrtc` detail
-      // record is ever written, and the device does not ring. The hangup cause
-      // and SIP response on THAT leg say why, and they exist only here.
+      // The transfer leg's outcome is still the one fact nothing else records:
+      // no `webrtc` detail record is ever written for it, so a transfer that
+      // Telnyx accepts and then drops is visible ONLY here. Kept for that, and
+      // trimmed to the fields that actually diagnose it.
       case "call.bridged":
-      case "call.hangup":
-      case "call.answered":
-        console.log("telnyx-webhook call event:", eventType, JSON.stringify({
-          leg: payload.call_leg_id, session: payload.call_session_id,
-          from: payload.from, to: payload.to, direction: payload.direction,
-          cause: payload.hangup_cause, source: payload.hangup_source,
-          sip: payload.sip_hangup_cause, state: payload.state,
+        console.log("telnyx-webhook call.bridged:", JSON.stringify({
+          session: payload.call_session_id, to: payload.to,
+          cause: payload.hangup_cause, sip: payload.sip_hangup_cause,
         }));
         break;
+      // 🔴 HISTORY ONLY — `close_inbound_call_claim` moves no money, and its
+      // own `direction = 'inbound'` predicate makes it structurally unable to
+      // touch an outbound row whose minutes and credits are real.
+      //
+      // Both legs of one call raise both events, and Telnyx redelivers, so
+      // every call reaches this at least four times. The claim is idempotent:
+      // the first event to find a non-terminal row wins and every later one is
+      // a no-op, which is also what makes an out-of-order delivery safe.
+      case "call.answered":
+      case "call.hangup": {
+        const session = payload.call_session_id;
+        if (!session) break;
+        // Named `closed`, not `data`: the envelope's own `data` is in scope
+        // here, and shadowing it puts the `data.occurred_at` read below in the
+        // temporal dead zone — a ReferenceError the outer try/catch would
+        // swallow, leaving the row open with only a generic log line.
+        const { data: closed, error } = await sb.rpc("close_inbound_call_claim", {
+          p_session: String(session),
+          p_event: eventType === "call.answered" ? "answered" : "hangup",
+          // ⚠️ `occurred_at` is on the ENVELOPE (`data`), not the payload —
+          // `payload.occurred_at` is silently undefined. Not verified against
+          // a live call event, so the SQL treats a null (or an absurd stamp)
+          // by falling back to its own `now()`; a webhook arriving seconds
+          // later makes that accurate either way.
+          p_at: typeof data.occurred_at === "string" ? data.occurred_at : null,
+          p_hangup_cause: payload.hangup_cause ?? null,
+        });
+        // `unknown_call` is the ordinary case, not a fault: our own OUTBOUND
+        // legs and calls to numbers we do not own share this event stream and
+        // match no inbound row. Anything else is worth seeing.
+        if (error) {
+          console.error("close_inbound_call_claim failed:", error.message);
+        } else if (closed?.ok !== true && closed?.reason !== "unknown_call") {
+          console.error("close_inbound_call_claim refused:",
+                        JSON.stringify({ session, reason: closed?.reason }));
+        }
+        break;
+      }
       default:
         // Recorded and ignored, never guessed at. Telnyx adds event types, and
         // encoding a guess about a vendor's vocabulary is what broke eSIM

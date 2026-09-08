@@ -1127,6 +1127,8 @@ export function formatSubs(raw: Record<string, unknown>): string {
   const s = (raw ?? {}) as {
     active_subs?: ActiveSub[];
     lines_by_status?: { status?: string; n?: number }[];
+    lines_active_apple?: number;
+    lines_active_credits?: number;
     lines_total?: number;
     monthly_cost_cents?: number;
     dev_hidden?: { lines?: number; subs?: number; mail_subs?: number };
@@ -1136,9 +1138,17 @@ export function formatSubs(raw: Record<string, unknown>): string {
   const rows = s.active_subs ?? [];
   const lineRows = rows.filter((r) => r.family !== "mail");
   const mailRows = rows.filter((r) => r.family === "mail");
-  const activeLines = (s.lines_by_status ?? [])
-    .filter((r) => ["active", "grace", "past_due"].includes(r.status ?? ""))
-    .reduce((a, r) => a + (r.n ?? 0), 0);
+  // 🔴 APPLE-BILLED lines only. This is compared against APPLE subscriptions,
+  // and counting credits-billed lines here made the warning below fire
+  // permanently on the owner's own test line — an alert that is always lit is
+  // one nobody reads. Falls back to the old all-billing sum only when the
+  // server has not been redeployed yet, so an old payload degrades to the
+  // previous behaviour rather than reading zero and inverting the warning.
+  const activeLines = s.lines_active_apple ??
+    (s.lines_by_status ?? [])
+      .filter((r) => ["active", "grace", "past_due"].includes(r.status ?? ""))
+      .reduce((a, r) => a + (r.n ?? 0), 0);
+  const creditsLines = s.lines_active_credits ?? 0;
 
   // Per-currency monthly totals. Mixed currencies are NEVER silently added —
   // the same rule /revenue follows. Every row is USD today, so this is
@@ -1224,7 +1234,15 @@ export function formatSubs(raw: Record<string, unknown>): string {
   // silent, both have happened, and this is the only place either is checked.
   if (lineRows.length !== activeLines) {
     lines.push(`⚠️ <b>${esc(lineRows.length)} live number sub(s) vs ` +
-               `${esc(activeLines)} live line(s)</b> — these must match.`);
+               `${esc(activeLines)} live Apple-billed line(s)</b> — these must match.`);
+  }
+  // Not folded into the comparison above (nothing at Apple bills them) but not
+  // hidden either: a credits line still costs us $1/month of Telnyx rent, so
+  // one that has outlived its funding is the same kind of leak wearing a
+  // different label.
+  if (creditsLines > 0) {
+    lines.push(`<i>plus ${esc(creditsLines)} credits-billed line(s) — ` +
+               `rent we pay outside Apple.</i>`);
   }
 
   lines.push("");
