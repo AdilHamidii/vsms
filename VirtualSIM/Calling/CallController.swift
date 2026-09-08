@@ -138,6 +138,9 @@ final class CallController: NSObject {
 
     /// An incoming push whose handoff to the SDK has not completed yet.
     private var pendingPush: (metadata: [String: Any], uuid: UUID)?
+    /// The SDK's own reason for refusing the last push, kept so the failure
+    /// report can name it instead of saying "it did not work".
+    private var lastPushError: String?
 
     /// The handoff in flight, if any. Awaited by anything that needs the SDK to
     /// know about the call — answering, above all.
@@ -978,6 +981,21 @@ extension CallController: PKPushRegistryDelegate {
         // Nothing left to try. Ending the call is the honest outcome: a call
         // that rings, is answered, and then sits mute is worse than one that
         // visibly fails, and it is the shape users reported.
+        // 🔴 REPORTED AND FLUSHED IMMEDIATELY. This is the last unlit step on
+        // the inbound path: the push arrives, CallKit shows the call, the
+        // attach fails, and the user sees a missed call that never rang. The
+        // reason has only ever existed as a `print` on a device nobody can
+        // read, which is why three fixes shipped without it.
+        //
+        // Flushed rather than queued because a push-launched process is killed
+        // seconds later and an in-memory batch dies with it.
+        Analytics.shared.track("voice_push_handoff_failed", [
+            "had_stored": .bool(VoiceCredentialStore.validCredential() != nil),
+            "had_api": .bool(apiClient != nil),
+            "last_error": .string(String(describing: lastPushError ?? "none")
+                .prefix(180).description),
+        ])
+        await Analytics.shared.flushNow()
         print("CallController:: VoIP push handoff failed — no usable voice credential")
         pendingPush = nil
         provider.reportCall(with: pending.uuid, endedAt: Date(), reason: .failed)
@@ -991,9 +1009,11 @@ extension CallController: PKPushRegistryDelegate {
     ) -> Bool {
         do {
             try voice.handleVoIPPush(metadata: pending.metadata, credential: credential)
+            lastPushError = nil
             pendingPush = nil
             return true
         } catch {
+            lastPushError = String(describing: error)
             // ⚠️ This used to be swallowed into a field nobody read. It is the
             // most diagnostic failure on the whole inbound path: the SDK
             // rejects metadata carrying no `voice_sdk_id`

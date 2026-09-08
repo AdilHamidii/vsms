@@ -72,6 +72,17 @@ final class Analytics {
     /// a session is ending.
     func flushOnBackground() { flush() }
 
+    /// Send now and WAIT.
+    ///
+    /// For the one caller that cannot afford the usual fire-and-forget: a
+    /// push-launched process is killed seconds after it fails, taking any
+    /// in-memory batch with it. Everything else should keep using `track`.
+    func flushNow() async {
+        flush()
+        // One short beat so the in-flight request can leave the process.
+        try? await Task.sleep(for: .milliseconds(600))
+    }
+
     // MARK: - Flush
 
     private func startTimer() {

@@ -967,6 +967,85 @@ Deno.serve(async (req) => {
     return Response.json(result);
   }
 
+  // ── Mode 11: a REAL PSTN call to one of our own numbers ───────────────────
+  //
+  // The end-to-end test the others cannot give. `call_control_ring` dials the
+  // client's SIP URI directly, which skips the number, the Call Control
+  // application and the webhook — i.e. three of the four things that have
+  // broken. This places an ordinary call TO a rented number FROM another
+  // number on the account, so it exercises the whole inbound path exactly as
+  // a customer's caller would.
+  //
+  // It also removes a confound that invalidated several manual tests: dialing
+  // from the same handset that is supposed to ring. iOS will not present an
+  // incoming VoIP call normally while that phone is in a cellular call.
+  //
+  // `from` must be a number we own — Telnyx silently drops a leg whose ANI it
+  // does not recognise (measured 2026-09-08).
+  if (body.probe === "ring_number") {
+    const to = String(body.to ?? "");
+    const from = String(body.from ?? "");
+    if (!/^\+[1-9]\d{6,15}$/.test(to) || !/^\+[1-9]\d{6,15}$/.test(from)) {
+      return Response.json({ error: "to and from must be E.164" }, { status: 400 });
+    }
+    const sb = admin();
+    const { data: cfg } = await sb.from("app_config")
+      .select("value").eq("key", "telnyx_call_control_app").maybeSingle();
+    const appId = (cfg?.value as Record<string, unknown> | null)?.id as string | undefined;
+    if (!appId) return Response.json({ error: "no_call_control_app" }, { status: 409 });
+
+    // ⚠️ A Call Control application needs an OUTBOUND VOICE PROFILE before it
+    // can place a PSTN call: without one Telnyx answers 403 / D38
+    // "Connection has no Outbound Profile assigned". This does NOT affect real
+    // inbound — the transfer leg goes to a SIP URI, which needs no profile —
+    // it only blocks this synthetic test. Borrow the profile the target line
+    // already owns rather than creating another billable object.
+    const appPath = `/call_control_applications/${encodeURIComponent(appId)}`;
+    const appNow = await fetch(`https://api.telnyx.com/v2${appPath}`,
+                               { headers: { Authorization: `Bearer ${key}` } });
+    const appJson = await appNow.json().catch(() => ({}));
+    let profileId = ((appJson as { data?: { outbound?: Record<string, unknown> } })
+      ?.data?.outbound?.outbound_voice_profile_id) ?? null;
+    if (!profileId) {
+      const { data: srcLine } = await sb.from("phone_lines")
+        .select("provider_voice_profile_id").eq("e164", to).maybeSingle();
+      const borrowed = srcLine?.provider_voice_profile_id ?? null;
+      if (borrowed) {
+        await fetch(`https://api.telnyx.com/v2${appPath}`, {
+          method: "PATCH",
+          headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
+          body: JSON.stringify({ outbound: { outbound_voice_profile_id: borrowed } }),
+        });
+        // Read back — a 200 here has meant nothing four times already.
+        const again = await fetch(`https://api.telnyx.com/v2${appPath}`,
+                                  { headers: { Authorization: `Bearer ${key}` } });
+        const againJson = await again.json().catch(() => ({}));
+        profileId = ((againJson as { data?: { outbound?: Record<string, unknown> } })
+          ?.data?.outbound?.outbound_voice_profile_id) ?? null;
+      }
+    }
+
+    const r = await fetch("https://api.telnyx.com/v2/calls", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ connection_id: appId, to, from, timeout_secs: 45 }),
+    });
+    const text = await r.text();
+    let data: unknown = null;
+    try { data = JSON.parse(text); } catch { /* keep raw */ }
+    const result = {
+      mode: "ring_number", at: new Date().toISOString(), to, from,
+      outbound_voice_profile_id: profileId,
+      http: r.status,
+      call_session_id: ((data as { data?: { call_session_id?: string } } | null)
+        ?.data?.call_session_id) ?? null,
+      error: r.ok ? null : text.slice(0, 500),
+    };
+    await sb.from("app_config").upsert(
+      { key: "telnyx_ring_number_probe", value: result }, { onConflict: "key" });
+    return Response.json(result);
+  }
+
   if (body.probe === "call_control_ring") {
     const lineId = String(body.line_id ?? "");
     if (!UUID_LIKE.test(lineId)) return Response.json({ error: "line_id (uuid) required" }, { status: 400 });
