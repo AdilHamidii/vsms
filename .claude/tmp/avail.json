@@ -1,5 +1,0 @@
-### /v1/apps/6774768570/appAvailabilityV2?include=territoryAvailabilities&limit[territoryAvailabilities]=200
-{
- "__error": 400,
- "__body": "{\n  \"errors\" : [ {\n    \"id\" : \"dd1a3ee1-faab-41e3-ac4e-0485944eb3b2\",\n    \"status\" : \"400\",\n    \"code\" : \"PARAMETER_ERROR.INVALID\",\n    \"title\" : \"A parameter has an invalid value\",\n    \"detail\" : \"The maximum allowable limit is '50'\",\n    \"source\" : {\n      \"parameter\" : \"limit[territoryAvailabilities]\"\n    }\n  } ]\n}"
-}

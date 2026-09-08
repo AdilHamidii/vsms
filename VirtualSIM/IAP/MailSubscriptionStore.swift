@@ -31,7 +31,12 @@ enum MailProduct {
     /// intro). Every other surface states that a daily limit exists without
     /// naming a figure, so a server-side change to the cap falsifies one
     /// sentence rather than five.
-    static let dailyAddressCap = 25
+    /// ⚠️ NOT FOR DISPLAY. The live cap is `AppStatus.mailDailyCap`, read from
+    /// `app_config.email_sub_daily_cap`, because the owner changes it without a
+    /// release and it is quoted on a paywall. This value survives only as the
+    /// documented server DEFAULT for reasoning about behaviour offline; every
+    /// render site must use the live one and drop the figure when it is nil.
+    static let dailyAddressCapServerDefault = 25
 }
 
 /// Which plan the paywall is offering.

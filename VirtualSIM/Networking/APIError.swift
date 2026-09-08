@@ -308,6 +308,13 @@ enum APIError: Error, LocalizedError {
                 // The country's own numbers carry no SMS capability at all
                 // (GB, DE, FR, NL, PL, AU local — measured). Not a fault and
                 // not temporary, so it must not invite a retry.
+                // `send-line-message` refuses a body over 1600 characters
+                // with this. Both composers clamp input to the same figure, so
+                // it should be unreachable — but an unmapped code renders the
+                // generic "something went wrong", which invites a retry of the
+                // one message that cannot succeed.
+                case "bad_request":
+                    return String(localized: "That message is too long to send.")
                 case "line_has_no_sms":
                     return String(localized: "This number can make calls but can't send or receive texts.")
                 case "recipient_blocked":

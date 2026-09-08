@@ -113,7 +113,7 @@ struct EmailCodeScreen: View {
     ///    StoreKit's own `displayPrice`. Nothing price-related renders when
     ///    the products have not loaded.
     ///  • Never says "unlimited": `app_config.email_sub_daily_cap` refuses a
-    ///    subscriber at `MailProduct.dailyAddressCap` a day and gmail is not
+    ///    subscriber at `AppStatus.mailDailyCap` a day and gmail is not
     ///    part of the subscription. Same honesty rule as `MailPaywallScreen`,
     ///    whose header explains why a bare "unlimited" is App Store 2.3.1.
     ///  • A subscriber is told nothing and asked for nothing.
@@ -153,8 +153,12 @@ struct EmailCodeScreen: View {
                     Group {
                         if spent {
                             Text("The next one needs the vSMS Mail plan.")
+                        } else if let price = monthlyPrice, let cap = state.appStatus.mailDailyCap {
+                            Text("After that, up to \(cap) addresses a day is \(price)/mo.")
                         } else if let price = monthlyPrice {
-                            Text("After that, up to \(MailProduct.dailyAddressCap) addresses a day is \(price)/mo.")
+                            // The server has not confirmed the cap, so quote the
+                            // price without inventing a number for it.
+                            Text("After that, more addresses come with the vSMS Mail plan for \(price)/mo.")
                         } else {
                             Text("After that, more addresses come with the vSMS Mail plan.")
                         }
@@ -192,8 +196,13 @@ struct EmailCodeScreen: View {
         HStack(spacing: 7) {
             Image(systemName: RIcon.check)
                 .font(.system(size: 11, weight: .bold))
-            Text("vSMS Mail · up to \(MailProduct.dailyAddressCap) addresses a day")
-                .font(RFont.text(12, weight: .medium))
+            if let cap = state.appStatus.mailDailyCap {
+                Text("vSMS Mail · up to \(cap) addresses a day")
+                    .font(RFont.text(12, weight: .medium))
+            } else {
+                Text("vSMS Mail")
+                    .font(RFont.text(12, weight: .medium))
+            }
         }
         .foregroundStyle(theme.text3)
         .frame(maxWidth: .infinity)

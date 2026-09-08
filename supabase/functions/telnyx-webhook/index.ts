@@ -158,10 +158,19 @@ async function handleInbound(sb: ReturnType<typeof admin>, payload: Record<strin
 
   // Which line owns this number. A message for a number we released — or never
   // owned — is dropped rather than guessed at.
-  const { data: line } = await sb.from("phone_lines")
+  // `limit(1)` rather than `maybeSingle()`: a released/failed row can legally
+  // share an e164 with a live one, and `maybeSingle()` ERRORS on two matches —
+  // which read as "unknown number" and dropped a real inbound message.
+  const { data: msgLineRows, error: msgLineErr } = await sb.from("phone_lines")
     .select("id, user_id, status").eq("e164", ourNumber)
     .in("status", ["active", "grace", "past_due", "provisioning"])
-    .maybeSingle();
+    .order("created_at", { ascending: false })
+    .limit(1);
+  if (msgLineErr) {
+    console.error("telnyx-webhook: line lookup failed for", ourNumber, msgLineErr.message);
+    return;
+  }
+  const line = msgLineRows?.[0] ?? null;
   if (!line) {
     console.log("telnyx-webhook: inbound for unknown/inactive number", ourNumber);
     return;
@@ -414,7 +423,7 @@ async function handleInboundCall(
   }
 
   // The line that owns the number, and the credential its app registers with.
-  const { data: line } = await sb.from("phone_lines")
+  const { data: lineRows, error: lineErr } = await sb.from("phone_lines")
     // 🔴 `provider_connection_id` MUST be selected. Without it
     // `registeredSipUser` never even considers the connection user — the
     // identity current builds register as — and silently falls back to the
@@ -423,8 +432,26 @@ async function handleInboundCall(
     // log: `to: sip:gencredz…` while the device was registered as `vsms…`.
     .select("id, user_id, status, provider_credential_id, provider_connection_id")
     .eq("e164", called)
-    .not("status", "in", "(released,suspended)")
-    .maybeSingle();
+    //
+    // 🔴 `failed` MUST BE EXCLUDED AND THIS MUST NOT BE `maybeSingle()`.
+    // `fail_line_claim` does not null `e164`, so a failed provisioning attempt
+    // keeps the number on its row — and the reprovision path makes a collision
+    // likely, because `begin_line_rental` writes the picked e164 BEFORE buying
+    // and Apple's retry often re-picks the same number. Two rows on one e164
+    // made `maybeSingle()` ERROR, which read as "no line" and hung up EVERY
+    // inbound call to that number, forever, with only a console line.
+    // `_shared/lines.ts` gets this right; this is the same rule.
+    .not("status", "in", "(released,suspended,failed)")
+    .order("created_at", { ascending: false })
+    .limit(1);
+  // A failed READ is not "nobody owns this number" — hanging up on a DB blip
+  // would drop a real call. supabase-js RETURNS errors, so this has to be
+  // destructured to be seen at all.
+  if (lineErr) {
+    console.error("telnyx-webhook: line lookup failed for", called, lineErr.message);
+    return;
+  }
+  const line = lineRows?.[0] ?? null;
 
   const key = Deno.env.get("TELNYX_API_KEY") ?? "";
   const command = async (action: string, body: unknown) =>

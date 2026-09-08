@@ -26,7 +26,7 @@ import SwiftUI
 /// - Names the two free domains and states the DAILY LIMIT. Never a bare
 ///   "unlimited e-mails"/"unlimited addresses": `app_config
 ///   .email_sub_daily_cap` refuses a subscriber at `MailProduct
-///   .dailyAddressCap` a day with `daily_cap_reached` (a message `APIError`
+///   .mailDailyCap` a day with `daily_cap_reached` (a message `APIError`
 ///   already ships, so the app contradicted itself), and free-domain stock
 ///   genuinely runs dry independently (hotmail.com has shown as few as 2 in
 ///   stock for a busy service). Promising more than the server delivers is
@@ -119,10 +119,20 @@ struct MailPaywallScreen: View {
     private var intro: some View {
         VStack(alignment: .leading, spacing: 8) {
             MicroLabel("Temporary e-mail")
-            Text("Up to \(MailProduct.dailyAddressCap) addresses a day.")
-                .displayType(26)
-                .foregroundStyle(theme.text)
-                .fixedSize(horizontal: false, vertical: true)
+            // The cap is read live from `app_config.email_sub_daily_cap`; with
+            // no confirmed value the headline states the benefit without a
+            // figure rather than promising a number on a paywall.
+            if let cap = state.appStatus.mailDailyCap {
+                Text("Up to \(cap) addresses a day.")
+                    .displayType(26)
+                    .foregroundStyle(theme.text)
+                    .fixedSize(horizontal: false, vertical: true)
+            } else {
+                Text("A fresh address whenever you need one.")
+                    .displayType(26)
+                    .foregroundStyle(theme.text)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
             Text("On outlook.com and hotmail.com, subject to availability. Your allowance resets at midnight UTC.")
                 .font(RFont.text(15))
                 .foregroundStyle(theme.text2)

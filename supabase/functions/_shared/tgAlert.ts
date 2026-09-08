@@ -218,6 +218,11 @@ export const WATCHDOG_COPY: Record<string, WatchdogCopy> = {
     what: (d) => `No country can sell a second number. ${esc(d)}`,
     action: "This is a STATE check, not a heartbeat — the sync may be running fine and blanking the catalog. Run refresh_line_country_sellability() and read sell_reason before touching the sync.",
   },
+  "line-call-control-app-missing": {
+    group: "Lines", sev: "🔴",
+    what: (d) => `Inbound calls cannot be routed to anybody. ${esc(d)}`,
+    action: "Every number's inbound voice points at the Call Control application named by app_config.telnyx_call_control_app. Without it provisionLineVoice falls back to the credential connection, which Telnyx will NOT route a DID to — so newly sold lines will not ring and nothing else will say so. Re-create it with probe-telnyx-connection {\"probe\":\"call_control_ring\"}, then run sync-line-voice.",
+  },
   "line-country-order-rejected": {
     group: "Lines", sev: "🟠",
     what: (d) => `Telnyx refused an order we said we could sell. ${esc(d)}`,

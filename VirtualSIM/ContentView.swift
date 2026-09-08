@@ -391,18 +391,38 @@ struct ContentView: View {
         // too: the thread cover renders over whatever tab is behind it, and
         // closing it should land the user on their number rather than back on
         // an unrelated product.
-        .onChange(of: push.pendingLineThreadId) { _, newValue in
+        //
+        // 🔴 `initial: true` IS LOAD-BEARING, ON BOTH THIS AND THE ORDER
+        // HANDLER. A notification tapped from a TERMINATED app is already
+        // pending before this view exists: `AuthGate` sets `AppDelegate.push`
+        // inside its own `.task`, whose didSet flushes the buffered response —
+        // and that runs BEFORE `session.bootstrap()`, therefore before
+        // `ContentView` is constructed. `onChange` observes a CHANGE, and the
+        // change had already happened, so a cold launch from a push landed on
+        // Home with the deep link silently dropped. That covers the product's
+        // highest-volume re-entry path — "Your code arrived", tapped from the
+        // lock screen — and every inbound-text push.
+        .onChange(of: push.pendingLineThreadId, initial: true) { _, newValue in
             guard let threadId = newValue else { return }
             push.pendingLineThreadId = nil
             Task {
                 await state.loadLineThreads(using: LineAPI(client: api))
+                // Never open a thread we could not load. `ThreadScreen`
+                // resolves its peer from `lineThreads`, so an unresolvable id
+                // renders an ENABLED composer over an empty peer whose send
+                // button silently does nothing.
+                guard state.lineThreads.contains(where: { $0.id == threadId }) else {
+                    state.tab = .line
+                    state.intent = .line
+                    return
+                }
                 state.tab = .line
                 state.intent = .line
                 state.openThreadId = threadId
                 state.flow = .thread
             }
         }
-        .onChange(of: push.pendingOrderId) { _, newValue in
+        .onChange(of: push.pendingOrderId, initial: true) { _, newValue in
             guard let orderId = newValue else { return }
             push.pendingOrderId = nil
             Task {

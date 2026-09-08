@@ -71,6 +71,13 @@ final class TelnyxVoiceClient: NSObject, VoiceClient, @unchecked Sendable {
 
     private var isReady: Bool { lock.withLock { _isReady } }
 
+    /// Whether the live session is already authenticated as this exact
+    /// identity. A `.sip` session and a `.token` session are NOT
+    /// interchangeable: only the registered SIP user can be rung.
+    private func sameCredential(_ candidate: VoiceCredential) -> Bool {
+        lock.withLock { _credential == candidate }
+    }
+
     func setDelegate(_ delegate: VoiceClientDelegate?) {
         self.delegate = delegate
     }
@@ -78,7 +85,20 @@ final class TelnyxVoiceClient: NSObject, VoiceClient, @unchecked Sendable {
     // MARK: - Session
 
     func connect(_ credential: VoiceCredential) async throws {
-        if isReady { return }
+        // 🔴 A READY SESSION IS ONLY REUSABLE IF IT IS THE SAME CREDENTIAL.
+        //
+        // This used to be a bare `if isReady { return }`, which silently
+        // ignored the credential it was handed. A session already up on a
+        // `.token` therefore stayed token-only while the caller went on to
+        // persist the `.sip` pair and set `inboundReady = true` — telling the
+        // user their number would ring on a socket that cannot receive, and
+        // storing a SIP credential that had never logged in. There are four
+        // `prepareVoice()` entry points, so this happened on ordinary launches,
+        // not just edge cases.
+        if isReady, sameCredential(credential) { return }
+        // Changing identity means tearing the old session down first; the SDK
+        // holds one login per client.
+        if isReady { client.disconnect() }
 
         lock.withLock {
             _credential = credential

@@ -30,7 +30,7 @@ struct Announcement: Codable, Hashable {
 /// The table also holds provider balances and the watchdog verdict, so it is
 /// RLS-restricted to an explicit key whitelist (`maintenance`, `announcement`,
 /// `esim_paused`, `lines_paused`, `line_swap_credits`,
-/// `delivery_metrics_hidden`). Never widen that policy
+/// `delivery_metrics_hidden`, `email_sub_daily_cap`). Never widen that policy
 /// to `using (true)` — the same table holds provider balances, the watchdog
 /// verdict and every sync cursor.
 struct AppStatus: Equatable {
@@ -48,6 +48,14 @@ struct AppStatus: Equatable {
     /// figure a user sees — the vendor's network rate. Display-only: steering
     /// and sorting keep reading the rate. Absent key = shown.
     var deliveryMetricsHidden: Bool = false
+    /// How many free addresses a mail SUBSCRIBER gets per UTC day.
+    ///
+    /// NIL until the server says so, for the same reason as `lineSwapCredits`:
+    /// it mirrors `app_config.email_sub_daily_cap`, which the owner changes
+    /// with one UPDATE and no release — and it is quoted on a PAYWALL, so a
+    /// divergence is a paid promise we would not be keeping. Callers drop the
+    /// figure rather than guessing; the client must never carry a default.
+    var mailDailyCap: Int?
 
     static let unknown = AppStatus(announcement: nil, esimPaused: false,
                                    lineSwapCredits: nil)
@@ -82,7 +90,7 @@ struct AppStatusAPI {
             .get, path: "rest/v1/app_config",
             query: [
                 URLQueryItem(name: "key",
-                             value: "in.(announcement,esim_paused,line_swap_credits,delivery_metrics_hidden)"),
+                             value: "in.(announcement,esim_paused,line_swap_credits,delivery_metrics_hidden,email_sub_daily_cap)"),
                 URLQueryItem(name: "select", value: "key,value"),
             ]
         )
@@ -92,7 +100,10 @@ struct AppStatusAPI {
             // No `?? 5`. An absent or unreadable price hides the feature; it
             // must never fall back to a number this build happens to remember.
             lineSwapCredits: rows.first(where: { $0.key == "line_swap_credits" })?.number,
-            deliveryMetricsHidden: rows.first(where: { $0.key == "delivery_metrics_hidden" })?.flag ?? false
+            deliveryMetricsHidden: rows.first(where: { $0.key == "delivery_metrics_hidden" })?.flag ?? false,
+            // No `?? 25`. An absent cap drops the figure from the paywall copy
+            // rather than promising a number the server has not confirmed.
+            mailDailyCap: rows.first(where: { $0.key == "email_sub_daily_cap" })?.number
         )
     }
 }

@@ -386,6 +386,16 @@ Deno.serve(async (req) => {
     if (!/^[A-Z]{2}$/.test(country)) {
       return Response.json({ error: "country must be ISO2" }, { status: 400 });
     }
+    // 🔴 THIS SPENDS MONEY ($1 upfront + $1/month) AND HAS NO IDEMPOTENCY KEY,
+    // so a repeat buys another number. It was the only writing mode with no
+    // required argument: `{"probe":"order_test_number"}` alone bought a US
+    // number. Echo the country back to confirm, the same shape `send_test`
+    // uses for an outside destination.
+    if (String(body.confirm_country ?? "") !== country) {
+      return Response.json(
+        { error: "confirm_country_required", need: `confirm_country: "${country}"` },
+        { status: 409 });
+    }
     const sb = admin();
     const search = await fetch(
       `${TELNYX}/available_phone_numbers?filter[country_code]=${country}` +
@@ -564,12 +574,24 @@ Deno.serve(async (req) => {
     // 🔴 Refuse to release a number a live line holds. This mode exists to
     // clean up probe numbers; pointed at a subscriber's number it would delete
     // the product they are paying for.
-    const { data: held } = await sb.from("phone_lines")
-      .select("id, status").eq("e164", e164).neq("status", "released").maybeSingle();
-    if (held) {
+    //
+    // 🔴 NEVER `maybeSingle()` ON A DESTRUCTIVE GUARD, AND NEVER DISCARD ITS
+    // ERROR. `maybeSingle()` ERRORS on more than one match, and two rows may
+    // legally share an e164 (`phone_lines_e164_live_key` is unique only
+    // `where status not in ('released','failed')`). Discarding `{ error }`
+    // then left `held` null on both that case and any transient DB failure —
+    // and execution fell straight through to an irreversible DELETE of a
+    // paying subscriber's number, which Telnyx will not re-issue.
+    const { data: held, error: heldErr } = await sb.from("phone_lines")
+      .select("id, status").eq("e164", e164).neq("status", "released").limit(2);
+    if (heldErr) {
+      // Fail CLOSED: unable to prove the number is free is not permission.
       return Response.json(
-        { error: "number_held_by_live_line", line: held.id, status: held.status },
-        { status: 409 });
+        { error: "ownership_check_failed", detail: heldErr.message }, { status: 503 });
+    }
+    if ((held ?? []).length > 0) {
+      return Response.json(
+        { error: "number_held_by_live_line", lines: held }, { status: 409 });
     }
     const list = await fetch(
       `${TELNYX}/phone_numbers?filter[phone_number]=${encodeURIComponent(e164)}`,
@@ -673,8 +695,13 @@ Deno.serve(async (req) => {
         `${TELNYX}/phone_numbers?filter[phone_number]=${encodeURIComponent(e164)}`,
         { headers: { Authorization: `Bearer ${key}` } });
       if (!r.ok) return false;
-      const j = await r.json().catch(() => ({})) as { data?: unknown[] };
-      return Array.isArray(j.data) && j.data.length > 0;
+      const j = await r.json().catch(() => ({})) as
+        { data?: { phone_number?: string }[] };
+      // Assert the row IS the number asked for. Whether Telnyx's
+      // `filter[phone_number]` is exact or prefix is not documented, and on a
+      // prefix match a number that merely starts like ours would be judged
+      // "ours" and texted without the allow_unowned/confirm_to handshake.
+      return (j.data ?? []).some((row) => String(row.phone_number ?? "") === e164);
     };
     // The SENDER must always be ours — that is not negotiable, it is whose
     // number appears on the recipient's handset.

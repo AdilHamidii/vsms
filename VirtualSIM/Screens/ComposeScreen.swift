@@ -161,6 +161,7 @@ struct ComposeScreen: View {
     private var bodyField: some View {
         Card(elevation: .flat) {
             TextField("Message", text: $text, axis: .vertical)
+                .onChange(of: text) { _, _ in clampBody() }
                 .font(RFont.text(16))
                 .foregroundStyle(theme.text)
                 .lineLimit(3...8)
@@ -210,10 +211,26 @@ struct ComposeScreen: View {
 
     // MARK: - Send
 
+    /// The server refuses a body over this and the refusal costs a round trip,
+    /// so the text field clamps instead. Keep it in step with
+    /// `send-line-message`'s own limit.
+    private static let maxBodyLength = 1600
+
+    private func clampBody() {
+        if text.count > Self.maxBodyLength {
+            text = String(text.prefix(Self.maxBodyLength))
+        }
+    }
+
     private func send() {
+        // 🔴 SET BEFORE THE `Task`. Inside it, both taps of a double-tap pass
+        // the check before either body runs, and `begin_outbound_message` has
+        // no dedupe window — two rows, two allowance segments, the same text
+        // delivered twice.
+        guard !sending else { return }
         guard let recipient else { return }
+        sending = true
         Task {
-            sending = true
             defer { sending = false }
             let ok = await state.sendLineMessage(
                 using: LineAPI(client: api), to: recipient, text: text)
@@ -224,7 +241,18 @@ struct ComposeScreen: View {
                 // opens — not the list they came from. It is also where the
                 // delivery receipt will land, which is the only place the
                 // send's real outcome is ever stated.
-                state.flow = .thread
+                //
+                // ⚠️ DISMISS FIRST, THEN RAISE. Swapping one
+                // `fullScreenCover(item:)` identity for another in a single
+                // step is not a transition SwiftUI performs reliably — the
+                // second stage can simply never appear, and a successful send
+                // is the one moment the user must not land on a blank screen.
+                // Same hop, and the same reason, as `ThreadScreen.callPeer()`.
+                state.flow = nil
+                Task { @MainActor in
+                    try? await Task.sleep(for: .milliseconds(320))
+                    state.flow = .thread
+                }
             } else {
                 RHaptic.warn()
             }

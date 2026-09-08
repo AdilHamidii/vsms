@@ -299,6 +299,7 @@ struct ThreadScreen: View {
 
             HStack(alignment: .bottom, spacing: 10) {
                 TextField("Message", text: $draft, axis: .vertical)
+                    .onChange(of: draft) { _, _ in clampBody() }
                     .font(RFont.text(15))
                     .foregroundStyle(theme.text)
                     .lineLimit(1...5)
@@ -348,9 +349,20 @@ struct ThreadScreen: View {
     }
 
     private var blockReason: LocalizedStringKey? {
-        if thread?.blocked == true { return "You've blocked this number. Unblock it to send." }
+        // No resolvable thread means no peer to send to. Without this the
+        // composer renders ENABLED over an empty peer and its send button
+        // silently does nothing — `send()` returns at its own `guard`. That is
+        // reachable from a push naming a thread this client has not loaded.
+        guard let thread else { return "This conversation isn't loaded yet." }
+        if thread.blocked { return "You've blocked this number. Unblock it to send." }
         if peerOutsideNanp { return "This number can only text US and Canadian numbers." }
-        guard let line = state.line else { return "Your number isn't ready yet." }
+        // 🔴 THE THREAD'S LINE, NOT THE SELECTED ONE. `sendLineMessage` sends
+        // from the thread's line, so reading `state.line` here refused valid
+        // sends and permitted ones the server refuses, for anyone holding two
+        // numbers.
+        guard let line = state.lines.first(where: { $0.id == thread.lineId }) ?? state.line else {
+            return "Your number isn't ready yet."
+        }
         switch line.sendBlock {
         case .allowanceExhausted:
             return "You've used this month's texts. They reset when your subscription renews."
@@ -365,12 +377,29 @@ struct ThreadScreen: View {
         }
     }
 
+    /// The server refuses a body over this and the refusal costs a round trip,
+    /// so the text field clamps instead. Keep it in step with
+    /// `send-line-message`'s own limit.
+    private static let maxBodyLength = 1600
+
+    private func clampBody() {
+        if draft.count > Self.maxBodyLength {
+            draft = String(draft.prefix(Self.maxBodyLength))
+        }
+    }
+
     private func send() {
+        // 🔴 THE GUARD IS SET BEFORE THE `Task`, NOT INSIDE IT. Setting it
+        // inside means both taps of a double-tap pass the check before either
+        // body runs — and `begin_outbound_message` has NO dedupe window and no
+        // arbitrating unique index, so that is two rows, two segments of a
+        // hard-stop allowance, and the same text delivered twice.
+        guard !isSending else { return }
         guard let peer = thread?.peerE164 else { return }
         let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return }
+        isSending = true
         Task {
-            isSending = true
             defer { isSending = false }
             let ok = await state.sendLineMessage(using: LineAPI(client: api), to: peer, text: text)
             // Cleared only on success, so a refused send does not lose what the

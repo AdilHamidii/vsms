@@ -11295,6 +11295,47 @@
         }
       }
     },
+    "Delivered instantly as a QR code to install.": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sofort als QR-Code zum Installieren geliefert."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Se entrega al instante como código QR para instalar."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Livré instantanément sous forme de QR code à installer."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Consegnato subito come codice QR da installare."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "インストール用のQRコードとしてすぐに届きます。"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Entregue na hora como um QR code para instalar."
+          }
+        }
+      }
+    },
     "Delivered on %lld of %lld orders": {
       "extractionState": "stale",
       "localizations": {
@@ -15791,6 +15832,47 @@
           "stringUnit": {
             "state": "translated",
             "value": "Mantenha seu número privado"
+          }
+        }
+      }
+    },
+    "Keep your regular SIM for calls & texts.": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Behalte deine normale SIM für Anrufe und SMS."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Conserva tu SIM habitual para llamadas y mensajes."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gardez votre SIM habituelle pour les appels et les SMS."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mantieni la tua SIM abituale per chiamate e messaggi."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "通話とSMSには通常のSIMをそのままお使いいただけます。"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mantenha seu SIM normal para chamadas e mensagens."
           }
         }
       }
@@ -30845,6 +30927,47 @@
         }
       }
     },
+    "That message is too long to send.": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Diese Nachricht ist zu lang zum Senden."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ese mensaje es demasiado largo para enviarlo."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ce message est trop long pour être envoyé."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Questo messaggio è troppo lungo per essere inviato."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "このメッセージは長すぎて送信できません。"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Essa mensagem é longa demais para ser enviada."
+          }
+        }
+      }
+    },
     "That number couldn't be reached.": {
       "localizations": {
         "de": {
@@ -31961,6 +32084,47 @@
           "stringUnit": {
             "state": "translated",
             "value": "Este endereço nunca recebeu um código"
+          }
+        }
+      }
+    },
+    "This conversation isn't loaded yet.": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Diese Unterhaltung ist noch nicht geladen."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Esta conversación aún no se ha cargado."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cette conversation n'est pas encore chargée."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Questa conversazione non è ancora stata caricata."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "この会話はまだ読み込まれていません。"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Esta conversa ainda não foi carregada."
           }
         }
       }
@@ -34679,6 +34843,47 @@
           "stringUnit": {
             "state": "translated",
             "value": "Válido até %@"
+          }
+        }
+      }
+    },
+    "Validity starts when you activate the eSIM.": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Die Laufzeit beginnt, sobald du die eSIM aktivierst."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "La validez empieza cuando activas la eSIM."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "La validité commence lorsque vous activez l'eSIM."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "La validità inizia quando attivi la eSIM."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "有効期間はeSIMを有効化した時点から始まります。"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "A validade começa quando você ativa o eSIM."
           }
         }
       }

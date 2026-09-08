@@ -10,6 +10,41 @@
 
 	<key>NSPrivacyCollectedDataTypes</key>
 	<array>
+		<!-- ~16 funnel events (paywall_shown, purchase_result, line_*) written
+		     by `Networking/Analytics.swift` into `app_events`, keyed to the
+		     authenticated user id. Analytics only; never used for tracking. -->
+		<dict>
+			<key>NSPrivacyCollectedDataType</key>
+			<string>NSPrivacyCollectedDataTypeProductInteraction</string>
+			<key>NSPrivacyCollectedDataTypeLinked</key>
+			<true/>
+			<key>NSPrivacyCollectedDataTypeTracking</key>
+			<false/>
+			<key>NSPrivacyCollectedDataTypePurposes</key>
+			<array>
+				<string>NSPrivacyCollectedDataTypePurposeAnalytics</string>
+			</array>
+		</dict>
+		<!-- `service_search_empty` carries the user's typed query (truncated to
+		     32 chars) so a demand gap — someone searching for a service we do
+		     not carry — leaves a trace. That is free text from a search field,
+		     so it is Search History, not Product Interaction.
+		     ⚠️ If this is ever considered too much to declare, the fix is to
+		     drop the `query` prop from that ONE event and keep the event: the
+		     size of the gap survives, only "which service" is lost. Removing
+		     the declaration without removing the prop is a misdeclaration. -->
+		<dict>
+			<key>NSPrivacyCollectedDataType</key>
+			<string>NSPrivacyCollectedDataTypeSearchHistory</string>
+			<key>NSPrivacyCollectedDataTypeLinked</key>
+			<true/>
+			<key>NSPrivacyCollectedDataTypeTracking</key>
+			<false/>
+			<key>NSPrivacyCollectedDataTypePurposes</key>
+			<array>
+				<string>NSPrivacyCollectedDataTypePurposeAnalytics</string>
+			</array>
+		</dict>
 		<dict>
 			<key>NSPrivacyCollectedDataType</key>
 			<string>NSPrivacyCollectedDataTypeEmailAddress</string>

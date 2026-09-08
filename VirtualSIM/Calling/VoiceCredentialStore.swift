@@ -44,14 +44,29 @@ enum VoiceCredentialStore {
     /// about to be used for is a round trip away.
     private static let expiryMargin: TimeInterval = 60
 
+    /// 🔴 SAVING IS EXCLUSIVE — WRITING ONE KIND MUST ERASE THE OTHER.
+    ///
+    /// `validCredential()` prefers `.sip` unconditionally, so leaving a stale
+    /// SIP pair behind when we fall back to a token defeats the whole fallback:
+    /// the live socket runs on the token, while the next VoIP push into a
+    /// TERMINATED app reads the Keychain, finds the SIP pair that just failed
+    /// to log in, and hands it to the SDK. The phone rings and the call dies —
+    /// and it keeps happening, because nothing ever clears it.
+    ///
+    /// This is what makes `CallController`'s save-AFTER-connect ordering
+    /// actually mean something; without it the ordering is decoration.
     static func save(_ credential: VoiceCredential) {
         switch credential {
         case let .sip(username, password):
             KeychainStore.set(username, for: Key.sipUser)
             KeychainStore.set(password, for: Key.sipPassword)
+            KeychainStore.remove(Key.token)
+            KeychainStore.remove(Key.savedAt)
         case let .token(token):
             KeychainStore.set(token, for: Key.token)
             KeychainStore.set(String(Date().timeIntervalSince1970), for: Key.savedAt)
+            KeychainStore.remove(Key.sipUser)
+            KeychainStore.remove(Key.sipPassword)
         }
     }
 
