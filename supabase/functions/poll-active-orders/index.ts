@@ -700,6 +700,122 @@ Deno.serve(async (req) => {
   }
 
 
+  // ── Orders holding a resend window: re-poll for ANOTHER code, and make the
+  // deferred markSuccess call once the window lapses.
+  //
+  // Placed BEFORE the pending-orders loop deliberately, exactly as the
+  // late-watch sweep above is. The worker dies at ~150s wall clock, so the last
+  // thing in the handler is the first thing dropped under load — and a dropped
+  // run here means the window expires with a code never promoted AND the
+  // activation never finished.
+  //
+  // Capped at 25 (against 50 for each of the other two loops) because this is
+  // pure additional provider round-trips on a budget that was already near its
+  // limit. A held order that misses one run is picked up the next minute, well
+  // inside a five-minute window.
+  let resent = 0, resendClosed = 0;
+  const { data: resendWatch, error: resendErr } = await sb
+    .from("orders")
+    .select(
+      "id, user_id, provider, smspva_id, otp, otp_history, resend_watch_until, service:service_id ( name )",
+    )
+    .not("resend_watch_until", "is", null)
+    .order("resend_watch_until", { ascending: true })
+    .limit(25);
+  if (resendErr) console.error("poll: resend-watch select failed", resendErr);
+
+  for (const o of resendWatch ?? []) {
+    try {
+      if (!o.smspva_id) {
+        await sb.from("orders").update({ resend_watch_until: null }).eq("id", o.id);
+        continue;
+      }
+
+      // Window lapsed: make the call the claim deferred, then leave the sweep.
+      // markSuccess BEFORE the clear — a failed clear leaves the row in the
+      // sweep and repeats a call that is idempotent hygiene, whereas clearing
+      // first would drop the finish permanently if the provider throws.
+      if (new Date(o.resend_watch_until as string).getTime() <= Date.now()) {
+        await markSuccess((o.provider ?? "smspva") as OrderProvider, o.smspva_id);
+        const { error: clearErr } = await sb
+          .from("orders").update({ resend_watch_until: null }).eq("id", o.id);
+        if (clearErr) {
+          console.error(JSON.stringify({
+            alert: "resend_clear_failed", order: o.id, detail: clearErr.message,
+          }));
+          continue;   // retried next run; markSuccess is safe to repeat
+        }
+        resendClosed++;
+        console.log(JSON.stringify({ event: "resend_window_closed", order: o.id }));
+        continue;
+      }
+
+      const res = await poll((o.provider ?? "smspva") as OrderProvider, o.smspva_id);
+
+      // 5sim closed it under us (their own 5-minute auto-close, or the
+      // activation window ran out). Nothing more can arrive — stop watching.
+      if (res.state === "expired" || res.state === "canceled") {
+        await sb.from("orders").update({ resend_watch_until: null }).eq("id", o.id);
+        resendClosed++;
+        continue;
+      }
+
+      // fivesim.poll() already walks sms[] BACKWARDS, so `res.code` is the
+      // NEWEST message on the activation. Equal to `otp` means nothing new.
+      if (res.state !== "received" || !res.code || res.code === o.otp) continue;
+
+      const atIso = new Date().toISOString();
+      const history = Array.isArray(o.otp_history) ? o.otp_history as unknown[] : [];
+
+      // The claim is `.eq("otp", o.otp)` — the code we polled against. Two
+      // overlapping runs cannot both promote the same new code, so the history
+      // cannot double-append and the user cannot be pushed twice.
+      const { data: promoted, error: promErr } = await sb
+        .from("orders")
+        .update({
+          otp: res.code,
+          raw_message: res.fullText ?? null,
+          otp_history: [
+            ...history,
+            { code: res.code, text: res.fullText ?? null, at: atIso },
+          ],
+          resend_watch_until: new Date(Date.now() + RESEND_WINDOW_MS).toISOString(),
+        })
+        .eq("id", o.id)
+        .eq("otp", o.otp)
+        .select("id");
+
+      if (promErr) {
+        console.error(JSON.stringify({
+          alert: "resend_promote_failed", order: o.id, detail: promErr.message,
+        }));
+        continue;   // window still open; retried next run
+      }
+      if (!promoted || promoted.length === 0) continue;   // another run won
+
+      resent++;
+      // 🔴 THE FIRST OF THESE EVER LOGGED IS THE PROOF THE FEATURE WORKS.
+      // Until one appears, 5sim's multi-SMS pool list is an unverified claim
+      // and this whole path may be holding numbers open for nothing.
+      console.log(JSON.stringify({ event: "resend_promoted", order: o.id }));
+
+      // Same payload shape shipped builds already route on: PushManager keys on
+      // orderId, opens the OTP screen, and that screen renders `orders.otp` —
+      // which now holds the newer code. This is what delivers the feature to
+      // builds already in the field, with no release.
+      const rsvc = o.service as { name: string } | null;
+      pushSent += await notify(
+        o.user_id,
+        `New ${rsvc?.name ?? "verification"} code`,
+        `Your new code is ${res.code}`,
+        { orderId: o.id, otp: res.code, event: "resend" },
+      );
+    } catch (e) {
+      console.error("resend-watch failed for order", o.id, e);
+    }
+  }
+
+
   // ── Poll the still-waiting orders for their SMS.
   const { data: pending, error: pErr } = await sb
     .from("orders")
@@ -838,5 +954,8 @@ Deno.serve(async (req) => {
   // the fail-fast rule is firing at all. Watch it against `rescued` — a rescue
   // rate that climbs means 150s is cutting into real deliveries and the
   // threshold is wrong.
-  return json({ expired, failedFast, polled, arrived, pushSent, rescued, lateReleased });
+  return json({
+    expired, failedFast, polled, arrived, pushSent, rescued, lateReleased,
+    resent, resendClosed,
+  });
 });
