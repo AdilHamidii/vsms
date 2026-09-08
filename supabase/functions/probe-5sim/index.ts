@@ -18,8 +18,21 @@
 // Deliberately calls 5sim directly rather than through the adapter, so the
 // RAW response text is captured — that text is the finding.
 //
-// Query: ?mode=cancel | ?mode=reuse   (one experiment per invocation)
+//   C. REUSE A NUMBER WE ALREADY SOLD (mode=reuse_number).  Support tool, not
+//      an experiment: a user who registered an account on one of our numbers
+//      needs a SECOND code on that SAME number, and nothing in the product can
+//      give it to them (there is no reuse wrapper in _shared/fivesim.ts, and
+//      create-order's fresh-number guarantee actively redraws away from it).
+//      Buys nothing up front — calls `user/reuse/{product}/{number}` directly
+//      and, if 5sim grants it, polls for the code and reports it. The order it
+//      creates is INVISIBLE to our database: no `orders` row, no poller, no
+//      push. The code has to be handed to the user by a human. If no code
+//      arrives inside the poll budget the order is cancelled so the float
+//      comes back.
+//
+// Query: ?mode=cancel | ?mode=reuse | ?mode=reuse_number
 //        &country=england&product=snapchat&operator=virtual63
+//        reuse_number also takes &number=13193702474 (E.164, no +)
 import { corsHeaders } from "../_shared/cors.ts";
 
 const BASE = "https://5sim.net/v1";
@@ -62,6 +75,77 @@ Deno.serve(async (req) => {
 
   const b0 = await balance();
   log.push({ step: "balance_start", at: at(), balance: b0 });
+
+  // ── MODE C: reuse a number we already sold ───────────────────────────────
+  // Deliberately BEFORE the buy below: this mode must never purchase a fresh
+  // number. If 5sim refuses the reuse, the answer is "no" and we stop — buying
+  // something else would spend float and answer a question nobody asked.
+  if (mode === "reuse_number") {
+    const number = (u.searchParams.get("number") ?? "").replace(/^\+/, "");
+    if (!/^[0-9]{6,15}$/.test(number)) {
+      return Response.json({ error: "bad_number", hint: "E.164 digits, no +" }, { status: 400 });
+    }
+    const path = `user/reuse/${product}/${number}`;
+    const reuse = await raw(path);
+    log.push({ step: "reuse", at: at(), path, http: reuse.status, body: reuse.text });
+    await sleep(1500);
+    const b1r = await balance();
+    log.push({ step: "balance_after_reuse", at: at(), balance: b1r,
+               charged: b0 != null && b1r != null ? +(b0 - b1r).toFixed(4) : null });
+
+    const ord = reuse.json as { id?: number; phone?: string } | null;
+    if (reuse.status !== 200 || !ord?.id) {
+      // The documented refusals are "reuse not possible" / "reuse false" /
+      // "reuse expired". Any of them means the number is gone for good.
+      return Response.json({ mode, ok: false, reason: "reuse_refused",
+        verdict: { reuse_http: reuse.status, reuse_body: reuse.text,
+                   charged: b0 != null && b1r != null ? +(b0 - b1r).toFixed(4) : null },
+        log });
+    }
+
+    // ── POLL for the code. `sms[].code` is the ONLY authority — a status of
+    // RECEIVED means "number received", never "code received" (proven by the
+    // 2026-08-18 probe, where a fresh buy read RECEIVED with sms: null at t=0).
+    const DEADLINE = Date.now() + 100_000;   // ~150s edge budget, leave headroom
+    let code: string | null = null;
+    let lastStatus: string | null = null;
+    let polls = 0;
+    while (Date.now() < DEADLINE && !code) {
+      await sleep(5000);
+      polls++;
+      const chk = await raw(`user/check/${ord.id}`);
+      const d = chk.json as { status?: string; sms?: { code?: string; text?: string }[] } | null;
+      lastStatus = d?.status ?? null;
+      const hit = (d?.sms ?? []).find((m) => typeof m?.code === "string" && m.code);
+      if (hit?.code) { code = hit.code; log.push({ step: "code", at: at(), code, text: hit.text }); }
+      else if (polls % 4 === 0) {
+        log.push({ step: "poll", at: at(), n: polls, http: chk.status, status: lastStatus });
+      }
+    }
+
+    // Close it out either way: finish once a code landed (that is what 5sim
+    // asks for and it protects the account rating), cancel otherwise so the
+    // wholesale comes back rather than sitting on a number nobody is watching.
+    const closePath = code ? `user/finish/${ord.id}` : `user/cancel/${ord.id}`;
+    const close = await raw(closePath);
+    log.push({ step: code ? "finish" : "cancel", at: at(), http: close.status, body: close.text });
+    await sleep(1500);
+    const b2r = await balance();
+    log.push({ step: "balance_final", at: at(), balance: b2r,
+               net_cost: b0 != null && b2r != null ? +(b0 - b2r).toFixed(4) : null });
+
+    return Response.json({ mode, ok: true,
+      verdict: {
+        reuse_http: reuse.status,
+        number: ord.phone ?? `+${number}`,
+        provider_order_id: String(ord.id),
+        code,                       // null = no code inside the poll window
+        last_status: lastStatus,
+        polls,
+        charged: b0 != null && b1r != null ? +(b0 - b1r).toFixed(4) : null,
+        net_cost: b0 != null && b2r != null ? +(b0 - b2r).toFixed(4) : null,
+      }, log });
+  }
 
   // ── BUY ──────────────────────────────────────────────────────────────────
   const buyPath = `user/buy/activation/${country}/${operator}/${product}` +

@@ -134,8 +134,10 @@ guesswork into arithmetic. It is the first time we can steer on delivery before
 placing an order rather than after failing one.
 
 **Two 5sim behaviours settled by PAID PROBE on 2026-08-18 (`probe-5sim`,
-balance read before/after every step — do not re-run, the answers are
-arithmetic, not opinion):**
+balance read before/after every step — do not re-run the `cancel`/`reuse`
+EXPERIMENT modes, the answers are arithmetic, not opinion; `reuse_number`,
+added 2026-09-08, is a re-runnable SUPPORT mode that buys nothing unless 5sim
+grants the reuse — see the third bullet):**
 - **Cancel REFUNDS, fully.** `3.6239 → 3.6109 → 3.6239` on a $0.013 buy.
   Second confirmation (the first was $0.008 on 08-03). `cancel-order`'s core
   assumption holds; with ~60% of numbered orders cancelled, this is the one
@@ -144,8 +146,28 @@ arithmetic, not opinion):**
   possible"`**, balance untouched, even when the order was bought with
   `?reuse=1`. So reuse CANNOT rescue the "cancelled just before the code" case
   — cancelling releases reuse eligibility with the number. Do not build on it
-  for retries. (It may still work after a COMPLETED order, i.e. re-verifying
-  the same service on the same number — a much smaller case, not pursued.)
+  for retries.
+  🔴 **AND IT DOES NOT WORK AFTER A COMPLETED ORDER EITHER — DISPROVED
+  2026-09-08; this line said "may still work … not pursued" and it was
+  wrong.** A real support case: user `62a14c57` registered a Whatnot account
+  on `+13193702474` (us/5sim, code delivered 14:19Z, activation finished
+  14:19:26Z), Whatnot then asked for a SECOND code, and they burned two more
+  numbers chasing it — which cannot work, because the code goes to the number
+  that holds the account. Twelve minutes after the finish,
+  `user/reuse/whatnot/13193702474` returned **400 `reuse not possible`**,
+  balance untouched at $9.9564 (charged $0.00). So reuse is refused after a
+  FINISH exactly as after a CANCEL — on a number NOT bought with `?reuse=1`,
+  which production never sends (`buyActivation` passes only `maxPrice`; the
+  flag exists solely inside `probe-5sim`). **There is no way to give a user a
+  second code on a number we already sold them, and `create-order`'s
+  fresh-number guarantee deliberately redraws away from it for an hour
+  anyway.** Whether buying WITH `?reuse=1` would change this is UNKNOWN and
+  costs more per order — do not assume it would.
+  Re-test with `probe-5sim` `?mode=reuse_number&product=<5sim slug>&number=<
+  E.164 digits, no +>` (cron-gated). It buys NOTHING when refused; on a grant
+  it polls ~100s for `sms[].code`, then finishes if a code landed or cancels
+  if not. ⚠️ Its order is INVISIBLE to our database — no `orders` row, no
+  poller, no push — so a rescued code must be handed over by a human.
 - Incidental: both fresh buys read `status: RECEIVED` with `sms: null` at
   t=0. RECEIVED means "number received", never "code received" — live proof
   that `sms[].code` must stay the only authority. `?reuse=1` is accepted
@@ -260,10 +282,14 @@ supabase functions deploy poll-active-orders sync-prices sync-5sim sync-herosms 
 # are 24 + 20 = **44** (verify-email-subscription — the mail-subscription
 # entitlement grant, JWT-verified, no config.toml entry — added this day) but
 # `ls supabase/functions | grep -v _shared | wc -l` reads **45**. The gap is
-# `probe-5sim`, a one-off diagnostic (see "Two 5sim behaviours settled by PAID
-# PROBE" above — "do not re-run") that was never added to either list and is
-# not meant to be redeployed on a normal cadence. Re-assert the sum before
-# trusting either number; do not assume this note stays current.
+# `probe-5sim`, a diagnostic that was never added to either list and is not
+# meant to be redeployed on a normal cadence. ⚠️ It DOES now carry a
+# `config.toml` `verify_jwt = false` entry (added 2026-09-08 with the
+# `reuse_number` support mode) and must be deployed `--no-verify-jwt` like the
+# rest of the cron-gated group — it is still absent from the list above
+# deliberately, so redeploy it by hand when `_shared/cors.ts` changes.
+# Re-assert the sum before trusting either number; do not assume this note
+# stays current.
 # ✅ Re-asserted 2026-08-28: 26 + 21 = **47** (record-events — the behavioural
 # analytics ingest, JWT-verified — joined the JWT group this day) against
 # `ls … | wc -l` = **48**; the gap is still `probe-5sim`. Re-run the count.
