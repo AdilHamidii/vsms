@@ -96,6 +96,21 @@ Deno.serve(async (req) => {
       case "message.finalized":
         await handleReceipt(sb, payload, eventType);
         break;
+      // ── Inbound VOICE ────────────────────────────────────────────────
+      //
+      // 🔴 THIS IS THE ONLY WAY A CALL REACHES THE APP, and it is not
+      // optional plumbing. Telnyx refuses to route a DID straight at the
+      // on-demand telephony credential the SDK logs in with — "inbound calls
+      // directly to on-demand generated credential is not currently
+      // supported … purely for outbound calls" — but SUPPORTS dialing that
+      // same credential from Call Control. So the number points at a Call
+      // Control application, and this transfers the PSTN leg to the client's
+      // SIP URI. Proven live 2026-09-08: a Call Control leg to
+      // `sip:<sip_username>@sip.telnyx.com` rang the owner's device, after
+      // five weeks in which no inbound call ever reached a phone.
+      case "call.initiated":
+        await handleInboundCall(sb, payload);
+        break;
       default:
         // Recorded and ignored, never guessed at. Telnyx adds event types, and
         // encoding a guess about a vendor's vocabulary is what broke eSIM
@@ -352,4 +367,121 @@ async function pushInbound(
       customData: { kind: "line_message", threadId },
     }, (d.environment as "sandbox" | "production" | null) ?? undefined);
   }
+}
+
+
+/** Ring the rented line's app for an incoming PSTN call.
+ *
+ * ── Why a TRANSFER and not an ANSWER ──────────────────────────────────────
+ *
+ * Answering first would bill us for the leg AND replace the caller's ringback
+ * with silence while we dial onward. `transfer` hands the call straight to the
+ * client and lets Telnyx generate ringback, so the caller hears a normal phone
+ * ringing and we pay only if it connects.
+ *
+ * ⚠️ `payload.to` is a STRING on call events and an ARRAY on message events.
+ * `firstTo` exists for the message shape and must NOT be used here — it
+ * returns null on a call, which would silently drop every inbound call.
+ */
+async function handleInboundCall(
+  sb: ReturnType<typeof admin>, payload: Record<string, unknown>,
+) {
+  // Only calls arriving FROM the network. Our own outbound legs raise
+  // `call.initiated` too, and transferring one of those would loop a call
+  // into the client that the client itself just placed.
+  if (String(payload.direction ?? "") !== "incoming") return;
+
+  const called = normaliseE164(payload.to);
+  const caller = normaliseE164(payload.from);
+  const callControlId = String(payload.call_control_id ?? "");
+  if (!called || !callControlId) {
+    console.error("telnyx-webhook: inbound call missing to/call_control_id");
+    return;
+  }
+
+  // The line that owns the number, and the credential its app registers with.
+  const { data: line } = await sb.from("phone_lines")
+    .select("id, user_id, status, provider_credential_id")
+    .eq("e164", called)
+    .not("status", "in", "(released,suspended)")
+    .maybeSingle();
+
+  const key = Deno.env.get("TELNYX_API_KEY") ?? "";
+  const command = async (action: string, body: unknown) =>
+    await fetch(
+      `https://api.telnyx.com/v2/calls/${encodeURIComponent(callControlId)}/actions/${action}`,
+      {
+        method: "POST",
+        headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      },
+    );
+
+  // A number with no live line, or a line whose voice was never provisioned,
+  // must HANG UP rather than ring forever. A caller hearing endless ringback
+  // on a number nobody owns is worse than a clean rejection, and Telnyx bills
+  // for the time either way.
+  if (!line?.provider_credential_id) {
+    console.error("telnyx-webhook: inbound call to unowned/unprovisioned number", called);
+    await command("hangup", {});
+    return;
+  }
+
+  const cred = await fetch(
+    `https://api.telnyx.com/v2/telephony_credentials/${encodeURIComponent(String(line.provider_credential_id))}`,
+    { headers: { Authorization: `Bearer ${key}` } },
+  );
+  const credJson = await cred.json().catch(() => ({}));
+  const sipUser = (credJson as { data?: { sip_username?: string } })?.data?.sip_username ?? null;
+  if (!sipUser) {
+    console.error("telnyx-webhook: no sip_username for line", line.id);
+    await command("hangup", {});
+    return;
+  }
+
+  // `from` is the real caller, so the app shows who is ringing rather than
+  // the number being called.
+  const res = await command("transfer", {
+    to: `sip:${sipUser}@sip.telnyx.com`,
+    from: caller ?? called,
+    timeout_secs: 30,
+  });
+  if (!res.ok) {
+    console.error("telnyx-webhook: transfer failed",
+                  res.status, (await res.text()).slice(0, 300));
+    return;
+  }
+
+  // Recorded so an inbound call has history, allowance accounting and — the
+  // part that has never existed — a row `sync-telnyx-cdr` can match a detail
+  // record against. Failure here must not affect the call the user is
+  // answering right now.
+  const { error } = await sb.rpc("record_line_call", {
+    p_line: line.id,
+    p_direction: "inbound",
+    p_peer: caller ?? "",
+    p_session_id: String(payload.call_session_id ?? "") || null,
+    p_status: "ringing",
+    // Inbound reserves nothing: the caller pays their own carrier and our
+    // minute allowance covers outbound. Reserving here would bill a user for
+    // being phoned.
+    p_reserved_seconds: 0,
+  });
+  if (error) console.error("telnyx-webhook: record_line_call failed", error.message);
+}
+
+/** Call events carry `to`/`from` as plain E.164 strings; message events carry
+ *  `to` as an array. Accepts either rather than assuming one. */
+function normaliseE164(v: unknown): string | null {
+  if (typeof v === "string" && v.trim()) return v.trim();
+  if (Array.isArray(v) && v.length) {
+    const first = v[0] as Record<string, unknown>;
+    const n = first?.phone_number;
+    if (typeof n === "string" && n.trim()) return n.trim();
+  }
+  if (v && typeof v === "object") {
+    const n = (v as Record<string, unknown>).phone_number;
+    if (typeof n === "string" && n.trim()) return n.trim();
+  }
+  return null;
 }

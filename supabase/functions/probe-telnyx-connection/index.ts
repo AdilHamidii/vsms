@@ -886,6 +886,87 @@ Deno.serve(async (req) => {
   // places one ~$0.01 call). Everything it creates is reused, and
   // `sip_uri_calling_preference` is set to "internal" -- NOT "unrestricted",
   // which would let anyone who guesses a username ring a paying subscriber.
+  // ── Mode 10: point a number's INBOUND at the Call Control app ─────────────
+  //
+  // 🔴 THE TWO DIRECTIONS ARE OWNED BY DIFFERENT OBJECTS, and that is what
+  // makes this safe. Moving `connection_id` on the NUMBER changes only where
+  // INBOUND calls are delivered. Outbound still originates on the credential
+  // connection the SDK logs into, which keeps its own outbound voice profile —
+  // so the 131-call outbound path is untouched.
+  //
+  // Caller ID is the one thing that is NOT automatic: on a credential
+  // connection Telnyx will often send the SIP username instead of the number,
+  // so `ani_override` is set to the line's own e164 at the same time. Both are
+  // read back; a 200 on this API has silently set nothing three times now.
+  //
+  // `value: "restore"` puts the number back on its credential connection.
+  if (body.probe === "route_inbound") {
+    const lineId = String(body.line_id ?? "");
+    if (!UUID_LIKE.test(lineId)) return Response.json({ error: "line_id (uuid) required" }, { status: 400 });
+    const sb = admin();
+    const { data: line } = await sb.from("phone_lines")
+      .select("id, e164, provider_number_id, provider_connection_id")
+      .eq("id", lineId).maybeSingle();
+    if (!line?.provider_number_id || !line.provider_connection_id) {
+      return Response.json({ error: "line_not_provisioned" }, { status: 409 });
+    }
+    const { data: cfg } = await sb.from("app_config")
+      .select("value").eq("key", "telnyx_call_control_app").maybeSingle();
+    const appId = (cfg?.value as Record<string, unknown> | null)?.id as string | undefined;
+    if (!appId) return Response.json({ error: "no_call_control_app" }, { status: 409 });
+
+    const restore = String(body.value ?? "") === "restore";
+    const target = restore ? String(line.provider_connection_id) : appId;
+
+    const api = async (method: string, path: string, payload?: unknown) => {
+      const r = await fetch(`https://api.telnyx.com/v2${path}`, {
+        method,
+        headers: {
+          Authorization: `Bearer ${key}`,
+          ...(payload ? { "Content-Type": "application/json" } : {}),
+        },
+        ...(payload ? { body: JSON.stringify(payload) } : {}),
+      });
+      const text = await r.text();
+      let data: unknown = null;
+      try { data = JSON.parse(text); } catch { /* keep raw */ }
+      return { http: r.status, data, raw: text.slice(0, 500) };
+    };
+
+    const numPath = `/phone_numbers/${encodeURIComponent(String(line.provider_number_id))}`;
+    const before = await api("GET", `${numPath}/voice`);
+    const patched = await api("PATCH", numPath, { connection_id: target });
+    const after = await api("GET", `${numPath}/voice`);
+    const connOf = (x: { data?: unknown }) =>
+      ((x.data as { data?: { connection_id?: string } } | null)?.data?.connection_id) ?? null;
+
+    // Caller ID, set on the CREDENTIAL connection (outbound's owner), not on
+    // the number.
+    const connPath = `/credential_connections/${encodeURIComponent(String(line.provider_connection_id))}`;
+    const aniPatch = await api("PATCH", connPath, {
+      outbound: { ani_override: line.e164, ani_override_type: "always" },
+    });
+    const connBack = await api("GET", connPath);
+    const ani = ((connBack.data as { data?: { outbound?: Record<string, unknown> } } | null)
+      ?.data?.outbound?.ani_override) ?? null;
+
+    const result = {
+      mode: "route_inbound", at: new Date().toISOString(),
+      line: { id: line.id, e164: line.e164 },
+      intent: restore ? "restore_to_credential_connection" : "point_at_call_control",
+      target_connection: target,
+      number_connection_before: connOf(before),
+      patch_http: patched.http,
+      patch_error: patched.http >= 300 ? patched.raw : null,
+      number_connection_after: connOf(after),
+      took_effect: connOf(after) === target,
+      ani_override: { patch_http: aniPatch.http, read_back: ani, took_effect: ani === line.e164 },
+    };
+    await sb.from("app_config").upsert(
+      { key: "telnyx_route_inbound_probe", value: result }, { onConflict: "key" });
+    return Response.json(result);
+  }
+
   if (body.probe === "call_control_ring") {
     const lineId = String(body.line_id ?? "");
     if (!UUID_LIKE.test(lineId)) return Response.json({ error: "line_id (uuid) required" }, { status: 400 });
