@@ -5055,11 +5055,21 @@ before and after adding FR to the profile whitelist, both returned:
   Re-test with `probe-telnyx-connection` mode `send_test` before ever
   widening it.
 
-⚠️ **`daily_spend_limit` on the messaging profile is `$2.00/day`, account-wide
-across ALL messaging, and it was set while sending was retired.** With sending
-live and 17 live subscriptions, one user in a loop can exhaust it and stop
-every subscriber's outbound texts for the rest of the day. Raise it
-deliberately (owner decision) rather than discovering it as an outage.
+⚠️ **`daily_spend_limit` on the messaging profile is `$20.00/day`, account-wide
+across ALL messaging — raised from $2.00 on 2026-09-08 (owner decision), read
+back from Telnyx.** The $2.00 was set while sending was retired, and with
+sending live it was a product outage waiting to happen: the cap is shared by
+every subscriber, so ONE user in a loop exhausts it and stops everyone's texts
+until midnight. $20 is a SAFETY rail, not a budget — at ~$0.004/segment it is
+~5,000 messages/day, far above the 17-subscriber allowance total. Read or
+change it with `probe-telnyx-connection` mode `messaging_profile` (reads
+back); there is no other writer, so this file and Telnyx can drift — re-read
+before quoting.
+
+⚠️ Note the cap is not the binding constraint at a low **account balance**:
+Telnyx refuses a number order at `20100 Insufficient Funds` and messaging
+stops with no money regardless of the limit. Both are worth checking when
+"texts stopped working".
 
 **What the 2026-08-17 verdict actually measured.** Lifetime outbound was
 called "1 sent / 6 failed"; `line_messages` holds **4 rows** (1 `sent`, 3
