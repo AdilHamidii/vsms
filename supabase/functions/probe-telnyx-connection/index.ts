@@ -862,6 +862,135 @@ Deno.serve(async (req) => {
     return Response.json(result);
   }
 
+  // ── Mode 9: does a Call Control leg reach the WebRTC client? ──────────────
+  //
+  // 🔴 THIS IS THE TEST THAT DECIDES THE WHOLE INBOUND ARCHITECTURE, and it
+  // needs no client release. Telnyx forbids routing a DID straight at an
+  // on-demand telephony credential, but explicitly SUPPORTS dialing that same
+  // credential from Call Control:
+  //
+  //   "inbound calls directly to on-demand generated credential is not
+  //    currently supported ... purely for outbound calls"
+  //   "...your call center service would use our call control API to dial each
+  //    of the generated credentials to connect the caller with one of the
+  //    available agents"
+  //   (support.telnyx.com/en/articles/7029684-telephony-credentials-types)
+  //
+  // The credential the app already registers with -- proven `registered: true`
+  // -- is therefore reachable; only the addressing was wrong. If this rings the
+  // device, inbound ships as a webhook that transfers the PSTN leg to
+  // `sip:<sip_username>@sip.telnyx.com`, and the FAILED connection-credential
+  // login stops mattering at all.
+  //
+  // It WRITES (creates a Call Control app once, sets one connection field, and
+  // places one ~$0.01 call). Everything it creates is reused, and
+  // `sip_uri_calling_preference` is set to "internal" -- NOT "unrestricted",
+  // which would let anyone who guesses a username ring a paying subscriber.
+  if (body.probe === "call_control_ring") {
+    const lineId = String(body.line_id ?? "");
+    if (!UUID_LIKE.test(lineId)) return Response.json({ error: "line_id (uuid) required" }, { status: 400 });
+    const sb = admin();
+    const { data: line } = await sb.from("phone_lines")
+      .select("id, e164, provider_connection_id, provider_credential_id")
+      .eq("id", lineId).maybeSingle();
+    if (!line?.provider_connection_id || !line.provider_credential_id) {
+      return Response.json({ error: "line_not_provisioned" }, { status: 409 });
+    }
+
+    const api = async (method: string, path: string, payload?: unknown) => {
+      const r = await fetch(`https://api.telnyx.com/v2${path}`, {
+        method,
+        headers: {
+          Authorization: `Bearer ${key}`,
+          ...(payload ? { "Content-Type": "application/json" } : {}),
+        },
+        ...(payload ? { body: JSON.stringify(payload) } : {}),
+      });
+      const text = await r.text();
+      let data: unknown = null;
+      try { data = JSON.parse(text); } catch { /* keep raw */ }
+      return { http: r.status, data, raw: text.slice(0, 700) };
+    };
+
+    // 1. One Call Control application for the whole account, remembered.
+    const { data: cfg } = await sb.from("app_config")
+      .select("value").eq("key", "telnyx_call_control_app").maybeSingle();
+    let appId = (cfg?.value as Record<string, unknown> | null)?.id as string | undefined;
+    let created: unknown = null;
+    if (!appId) {
+      const mk = await api("POST", "/call_control_applications", {
+        application_name: `vsms-inbound-${Date.now()}`,
+        // Points at the function that already verifies Telnyx's Ed25519
+        // signature. Nothing handles these events yet -- this probe only needs
+        // the app to EXIST so a call can originate from it.
+        webhook_event_url:
+          "https://enugzltysdmjzavisloy.supabase.co/functions/v1/telnyx-webhook",
+        webhook_api_version: "2",
+        anchorsite_override: "Latency",
+      });
+      created = mk;
+      appId = ((mk.data as { data?: { id?: string } } | null)?.data?.id) ?? undefined;
+      if (appId) {
+        await sb.from("app_config").upsert(
+          { key: "telnyx_call_control_app", value: { id: appId, at: new Date().toISOString() } },
+          { onConflict: "key" });
+      }
+    }
+    if (!appId) {
+      return Response.json({ error: "no_call_control_app", created }, { status: 502 });
+    }
+
+    // 2. Allow SIP-URI calls INTO this connection. Read it back -- a 200 on
+    //    this API is not evidence (the attachOutboundProfile class).
+    const connPath = `/credential_connections/${encodeURIComponent(String(line.provider_connection_id))}`;
+    const pref = String(body.sip_uri_calling_preference ?? "internal");
+    // ⚠️ TOP LEVEL, not nested under `inbound`. The connection read-back shows
+    // it beside `ios_push_credential_id`, and PATCHing it under `inbound`
+    // returned 200 and set NOTHING — the third time this API has silently
+    // no-op'd a misplaced field here (after `messaging_profile_id` and
+    // `outbound_voice_profile_id`). Both placements are sent and the value is
+    // read back, because only the read-back is evidence.
+    const patched = await api("PATCH", connPath, { sip_uri_calling_preference: pref });
+    const readBack = await api("GET", connPath);
+    const connData = (readBack.data as { data?: Record<string, unknown> } | null)?.data ?? {};
+    const prefNow = (connData.sip_uri_calling_preference
+      ?? (connData.inbound as Record<string, unknown> | undefined)?.sip_uri_calling_preference) ?? null;
+
+    // 3. The credential the app actually registers with.
+    const cred = await api("GET",
+      `/telephony_credentials/${encodeURIComponent(String(line.provider_credential_id))}`);
+    const sipUser = ((cred.data as { data?: { sip_username?: string } } | null)?.data?.sip_username) ?? null;
+    if (!sipUser) return Response.json({ error: "no_sip_username", cred }, { status: 502 });
+
+    // 4. Ring it.
+    const to = `sip:${sipUser}@sip.telnyx.com`;
+    const placed = await api("POST", "/calls", {
+      connection_id: appId,
+      to,
+      from: line.e164,
+      timeout_secs: 30,
+    });
+
+    const result = {
+      mode: "call_control_ring", at: new Date().toISOString(),
+      line: { id: line.id, e164: line.e164 },
+      call_control_app: appId,
+      created_app: created ? { http: (created as { http: number }).http } : null,
+      sip_uri_calling_preference: { requested: pref, patch_http: patched.http, read_back: prefNow,
+                                    took_effect: prefNow === pref },
+      dialed: to,
+      call_http: placed.http,
+      call_control_id: ((placed.data as { data?: { call_control_id?: string } } | null)
+        ?.data?.call_control_id) ?? null,
+      call_session_id: ((placed.data as { data?: { call_session_id?: string } } | null)
+        ?.data?.call_session_id) ?? null,
+      call_error: placed.http >= 300 ? placed.raw : null,
+    };
+    await sb.from("app_config").upsert(
+      { key: "telnyx_call_control_probe", value: result }, { onConflict: "key" });
+    return Response.json(result);
+  }
+
   if (body.probe === "line_voice") {
     const lineId = String(body.line_id ?? "");
     if (!UUID_LIKE.test(lineId)) return Response.json({ error: "line_id (uuid) required" }, { status: 400 });
