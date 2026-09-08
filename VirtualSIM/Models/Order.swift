@@ -19,6 +19,14 @@ struct Order: Identifiable, Hashable {
     /// same as "no provider" — see `AppState.minHoldSeconds(forProvider:)`.
     var providerId: String? { server.provider }
 
+    /// Non-nil and in the future ⇒ another code can still arrive on this same
+    /// number, and the UI may say so. Nil means the pool cannot take a second
+    /// SMS — never advertise one in that case.
+    var resendWatchUntil: Date? { server.resendWatchUntil }
+
+    /// Newest first, for display. `otp` is the newest and is element 0.
+    var codeHistory: [OrderCode] { (server.otpHistory ?? []).reversed() }
+
     /// True when this order ended without a code and the credits went back.
     ///
     /// Both terminal-failure paths refund unconditionally before writing the

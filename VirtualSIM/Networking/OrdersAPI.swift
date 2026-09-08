@@ -1,5 +1,13 @@
 import Foundation
 
+/// One code seen on an activation. `orders.otp_history` is an array of these,
+/// oldest first; `orders.otp` always holds the newest.
+struct OrderCode: Codable, Hashable {
+    let code: String
+    let text: String?
+    let at: Date
+}
+
 struct ServerOrder: Codable, Hashable {
     let id: String
     let userId: String
@@ -24,6 +32,21 @@ struct ServerOrder: Codable, Hashable {
     /// Orders tab down. Read through `AppState.minHoldSeconds(forProvider:)`,
     /// which treats nil as the fallback hold.
     let provider: String?
+    /// While this is in the future, the activation is still open at the
+    /// provider and another code can arrive on the SAME number. Null when the
+    /// pool cannot take a second SMS, and once the window has closed.
+    ///
+    /// Never derive this on the client from the pool or the country — the
+    /// server owns eligibility, and a client that guessed would show a
+    /// countdown for a code that cannot come.
+    ///
+    /// Optional because rows written before this shipped do not carry it, and
+    /// a required field that is occasionally absent throws on decode and takes
+    /// the whole Orders tab down.
+    let resendWatchUntil: Date?
+    /// Every code on this activation, oldest first. Optional for the same
+    /// reason as above.
+    let otpHistory: [OrderCode]?
 }
 
 private struct OrderEnvelope: Codable { let order: ServerOrder }
@@ -43,7 +66,7 @@ struct OrdersAPI {
         "id", "user_id", "service_id", "country_id", "smspva_id",
         "smspva_number", "cost_credits", "status", "otp", "raw_message",
         "created_at", "expires_at", "arrived_at", "closed_at", "tier",
-        "provider",
+        "provider", "resend_watch_until", "otp_history",
     ].joined(separator: ",")
 
     func list() async throws -> [ServerOrder] {

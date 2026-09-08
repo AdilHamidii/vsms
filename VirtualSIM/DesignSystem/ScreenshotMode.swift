@@ -214,7 +214,10 @@ extension ScreenshotMode {
             createdAt: now.addingTimeInterval(-ageSeconds),
             expiresAt: now.addingTimeInterval(480 - ageSeconds),
             arrivedAt: otp == nil ? nil : now.addingTimeInterval(-2),
-            closedAt: nil, tier: "standard", provider: "5sim")
+            closedAt: nil, tier: "standard", provider: "5sim",
+            // No resend window in the marketing frames: a live countdown would
+            // be a promise about a specific pool that a screenshot cannot keep.
+            resendWatchUntil: nil, otpHistory: nil)
     }
 
     /// History with BOTH outcomes in it. An all-green list would be the same
