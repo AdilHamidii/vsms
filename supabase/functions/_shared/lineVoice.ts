@@ -37,11 +37,15 @@ import { admin } from "./supabaseAdmin.ts";
 import {
   createCredentialConnection, createTelephonyCredential,
   createOutboundVoiceProfile, attachOutboundProfile, attachVoiceConnection,
+  ensureInboundReachable, getNumberVoiceConnection,
   ensurePushCredential, faultOf, type TelnyxFault,
 } from "./telnyx.ts";
 
 export interface LineVoiceRow {
   id: string;
+  /** Needed for the ANI override: without it the far end sees the SIP
+   *  username instead of the rented number. */
+  e164?: string | null;
   provider_number_id?: string | null;
   provider_connection_id?: string | null;
   provider_credential_id?: string | null;
@@ -192,21 +196,86 @@ export async function provisionLineVoice(
     if (faultOf(at)) out.faults.push({ step: "verify_voice_profile", fault: at });
   }
 
-  // ── 3. Point the NUMBER's voice at the connection — this is INBOUND ──────
-  // Retried whenever it is not already true. It used to run only inside the
-  // "connection was just created" branch while the connection id was stored
-  // regardless, so one transient failure meant that line never rang again,
-  // forever, while outbound worked perfectly and nothing looked wrong.
-  if (!out.attached && line.provider_number_id) {
-    const at = await attachVoiceConnection(
-      String(line.provider_number_id), out.connectionId);
-    if (faultOf(at)) {
-      out.faults.push({ step: "attach_voice_connection", fault: at });
-      if (opts.persistIds) await persist(sb, line.id, { attached: false });
-    } else {
+  // ── 3. Point the NUMBER's voice where INBOUND is actually answered ──────
+  //
+  // 🔴 THIS IS THE CALL CONTROL APPLICATION, NOT THE CREDENTIAL CONNECTION,
+  // and the difference is the whole of inbound calling.
+  //
+  // Telnyx will not route a DID to the on-demand telephony credential the SDK
+  // logs in with — "inbound calls directly to on-demand generated credential
+  // is not currently supported … purely for outbound calls" — so for five
+  // weeks every number pointed at its credential connection, found no
+  // routable contact, and Telnyx cleared each call in under a second with no
+  // media leg. Outbound worked the entire time, because outbound needs only
+  // authentication and only inbound needs a registration.
+  //
+  // The number therefore points at a Call Control application, whose webhook
+  // (`telnyx-webhook`, `call.initiated`) transfers the leg to whichever SIP
+  // identity the device is currently registered as. Proven live 2026-09-08,
+  // app open AND app closed.
+  //
+  // ⚠️ The target is read from `app_config.telnyx_call_control_app`. If that
+  // is missing we fall back to the credential connection — the old,
+  // inbound-broken behaviour — rather than failing provisioning outright: a
+  // line that cannot receive calls is bad, a line that cannot be SOLD is
+  // worse. The fault is recorded so it is visible rather than silent.
+  const { data: ccCfg } = await sb.from("app_config")
+    .select("value").eq("key", "telnyx_call_control_app").maybeSingle();
+  const callControlId =
+    ((ccCfg?.value as Record<string, unknown> | null)?.id as string | undefined) ?? null;
+  if (!callControlId) {
+    out.faults.push({
+      step: "call_control_app",
+      fault: { telnyxFault: true, type: "TRANSPORT_ERROR", status: 0,
+               detail: "app_config.telnyx_call_control_app is missing — inbound " +
+                       "calls cannot be delivered to this line." },
+    });
+  }
+  const inboundTarget = callControlId ?? out.connectionId;
+
+  if (line.provider_number_id) {
+    // Re-attach whenever the number is not already on the right target, NOT
+    // merely when a flag says "attached". The flag predates Call Control, so
+    // every line provisioned before it reads attached=true while pointing at
+    // the connection that cannot ring — checking the live value is what makes
+    // this self-healing for lines already sold.
+    const current = await getNumberVoiceConnection(String(line.provider_number_id));
+    const currentId = faultOf(current) ? null : current;
+    if (currentId !== inboundTarget) {
+      const at = await attachVoiceConnection(String(line.provider_number_id), inboundTarget);
+      if (faultOf(at)) {
+        out.faults.push({ step: "attach_voice_connection", fault: at });
+        out.attached = false;
+        if (opts.persistIds) await persist(sb, line.id, { attached: false });
+      } else {
+        out.attached = true;
+        if (opts.persistIds) await persist(sb, line.id, { attached: true });
+      }
+    } else if (!out.attached) {
       out.attached = true;
       if (opts.persistIds) await persist(sb, line.id, { attached: true });
     }
+  }
+
+  // ── 3b. Let the transfer leg INTO the connection, and fix caller ID ──────
+  // Cheap, idempotent, and read back. Without the SIP-URI setting the
+  // transfer cannot enter the connection at all; without the ANI override the
+  // far end sees a SIP username instead of the rented number.
+  //
+  // The number is looked up when the caller did not pass it, rather than
+  // added to three call sites — `verify-line-subscription`, `rent-line-credits`
+  // and `swap-line-number` all build their row by hand, and a fourth caller
+  // would forget. Resolving it here means inbound cannot be half-provisioned
+  // because somebody omitted a column.
+  let e164 = line.e164 ?? null;
+  if (!e164) {
+    const { data: row } = await sb.from("phone_lines")
+      .select("e164").eq("id", line.id).maybeSingle();
+    e164 = (row?.e164 as string | null) ?? null;
+  }
+  if (e164) {
+    const reach = await ensureInboundReachable(out.connectionId, String(e164));
+    if (faultOf(reach)) out.faults.push({ step: "inbound_reachable", fault: reach });
   }
 
   // ── 4. The login the device uses ────────────────────────────────────────

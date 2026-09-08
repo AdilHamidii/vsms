@@ -1006,6 +1006,64 @@ export async function deleteTelephonyCredential(
   return true;
 }
 
+/** Which connection a number's INBOUND voice currently points at. */
+export async function getNumberVoiceConnection(
+  numberId: string,
+): Promise<string | null | TelnyxFault> {
+  const r = await call<Record<string, unknown>>("GET", `/phone_numbers/${numberId}/voice`);
+  if (faultOf(r)) return r;
+  const id = r.connection_id;
+  return id == null ? null : String(id);
+}
+
+/** Make a credential connection reachable by an inbound Call Control transfer.
+ *
+ * 🔴 BOTH FIELDS ARE REQUIRED AND BOTH ARE TOP-LEVEL-vs-NESTED TRAPS.
+ *
+ * `sip_uri_calling_preference` sits at the TOP level; PATCHing it under
+ * `inbound` returns 200 and sets nothing (measured 2026-09-08 — the fourth
+ * silent no-op in this adapter). Without it the transfer leg cannot enter the
+ * connection at all, so the number rings nobody.
+ *
+ * "internal" restricts SIP-URI calls to our own account. "unrestricted" would
+ * let anyone who guesses a username ring a paying subscriber.
+ *
+ * `ani_override` is NESTED under `outbound` and is what stops the far end
+ * seeing the SIP username instead of the rented number.
+ */
+export async function ensureInboundReachable(
+  connectionId: string, e164: string,
+): Promise<true | TelnyxFault> {
+  const r = await call<Record<string, unknown>>(
+    "PATCH", `/credential_connections/${connectionId}`,
+    {
+      sip_uri_calling_preference: "internal",
+      outbound: { ani_override: e164, ani_override_type: "always" },
+    });
+  if (faultOf(r)) return r;
+
+  const back = await call<Record<string, unknown>>(
+    "GET", `/credential_connections/${connectionId}`);
+  if (faultOf(back)) return back;
+  const pref = back.sip_uri_calling_preference ?? null;
+  const ani = (back.outbound as Record<string, unknown> | undefined)?.ani_override ?? null;
+  if (String(pref ?? "") !== "internal") {
+    return {
+      telnyxFault: true, type: "TRANSPORT_ERROR", status: 200,
+      detail: `ensureInboundReachable: sip_uri_calling_preference read back as ` +
+              `${JSON.stringify(pref)} — expected "internal". Field placement.`,
+    };
+  }
+  if (String(ani ?? "") !== e164) {
+    return {
+      telnyxFault: true, type: "TRANSPORT_ERROR", status: 200,
+      detail: `ensureInboundReachable: ani_override read back as ` +
+              `${JSON.stringify(ani)} — expected ${e164}.`,
+    };
+  }
+  return true;
+}
+
 /** Point a number's VOICE at a connection. Like messaging, this is NOT settable
  *  on the main number resource — it lives on the /voice sub-resource, and the
  *  main one returns 10027 "not reachable here". */

@@ -941,9 +941,14 @@ Deno.serve(async (req) => {
       ((x.data as { data?: { connection_id?: string } } | null)?.data?.connection_id) ?? null;
 
     // Caller ID, set on the CREDENTIAL connection (outbound's owner), not on
-    // the number.
+    // the number. SIP-URI calling is set in the same PATCH: without it the
+    // transfer leg cannot enter the connection at all, so a number pointed at
+    // Call Control would ring nothing. "internal" restricts it to our own
+    // account — "unrestricted" would let anyone who guesses a username ring a
+    // paying subscriber.
     const connPath = `/credential_connections/${encodeURIComponent(String(line.provider_connection_id))}`;
     const aniPatch = await api("PATCH", connPath, {
+      sip_uri_calling_preference: "internal",
       outbound: { ani_override: line.e164, ani_override_type: "always" },
     });
     const connBack = await api("GET", connPath);
@@ -961,6 +966,8 @@ Deno.serve(async (req) => {
       number_connection_after: connOf(after),
       took_effect: connOf(after) === target,
       ani_override: { patch_http: aniPatch.http, read_back: ani, took_effect: ani === line.e164 },
+      sip_uri_calling_preference: ((connBack.data as { data?: Record<string, unknown> } | null)
+        ?.data?.sip_uri_calling_preference) ?? null,
     };
     await sb.from("app_config").upsert(
       { key: "telnyx_route_inbound_probe", value: result }, { onConflict: "key" });

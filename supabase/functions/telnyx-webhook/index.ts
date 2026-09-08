@@ -111,6 +111,20 @@ Deno.serve(async (req) => {
       case "call.initiated":
         await handleInboundCall(sb, payload);
         break;
+      // Temporary, and deliberately loud. The transfer leg's own outcome is
+      // the one fact nobody can see: `call.bridged` fires, no `webrtc` detail
+      // record is ever written, and the device does not ring. The hangup cause
+      // and SIP response on THAT leg say why, and they exist only here.
+      case "call.bridged":
+      case "call.hangup":
+      case "call.answered":
+        console.log("telnyx-webhook call event:", eventType, JSON.stringify({
+          leg: payload.call_leg_id, session: payload.call_session_id,
+          from: payload.from, to: payload.to, direction: payload.direction,
+          cause: payload.hangup_cause, source: payload.hangup_source,
+          sip: payload.sip_hangup_cause, state: payload.state,
+        }));
+        break;
       default:
         // Recorded and ignored, never guessed at. Telnyx adds event types, and
         // encoding a guess about a vendor's vocabulary is what broke eSIM
@@ -401,7 +415,13 @@ async function handleInboundCall(
 
   // The line that owns the number, and the credential its app registers with.
   const { data: line } = await sb.from("phone_lines")
-    .select("id, user_id, status, provider_credential_id")
+    // 🔴 `provider_connection_id` MUST be selected. Without it
+    // `registeredSipUser` never even considers the connection user — the
+    // identity current builds register as — and silently falls back to the
+    // old telephony credential, which is exactly the mismatch that made the
+    // phone log a missed call without ringing. Confirmed from the transfer
+    // log: `to: sip:gencredz…` while the device was registered as `vsms…`.
+    .select("id, user_id, status, provider_credential_id, provider_connection_id")
     .eq("e164", called)
     .not("status", "in", "(released,suspended)")
     .maybeSingle();
