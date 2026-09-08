@@ -103,11 +103,8 @@ struct ContentView: View {
                                 state.buyAgain(o)
                             }
                         },
-                        onSeeAllOrders: { state.flow = .orders },
-                        onOpenEsim: { state.tab = .esim }
+                        onSeeAllOrders: { state.flow = .orders }
                     )
-                case .esim:
-                    EsimStoreScreen(openCredits: { sheet = .credits })
                 case .orders:
                     OrdersScreen(openCredits: { sheet = .credits })
                 case .account:

@@ -80,7 +80,7 @@ struct EsimDetailScreen: View {
             Spacer()
             Text("Your eSIM").font(RFont.display(16, weight: .semibold)).foregroundStyle(theme.text)
             Spacer()
-            Button { state.flow = nil; state.tab = .esim } label: {
+            Button { state.flow = nil; state.tab = .home } label: {
                 Image(systemName: RIcon.close).font(.system(size: 14, weight: .semibold))
                     .foregroundStyle(theme.text2).frame(width: 36, height: 36).background(theme.chipBg, in: .circle)
             }.buttonStyle(.plain)

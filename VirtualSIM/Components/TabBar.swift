@@ -17,12 +17,14 @@ struct TabBar: View {
     }
     /// Order encodes the business: temp SMS first (it is the launch tab, what
     /// the listing sells and what an arriving user can afford), then rented
-    /// numbers, then eSIM (paused, ranked last), then the utility tabs.
-    /// Swapped 2026-08-08 — see `AppState.tab`. See `AppTab`.
+    /// numbers, then the utility tab. Swapped 2026-08-08 — see `AppState.tab`.
+    ///
+    /// The eSIM tab was removed 2026-09-08: the line has been paused since
+    /// 2026-07-31 with no active plans, so it was a permanently empty store
+    /// occupying a quarter of the bar.
     private let items: [Item] = [
         .init(id: .home,    label: "Home",    icon: RIcon.home),
         .init(id: .line,    label: "Number",  icon: RIcon.phone),
-        .init(id: .esim,    label: "eSIM",    icon: "simcard"),
         .init(id: .account, label: "Account", icon: RIcon.user),
     ]
 

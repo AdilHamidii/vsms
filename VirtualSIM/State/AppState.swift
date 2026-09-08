@@ -15,8 +15,18 @@ import SwiftUI
 ///
 /// `tab` is not persisted, so growing this enum and moving its default carry no
 /// decode risk — unlike `OrderStatus`, which ships to every phone.
+/// ⚠️ `esim` was REMOVED on 2026-09-08 (owner decision). The eSIM business
+/// moved to a separate app; the line had been paused since 2026-07-31 with 0
+/// active plans, so the tab rendered an empty store on every launch. The 10
+/// eSIMs ever sold are all from 19–26 July and every one reads 0 MB used, so
+/// nothing live was stranded by taking the tab away.
+///
+/// The `esimCheckout` / `esimDetail` flows and `PurchaseIntent.esim` are
+/// deliberately KEPT — `check-esim-usage` still serves the legacy rows, and
+/// deleting a `PurchaseIntent` case would change how `creditsShortfall`
+/// resolves for a product line that may come back.
 enum AppTab: String, Hashable, CaseIterable {
-    case line, home, esim, orders, account
+    case line, home, orders, account
 }
 
 enum FlowStage: String, Hashable, Identifiable {

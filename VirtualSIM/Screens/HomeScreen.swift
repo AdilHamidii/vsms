@@ -51,7 +51,6 @@ struct HomeScreen: View {
     var onStartEmail: () -> Void = {}
     var onTapOrder: (Order) -> Void = { _ in }
     var onSeeAllOrders: () -> Void = {}
-    var onOpenEsim: () -> Void = {}
 
     @State private var appeared = false
     /// Presented from HERE, not through `state.showMailPaywall`. The root
@@ -115,17 +114,6 @@ struct HomeScreen: View {
                 // all — so hiding it behind a tab was costing the line its
                 // only discovery path.
                 //
-                // ⚠️ Gated on `!esimPaused`. The line has been paused since
-                // 2026-07-31 and while it is, this teaser advertised a product
-                // whose own tab answers "eSIMs are unavailable right now" — an
-                // ad for a dead end, on the screen where first-session users
-                // are already deciding whether the app works.
-                if !state.esimCountries.isEmpty, !state.esimPaused {
-                    esimTeaser
-                        .padding(.horizontal, 16)
-                        .padding(.top, 26)
-                        .riseIn(appeared, index: 4)
-                }
 
                 // Last, and on the launch surface on purpose (owner decision
                 // 2026-09-05): the question people have is "is my code
@@ -840,7 +828,8 @@ struct HomeScreen: View {
         }
     }
 
-    /// "Have any questions?" → WhatsApp. Same card shape as `esimTeaser`, so
+    /// "Have any questions?" → WhatsApp. The last card on Home, and since the
+    /// eSIM teaser was removed with its tab (2026-09-08) the only one, so
     /// it reads as one more thing the app offers rather than an alert. The
     /// prefilled message carries the build and a short account id
     /// (`LegalLinks.supportWhatsApp`), so the owner never has to ask.
@@ -862,45 +851,6 @@ struct HomeScreen: View {
                         .tracking(-0.2)
                         .foregroundStyle(theme.text)
                     Text("Contact support on WhatsApp")
-                        .font(RFont.text(12))
-                        .foregroundStyle(theme.text2)
-                }
-                Spacer(minLength: 0)
-                Image(systemName: RIcon.chev)
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(theme.text3)
-            }
-            .padding(14)
-            .background(theme.elev, in: .rect(cornerRadius: RRadius.md))
-            .contentShape(.rect)
-        }
-        .pressable()
-    }
-
-    /// Entry point into the eSIM line from Home.
-    ///
-    /// Quotes the CHEAPEST plan actually in the catalog rather than a made-up
-    /// "from" price, and names the real country count. Both come from
-    /// `state.esimCountries`, so an empty or unpriced catalog renders nothing
-    /// instead of "from 0 credits" — and the whole teaser is suppressed while
-    /// the line is paused, so it can never advertise a tab that answers
-    /// "eSIMs are unavailable right now".
-    private var esimTeaser: some View {
-        let cheapest = state.esimCountries.map(\.fromCredits).min() ?? 0
-        let countries = state.esimCountries.count
-        return Button(action: { RHaptic.select(); onOpenEsim() }) {
-            HStack(spacing: 12) {
-                Image(systemName: "globe")
-                    .font(.system(size: 18, weight: .medium))
-                    .foregroundStyle(theme.accent2)
-                    .frame(width: 40, height: 40)
-                    .background(theme.inkSoft, in: .rect(cornerRadius: RRadius.sm))
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Travelling? Get data abroad")
-                        .font(RFont.display(15, weight: .semibold))
-                        .tracking(-0.2)
-                        .foregroundStyle(theme.text)
-                    Text("eSIM plans in \(countries) countries, from \(cheapest) cr")
                         .font(RFont.text(12))
                         .foregroundStyle(theme.text2)
                 }
