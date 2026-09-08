@@ -427,14 +427,27 @@ async function handleInboundCall(
     return;
   }
 
-  const cred = await fetch(
-    `https://api.telnyx.com/v2/telephony_credentials/${encodeURIComponent(String(line.provider_credential_id))}`,
-    { headers: { Authorization: `Bearer ${key}` } },
-  );
-  const credJson = await cred.json().catch(() => ({}));
-  const sipUser = (credJson as { data?: { sip_username?: string } })?.data?.sip_username ?? null;
+  // 🔴 DIAL WHICHEVER IDENTITY IS ACTUALLY REGISTERED RIGHT NOW.
+  //
+  // The app can be logged in as EITHER of two things and they are not
+  // interchangeable, so a hardcoded target rings nobody half the time:
+  //   - builds up to 2.11(54): the on-demand telephony credential `gencred…`
+  //   - 2.11(55) and later:    the credential connection's own user `vsms…`
+  // Both are live in the field at once (TestFlight, the App Store, and a
+  // client that falls back between them when Telnyx refuses a login), so the
+  // fleet is genuinely mixed and will stay mixed for as long as an old build
+  // is installed anywhere.
+  //
+  // Measured 2026-09-08, and this is exactly the failure it prevents: the
+  // transfer was aimed at `gencred…` while 2.11(55) had just registered as
+  // `vsms…`. Telnyx accepted the transfer, raised `call.bridged`, and the
+  // phone showed a missed call in Recents without ever ringing.
+  //
+  // `registered` is the provider's own answer, not our inference, so this
+  // follows a client that switches credentials without a server release.
+  const sipUser = await registeredSipUser(key, line);
   if (!sipUser) {
-    console.error("telnyx-webhook: no sip_username for line", line.id);
+    console.error("telnyx-webhook: no REGISTERED sip identity for line", line.id);
     await command("hangup", {});
     return;
   }
@@ -496,4 +509,53 @@ function normaliseE164(v: unknown): string | null {
     if (typeof n === "string" && n.trim()) return n.trim();
   }
   return null;
+}
+
+
+/** The SIP username the device is registered as, or null when nothing is.
+ *
+ * Asks Telnyx about both candidates and prefers the connection user, which is
+ * what current builds log in as. Returns null rather than guessing: dialing an
+ * unregistered identity produces a call that reports success and rings
+ * nothing, which is strictly worse than hanging up.
+ */
+async function registeredSipUser(
+  key: string, line: { provider_credential_id?: unknown; provider_connection_id?: unknown },
+): Promise<string | null> {
+  const get = async (path: string) => {
+    try {
+      const r = await fetch(`https://api.telnyx.com/v2${path}`,
+                            { headers: { Authorization: `Bearer ${key}` } });
+      return await r.json().catch(() => ({}));
+    } catch { return {}; }
+  };
+  const isRegistered = async (username: string, type: string) => {
+    const j = await get(
+      `/sip_registration_status?username=${encodeURIComponent(username)}&credential_type=${type}`);
+    // The reply is a BARE object, not the usual `{data: …}` envelope.
+    return (j as { registered?: boolean })?.registered === true;
+  };
+
+  const candidates: Array<{ username: string; type: string }> = [];
+
+  if (line.provider_connection_id) {
+    const conn = await get(
+      `/credential_connections/${encodeURIComponent(String(line.provider_connection_id))}`);
+    const user = (conn as { data?: { user_name?: string } })?.data?.user_name;
+    if (user) candidates.push({ username: String(user), type: "sip_credential_connection" });
+  }
+  if (line.provider_credential_id) {
+    const cred = await get(
+      `/telephony_credentials/${encodeURIComponent(String(line.provider_credential_id))}`);
+    const user = (cred as { data?: { sip_username?: string } })?.data?.sip_username;
+    if (user) candidates.push({ username: String(user), type: "telephony_credential" });
+  }
+
+  for (const c of candidates) {
+    if (await isRegistered(c.username, c.type)) return c.username;
+  }
+  // Nothing registered. A VoIP push can still wake a terminated app, and the
+  // credential it will attach with is the one current builds use — so fall
+  // back to the connection user rather than refusing outright.
+  return candidates[0]?.username ?? null;
 }
