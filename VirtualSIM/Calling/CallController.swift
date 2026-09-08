@@ -224,6 +224,16 @@ final class CallController: NSObject {
                 VoiceCredentialStore.save(credential)
                 try await voice.connect(credential)
             } catch where credential.canReceiveInbound {
+                // 🔴 REPORTED, not just printed. This is the one failure on the
+                // inbound path nobody can see: it happens on a physical device,
+                // the server records nothing (it handed over valid credentials
+                // and returned 200), and Telnyx logs no rejected registration.
+                // Three fixes for inbound have now been shipped blind because
+                // the device's own error never left the device.
+                Analytics.shared.track("voice_login_failed", [
+                    "credential": .string("sip"),
+                    "error": .string(String(describing: error).prefix(180).description),
+                ])
                 print("CallController:: SIP login failed, falling back to token: \(error)")
                 credential = .token(grant.token)
                 VoiceCredentialStore.save(credential)
