@@ -32,20 +32,25 @@ struct AllowanceStrip: View {
             // `.frame(maxWidth: .infinity)`, so the bar renders exactly as it
             // did before this cleanup: full width.
             //
-            // 🔴 THERE IS NO "texts left" GAUGE HERE, AND ADDING ONE BACK IN
-            // ANY FORM IS A REGRESSION. Outbound SMS was dropped from this
-            // product on 2026-08-18 — the composer is gone, `ThreadScreen`
-            // is read-only, `send-line-message` refuses every send with
-            // `outbound_sms_retired`, and both the store pitch and the
-            // checkout ledger say "Sending texts — Not yet". So
-            // `line.sms_used` is frozen at whatever it was and the gauge
-            // rendered a permanently full bar reading "200 texts left":
-            // a metered promise of a capability the product cannot honour,
-            // on the one screen a paying subscriber opens daily.
-            // `NumberDetailView` deleted its own copy of this row for the
-            // same reason, and its comment there also forbids re-purposing
-            // it as an INBOUND counter — inbound is unmetered, so a bar
-            // that only ever falls would misrepresent that too.
+            // 🔴 THERE IS NO "texts left" GAUGE HERE, AND THE ORIGINAL REASON
+            // IS RETIRED — READ THE NEW ONE BEFORE ADDING ONE.
+            //
+            // It was forbidden from 2026-08-18 because outbound SMS was dropped
+            // entirely: `line.sms_used` was frozen, so the bar rendered a
+            // permanently full "200 texts left" — a metered promise of a
+            // capability the product could not honour. **Sending was restored
+            // on 2026-09-08 and proven off-net, so that argument no longer
+            // holds.**
+            //
+            // The rule survives on a different footing: the count IS shown, in
+            // the composer (`ThreadScreen`, "N texts left this month"), which is
+            // where it is spendable and therefore where it means something. A
+            // second copy here would be a claim on the screen a subscriber opens
+            // daily, in a strip whose other gauges are about MINUTES.
+            // `NumberDetailView` deleted its own copy of this row, and its
+            // comment forbids re-purposing it as an INBOUND counter — that part
+            // is unconditional: inbound is unmetered, so a bar that only ever
+            // falls would invent a limit that does not exist.
             //
             // Restored in the commit that shipped the dialer. It was held
             // back while `flow = .dialer` was assigned nowhere, because a

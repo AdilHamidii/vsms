@@ -126,12 +126,14 @@ extension ScreenshotMode {
     /// 🔴 EVERY PREVIEW HERE IS INBOUND, AND THAT IS STILL NOT A STYLE CHOICE.
     /// A `"You: Yes, 7pm 👍"` row lived at `t2` and was removed on 2026-08-18
     /// when outbound SMS was retired. Sending was restored on 2026-09-08
-    /// (NANP → NANP) — but these fixtures feed **App Store screenshots**, and
-    /// the only outbound message this product has ever measured was an on-net
-    /// send between two of our own numbers, with no 10DLC campaign registered
-    /// anywhere. A screenshot is a marketing claim, and the evidence does not
-    /// support that one yet. **Keep every fixture inbound until a send to a
-    /// real handset is proven.**
+    /// (NANP → NANP) and PROVEN off-net on 2026-09-08 to a real US mobile on a
+    /// real carrier — so the old reason for this rule ("we have only ever sent
+    /// on-net") is retired. The rule SURVIVES on a narrower one: that is n = 1,
+    /// no 10DLC campaign is registered on any number, and checkout itself warns
+    /// that some networks block texts from virtual numbers. A screenshot is a
+    /// marketing claim shown to everyone who finds the app. **Keep every
+    /// fixture inbound until sending is boring**, then add exactly one outbound
+    /// bubble — not a whole conversation.
     static var sampleThreads: [LineThread] {
         let now = Date()
         return [
@@ -243,7 +245,11 @@ extension ScreenshotMode {
         [
             EmailDomainOption(domain: "outlook.com", credits: 0, available: 128),
             EmailDomainOption(domain: "hotmail.com", credits: 0, available: 64),
-            EmailDomainOption(domain: "gmail.com", credits: 1, available: 4210),
+            // gmail.com was REMOVED from sale 2026-08-26 (its HeroSMS pool went
+            // dead — 0 codes in its last 36 orders) and `create-email-order`
+            // refuses it with `domain_unavailable`. It was the only PAID tier,
+            // so a screenshot showing it advertised both a domain we cannot
+            // deliver and a price that no longer exists.
         ]
     }
 

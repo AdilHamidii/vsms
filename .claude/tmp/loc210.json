@@ -1,0 +1,481 @@
+{
+ "data": [
+  {
+   "type": "appStoreVersionLocalizations",
+   "id": "6ca0f625-bbdf-4055-aaff-124d30d15181",
+   "attributes": {
+    "description": "Zwei Wege, Ihre echte Nummer f\u00fcr sich zu behalten.\n\nEINE ZWEITE NUMMER F\u00dcR IHRE BEST\u00c4TIGUNGSCODES\nMieten Sie eine echte US- oder kanadische Telefonnummer und behalten Sie sie, solange Ihr Abo l\u00e4uft. Nutzen Sie sie f\u00fcr die Anmeldung bei WhatsApp, TikTok, DoorDash und den meisten anderen Apps \u2013 der Code erscheint innerhalb von Sekunden in der App und l\u00e4sst sich mit einem Tipp kopieren.\n\n- Funktioniert mit WhatsApp, TikTok, DoorDash und den meisten anderen Apps\n- Codes und SMS von US- und kanadischen Absendern landen in der App, nach Absender sortiert\n- Wechseln Sie jederzeit f\u00fcr wenige Credits zu einer neuen Nummer mit derselben Vorwahl\n- W\u00e4hlen Sie eine Stadt in den USA oder Kanada\n- Ausgehende Anrufe inklusive: 100 Minuten pro Monat in die USA und nach Kanada, 50 weitere L\u00e4nder \u00fcber Ihre Credits\n\nWAS DIESE NUMMER NOCH NICHT KANN\nSMS versenden, SMS von au\u00dferhalb der USA und Kanadas empfangen und eingehende Anrufe sind nicht verf\u00fcgbar. Manche Plattformen lehnen virtuelle Nummern ab \u2013 kommt kein Code an, wechseln Sie einfach die Nummer.\n\nTEMPOR\u00c4RE NUMMERN F\u00dcR VERIFIZIERUNGSCODES\nManche Anmeldungen ben\u00f6tigen nur einmal einen Code. W\u00e4hlen Sie den Dienst und das Land, erhalten Sie eine funktionierende Nummer, und der Code erscheint in der App, sobald er ankommt.\n\n- \u00dcber 380 Dienste in 69 L\u00e4ndern\n- Jedes Land zeigt seine Netzwerk-Zustellrate an, bevor Sie etwas ausgeben, damit Sie mit offenen Augen w\u00e4hlen k\u00f6nnen\n- Zahlen Sie mit Credits, nur f\u00fcr das, was Sie nutzen\n- Kommt innerhalb von 8 Minuten kein Code an, werden Ihre Credits automatisch zur\u00fcckerstattet\n\nEINE TEMPOR\u00c4RE E-MAIL-ADRESSE\nBrauchen Sie eine Adresse statt einer Nummer? Erhalten Sie ein Wegwerf-Postfach auf einer echten, g\u00e4ngigen Domain und lesen Sie den Code in der App. Ihre erste Adresse ist kostenlos; der vSMS-Mail-Plan f\u00fcgt bis zu 25 Adressen pro Tag hinzu.\n\nWIE CREDITS FUNKTIONIEREN\nCredits werden paketweise gekauft und pro Nummer ausgegeben. Die Preise variieren je nach Dienst und Land, weil auch unsere eigenen Kosten variieren. Guthabenpakete verl\u00e4ngern sich nie von selbst, und alles, was fehlschl\u00e4gt, wird erstattet, ohne dass Sie danach fragen m\u00fcssen.\n\nWAS WIR NICHT TUN\nWir verkaufen Ihre Daten nicht, zeigen keine Werbung und fragen nicht nach Ihren Kontakten. Anmelden mit Apple oder einer E-Mail-Adresse ist alles, was Sie als Konto brauchen. Eine gemietete Nummer geh\u00f6rt ausschlie\u00dflich Ihnen, solange Sie sie behalten.\n\nBITTE BEACHTEN\nEine gemietete Zweitnummer kann nicht die 911 oder einen anderen Notdienst erreichen. Nutzen Sie f\u00fcr Notf\u00e4lle immer die eigene Nummer Ihres Telefons. Manche Dienste blockieren tempor\u00e4re Nummern, und in diesem Fall kommt m\u00f6glicherweise kein Code an - Ihre Credits werden dann zur\u00fcckerstattet.\n\nAbos verl\u00e4ngern sich monatlich oder j\u00e4hrlich, bis sie gek\u00fcndigt werden. Verwalten oder k\u00fcndigen Sie sie jederzeit in Ihren Apple-ID-Einstellungen.\n\nNutzungsbedingungen (EULA): https://www.apple.com/legal/internet-services/itunes/dev/stdeula/",
+    "locale": "de-DE",
+    "keywords": "telefonnummer,handynummer,virtuelle,anonym,einweg,temporaere,empfangen,fake,spam,online,trashmail",
+    "marketingUrl": null,
+    "promotionalText": null,
+    "supportUrl": "https://superficial-watch-d12.notion.site/Help-3704b908b4b780fd8d39ea0fd6078efd?source=copy_link",
+    "whatsNew": "\u2022 Der Zweitnummern-Shop \u00f6ffnet jetzt mit US-Nummern; Kanada und Puerto Rico sind einen Tipp entfernt. Jede Nummer zeigt ihre Landesflagge.\n\u2022 Der Nummer-Tab \u00f6ffnet direkt deine Nummer.\n\u2022 Fehlerbehebungen."
+   },
+   "relationships": {
+    "appScreenshotSets": {
+     "links": {
+      "self": "https://api.appstoreconnect.apple.com/v1/appStoreVersionLocalizations/6ca0f625-bbdf-4055-aaff-124d30d15181/relationships/appScreenshotSets",
+      "related": "https://api.appstoreconnect.apple.com/v1/appStoreVersionLocalizations/6ca0f625-bbdf-4055-aaff-124d30d15181/appScreenshotSets"
+     }
+    },
+    "appPreviewSets": {
+     "links": {
+      "self": "https://api.appstoreconnect.apple.com/v1/appStoreVersionLocalizations/6ca0f625-bbdf-4055-aaff-124d30d15181/relationships/appPreviewSets",
+      "related": "https://api.appstoreconnect.apple.com/v1/appStoreVersionLocalizations/6ca0f625-bbdf-4055-aaff-124d30d15181/appPreviewSets"
+     }
+    },
+    "searchKeywords": {
+     "links": {
+      "self": "https://api.appstoreconnect.apple.com/v1/appStoreVersionLocalizations/6ca0f625-bbdf-4055-aaff-124d30d15181/relationships/searchKeywords",
+      "related": "https://api.appstoreconnect.apple.com/v1/appStoreVersionLocalizations/6ca0f625-bbdf-4055-aaff-124d30d15181/searchKeywords"
+     }
+    }
+   },
+   "links": {
+    "self": "https://api.appstoreconnect.apple.com/v1/appStoreVersionLocalizations/6ca0f625-bbdf-4055-aaff-124d30d15181"
+   }
+  },
+  {
+   "type": "appStoreVersionLocalizations",
+   "id": "9f47b569-17c5-4edd-b55c-9238bdcc4c7f",
+   "attributes": {
+    "description": "Two ways to keep your real number to yourself.\n\nA SECOND NUMBER FOR YOUR VERIFICATION CODES\nRent a real US or Canadian phone number and keep it for as long as you subscribe. Use it to sign up for WhatsApp, TikTok, DoorDash and most other apps \u2014 the code arrives in the app within seconds, with one tap to copy it.\n\n- Works with WhatsApp, TikTok, DoorDash and most other apps\n- Codes and texts from US and Canadian senders land in the app, organised by sender\n- Switch to a fresh number in the same area code whenever you need, for a few credits\n- Choose a US or Canadian city\n- Also makes outgoing calls: 100 minutes a month to the US and Canada, and 50 more countries paid from your credits\n\nWHAT THIS NUMBER DOES NOT DO YET\nSending texts from it, receiving texts from outside the US and Canada, and taking incoming calls are not available. Some platforms refuse virtual numbers \u2014 if a code doesn't arrive, switch your number.\n\nTEMPORARY NUMBERS FOR VERIFICATION CODES\nSome sign-ups only need a code once. Pick the service and the country, get a working number, and the code appears in the app the moment it lands.\n\n- 380+ services across 69 countries\n- Every country shows its network delivery rate before you spend anything, so you can choose with your eyes open\n- Pay with credits, only for what you use\n- No code within 8 minutes and your credits are returned automatically\n\nA TEMPORARY E-MAIL ADDRESS\nNeed an address rather than a number? Get a disposable inbox on a real consumer domain and read the code in the app. Your first address is free; the vSMS Mail plan adds up to 25 addresses a day.\n\nHOW CREDITS WORK\nCredits are bought in packs and spent per number. Prices vary by service and country because our own cost does. Credit packs never renew on their own, and anything that fails is refunded without you asking.\n\nWHAT WE DO NOT DO\nWe do not sell your data, show ads, or ask for your contacts. Sign in with Apple or an e-mail address is all the account you need. A number you rent is yours alone for as long as you keep it.\n\nPLEASE NOTE\nA rented second number cannot reach 911 or any other emergency service. Always use your phone's own number for emergencies. Some services block temporary numbers, and where that happens a code may not arrive - your credits come back when it does not.\n\nSubscriptions renew monthly or yearly until cancelled. Manage or cancel in your Apple ID settings at any time.\n\nTerms of Use (EULA): https://www.apple.com/legal/internet-services/itunes/dev/stdeula/",
+    "locale": "en-GB",
+    "keywords": "email,virtual,disposable,temporary,online,otp,code,inbox,fake,spam,burner,signup,mobile,verify,sim",
+    "marketingUrl": null,
+    "promotionalText": null,
+    "supportUrl": "https://superficial-watch-d12.notion.site/Help-3704b908b4b780fd8d39ea0fd6078efd?source=copy_link",
+    "whatsNew": "\u2022 The second-number store now opens on US numbers, with Canada and Puerto Rico one tap away. Every number shows its country flag.\n\u2022 The Number tab opens straight on your number.\n\u2022 Bug fixes."
+   },
+   "relationships": {
+    "appScreenshotSets": {
+     "links": {
+      "self": "https://api.appstoreconnect.apple.com/v1/appStoreVersionLocalizations/9f47b569-17c5-4edd-b55c-9238bdcc4c7f/relationships/appScreenshotSets",
+      "related": "https://api.appstoreconnect.apple.com/v1/appStoreVersionLocalizations/9f47b569-17c5-4edd-b55c-9238bdcc4c7f/appScreenshotSets"
+     }
+    },
+    "appPreviewSets": {
+     "links": {
+      "self": "https://api.appstoreconnect.apple.com/v1/appStoreVersionLocalizations/9f47b569-17c5-4edd-b55c-9238bdcc4c7f/relationships/appPreviewSets",
+      "related": "https://api.appstoreconnect.apple.com/v1/appStoreVersionLocalizations/9f47b569-17c5-4edd-b55c-9238bdcc4c7f/appPreviewSets"
+     }
+    },
+    "searchKeywords": {
+     "links": {
+      "self": "https://api.appstoreconnect.apple.com/v1/appStoreVersionLocalizations/9f47b569-17c5-4edd-b55c-9238bdcc4c7f/relationships/searchKeywords",
+      "related": "https://api.appstoreconnect.apple.com/v1/appStoreVersionLocalizations/9f47b569-17c5-4edd-b55c-9238bdcc4c7f/searchKeywords"
+     }
+    }
+   },
+   "links": {
+    "self": "https://api.appstoreconnect.apple.com/v1/appStoreVersionLocalizations/9f47b569-17c5-4edd-b55c-9238bdcc4c7f"
+   }
+  },
+  {
+   "type": "appStoreVersionLocalizations",
+   "id": "f91a8c0c-e63f-46a9-b523-727e0dcb4307",
+   "attributes": {
+    "description": "Deux fa\u00e7ons de garder votre vrai num\u00e9ro pour vous.\n\nUN SECOND NUM\u00c9RO POUR VOS CODES DE V\u00c9RIFICATION\nLouez un vrai num\u00e9ro am\u00e9ricain ou canadien et gardez-le tant que vous \u00eates abonn\u00e9. Utilisez-le pour vous inscrire sur WhatsApp, TikTok, DoorDash et la plupart des autres applis : le code arrive dans l'appli en quelques secondes, \u00e0 copier d'un geste.\n\n- Fonctionne avec WhatsApp, TikTok, DoorDash et la plupart des autres applis\n- Les codes et SMS d'exp\u00e9diteurs am\u00e9ricains et canadiens arrivent dans l'appli, class\u00e9s par exp\u00e9diteur\n- Passez quand vous voulez \u00e0 un nouveau num\u00e9ro du m\u00eame indicatif, pour quelques cr\u00e9dits\n- Choisissez une ville aux \u00c9tats-Unis ou au Canada\n- Appels sortants inclus : 100 minutes par mois vers les \u00c9tats-Unis et le Canada, et 50 autres pays r\u00e9gl\u00e9s en cr\u00e9dits\n\nCE QUE CE NUM\u00c9RO NE FAIT PAS ENCORE\nEnvoyer des SMS, recevoir des SMS depuis l'ext\u00e9rieur des \u00c9tats-Unis et du Canada et recevoir des appels ne sont pas disponibles. Certaines plateformes refusent les num\u00e9ros virtuels : si un code n'arrive pas, changez de num\u00e9ro.\n\nNUM\u00c9ROS TEMPORAIRES POUR CODES DE V\u00c9RIFICATION\nCertaines inscriptions n'ont besoin que d'un seul code. Choisissez le service et le pays, obtenez un num\u00e9ro fonctionnel, et le code appara\u00eet dans l'application d\u00e8s son arriv\u00e9e.\n\n- Plus de 380 services dans 69 pays\n- Chaque pays affiche son taux de livraison r\u00e9seau avant que vous ne d\u00e9pensiez quoi que ce soit, pour choisir en toute connaissance de cause\n- Payez avec des cr\u00e9dits, uniquement pour ce que vous utilisez\n- Si aucun code n'arrive en 8 minutes, vos cr\u00e9dits sont automatiquement rembours\u00e9s\n\nUNE ADRESSE E-MAIL TEMPORAIRE\nBesoin d'une adresse plut\u00f4t que d'un num\u00e9ro ? Obtenez une bo\u00eete de r\u00e9ception jetable sur un vrai domaine grand public et lisez le code dans l'application. Votre premi\u00e8re adresse est gratuite ; le forfait vSMS Mail ajoute jusqu'\u00e0 25 adresses par jour.\n\nCOMMENT FONCTIONNENT LES CR\u00c9DITS\nLes cr\u00e9dits s'ach\u00e8tent par packs et se d\u00e9pensent par num\u00e9ro. Les prix varient selon le service et le pays, car notre propre co\u00fbt varie aussi. Les packs de cr\u00e9dits ne se renouvellent jamais automatiquement, et tout ce qui \u00e9choue est rembours\u00e9 sans que vous ayez \u00e0 le demander.\n\nCE QUE NOUS NE FAISONS PAS\nNous ne vendons pas vos donn\u00e9es, n'affichons pas de publicit\u00e9s et ne demandons pas acc\u00e8s \u00e0 vos contacts. Se connecter avec Apple ou avec une adresse e-mail est tout ce dont vous avez besoin comme compte. Un num\u00e9ro que vous louez n'appartient qu'\u00e0 vous tant que vous le conservez.\n\n\u00c0 NOTER\nUn second num\u00e9ro lou\u00e9 ne peut pas joindre le 911 ni aucun autre service d'urgence. Utilisez toujours le num\u00e9ro propre de votre t\u00e9l\u00e9phone en cas d'urgence. Certains services bloquent les num\u00e9ros temporaires ; dans ce cas, un code peut ne pas arriver - vos cr\u00e9dits sont alors rembours\u00e9s.\n\nLes abonnements se renouvellent chaque mois ou chaque ann\u00e9e jusqu'\u00e0 leur annulation. G\u00e9rez-les ou annulez-les \u00e0 tout moment dans les r\u00e9glages de votre identifiant Apple.\n\nConditions d'utilisation (CLUF) : https://www.apple.com/legal/internet-services/itunes/dev/stdeula/",
+    "locale": "fr-FR",
+    "keywords": "jetable,anonyme,code,recevoir,virtuel,otp,boite,message,generator,throwaway,inbox,spam",
+    "marketingUrl": null,
+    "promotionalText": null,
+    "supportUrl": "https://superficial-watch-d12.notion.site/Help-3704b908b4b780fd8d39ea0fd6078efd?source=copy_link",
+    "whatsNew": "\u2022 La boutique de second num\u00e9ro s'ouvre d\u00e9sormais sur les num\u00e9ros am\u00e9ricains, avec le Canada et Porto Rico \u00e0 un tap. Chaque num\u00e9ro affiche le drapeau de son pays.\n\u2022 L'onglet Num\u00e9ro s'ouvre directement sur votre num\u00e9ro.\n\u2022 Corrections de bugs."
+   },
+   "relationships": {
+    "appScreenshotSets": {
+     "links": {
+      "self": "https://api.appstoreconnect.apple.com/v1/appStoreVersionLocalizations/f91a8c0c-e63f-46a9-b523-727e0dcb4307/relationships/appScreenshotSets",
+      "related": "https://api.appstoreconnect.apple.com/v1/appStoreVersionLocalizations/f91a8c0c-e63f-46a9-b523-727e0dcb4307/appScreenshotSets"
+     }
+    },
+    "appPreviewSets": {
+     "links": {
+      "self": "https://api.appstoreconnect.apple.com/v1/appStoreVersionLocalizations/f91a8c0c-e63f-46a9-b523-727e0dcb4307/relationships/appPreviewSets",
+      "related": "https://api.appstoreconnect.apple.com/v1/appStoreVersionLocalizations/f91a8c0c-e63f-46a9-b523-727e0dcb4307/appPreviewSets"
+     }
+    },
+    "searchKeywords": {
+     "links": {
+      "self": "https://api.appstoreconnect.apple.com/v1/appStoreVersionLocalizations/f91a8c0c-e63f-46a9-b523-727e0dcb4307/relationships/searchKeywords",
+      "related": "https://api.appstoreconnect.apple.com/v1/appStoreVersionLocalizations/f91a8c0c-e63f-46a9-b523-727e0dcb4307/searchKeywords"
+     }
+    }
+   },
+   "links": {
+    "self": "https://api.appstoreconnect.apple.com/v1/appStoreVersionLocalizations/f91a8c0c-e63f-46a9-b523-727e0dcb4307"
+   }
+  },
+  {
+   "type": "appStoreVersionLocalizations",
+   "id": "c10a9313-6bc9-4e51-bea1-6d6cc14f61e7",
+   "attributes": {
+    "description": "Dos formas de mantener tu n\u00famero real solo para ti.\n\nUN SEGUNDO N\u00daMERO PARA TUS C\u00d3DIGOS DE VERIFICACI\u00d3N\nAlquila un n\u00famero de tel\u00e9fono real de EE. UU. o Canad\u00e1 y cons\u00e9rvalo mientras dure tu suscripci\u00f3n. \u00dasalo para registrarte en WhatsApp, TikTok, DoorDash y la mayor\u00eda de las dem\u00e1s apps: el c\u00f3digo llega a la app en segundos y se copia con un toque.\n\n- Funciona con WhatsApp, TikTok, DoorDash y la mayor\u00eda de las dem\u00e1s apps\n- Los c\u00f3digos y SMS de remitentes de EE. UU. y Canad\u00e1 llegan a la app, ordenados por remitente\n- Cambia a un n\u00famero nuevo con el mismo prefijo cuando quieras, por unos pocos cr\u00e9ditos\n- Elige una ciudad de EE. UU. o Canad\u00e1\n- Tambi\u00e9n hace llamadas salientes: 100 minutos al mes a EE. UU. y Canad\u00e1, y 50 pa\u00edses m\u00e1s pagados con tus cr\u00e9ditos\n\nLO QUE ESTE N\u00daMERO A\u00daN NO HACE\nEnviar SMS, recibir SMS desde fuera de EE. UU. y Canad\u00e1 y recibir llamadas no est\u00e1n disponibles. Algunas plataformas rechazan los n\u00fameros virtuales: si un c\u00f3digo no llega, cambia de n\u00famero.\n\nN\u00daMEROS TEMPORALES PARA C\u00d3DIGOS DE VERIFICACI\u00d3N\nAlgunos registros solo necesitan un c\u00f3digo una vez. Elige el servicio y el pa\u00eds, consigue un n\u00famero que funcione, y el c\u00f3digo aparece en la app en cuanto llega.\n\n- M\u00e1s de 380 servicios en 69 pa\u00edses\n- Cada pa\u00eds muestra su tasa de entrega de la red antes de que gastes nada, para que elijas con informaci\u00f3n clara\n- Paga con cr\u00e9ditos, solo por lo que uses\n- Si el c\u00f3digo no llega en 8 minutos, tus cr\u00e9ditos se devuelven autom\u00e1ticamente\n\nUNA DIRECCI\u00d3N DE CORREO TEMPORAL\n\u00bfNecesitas una direcci\u00f3n en lugar de un n\u00famero? Consigue una bandeja de entrada desechable en un dominio real de uso cotidiano y lee el c\u00f3digo en la app. Tu primera direcci\u00f3n es gratis; el plan vSMS Mail a\u00f1ade hasta 25 direcciones al d\u00eda.\n\nC\u00d3MO FUNCIONAN LOS CR\u00c9DITOS\nLos cr\u00e9ditos se compran en paquetes y se gastan por n\u00famero. Los precios var\u00edan seg\u00fan el servicio y el pa\u00eds porque nuestro propio coste tambi\u00e9n var\u00eda. Los paquetes de cr\u00e9ditos nunca se renuevan solos, y todo lo que falla se reembolsa sin que tengas que pedirlo.\n\nLO QUE NO HACEMOS\nNo vendemos tus datos, no mostramos anuncios ni pedimos tus contactos. Iniciar sesi\u00f3n con Apple o con un correo electr\u00f3nico es toda la cuenta que necesitas. Un n\u00famero que alquilas es solo tuyo mientras lo conserves.\n\nTEN EN CUENTA\nUn segundo n\u00famero alquilado no puede contactar con el 911 ni con ning\u00fan otro servicio de emergencia. Utiliza siempre el n\u00famero propio de tu tel\u00e9fono para emergencias. Algunos servicios bloquean los n\u00fameros temporales, y cuando ocurre, puede que un c\u00f3digo no llegue; tus cr\u00e9ditos se devuelven cuando eso pasa.\n\nLas suscripciones se renuevan mensual o anualmente hasta que se cancelen. Gesti\u00f3nalas o canc\u00e9lalas cuando quieras en los ajustes de tu ID de Apple.\n\nT\u00e9rminos de uso (EULA): https://www.apple.com/legal/internet-services/itunes/dev/stdeula/",
+    "locale": "es-ES",
+    "keywords": "desechable,anonimo,codigo,verificacion,recibir,virtual,mensaje,buzon,generator,throwaway,inbox",
+    "marketingUrl": null,
+    "promotionalText": null,
+    "supportUrl": "https://superficial-watch-d12.notion.site/Help-3704b908b4b780fd8d39ea0fd6078efd?source=copy_link",
+    "whatsNew": "\u2022 La tienda de segundo n\u00famero ahora abre con n\u00fameros de EE. UU., con Canad\u00e1 y Puerto Rico a un toque. Cada n\u00famero muestra la bandera de su pa\u00eds.\n\u2022 La pesta\u00f1a N\u00famero se abre directamente en tu n\u00famero.\n\u2022 Correcci\u00f3n de errores."
+   },
+   "relationships": {
+    "appScreenshotSets": {
+     "links": {
+      "self": "https://api.appstoreconnect.apple.com/v1/appStoreVersionLocalizations/c10a9313-6bc9-4e51-bea1-6d6cc14f61e7/relationships/appScreenshotSets",
+      "related": "https://api.appstoreconnect.apple.com/v1/appStoreVersionLocalizations/c10a9313-6bc9-4e51-bea1-6d6cc14f61e7/appScreenshotSets"
+     }
+    },
+    "appPreviewSets": {
+     "links": {
+      "self": "https://api.appstoreconnect.apple.com/v1/appStoreVersionLocalizations/c10a9313-6bc9-4e51-bea1-6d6cc14f61e7/relationships/appPreviewSets",
+      "related": "https://api.appstoreconnect.apple.com/v1/appStoreVersionLocalizations/c10a9313-6bc9-4e51-bea1-6d6cc14f61e7/appPreviewSets"
+     }
+    },
+    "searchKeywords": {
+     "links": {
+      "self": "https://api.appstoreconnect.apple.com/v1/appStoreVersionLocalizations/c10a9313-6bc9-4e51-bea1-6d6cc14f61e7/relationships/searchKeywords",
+      "related": "https://api.appstoreconnect.apple.com/v1/appStoreVersionLocalizations/c10a9313-6bc9-4e51-bea1-6d6cc14f61e7/searchKeywords"
+     }
+    }
+   },
+   "links": {
+    "self": "https://api.appstoreconnect.apple.com/v1/appStoreVersionLocalizations/c10a9313-6bc9-4e51-bea1-6d6cc14f61e7"
+   }
+  },
+  {
+   "type": "appStoreVersionLocalizations",
+   "id": "14a473ec-c28a-4ca9-9f33-302a06cbb727",
+   "attributes": {
+    "description": "\u672c\u5f53\u306e\u96fb\u8a71\u756a\u53f7\u3092\u4eba\u306b\u77e5\u3089\u308c\u305a\u306b\u6e08\u3080\u30012\u3064\u306e\u65b9\u6cd5\u3002\n\n\u8a8d\u8a3c\u30b3\u30fc\u30c9\u7528\u306e\u30bb\u30ab\u30f3\u30c9\u756a\u53f7\n\u7c73\u56fd\u307e\u305f\u306f\u30ab\u30ca\u30c0\u306e\u672c\u7269\u306e\u96fb\u8a71\u756a\u53f7\u3092\u30ec\u30f3\u30bf\u30eb\u3057\u3001\u30b5\u30d6\u30b9\u30af\u30ea\u30d7\u30b7\u30e7\u30f3\u306e\u671f\u9593\u4e2d\u305a\u3063\u3068\u4f7f\u3048\u307e\u3059\u3002WhatsApp\u3001TikTok\u3001DoorDash\u306a\u3069\u307b\u3068\u3093\u3069\u306e\u30a2\u30d7\u30ea\u306e\u767b\u9332\u306b\u4f7f\u3048\u3066\u3001\u30b3\u30fc\u30c9\u306f\u6570\u79d2\u3067\u30a2\u30d7\u30ea\u306b\u5c4a\u304d\u3001\u30ef\u30f3\u30bf\u30c3\u30d7\u3067\u30b3\u30d4\u30fc\u3067\u304d\u307e\u3059\u3002\n\n- WhatsApp\u3001TikTok\u3001DoorDash\u306a\u3069\u307b\u3068\u3093\u3069\u306e\u30a2\u30d7\u30ea\u306b\u5bfe\u5fdc\n- \u7c73\u56fd\u30fb\u30ab\u30ca\u30c0\u306e\u9001\u4fe1\u5143\u304b\u3089\u306e\u30b3\u30fc\u30c9\u3084SMS\u304c\u30a2\u30d7\u30ea\u306b\u5c4a\u304d\u3001\u9001\u4fe1\u5143\u3054\u3068\u306b\u6574\u7406\n- \u5fc5\u8981\u306a\u3068\u304d\u306f\u3044\u3064\u3067\u3082\u3001\u6570\u30af\u30ec\u30b8\u30c3\u30c8\u3067\u540c\u3058\u5e02\u5916\u5c40\u756a\u306e\u65b0\u3057\u3044\u756a\u53f7\u306b\u5207\u308a\u66ff\u3048\n- \u7c73\u56fd\u307e\u305f\u306f\u30ab\u30ca\u30c0\u306e\u90fd\u5e02\u3092\u9078\u629e\n- \u767a\u4fe1\u901a\u8a71\u3082\u53ef\u80fd\uff1a\u7c73\u56fd\u30fb\u30ab\u30ca\u30c0\u3078\u6708100\u5206\u3001\u3055\u3089\u306b50\u304b\u56fd\u3078\u306f\u30af\u30ec\u30b8\u30c3\u30c8\u3067\n\n\u3053\u306e\u756a\u53f7\u3067\u307e\u3060\u3067\u304d\u306a\u3044\u3053\u3068\n\u3053\u306e\u756a\u53f7\u304b\u3089\u306eSMS\u9001\u4fe1\u3001\u7c73\u56fd\u30fb\u30ab\u30ca\u30c0\u4ee5\u5916\u304b\u3089\u306eSMS\u53d7\u4fe1\u3001\u7740\u4fe1\u306f\u3054\u5229\u7528\u3044\u305f\u3060\u3051\u307e\u305b\u3093\u3002\u4e00\u90e8\u306e\u30d7\u30e9\u30c3\u30c8\u30d5\u30a9\u30fc\u30e0\u306f\u4eee\u60f3\u756a\u53f7\u3092\u62d2\u5426\u3057\u307e\u3059\u3002\u30b3\u30fc\u30c9\u304c\u5c4a\u304b\u306a\u3044\u5834\u5408\u306f\u756a\u53f7\u3092\u5207\u308a\u66ff\u3048\u3066\u304f\u3060\u3055\u3044\u3002\n\n\u8a8d\u8a3c\u30b3\u30fc\u30c9\u7528\u306e\u4e00\u6642\u756a\u53f7\n\u767b\u9332\u306e\u4e2d\u306b\u306f\u3001\u4e00\u5ea6\u3060\u3051\u30b3\u30fc\u30c9\u304c\u5fc5\u8981\u306a\u3082\u306e\u3082\u3042\u308a\u307e\u3059\u3002\u30b5\u30fc\u30d3\u30b9\u3068\u56fd\u3092\u9078\u3076\u3068\u4f7f\u3048\u308b\u756a\u53f7\u304c\u767a\u884c\u3055\u308c\u3001\u30b3\u30fc\u30c9\u304c\u5c4a\u3044\u305f\u77ac\u9593\u306b\u30a2\u30d7\u30ea\u306b\u8868\u793a\u3055\u308c\u307e\u3059\u3002\n\n\u30fb69\u30ab\u56fd\u3067380\u4ee5\u4e0a\u306e\u30b5\u30fc\u30d3\u30b9\u306b\u5bfe\u5fdc\n\u30fb\u304a\u91d1\u3092\u4f7f\u3046\u524d\u306b\u3001\u5404\u56fd\u306e\u30cd\u30c3\u30c8\u30ef\u30fc\u30af\u5230\u9054\u7387\u3092\u8868\u793a\u3059\u308b\u306e\u3067\u3001\u7d0d\u5f97\u3057\u305f\u3046\u3048\u3067\u9078\u3079\u307e\u3059\n\u30fb\u30af\u30ec\u30b8\u30c3\u30c8\u3067\u652f\u6255\u3044\u3001\u4f7f\u3063\u305f\u5206\u3060\u3051\n\u30fb8\u5206\u4ee5\u5185\u306b\u30b3\u30fc\u30c9\u304c\u5c4a\u304b\u306a\u3044\u5834\u5408\u3001\u30af\u30ec\u30b8\u30c3\u30c8\u306f\u81ea\u52d5\u7684\u306b\u8fd4\u9084\u3055\u308c\u307e\u3059\n\n\u4e00\u6642\u30e1\u30fc\u30eb\u30a2\u30c9\u30ec\u30b9\n\u756a\u53f7\u3067\u306f\u306a\u304f\u30a2\u30c9\u30ec\u30b9\u304c\u5fc5\u8981\u3067\u3059\u304b?\u5b9f\u5728\u3059\u308b\u4e00\u822c\u7684\u306a\u30c9\u30e1\u30a4\u30f3\u306e\u4f7f\u3044\u6368\u3066\u53d7\u4fe1\u7bb1\u3092\u53d6\u5f97\u3057\u3001\u30a2\u30d7\u30ea\u3067\u30b3\u30fc\u30c9\u3092\u8aad\u3081\u307e\u3059\u3002\u6700\u521d\u306e\u30a2\u30c9\u30ec\u30b9\u306f\u7121\u6599\u3002vSMS Mail\u30d7\u30e9\u30f3\u306a\u3089\u30011\u65e5\u6700\u592725\u4ef6\u306e\u30a2\u30c9\u30ec\u30b9\u3092\u8ffd\u52a0\u3067\u304d\u307e\u3059\u3002\n\n\u30af\u30ec\u30b8\u30c3\u30c8\u306e\u4ed5\u7d44\u307f\n\u30af\u30ec\u30b8\u30c3\u30c8\u306f\u30d1\u30c3\u30af\u3067\u8cfc\u5165\u3057\u3001\u756a\u53f7\u3054\u3068\u306b\u6d88\u8cbb\u3057\u307e\u3059\u3002\u30b5\u30fc\u30d3\u30b9\u3084\u56fd\u306b\u3088\u3063\u3066\u5f53\u793e\u306e\u30b3\u30b9\u30c8\u304c\u7570\u306a\u308b\u305f\u3081\u3001\u4fa1\u683c\u3082\u7570\u306a\u308a\u307e\u3059\u3002\u30af\u30ec\u30b8\u30c3\u30c8\u30d1\u30c3\u30af\u304c\u81ea\u52d5\u66f4\u65b0\u3055\u308c\u308b\u3053\u3068\u306f\u306a\u304f\u3001\u5931\u6557\u3057\u305f\u5206\u306f\u7533\u3057\u51fa\u306a\u304f\u3066\u3082\u81ea\u52d5\u7684\u306b\u8fd4\u9084\u3055\u308c\u307e\u3059\u3002\n\n\u5f53\u793e\u304c\u884c\u308f\u306a\u3044\u3053\u3068\n\u304a\u5ba2\u69d8\u306e\u30c7\u30fc\u30bf\u306e\u8ca9\u58f2\u3001\u5e83\u544a\u306e\u8868\u793a\u3001\u9023\u7d61\u5148\u306e\u53d6\u5f97\u306f\u884c\u3044\u307e\u305b\u3093\u3002Apple\u3067\u306e\u30b5\u30a4\u30f3\u30a4\u30f3\u307e\u305f\u306f\u30e1\u30fc\u30eb\u30a2\u30c9\u30ec\u30b9\u304c\u3042\u308c\u3070\u3001\u30a2\u30ab\u30a6\u30f3\u30c8\u3068\u3057\u3066\u5341\u5206\u3067\u3059\u3002\u30ec\u30f3\u30bf\u30eb\u3057\u305f\u756a\u53f7\u306f\u3001\u4fdd\u6301\u3057\u3066\u3044\u308b\u9650\u308a\u3042\u306a\u305f\u3060\u3051\u306e\u3082\u306e\u3067\u3059\u3002\n\n\u3054\u6ce8\u610f\n\u30ec\u30f3\u30bf\u30eb\u3057\u305f\u30bb\u30ab\u30f3\u30c9\u756a\u53f7\u306f\u3001911\u3084\u305d\u306e\u4ed6\u306e\u7dca\u6025\u901a\u5831\u30b5\u30fc\u30d3\u30b9\u306b\u306f\u3064\u306a\u304c\u308a\u307e\u305b\u3093\u3002\u7dca\u6025\u6642\u306f\u5fc5\u305a\u304a\u4f7f\u3044\u306e\u30b9\u30de\u30fc\u30c8\u30d5\u30a9\u30f3\u672c\u6765\u306e\u756a\u53f7\u3092\u3054\u5229\u7528\u304f\u3060\u3055\u3044\u3002\u4e00\u90e8\u306e\u30b5\u30fc\u30d3\u30b9\u3067\u306f\u4e00\u6642\u756a\u53f7\u304c\u30d6\u30ed\u30c3\u30af\u3055\u308c\u308b\u5834\u5408\u304c\u3042\u308a\u3001\u305d\u306e\u5834\u5408\u30b3\u30fc\u30c9\u304c\u5c4a\u304b\u306a\u3044\u3053\u3068\u304c\u3042\u308a\u307e\u3059\u3002\u5c4a\u304b\u306a\u304b\u3063\u305f\u5834\u5408\u306f\u30af\u30ec\u30b8\u30c3\u30c8\u304c\u8fd4\u9084\u3055\u308c\u307e\u3059\u3002\n\n\u30b5\u30d6\u30b9\u30af\u30ea\u30d7\u30b7\u30e7\u30f3\u306f\u30ad\u30e3\u30f3\u30bb\u30eb\u3055\u308c\u308b\u307e\u3067\u3001\u6708\u5358\u4f4d\u307e\u305f\u306f\u5e74\u5358\u4f4d\u3067\u81ea\u52d5\u66f4\u65b0\u3055\u308c\u307e\u3059\u3002Apple ID\u306e\u8a2d\u5b9a\u304b\u3089\u3044\u3064\u3067\u3082\u7ba1\u7406\u30fb\u89e3\u7d04\u3067\u304d\u307e\u3059\u3002\n\n\u5229\u7528\u898f\u7d04(EULA):https://www.apple.com/legal/internet-services/itunes/dev/stdeula/",
+    "locale": "ja",
+    "keywords": "\u4f7f\u3044\u6368\u3066,\u96fb\u8a71\u756a\u53f7,\u4eee\u60f3\u756a\u53f7,\u30ef\u30f3\u30bf\u30a4\u30e0,\u30e1\u30fc\u30eb,\u53d7\u4fe1,\u8a8d\u8a3c,\u30b3\u30fc\u30c9,\u30b9\u30d1\u30e0,\u4e00\u6642\u7684",
+    "marketingUrl": null,
+    "promotionalText": null,
+    "supportUrl": "https://superficial-watch-d12.notion.site/Help-3704b908b4b780fd8d39ea0fd6078efd?source=copy_link",
+    "whatsNew": "\u2022 \u30bb\u30ab\u30f3\u30c9\u756a\u53f7\u306e\u30b9\u30c8\u30a2\u304c\u7c73\u56fd\u306e\u756a\u53f7\u304b\u3089\u958b\u304f\u3088\u3046\u306b\u306a\u308a\u307e\u3057\u305f\u3002\u30ab\u30ca\u30c0\u3068\u30d7\u30a8\u30eb\u30c8\u30ea\u30b3\u3082\u30ef\u30f3\u30bf\u30c3\u30d7\u3067\u9078\u3079\u307e\u3059\u3002\u5404\u756a\u53f7\u306b\u56fd\u65d7\u3092\u8868\u793a\u3057\u307e\u3059\u3002\n\u2022 \u300c\u756a\u53f7\u300d\u30bf\u30d6\u304c\u3059\u3050\u306b\u3042\u306a\u305f\u306e\u756a\u53f7\u3092\u8868\u793a\u3057\u307e\u3059\u3002\n\u2022 \u4e0d\u5177\u5408\u306e\u4fee\u6b63\u3002"
+   },
+   "relationships": {
+    "appScreenshotSets": {
+     "links": {
+      "self": "https://api.appstoreconnect.apple.com/v1/appStoreVersionLocalizations/14a473ec-c28a-4ca9-9f33-302a06cbb727/relationships/appScreenshotSets",
+      "related": "https://api.appstoreconnect.apple.com/v1/appStoreVersionLocalizations/14a473ec-c28a-4ca9-9f33-302a06cbb727/appScreenshotSets"
+     }
+    },
+    "appPreviewSets": {
+     "links": {
+      "self": "https://api.appstoreconnect.apple.com/v1/appStoreVersionLocalizations/14a473ec-c28a-4ca9-9f33-302a06cbb727/relationships/appPreviewSets",
+      "related": "https://api.appstoreconnect.apple.com/v1/appStoreVersionLocalizations/14a473ec-c28a-4ca9-9f33-302a06cbb727/appPreviewSets"
+     }
+    },
+    "searchKeywords": {
+     "links": {
+      "self": "https://api.appstoreconnect.apple.com/v1/appStoreVersionLocalizations/14a473ec-c28a-4ca9-9f33-302a06cbb727/relationships/searchKeywords",
+      "related": "https://api.appstoreconnect.apple.com/v1/appStoreVersionLocalizations/14a473ec-c28a-4ca9-9f33-302a06cbb727/searchKeywords"
+     }
+    }
+   },
+   "links": {
+    "self": "https://api.appstoreconnect.apple.com/v1/appStoreVersionLocalizations/14a473ec-c28a-4ca9-9f33-302a06cbb727"
+   }
+  },
+  {
+   "type": "appStoreVersionLocalizations",
+   "id": "ff581d02-58cf-45d0-bf51-9fa5ba714d01",
+   "attributes": {
+    "description": "Due modi per tenere il tuo numero reale solo per te.\n\nUN SECONDO NUMERO PER I TUOI CODICI DI VERIFICA\nNoleggia un vero numero di telefono statunitense o canadese e tienilo finch\u00e9 sei abbonato. Usalo per iscriverti a WhatsApp, TikTok, DoorDash e alla maggior parte delle altre app: il codice arriva nell'app in pochi secondi, da copiare con un tocco.\n\n- Funziona con WhatsApp, TikTok, DoorDash e la maggior parte delle altre app\n- Codici e SMS da mittenti statunitensi e canadesi arrivano nell'app, ordinati per mittente\n- Passa quando vuoi a un nuovo numero con lo stesso prefisso, per pochi crediti\n- Scegli una citt\u00e0 degli Stati Uniti o del Canada\n- Fa anche chiamate in uscita: 100 minuti al mese verso Stati Uniti e Canada, e altri 50 paesi pagati con i crediti\n\nCOSA QUESTO NUMERO NON FA ANCORA\nInviare SMS, ricevere SMS da fuori Stati Uniti e Canada e ricevere chiamate non sono disponibili. Alcune piattaforme rifiutano i numeri virtuali: se un codice non arriva, cambia numero.\n\nNUMERI TEMPORANEI PER CODICI DI VERIFICA\nAlcune registrazioni richiedono un codice una sola volta. Scegli il servizio e il paese, ottieni un numero funzionante, e il codice appare nell'app non appena arriva.\n\n- Oltre 380 servizi in 69 paesi\n- Ogni paese mostra il proprio tasso di consegna della rete prima che tu spenda qualcosa, cos\u00ec puoi scegliere con consapevolezza\n- Paga con crediti, solo per quello che usi\n- Se il codice non arriva entro 8 minuti, i tuoi crediti vengono restituiti automaticamente\n\nUN INDIRIZZO E-MAIL TEMPORANEO\nTi serve un indirizzo invece di un numero? Ottieni una casella usa e getta su un dominio reale di uso comune e leggi il codice nell'app. Il tuo primo indirizzo \u00e8 gratuito; il piano vSMS Mail aggiunge fino a 25 indirizzi al giorno.\n\nCOME FUNZIONANO I CREDITI\nI crediti si acquistano in pacchetti e si spendono per numero. I prezzi variano in base al servizio e al paese perch\u00e9 varia anche il nostro costo. I pacchetti di crediti non si rinnovano mai da soli, e tutto ci\u00f2 che fallisce viene rimborsato senza che tu debba chiederlo.\n\nCOSA NON FACCIAMO\nNon vendiamo i tuoi dati, non mostriamo pubblicit\u00e0 e non chiediamo i tuoi contatti. Accedere con Apple o con un indirizzo e-mail \u00e8 tutto l'account di cui hai bisogno. Un numero che noleggi \u00e8 solo tuo finch\u00e9 lo mantieni.\n\nNOTA BENE\nUn secondo numero noleggiato non pu\u00f2 contattare il 911 n\u00e9 alcun altro servizio di emergenza. Usa sempre il numero proprio del tuo telefono per le emergenze. Alcuni servizi bloccano i numeri temporanei, e in quel caso un codice potrebbe non arrivare - i tuoi crediti tornano indietro quando ci\u00f2 accade.\n\nGli abbonamenti si rinnovano mensilmente o annualmente fino alla disdetta. Gestiscili o annullali in qualsiasi momento nelle impostazioni del tuo ID Apple.\n\nTermini di utilizzo (EULA): https://www.apple.com/legal/internet-services/itunes/dev/stdeula/",
+    "locale": "it",
+    "keywords": "usaegetta,anonimo,codice,ricevere,virtuale,otp,casella,messaggio,spam,generator,throwaway,inbox",
+    "marketingUrl": null,
+    "promotionalText": null,
+    "supportUrl": "https://superficial-watch-d12.notion.site/Help-3704b908b4b780fd8d39ea0fd6078efd?source=copy_link",
+    "whatsNew": "\u2022 Lo store del secondo numero ora si apre sui numeri USA, con Canada e Porto Rico a un tocco. Ogni numero mostra la bandiera del suo paese.\n\u2022 La scheda Numero si apre direttamente sul tuo numero.\n\u2022 Correzioni di bug."
+   },
+   "relationships": {
+    "appScreenshotSets": {
+     "links": {
+      "self": "https://api.appstoreconnect.apple.com/v1/appStoreVersionLocalizations/ff581d02-58cf-45d0-bf51-9fa5ba714d01/relationships/appScreenshotSets",
+      "related": "https://api.appstoreconnect.apple.com/v1/appStoreVersionLocalizations/ff581d02-58cf-45d0-bf51-9fa5ba714d01/appScreenshotSets"
+     }
+    },
+    "appPreviewSets": {
+     "links": {
+      "self": "https://api.appstoreconnect.apple.com/v1/appStoreVersionLocalizations/ff581d02-58cf-45d0-bf51-9fa5ba714d01/relationships/appPreviewSets",
+      "related": "https://api.appstoreconnect.apple.com/v1/appStoreVersionLocalizations/ff581d02-58cf-45d0-bf51-9fa5ba714d01/appPreviewSets"
+     }
+    },
+    "searchKeywords": {
+     "links": {
+      "self": "https://api.appstoreconnect.apple.com/v1/appStoreVersionLocalizations/ff581d02-58cf-45d0-bf51-9fa5ba714d01/relationships/searchKeywords",
+      "related": "https://api.appstoreconnect.apple.com/v1/appStoreVersionLocalizations/ff581d02-58cf-45d0-bf51-9fa5ba714d01/searchKeywords"
+     }
+    }
+   },
+   "links": {
+    "self": "https://api.appstoreconnect.apple.com/v1/appStoreVersionLocalizations/ff581d02-58cf-45d0-bf51-9fa5ba714d01"
+   }
+  },
+  {
+   "type": "appStoreVersionLocalizations",
+   "id": "d9adb4d1-ae11-48ba-aa75-c56e99496039",
+   "attributes": {
+    "description": "\u0414\u0432\u0430 \u0441\u043f\u043e\u0441\u043e\u0431\u0430 \u0441\u043e\u0445\u0440\u0430\u043d\u0438\u0442\u044c \u043d\u0430\u0441\u0442\u043e\u044f\u0449\u0438\u0439 \u043d\u043e\u043c\u0435\u0440 \u0442\u043e\u043b\u044c\u043a\u043e \u0434\u043b\u044f \u0441\u0435\u0431\u044f.\n\n\u0412\u0422\u041e\u0420\u041e\u0419 \u041d\u041e\u041c\u0415\u0420 \u0414\u041b\u042f \u0412\u0410\u0428\u0418\u0425 \u041a\u041e\u0414\u041e\u0412 \u041f\u041e\u0414\u0422\u0412\u0415\u0420\u0416\u0414\u0415\u041d\u0418\u042f\n\u0410\u0440\u0435\u043d\u0434\u0443\u0439\u0442\u0435 \u043d\u0430\u0441\u0442\u043e\u044f\u0449\u0438\u0439 \u043d\u043e\u043c\u0435\u0440 \u0421\u0428\u0410 \u0438\u043b\u0438 \u041a\u0430\u043d\u0430\u0434\u044b \u0438 \u043f\u043e\u043b\u044c\u0437\u0443\u0439\u0442\u0435\u0441\u044c \u0438\u043c, \u043f\u043e\u043a\u0430 \u0434\u0435\u0439\u0441\u0442\u0432\u0443\u0435\u0442 \u043f\u043e\u0434\u043f\u0438\u0441\u043a\u0430. \u0420\u0435\u0433\u0438\u0441\u0442\u0440\u0438\u0440\u0443\u0439\u0442\u0435\u0441\u044c \u0441 \u043d\u0438\u043c \u0432 WhatsApp, TikTok, DoorDash \u0438 \u0431\u043e\u043b\u044c\u0448\u0438\u043d\u0441\u0442\u0432\u0435 \u0434\u0440\u0443\u0433\u0438\u0445 \u043f\u0440\u0438\u043b\u043e\u0436\u0435\u043d\u0438\u0439 \u2014 \u043a\u043e\u0434 \u043f\u0440\u0438\u0445\u043e\u0434\u0438\u0442 \u0432 \u043f\u0440\u0438\u043b\u043e\u0436\u0435\u043d\u0438\u0435 \u0437\u0430 \u0441\u0435\u043a\u0443\u043d\u0434\u044b \u0438 \u043a\u043e\u043f\u0438\u0440\u0443\u0435\u0442\u0441\u044f \u043e\u0434\u043d\u0438\u043c \u043a\u0430\u0441\u0430\u043d\u0438\u0435\u043c.\n\n- \u0420\u0430\u0431\u043e\u0442\u0430\u0435\u0442 \u0441 WhatsApp, TikTok, DoorDash \u0438 \u0431\u043e\u043b\u044c\u0448\u0438\u043d\u0441\u0442\u0432\u043e\u043c \u0434\u0440\u0443\u0433\u0438\u0445 \u043f\u0440\u0438\u043b\u043e\u0436\u0435\u043d\u0438\u0439\n- \u041a\u043e\u0434\u044b \u0438 SMS \u043e\u0442 \u043e\u0442\u043f\u0440\u0430\u0432\u0438\u0442\u0435\u043b\u0435\u0439 \u0438\u0437 \u0421\u0428\u0410 \u0438 \u041a\u0430\u043d\u0430\u0434\u044b \u043f\u0440\u0438\u0445\u043e\u0434\u044f\u0442 \u0432 \u043f\u0440\u0438\u043b\u043e\u0436\u0435\u043d\u0438\u0435, \u0441\u0433\u0440\u0443\u043f\u043f\u0438\u0440\u043e\u0432\u0430\u043d\u043d\u044b\u0435 \u043f\u043e \u043e\u0442\u043f\u0440\u0430\u0432\u0438\u0442\u0435\u043b\u044e\n- \u0412 \u043b\u044e\u0431\u043e\u0439 \u043c\u043e\u043c\u0435\u043d\u0442 \u043f\u0435\u0440\u0435\u043a\u043b\u044e\u0447\u0430\u0439\u0442\u0435\u0441\u044c \u043d\u0430 \u043d\u043e\u0432\u044b\u0439 \u043d\u043e\u043c\u0435\u0440 \u0441 \u0442\u0435\u043c \u0436\u0435 \u043a\u043e\u0434\u043e\u043c \u0433\u043e\u0440\u043e\u0434\u0430 \u0437\u0430 \u043d\u0435\u0441\u043a\u043e\u043b\u044c\u043a\u043e \u043a\u0440\u0435\u0434\u0438\u0442\u043e\u0432\n- \u0412\u044b\u0431\u0435\u0440\u0438\u0442\u0435 \u0433\u043e\u0440\u043e\u0434 \u0432 \u0421\u0428\u0410 \u0438\u043b\u0438 \u041a\u0430\u043d\u0430\u0434\u0435\n- \u0415\u0441\u0442\u044c \u0438 \u0438\u0441\u0445\u043e\u0434\u044f\u0449\u0438\u0435 \u0437\u0432\u043e\u043d\u043a\u0438: 100 \u043c\u0438\u043d\u0443\u0442 \u0432 \u043c\u0435\u0441\u044f\u0446 \u0432 \u0421\u0428\u0410 \u0438 \u041a\u0430\u043d\u0430\u0434\u0443, \u0435\u0449\u0451 50 \u0441\u0442\u0440\u0430\u043d \u2014 \u0437\u0430 \u043a\u0440\u0435\u0434\u0438\u0442\u044b\n\n\u0427\u0415\u0413\u041e \u042d\u0422\u041e\u0422 \u041d\u041e\u041c\u0415\u0420 \u041f\u041e\u041a\u0410 \u041d\u0415 \u0423\u041c\u0415\u0415\u0422\n\u041e\u0442\u043f\u0440\u0430\u0432\u043a\u0430 SMS, \u043f\u0440\u0438\u0451\u043c SMS \u0438\u0437-\u0437\u0430 \u043f\u0440\u0435\u0434\u0435\u043b\u043e\u0432 \u0421\u0428\u0410 \u0438 \u041a\u0430\u043d\u0430\u0434\u044b \u0438 \u0432\u0445\u043e\u0434\u044f\u0449\u0438\u0435 \u0437\u0432\u043e\u043d\u043a\u0438 \u043d\u0435\u0434\u043e\u0441\u0442\u0443\u043f\u043d\u044b. \u041d\u0435\u043a\u043e\u0442\u043e\u0440\u044b\u0435 \u043f\u043b\u0430\u0442\u0444\u043e\u0440\u043c\u044b \u043d\u0435 \u043f\u0440\u0438\u043d\u0438\u043c\u0430\u044e\u0442 \u0432\u0438\u0440\u0442\u0443\u0430\u043b\u044c\u043d\u044b\u0435 \u043d\u043e\u043c\u0435\u0440\u0430 \u2014 \u0435\u0441\u043b\u0438 \u043a\u043e\u0434 \u043d\u0435 \u043f\u0440\u0438\u0448\u0451\u043b, \u0441\u043c\u0435\u043d\u0438\u0442\u0435 \u043d\u043e\u043c\u0435\u0440.\n\n\u0412\u0420\u0415\u041c\u0415\u041d\u041d\u042b\u0415 \u041d\u041e\u041c\u0415\u0420\u0410 \u0414\u041b\u042f \u041a\u041e\u0414\u041e\u0412 \u041f\u041e\u0414\u0422\u0412\u0415\u0420\u0416\u0414\u0415\u041d\u0418\u042f\n\u041d\u0435\u043a\u043e\u0442\u043e\u0440\u044b\u043c \u0440\u0435\u0433\u0438\u0441\u0442\u0440\u0430\u0446\u0438\u044f\u043c \u043a\u043e\u0434 \u043d\u0443\u0436\u0435\u043d \u0442\u043e\u043b\u044c\u043a\u043e \u043e\u0434\u0438\u043d \u0440\u0430\u0437. \u0412\u044b\u0431\u0435\u0440\u0438\u0442\u0435 \u0441\u0435\u0440\u0432\u0438\u0441 \u0438 \u0441\u0442\u0440\u0430\u043d\u0443, \u043f\u043e\u043b\u0443\u0447\u0438\u0442\u0435 \u0440\u0430\u0431\u043e\u0447\u0438\u0439 \u043d\u043e\u043c\u0435\u0440 - \u0438 \u043a\u043e\u0434 \u043f\u043e\u044f\u0432\u0438\u0442\u0441\u044f \u0432 \u043f\u0440\u0438\u043b\u043e\u0436\u0435\u043d\u0438\u0438, \u043a\u0430\u043a \u0442\u043e\u043b\u044c\u043a\u043e \u043f\u0440\u0438\u0434\u0451\u0442.\n\n- \u0411\u043e\u043b\u0435\u0435 380 \u0441\u0435\u0440\u0432\u0438\u0441\u043e\u0432 \u0432 69 \u0441\u0442\u0440\u0430\u043d\u0430\u0445\n- \u041a\u0430\u0436\u0434\u0430\u044f \u0441\u0442\u0440\u0430\u043d\u0430 \u043f\u043e\u043a\u0430\u0437\u044b\u0432\u0430\u0435\u0442 \u0441\u0432\u043e\u0439 \u0441\u0435\u0442\u0435\u0432\u043e\u0439 \u043f\u043e\u043a\u0430\u0437\u0430\u0442\u0435\u043b\u044c \u0434\u043e\u0441\u0442\u0430\u0432\u043a\u0438 \u0435\u0449\u0451 \u0434\u043e \u0442\u043e\u0433\u043e, \u043a\u0430\u043a \u0432\u044b \u0447\u0442\u043e-\u0442\u043e \u043f\u043e\u0442\u0440\u0430\u0442\u0438\u0442\u0435, - \u0432\u044b\u0431\u0438\u0440\u0430\u0439\u0442\u0435 \u043e\u0441\u043e\u0437\u043d\u0430\u043d\u043d\u043e\n- \u041f\u043b\u0430\u0442\u0438\u0442\u0435 \u043a\u0440\u0435\u0434\u0438\u0442\u0430\u043c\u0438 - \u0442\u043e\u043b\u044c\u043a\u043e \u0437\u0430 \u0442\u043e, \u0447\u0442\u043e \u0438\u0441\u043f\u043e\u043b\u044c\u0437\u0443\u0435\u0442\u0435\n- \u0415\u0441\u043b\u0438 \u043a\u043e\u0434 \u043d\u0435 \u043f\u0440\u0438\u0445\u043e\u0434\u0438\u0442 \u0432 \u0442\u0435\u0447\u0435\u043d\u0438\u0435 8 \u043c\u0438\u043d\u0443\u0442, \u043a\u0440\u0435\u0434\u0438\u0442\u044b \u0432\u043e\u0437\u0432\u0440\u0430\u0449\u0430\u044e\u0442\u0441\u044f \u0430\u0432\u0442\u043e\u043c\u0430\u0442\u0438\u0447\u0435\u0441\u043a\u0438\n\n\u0412\u0420\u0415\u041c\u0415\u041d\u041d\u042b\u0419 \u0410\u0414\u0420\u0415\u0421 \u042d\u041b\u0415\u041a\u0422\u0420\u041e\u041d\u041d\u041e\u0419 \u041f\u041e\u0427\u0422\u042b\n\u041d\u0443\u0436\u0435\u043d \u0430\u0434\u0440\u0435\u0441, \u0430 \u043d\u0435 \u043d\u043e\u043c\u0435\u0440? \u041f\u043e\u043b\u0443\u0447\u0438\u0442\u0435 \u043e\u0434\u043d\u043e\u0440\u0430\u0437\u043e\u0432\u044b\u0439 \u043f\u043e\u0447\u0442\u043e\u0432\u044b\u0439 \u044f\u0449\u0438\u043a \u043d\u0430 \u043d\u0430\u0441\u0442\u043e\u044f\u0449\u0435\u043c \u0440\u0430\u0441\u043f\u0440\u043e\u0441\u0442\u0440\u0430\u043d\u0451\u043d\u043d\u043e\u043c \u0434\u043e\u043c\u0435\u043d\u0435 \u0438 \u0447\u0438\u0442\u0430\u0439\u0442\u0435 \u043a\u043e\u0434 \u0432 \u043f\u0440\u0438\u043b\u043e\u0436\u0435\u043d\u0438\u0438. \u041f\u0435\u0440\u0432\u044b\u0439 \u0430\u0434\u0440\u0435\u0441 \u0431\u0435\u0441\u043f\u043b\u0430\u0442\u043d\u044b\u0439; \u043f\u043b\u0430\u043d vSMS Mail \u0434\u043e\u0431\u0430\u0432\u043b\u044f\u0435\u0442 \u0434\u043e 25 \u0430\u0434\u0440\u0435\u0441\u043e\u0432 \u0432 \u0434\u0435\u043d\u044c.\n\n\u041a\u0410\u041a \u0420\u0410\u0411\u041e\u0422\u0410\u042e\u0422 \u041a\u0420\u0415\u0414\u0418\u0422\u042b\n\u041a\u0440\u0435\u0434\u0438\u0442\u044b \u043f\u043e\u043a\u0443\u043f\u0430\u044e\u0442\u0441\u044f \u043f\u0430\u043a\u0435\u0442\u0430\u043c\u0438 \u0438 \u0442\u0440\u0430\u0442\u044f\u0442\u0441\u044f \u0437\u0430 \u043d\u043e\u043c\u0435\u0440. \u0426\u0435\u043d\u044b \u0437\u0430\u0432\u0438\u0441\u044f\u0442 \u043e\u0442 \u0441\u0435\u0440\u0432\u0438\u0441\u0430 \u0438 \u0441\u0442\u0440\u0430\u043d\u044b, \u043f\u043e\u0442\u043e\u043c\u0443 \u0447\u0442\u043e \u043e\u0442 \u043d\u0438\u0445 \u0437\u0430\u0432\u0438\u0441\u0438\u0442 \u0438 \u043d\u0430\u0448\u0430 \u0441\u043e\u0431\u0441\u0442\u0432\u0435\u043d\u043d\u0430\u044f \u0441\u0435\u0431\u0435\u0441\u0442\u043e\u0438\u043c\u043e\u0441\u0442\u044c. \u041f\u0430\u043a\u0435\u0442\u044b \u043a\u0440\u0435\u0434\u0438\u0442\u043e\u0432 \u043d\u0438\u043a\u043e\u0433\u0434\u0430 \u043d\u0435 \u043f\u0440\u043e\u0434\u043b\u0435\u0432\u0430\u044e\u0442\u0441\u044f \u0441\u0430\u043c\u0438 \u043f\u043e \u0441\u0435\u0431\u0435, \u0430 \u0432\u0441\u0451, \u0447\u0442\u043e \u043d\u0435 \u0441\u0440\u0430\u0431\u043e\u0442\u0430\u043b\u043e, \u0432\u043e\u0437\u0432\u0440\u0430\u0449\u0430\u0435\u0442\u0441\u044f \u0431\u0435\u0437 \u0432\u0430\u0448\u0435\u0433\u043e \u0437\u0430\u043f\u0440\u043e\u0441\u0430.\n\n\u0427\u0415\u0413\u041e \u041c\u042b \u041d\u0415 \u0414\u0415\u041b\u0410\u0415\u041c\n\u041c\u044b \u043d\u0435 \u043f\u0440\u043e\u0434\u0430\u0451\u043c \u0432\u0430\u0448\u0438 \u0434\u0430\u043d\u043d\u044b\u0435, \u043d\u0435 \u043f\u043e\u043a\u0430\u0437\u044b\u0432\u0430\u0435\u043c \u0440\u0435\u043a\u043b\u0430\u043c\u0443 \u0438 \u043d\u0435 \u0437\u0430\u043f\u0440\u0430\u0448\u0438\u0432\u0430\u0435\u043c \u0434\u043e\u0441\u0442\u0443\u043f \u043a \u043a\u043e\u043d\u0442\u0430\u043a\u0442\u0430\u043c. \u0412\u0445\u043e\u0434 \u0447\u0435\u0440\u0435\u0437 Apple \u0438\u043b\u0438 \u043f\u043e \u044d\u043b\u0435\u043a\u0442\u0440\u043e\u043d\u043d\u043e\u0439 \u043f\u043e\u0447\u0442\u0435 - \u044d\u0442\u043e \u0432\u0441\u0451, \u0447\u0442\u043e \u043d\u0443\u0436\u043d\u043e \u0434\u043b\u044f \u0430\u043a\u043a\u0430\u0443\u043d\u0442\u0430. \u0410\u0440\u0435\u043d\u0434\u043e\u0432\u0430\u043d\u043d\u044b\u0439 \u043d\u043e\u043c\u0435\u0440 \u043f\u0440\u0438\u043d\u0430\u0434\u043b\u0435\u0436\u0438\u0442 \u0442\u043e\u043b\u044c\u043a\u043e \u0432\u0430\u043c, \u043f\u043e\u043a\u0430 \u0432\u044b \u0435\u0433\u043e \u0441\u043e\u0445\u0440\u0430\u043d\u044f\u0435\u0442\u0435.\n\n\u041e\u0411\u0420\u0410\u0422\u0418\u0422\u0415 \u0412\u041d\u0418\u041c\u0410\u041d\u0418\u0415\n\u0410\u0440\u0435\u043d\u0434\u043e\u0432\u0430\u043d\u043d\u044b\u0439 \u0432\u0442\u043e\u0440\u043e\u0439 \u043d\u043e\u043c\u0435\u0440 \u043d\u0435 \u043c\u043e\u0436\u0435\u0442 \u0434\u043e\u0437\u0432\u043e\u043d\u0438\u0442\u044c\u0441\u044f \u0434\u043e 911 \u0438\u043b\u0438 \u043b\u044e\u0431\u043e\u0439 \u0434\u0440\u0443\u0433\u043e\u0439 \u044d\u043a\u0441\u0442\u0440\u0435\u043d\u043d\u043e\u0439 \u0441\u043b\u0443\u0436\u0431\u044b. \u0414\u043b\u044f \u044d\u043a\u0441\u0442\u0440\u0435\u043d\u043d\u044b\u0445 \u0441\u043b\u0443\u0447\u0430\u0435\u0432 \u0432\u0441\u0435\u0433\u0434\u0430 \u0438\u0441\u043f\u043e\u043b\u044c\u0437\u0443\u0439\u0442\u0435 \u0441\u043e\u0431\u0441\u0442\u0432\u0435\u043d\u043d\u044b\u0439 \u043d\u043e\u043c\u0435\u0440 \u0432\u0430\u0448\u0435\u0433\u043e \u0442\u0435\u043b\u0435\u0444\u043e\u043d\u0430. \u041d\u0435\u043a\u043e\u0442\u043e\u0440\u044b\u0435 \u0441\u0435\u0440\u0432\u0438\u0441\u044b \u0431\u043b\u043e\u043a\u0438\u0440\u0443\u044e\u0442 \u0432\u0440\u0435\u043c\u0435\u043d\u043d\u044b\u0435 \u043d\u043e\u043c\u0435\u0440\u0430, \u0438 \u0432 \u044d\u0442\u043e\u043c \u0441\u043b\u0443\u0447\u0430\u0435 \u043a\u043e\u0434 \u043c\u043e\u0436\u0435\u0442 \u043d\u0435 \u043f\u0440\u0438\u0439\u0442\u0438 - \u043a\u0440\u0435\u0434\u0438\u0442\u044b \u0432\u043e\u0437\u0432\u0440\u0430\u0449\u0430\u044e\u0442\u0441\u044f, \u0435\u0441\u043b\u0438 \u044d\u0442\u043e \u043f\u0440\u043e\u0438\u0437\u043e\u0448\u043b\u043e.\n\n\u041f\u043e\u0434\u043f\u0438\u0441\u043a\u0438 \u043f\u0440\u043e\u0434\u043b\u0435\u0432\u0430\u044e\u0442\u0441\u044f \u0435\u0436\u0435\u043c\u0435\u0441\u044f\u0447\u043d\u043e \u0438\u043b\u0438 \u0435\u0436\u0435\u0433\u043e\u0434\u043d\u043e \u0434\u043e \u043e\u0442\u043c\u0435\u043d\u044b. \u0423\u043f\u0440\u0430\u0432\u043b\u044f\u0439\u0442\u0435 \u0438\u043c\u0438 \u0438\u043b\u0438 \u043e\u0442\u043c\u0435\u043d\u044f\u0439\u0442\u0435 \u0432 \u043b\u044e\u0431\u043e\u0439 \u043c\u043e\u043c\u0435\u043d\u0442 \u0432 \u043d\u0430\u0441\u0442\u0440\u043e\u0439\u043a\u0430\u0445 Apple ID.\n\n\u0423\u0441\u043b\u043e\u0432\u0438\u044f \u0438\u0441\u043f\u043e\u043b\u044c\u0437\u043e\u0432\u0430\u043d\u0438\u044f (EULA): https://www.apple.com/legal/internet-services/itunes/dev/stdeula/",
+    "locale": "ru",
+    "keywords": "generator,throwaway,trash,minute,mailbox,message,activation,second,tempmail,smscode,box,junk",
+    "marketingUrl": null,
+    "promotionalText": null,
+    "supportUrl": "https://superficial-watch-d12.notion.site/Help-3704b908b4b780fd8d39ea0fd6078efd?source=copy_link",
+    "whatsNew": "\u2022 \u041c\u0430\u0433\u0430\u0437\u0438\u043d \u0432\u0442\u043e\u0440\u043e\u0433\u043e \u043d\u043e\u043c\u0435\u0440\u0430 \u0442\u0435\u043f\u0435\u0440\u044c \u043e\u0442\u043a\u0440\u044b\u0432\u0430\u0435\u0442\u0441\u044f \u043d\u0430 \u043d\u043e\u043c\u0435\u0440\u0430\u0445 \u0421\u0428\u0410, \u0430 \u041a\u0430\u043d\u0430\u0434\u0430 \u0438 \u041f\u0443\u044d\u0440\u0442\u043e-\u0420\u0438\u043a\u043e \u2014 \u0432 \u043e\u0434\u043d\u043e \u043a\u0430\u0441\u0430\u043d\u0438\u0435. \u0423 \u043a\u0430\u0436\u0434\u043e\u0433\u043e \u043d\u043e\u043c\u0435\u0440\u0430 \u043f\u043e\u043a\u0430\u0437\u0430\u043d \u0444\u043b\u0430\u0433 \u0441\u0442\u0440\u0430\u043d\u044b.\n\u2022 \u0412\u043a\u043b\u0430\u0434\u043a\u0430 \u00ab\u041d\u043e\u043c\u0435\u0440\u00bb \u0441\u0440\u0430\u0437\u0443 \u043e\u0442\u043a\u0440\u044b\u0432\u0430\u0435\u0442 \u0432\u0430\u0448 \u043d\u043e\u043c\u0435\u0440.\n\u2022 \u0418\u0441\u043f\u0440\u0430\u0432\u043b\u0435\u043d\u0438\u044f \u043e\u0448\u0438\u0431\u043e\u043a."
+   },
+   "relationships": {
+    "appScreenshotSets": {
+     "links": {
+      "self": "https://api.appstoreconnect.apple.com/v1/appStoreVersionLocalizations/d9adb4d1-ae11-48ba-aa75-c56e99496039/relationships/appScreenshotSets",
+      "related": "https://api.appstoreconnect.apple.com/v1/appStoreVersionLocalizations/d9adb4d1-ae11-48ba-aa75-c56e99496039/appScreenshotSets"
+     }
+    },
+    "appPreviewSets": {
+     "links": {
+      "self": "https://api.appstoreconnect.apple.com/v1/appStoreVersionLocalizations/d9adb4d1-ae11-48ba-aa75-c56e99496039/relationships/appPreviewSets",
+      "related": "https://api.appstoreconnect.apple.com/v1/appStoreVersionLocalizations/d9adb4d1-ae11-48ba-aa75-c56e99496039/appPreviewSets"
+     }
+    },
+    "searchKeywords": {
+     "links": {
+      "self": "https://api.appstoreconnect.apple.com/v1/appStoreVersionLocalizations/d9adb4d1-ae11-48ba-aa75-c56e99496039/relationships/searchKeywords",
+      "related": "https://api.appstoreconnect.apple.com/v1/appStoreVersionLocalizations/d9adb4d1-ae11-48ba-aa75-c56e99496039/searchKeywords"
+     }
+    }
+   },
+   "links": {
+    "self": "https://api.appstoreconnect.apple.com/v1/appStoreVersionLocalizations/d9adb4d1-ae11-48ba-aa75-c56e99496039"
+   }
+  },
+  {
+   "type": "appStoreVersionLocalizations",
+   "id": "d0ed7313-8a03-4f2a-8f09-d1592a00f6df",
+   "attributes": {
+    "description": "Two ways to keep your real number to yourself.\n\nA SECOND NUMBER FOR YOUR VERIFICATION CODES\nRent a real US or Canadian phone number and keep it for as long as you subscribe. Use it to sign up for WhatsApp, TikTok, DoorDash and most other apps \u2014 the code arrives in the app within seconds, with one tap to copy it.\n\n- Works with WhatsApp, TikTok, DoorDash and most other apps\n- Codes and texts from US and Canadian senders land in the app, organised by sender\n- Switch to a fresh number in the same area code whenever you need, for a few credits\n- Choose a US or Canadian city\n- Also makes outgoing calls: 100 minutes a month to the US and Canada, and 50 more countries paid from your credits\n\nWHAT THIS NUMBER DOES NOT DO YET\nSending texts from it, receiving texts from outside the US and Canada, and taking incoming calls are not available. Some platforms refuse virtual numbers \u2014 if a code doesn't arrive, switch your number.\n\nTEMPORARY NUMBERS FOR VERIFICATION CODES\nSome sign-ups only need a code once. Pick the service and the country, get a working number, and the code appears in the app the moment it lands.\n\n- 380+ services across 69 countries\n- Every country shows its network delivery rate before you spend anything, so you can choose with your eyes open\n- Pay with credits, only for what you use\n- No code within 8 minutes and your credits are returned automatically\n\nA TEMPORARY E-MAIL ADDRESS\nNeed an address rather than a number? Get a disposable inbox on a real consumer domain and read the code in the app. Your first address is free; the vSMS Mail plan adds up to 25 addresses a day.\n\nHOW CREDITS WORK\nCredits are bought in packs and spent per number. Prices vary by service and country because our own cost does. Credit packs never renew on their own, and anything that fails is refunded without you asking.\n\nWHAT WE DO NOT DO\nWe do not sell your data, show ads, or ask for your contacts. Sign in with Apple or an e-mail address is all the account you need. A number you rent is yours alone for as long as you keep it.\n\nPLEASE NOTE\nA rented second number cannot reach 911 or any other emergency service. Always use your phone's own number for emergencies. Some services block temporary numbers, and where that happens a code may not arrive - your credits come back when it does not.\n\nSubscriptions renew monthly or yearly until cancelled. Manage or cancel in your Apple ID settings at any time.\n\nTerms of Use (EULA): https://www.apple.com/legal/internet-services/itunes/dev/stdeula/",
+    "locale": "en-US",
+    "keywords": "email,virtual,disposable,temporary,online,otp,code,inbox,fake,spam,signup,burner,text,call,receive",
+    "marketingUrl": null,
+    "promotionalText": null,
+    "supportUrl": "https://superficial-watch-d12.notion.site/Help-3704b908b4b780fd8d39ea0fd6078efd?source=copy_link",
+    "whatsNew": "\u2022 The second-number store now opens on US numbers, with Canada and Puerto Rico one tap away. Every number shows its country flag.\n\u2022 The Number tab opens straight on your number.\n\u2022 Bug fixes."
+   },
+   "relationships": {
+    "appScreenshotSets": {
+     "links": {
+      "self": "https://api.appstoreconnect.apple.com/v1/appStoreVersionLocalizations/d0ed7313-8a03-4f2a-8f09-d1592a00f6df/relationships/appScreenshotSets",
+      "related": "https://api.appstoreconnect.apple.com/v1/appStoreVersionLocalizations/d0ed7313-8a03-4f2a-8f09-d1592a00f6df/appScreenshotSets"
+     }
+    },
+    "appPreviewSets": {
+     "links": {
+      "self": "https://api.appstoreconnect.apple.com/v1/appStoreVersionLocalizations/d0ed7313-8a03-4f2a-8f09-d1592a00f6df/relationships/appPreviewSets",
+      "related": "https://api.appstoreconnect.apple.com/v1/appStoreVersionLocalizations/d0ed7313-8a03-4f2a-8f09-d1592a00f6df/appPreviewSets"
+     }
+    },
+    "searchKeywords": {
+     "links": {
+      "self": "https://api.appstoreconnect.apple.com/v1/appStoreVersionLocalizations/d0ed7313-8a03-4f2a-8f09-d1592a00f6df/relationships/searchKeywords",
+      "related": "https://api.appstoreconnect.apple.com/v1/appStoreVersionLocalizations/d0ed7313-8a03-4f2a-8f09-d1592a00f6df/searchKeywords"
+     }
+    }
+   },
+   "links": {
+    "self": "https://api.appstoreconnect.apple.com/v1/appStoreVersionLocalizations/d0ed7313-8a03-4f2a-8f09-d1592a00f6df"
+   }
+  },
+  {
+   "type": "appStoreVersionLocalizations",
+   "id": "00cc4ab5-6b8d-4d87-a13a-ba286ac1d5c3",
+   "attributes": {
+    "description": "Two ways to keep your real number to yourself.\n\nA SECOND NUMBER FOR YOUR VERIFICATION CODES\nRent a real US or Canadian phone number and keep it for as long as you subscribe. Use it to sign up for WhatsApp, TikTok, DoorDash and most other apps \u2014 the code arrives in the app within seconds, with one tap to copy it.\n\n- Works with WhatsApp, TikTok, DoorDash and most other apps\n- Codes and texts from US and Canadian senders land in the app, organised by sender\n- Switch to a fresh number in the same area code whenever you need, for a few credits\n- Choose a US or Canadian city\n- Also makes outgoing calls: 100 minutes a month to the US and Canada, and 50 more countries paid from your credits\n\nWHAT THIS NUMBER DOES NOT DO YET\nSending texts from it, receiving texts from outside the US and Canada, and taking incoming calls are not available. Some platforms refuse virtual numbers \u2014 if a code doesn't arrive, switch your number.\n\nTEMPORARY NUMBERS FOR VERIFICATION CODES\nSome sign-ups only need a code once. Pick the service and the country, get a working number, and the code appears in the app the moment it lands.\n\n- 380+ services across 69 countries\n- Every country shows its network delivery rate before you spend anything, so you can choose with your eyes open\n- Pay with credits, only for what you use\n- No code within 8 minutes and your credits are returned automatically\n\nA TEMPORARY E-MAIL ADDRESS\nNeed an address rather than a number? Get a disposable inbox on a real consumer domain and read the code in the app. Your first address is free; the vSMS Mail plan adds up to 25 addresses a day.\n\nHOW CREDITS WORK\nCredits are bought in packs and spent per number. Prices vary by service and country because our own cost does. Credit packs never renew on their own, and anything that fails is refunded without you asking.\n\nWHAT WE DO NOT DO\nWe do not sell your data, show ads, or ask for your contacts. Sign in with Apple or an e-mail address is all the account you need. A number you rent is yours alone for as long as you keep it.\n\nPLEASE NOTE\nA rented second number cannot reach 911 or any other emergency service. Always use your phone's own number for emergencies. Some services block temporary numbers, and where that happens a code may not arrive - your credits come back when it does not.\n\nSubscriptions renew monthly or yearly until cancelled. Manage or cancel in your Apple ID settings at any time.\n\nTerms of Use (EULA): https://www.apple.com/legal/internet-services/itunes/dev/stdeula/",
+    "locale": "en-CA",
+    "keywords": "email,virtual,disposable,temporary,online,otp,code,inbox,fake,spam,burner,signup,mobile,verify,sim",
+    "marketingUrl": null,
+    "promotionalText": null,
+    "supportUrl": "https://superficial-watch-d12.notion.site/Help-3704b908b4b780fd8d39ea0fd6078efd?source=copy_link",
+    "whatsNew": "\u2022 The second-number store now opens on US numbers, with Canada and Puerto Rico one tap away. Every number shows its country flag.\n\u2022 The Number tab opens straight on your number.\n\u2022 Bug fixes."
+   },
+   "relationships": {
+    "appScreenshotSets": {
+     "links": {
+      "self": "https://api.appstoreconnect.apple.com/v1/appStoreVersionLocalizations/00cc4ab5-6b8d-4d87-a13a-ba286ac1d5c3/relationships/appScreenshotSets",
+      "related": "https://api.appstoreconnect.apple.com/v1/appStoreVersionLocalizations/00cc4ab5-6b8d-4d87-a13a-ba286ac1d5c3/appScreenshotSets"
+     }
+    },
+    "appPreviewSets": {
+     "links": {
+      "self": "https://api.appstoreconnect.apple.com/v1/appStoreVersionLocalizations/00cc4ab5-6b8d-4d87-a13a-ba286ac1d5c3/relationships/appPreviewSets",
+      "related": "https://api.appstoreconnect.apple.com/v1/appStoreVersionLocalizations/00cc4ab5-6b8d-4d87-a13a-ba286ac1d5c3/appPreviewSets"
+     }
+    },
+    "searchKeywords": {
+     "links": {
+      "self": "https://api.appstoreconnect.apple.com/v1/appStoreVersionLocalizations/00cc4ab5-6b8d-4d87-a13a-ba286ac1d5c3/relationships/searchKeywords",
+      "related": "https://api.appstoreconnect.apple.com/v1/appStoreVersionLocalizations/00cc4ab5-6b8d-4d87-a13a-ba286ac1d5c3/searchKeywords"
+     }
+    }
+   },
+   "links": {
+    "self": "https://api.appstoreconnect.apple.com/v1/appStoreVersionLocalizations/00cc4ab5-6b8d-4d87-a13a-ba286ac1d5c3"
+   }
+  },
+  {
+   "type": "appStoreVersionLocalizations",
+   "id": "a255b3a9-36b1-4628-9f69-82ee9c6c0f69",
+   "attributes": {
+    "description": "\u0637\u0631\u064a\u0642\u062a\u0627\u0646 \u0644\u0644\u062d\u0641\u0627\u0638 \u0639\u0644\u0649 \u0631\u0642\u0645\u0643 \u0627\u0644\u062d\u0642\u064a\u0642\u064a \u0644\u0646\u0641\u0633\u0643.\n\n\u0631\u0642\u0645 \u062b\u0627\u0646\u064d \u0644\u0631\u0645\u0648\u0632 \u0627\u0644\u062a\u062d\u0642\u0642 \u0627\u0644\u062e\u0627\u0635\u0629 \u0628\u0643\n\u0627\u0633\u062a\u0623\u062c\u0631 \u0631\u0642\u0645 \u0647\u0627\u062a\u0641 \u062d\u0642\u064a\u0642\u064a\u064b\u0627 \u0645\u0646 \u0627\u0644\u0648\u0644\u0627\u064a\u0627\u062a \u0627\u0644\u0645\u062a\u062d\u062f\u0629 \u0623\u0648 \u0643\u0646\u062f\u0627 \u0648\u0627\u062d\u062a\u0641\u0638 \u0628\u0647 \u0637\u0648\u0627\u0644 \u0645\u062f\u0629 \u0627\u0634\u062a\u0631\u0627\u0643\u0643. \u0627\u0633\u062a\u062e\u062f\u0645\u0647 \u0644\u0644\u062a\u0633\u062c\u064a\u0644 \u0641\u064a WhatsApp \u0648TikTok \u0648DoorDash \u0648\u0645\u0639\u0638\u0645 \u0627\u0644\u062a\u0637\u0628\u064a\u0642\u0627\u062a \u0627\u0644\u0623\u062e\u0631\u0649\u060c \u0648\u064a\u0635\u0644 \u0627\u0644\u0631\u0645\u0632 \u0625\u0644\u0649 \u0627\u0644\u062a\u0637\u0628\u064a\u0642 \u062e\u0644\u0627\u0644 \u062b\u0648\u0627\u0646\u064d \u0645\u0639 \u0646\u0633\u062e\u0647 \u0628\u0644\u0645\u0633\u0629 \u0648\u0627\u062d\u062f\u0629.\n\n- \u064a\u0639\u0645\u0644 \u0645\u0639 WhatsApp \u0648TikTok \u0648DoorDash \u0648\u0645\u0639\u0638\u0645 \u0627\u0644\u062a\u0637\u0628\u064a\u0642\u0627\u062a \u0627\u0644\u0623\u062e\u0631\u0649\n- \u062a\u0635\u0644 \u0627\u0644\u0631\u0645\u0648\u0632 \u0648\u0627\u0644\u0631\u0633\u0627\u0626\u0644 \u0645\u0646 \u0645\u0631\u0633\u0644\u064a\u0646 \u0641\u064a \u0627\u0644\u0648\u0644\u0627\u064a\u0627\u062a \u0627\u0644\u0645\u062a\u062d\u062f\u0629 \u0648\u0643\u0646\u062f\u0627 \u0625\u0644\u0649 \u0627\u0644\u062a\u0637\u0628\u064a\u0642 \u0645\u0631\u062a\u0628\u0629 \u062d\u0633\u0628 \u0627\u0644\u0645\u0631\u0633\u0644\n- \u0628\u062f\u0651\u0644 \u0625\u0644\u0649 \u0631\u0642\u0645 \u062c\u062f\u064a\u062f \u0628\u0646\u0641\u0633 \u0631\u0645\u0632 \u0627\u0644\u0645\u0646\u0637\u0642\u0629 \u0645\u062a\u0649 \u0634\u0626\u062a \u0645\u0642\u0627\u0628\u0644 \u0628\u0636\u0639\u0629 \u0623\u0631\u0635\u062f\u0629\n- \u0627\u062e\u062a\u0631 \u0645\u062f\u064a\u0646\u0629 \u0641\u064a \u0627\u0644\u0648\u0644\u0627\u064a\u0627\u062a \u0627\u0644\u0645\u062a\u062d\u062f\u0629 \u0623\u0648 \u0643\u0646\u062f\u0627\n- \u064a\u062c\u0631\u064a \u0645\u0643\u0627\u0644\u0645\u0627\u062a \u0635\u0627\u062f\u0631\u0629 \u0623\u064a\u0636\u064b\u0627: 100 \u062f\u0642\u064a\u0642\u0629 \u0634\u0647\u0631\u064a\u064b\u0627 \u0625\u0644\u0649 \u0627\u0644\u0648\u0644\u0627\u064a\u0627\u062a \u0627\u0644\u0645\u062a\u062d\u062f\u0629 \u0648\u0643\u0646\u062f\u0627\u060c \u064850 \u062f\u0648\u0644\u0629 \u0623\u062e\u0631\u0649 \u062a\u064f\u062f\u0641\u0639 \u0645\u0646 \u0623\u0631\u0635\u062f\u062a\u0643\n\n\u0645\u0627 \u0644\u0627 \u064a\u0641\u0639\u0644\u0647 \u0647\u0630\u0627 \u0627\u0644\u0631\u0642\u0645 \u0628\u0639\u062f\n\u0625\u0631\u0633\u0627\u0644 \u0627\u0644\u0631\u0633\u0627\u0626\u0644 \u0627\u0644\u0646\u0635\u064a\u0629 \u0645\u0646\u0647\u060c \u0648\u0627\u0633\u062a\u0642\u0628\u0627\u0644 \u0627\u0644\u0631\u0633\u0627\u0626\u0644 \u0645\u0646 \u062e\u0627\u0631\u062c \u0627\u0644\u0648\u0644\u0627\u064a\u0627\u062a \u0627\u0644\u0645\u062a\u062d\u062f\u0629 \u0648\u0643\u0646\u062f\u0627\u060c \u0648\u0627\u0633\u062a\u0642\u0628\u0627\u0644 \u0627\u0644\u0645\u0643\u0627\u0644\u0645\u0627\u062a \u063a\u064a\u0631 \u0645\u062a\u0627\u062d\u0629. \u0628\u0639\u0636 \u0627\u0644\u0645\u0646\u0635\u0627\u062a \u062a\u0631\u0641\u0636 \u0627\u0644\u0623\u0631\u0642\u0627\u0645 \u0627\u0644\u0627\u0641\u062a\u0631\u0627\u0636\u064a\u0629\u060c \u0641\u0625\u0630\u0627 \u0644\u0645 \u064a\u0635\u0644 \u0627\u0644\u0631\u0645\u0632 \u0628\u062f\u0651\u0644 \u0631\u0642\u0645\u0643.\n\n\u0623\u0631\u0642\u0627\u0645 \u0645\u0624\u0642\u062a\u0629 \u0644\u0631\u0645\u0648\u0632 \u0627\u0644\u062a\u062d\u0642\u0642\n\u0628\u0639\u0636 \u0639\u0645\u0644\u064a\u0627\u062a \u0627\u0644\u062a\u0633\u062c\u064a\u0644 \u062a\u062d\u062a\u0627\u062c \u0625\u0644\u0649 \u0631\u0645\u0632 \u0645\u0631\u0629 \u0648\u0627\u062d\u062f\u0629 \u0641\u0642\u0637. \u0627\u062e\u062a\u0631 \u0627\u0644\u062e\u062f\u0645\u0629 \u0648\u0627\u0644\u062f\u0648\u0644\u0629\u060c \u0648\u0627\u062d\u0635\u0644 \u0639\u0644\u0649 \u0631\u0642\u0645 \u0641\u0639\u0651\u0627\u0644\u060c \u0648\u064a\u0638\u0647\u0631 \u0627\u0644\u0631\u0645\u0632 \u0641\u064a \u0627\u0644\u062a\u0637\u0628\u064a\u0642 \u0641\u0648\u0631 \u0648\u0635\u0648\u0644\u0647.\n\n- \u0623\u0643\u062b\u0631 \u0645\u0646 380 \u062e\u062f\u0645\u0629 \u0641\u064a 69 \u062f\u0648\u0644\u0629\n- \u062a\u0639\u0631\u0636 \u0643\u0644 \u062f\u0648\u0644\u0629 \u0645\u0639\u062f\u0644 \u062a\u0633\u0644\u064a\u0645 \u0627\u0644\u0634\u0628\u0643\u0629 \u0642\u0628\u0644 \u0623\u0646 \u062a\u064f\u0646\u0641\u0642 \u0623\u064a \u0634\u064a\u0621\u060c \u0644\u062a\u062e\u062a\u0627\u0631 \u0648\u0623\u0646\u062a \u0639\u0644\u0649 \u062f\u0631\u0627\u064a\u0629\n- \u0627\u062f\u0641\u0639 \u0628\u0627\u0644\u0631\u0635\u064a\u062f\u060c \u0641\u0642\u0637 \u0645\u0642\u0627\u0628\u0644 \u0645\u0627 \u062a\u0633\u062a\u062e\u062f\u0645\u0647\n- \u0625\u0630\u0627 \u0644\u0645 \u064a\u0635\u0644 \u0627\u0644\u0631\u0645\u0632 \u062e\u0644\u0627\u0644 8 \u062f\u0642\u0627\u0626\u0642\u060c \u064a\u064f\u0639\u0627\u062f \u0631\u0635\u064a\u062f\u0643 \u062a\u0644\u0642\u0627\u0626\u064a\u064b\u0627\n\n\u0639\u0646\u0648\u0627\u0646 \u0628\u0631\u064a\u062f \u0625\u0644\u0643\u062a\u0631\u0648\u0646\u064a \u0645\u0624\u0642\u062a\n\u0647\u0644 \u062a\u062d\u062a\u0627\u062c \u0625\u0644\u0649 \u0639\u0646\u0648\u0627\u0646 \u0628\u062f\u0644\u0627\u064b \u0645\u0646 \u0631\u0642\u0645\u061f \u0627\u062d\u0635\u0644 \u0639\u0644\u0649 \u0635\u0646\u062f\u0648\u0642 \u0628\u0631\u064a\u062f \u0645\u0624\u0642\u062a \u0639\u0644\u0649 \u0646\u0637\u0627\u0642 \u062d\u0642\u064a\u0642\u064a \u0634\u0627\u0626\u0639 \u0627\u0644\u0627\u0633\u062a\u062e\u062f\u0627\u0645 \u0648\u0627\u0642\u0631\u0623 \u0627\u0644\u0631\u0645\u0632 \u062f\u0627\u062e\u0644 \u0627\u0644\u062a\u0637\u0628\u064a\u0642. \u0639\u0646\u0648\u0627\u0646\u0643 \u0627\u0644\u0623\u0648\u0644 \u0645\u062c\u0627\u0646\u064a\u061b \u0648\u062a\u0636\u064a\u0641 \u062e\u0637\u0629 vSMS Mail \u062d\u062a\u0649 25 \u0639\u0646\u0648\u0627\u0646\u064b\u0627 \u064a\u0648\u0645\u064a\u064b\u0627.\n\n\u0643\u064a\u0641 \u064a\u0639\u0645\u0644 \u0627\u0644\u0631\u0635\u064a\u062f\n\u064a\u064f\u0634\u062a\u0631\u0649 \u0627\u0644\u0631\u0635\u064a\u062f \u0639\u0644\u0649 \u0634\u0643\u0644 \u0628\u0627\u0642\u0627\u062a \u0648\u064a\u064f\u0646\u0641\u0642 \u062d\u0633\u0628 \u0627\u0644\u0631\u0642\u0645. \u062a\u062e\u062a\u0644\u0641 \u0627\u0644\u0623\u0633\u0639\u0627\u0631 \u062d\u0633\u0628 \u0627\u0644\u062e\u062f\u0645\u0629 \u0648\u0627\u0644\u062f\u0648\u0644\u0629 \u0644\u0623\u0646 \u062a\u0643\u0644\u0641\u062a\u0646\u0627 \u0646\u0641\u0633\u0647\u0627 \u062a\u062e\u062a\u0644\u0641. \u0644\u0627 \u062a\u062a\u062c\u062f\u062f \u0628\u0627\u0642\u0627\u062a \u0627\u0644\u0631\u0635\u064a\u062f \u0645\u0646 \u062a\u0644\u0642\u0627\u0626\u0647\u0627 \u0623\u0628\u062f\u064b\u0627\u060c \u0648\u0643\u0644 \u0645\u0627 \u064a\u0641\u0634\u0644 \u064a\u064f\u0633\u062a\u0631\u062f \u062f\u0648\u0646 \u0623\u0646 \u062a\u0637\u0644\u0628 \u0630\u0644\u0643.\n\n\u0645\u0627 \u0644\u0627 \u0646\u0642\u0648\u0645 \u0628\u0647\n\u0646\u062d\u0646 \u0644\u0627 \u0646\u0628\u064a\u0639 \u0628\u064a\u0627\u0646\u0627\u062a\u0643\u060c \u0648\u0644\u0627 \u0646\u0639\u0631\u0636 \u0625\u0639\u0644\u0627\u0646\u0627\u062a\u060c \u0648\u0644\u0627 \u0646\u0637\u0644\u0628 \u0627\u0644\u0648\u0635\u0648\u0644 \u0625\u0644\u0649 \u062c\u0647\u0627\u062a \u0627\u062a\u0635\u0627\u0644\u0643. \u062a\u0633\u062c\u064a\u0644 \u0627\u0644\u062f\u062e\u0648\u0644 \u0639\u0628\u0631 Apple \u0623\u0648 \u0628\u0639\u0646\u0648\u0627\u0646 \u0628\u0631\u064a\u062f \u0625\u0644\u0643\u062a\u0631\u0648\u0646\u064a \u0647\u0648 \u0643\u0644 \u0645\u0627 \u062a\u062d\u062a\u0627\u062c\u0647 \u0643\u062d\u0633\u0627\u0628. \u0627\u0644\u0631\u0642\u0645 \u0627\u0644\u0630\u064a \u062a\u0633\u062a\u0623\u062c\u0631\u0647 \u064a\u062e\u0635\u0643 \u0648\u062d\u062f\u0643 \u0637\u0627\u0644\u0645\u0627 \u0627\u062d\u062a\u0641\u0638\u062a \u0628\u0647.\n\n\u064a\u064f\u0631\u062c\u0649 \u0645\u0644\u0627\u062d\u0638\u0629\n\u0644\u0627 \u064a\u0645\u0643\u0646 \u0644\u0644\u0631\u0642\u0645 \u0627\u0644\u062b\u0627\u0646\u064a \u0627\u0644\u0645\u0633\u062a\u0623\u062c\u0631 \u0627\u0644\u0627\u062a\u0635\u0627\u0644 \u0628\u0627\u0644\u0631\u0642\u0645 911 \u0623\u0648 \u0623\u064a \u062e\u062f\u0645\u0629 \u0637\u0648\u0627\u0631\u0626 \u0623\u062e\u0631\u0649. \u0627\u0633\u062a\u062e\u062f\u0645 \u062f\u0627\u0626\u0645\u064b\u0627 \u0631\u0642\u0645 \u0647\u0627\u062a\u0641\u0643 \u0627\u0644\u062e\u0627\u0635 \u0641\u064a \u062d\u0627\u0644\u0627\u062a \u0627\u0644\u0637\u0648\u0627\u0631\u0626. \u062a\u062d\u0638\u0631 \u0628\u0639\u0636 \u0627\u0644\u062e\u062f\u0645\u0627\u062a \u0627\u0644\u0623\u0631\u0642\u0627\u0645 \u0627\u0644\u0645\u0624\u0642\u062a\u0629\u060c \u0648\u0641\u064a \u0647\u0630\u0647 \u0627\u0644\u062d\u0627\u0644\u0629 \u0642\u062f \u0644\u0627 \u064a\u0635\u0644 \u0627\u0644\u0631\u0645\u0632 - \u0648\u064a\u064f\u0639\u0627\u062f \u0631\u0635\u064a\u062f\u0643 \u0639\u0646\u062f \u062d\u062f\u0648\u062b \u0630\u0644\u0643.\n\n\u062a\u062a\u062c\u062f\u062f \u0627\u0644\u0627\u0634\u062a\u0631\u0627\u0643\u0627\u062a \u0634\u0647\u0631\u064a\u064b\u0627 \u0623\u0648 \u0633\u0646\u0648\u064a\u064b\u0627 \u062d\u062a\u0649 \u0625\u0644\u063a\u0627\u0626\u0647\u0627. \u064a\u0645\u0643\u0646\u0643 \u0625\u062f\u0627\u0631\u062a\u0647\u0627 \u0623\u0648 \u0625\u0644\u063a\u0627\u0624\u0647\u0627 \u0641\u064a \u0623\u064a \u0648\u0642\u062a \u0645\u0646 \u0625\u0639\u062f\u0627\u062f\u0627\u062a Apple ID \u0627\u0644\u062e\u0627\u0635\u0629 \u0628\u0643.\n\n\u0634\u0631\u0648\u0637 \u0627\u0644\u0627\u0633\u062a\u062e\u062f\u0627\u0645 (EULA): https://www.apple.com/legal/internet-services/itunes/dev/stdeula/",
+    "locale": "ar-SA",
+    "keywords": "generator,throwaway,trash,minute,mailbox,message,activation,second,tempmail,smscode,box,junk",
+    "marketingUrl": null,
+    "promotionalText": null,
+    "supportUrl": "https://superficial-watch-d12.notion.site/Help-3704b908b4b780fd8d39ea0fd6078efd?source=copy_link",
+    "whatsNew": "\u2022 \u0645\u062a\u062c\u0631 \u0627\u0644\u0631\u0642\u0645 \u0627\u0644\u062b\u0627\u0646\u064a \u064a\u0641\u062a\u062d \u0627\u0644\u0622\u0646 \u0639\u0644\u0649 \u0623\u0631\u0642\u0627\u0645 \u0627\u0644\u0648\u0644\u0627\u064a\u0627\u062a \u0627\u0644\u0645\u062a\u062d\u062f\u0629\u060c \u0645\u0639 \u0643\u0646\u062f\u0627 \u0648\u0628\u0648\u0631\u062a\u0648\u0631\u064a\u0643\u0648 \u0628\u0644\u0645\u0633\u0629 \u0648\u0627\u062d\u062f\u0629. \u0643\u0644 \u0631\u0642\u0645 \u064a\u0639\u0631\u0636 \u0639\u0644\u0645 \u0628\u0644\u062f\u0647.\n\u2022 \u062a\u0628\u0648\u064a\u0628 \u0627\u0644\u0631\u0642\u0645 \u064a\u0641\u062a\u062d \u0645\u0628\u0627\u0634\u0631\u0629 \u0639\u0644\u0649 \u0631\u0642\u0645\u0643.\n\u2022 \u0625\u0635\u0644\u0627\u062d\u0627\u062a \u0644\u0644\u0623\u062e\u0637\u0627\u0621."
+   },
+   "relationships": {
+    "appScreenshotSets": {
+     "links": {
+      "self": "https://api.appstoreconnect.apple.com/v1/appStoreVersionLocalizations/a255b3a9-36b1-4628-9f69-82ee9c6c0f69/relationships/appScreenshotSets",
+      "related": "https://api.appstoreconnect.apple.com/v1/appStoreVersionLocalizations/a255b3a9-36b1-4628-9f69-82ee9c6c0f69/appScreenshotSets"
+     }
+    },
+    "appPreviewSets": {
+     "links": {
+      "self": "https://api.appstoreconnect.apple.com/v1/appStoreVersionLocalizations/a255b3a9-36b1-4628-9f69-82ee9c6c0f69/relationships/appPreviewSets",
+      "related": "https://api.appstoreconnect.apple.com/v1/appStoreVersionLocalizations/a255b3a9-36b1-4628-9f69-82ee9c6c0f69/appPreviewSets"
+     }
+    },
+    "searchKeywords": {
+     "links": {
+      "self": "https://api.appstoreconnect.apple.com/v1/appStoreVersionLocalizations/a255b3a9-36b1-4628-9f69-82ee9c6c0f69/relationships/searchKeywords",
+      "related": "https://api.appstoreconnect.apple.com/v1/appStoreVersionLocalizations/a255b3a9-36b1-4628-9f69-82ee9c6c0f69/searchKeywords"
+     }
+    }
+   },
+   "links": {
+    "self": "https://api.appstoreconnect.apple.com/v1/appStoreVersionLocalizations/a255b3a9-36b1-4628-9f69-82ee9c6c0f69"
+   }
+  },
+  {
+   "type": "appStoreVersionLocalizations",
+   "id": "af6cc798-92a6-4166-8e48-3c9800e6511a",
+   "attributes": {
+    "description": "Two ways to keep your real number to yourself.\n\nA SECOND NUMBER FOR YOUR VERIFICATION CODES\nRent a real US or Canadian phone number and keep it for as long as you subscribe. Use it to sign up for WhatsApp, TikTok, DoorDash and most other apps \u2014 the code arrives in the app within seconds, with one tap to copy it.\n\n- Works with WhatsApp, TikTok, DoorDash and most other apps\n- Codes and texts from US and Canadian senders land in the app, organised by sender\n- Switch to a fresh number in the same area code whenever you need, for a few credits\n- Choose a US or Canadian city\n- Also makes outgoing calls: 100 minutes a month to the US and Canada, and 50 more countries paid from your credits\n\nWHAT THIS NUMBER DOES NOT DO YET\nSending texts from it, receiving texts from outside the US and Canada, and taking incoming calls are not available. Some platforms refuse virtual numbers \u2014 if a code doesn't arrive, switch your number.\n\nTEMPORARY NUMBERS FOR VERIFICATION CODES\nSome sign-ups only need a code once. Pick the service and the country, get a working number, and the code appears in the app the moment it lands.\n\n- 380+ services across 69 countries\n- Every country shows its network delivery rate before you spend anything, so you can choose with your eyes open\n- Pay with credits, only for what you use\n- No code within 8 minutes and your credits are returned automatically\n\nA TEMPORARY E-MAIL ADDRESS\nNeed an address rather than a number? Get a disposable inbox on a real consumer domain and read the code in the app. Your first address is free; the vSMS Mail plan adds up to 25 addresses a day.\n\nHOW CREDITS WORK\nCredits are bought in packs and spent per number. Prices vary by service and country because our own cost does. Credit packs never renew on their own, and anything that fails is refunded without you asking.\n\nWHAT WE DO NOT DO\nWe do not sell your data, show ads, or ask for your contacts. Sign in with Apple or an e-mail address is all the account you need. A number you rent is yours alone for as long as you keep it.\n\nPLEASE NOTE\nA rented second number cannot reach 911 or any other emergency service. Always use your phone's own number for emergencies. Some services block temporary numbers, and where that happens a code may not arrive - your credits come back when it does not.\n\nSubscriptions renew monthly or yearly until cancelled. Manage or cancel in your Apple ID settings at any time.\n\nTerms of Use (EULA): https://www.apple.com/legal/internet-services/itunes/dev/stdeula/",
+    "locale": "en-AU",
+    "keywords": "email,virtual,disposable,temporary,online,otp,code,inbox,fake,spam,burner,signup,mobile,verify,sim",
+    "marketingUrl": null,
+    "promotionalText": null,
+    "supportUrl": "https://superficial-watch-d12.notion.site/Help-3704b908b4b780fd8d39ea0fd6078efd?source=copy_link",
+    "whatsNew": "\u2022 The second-number store now opens on US numbers, with Canada and Puerto Rico one tap away. Every number shows its country flag.\n\u2022 The Number tab opens straight on your number.\n\u2022 Bug fixes."
+   },
+   "relationships": {
+    "appScreenshotSets": {
+     "links": {
+      "self": "https://api.appstoreconnect.apple.com/v1/appStoreVersionLocalizations/af6cc798-92a6-4166-8e48-3c9800e6511a/relationships/appScreenshotSets",
+      "related": "https://api.appstoreconnect.apple.com/v1/appStoreVersionLocalizations/af6cc798-92a6-4166-8e48-3c9800e6511a/appScreenshotSets"
+     }
+    },
+    "appPreviewSets": {
+     "links": {
+      "self": "https://api.appstoreconnect.apple.com/v1/appStoreVersionLocalizations/af6cc798-92a6-4166-8e48-3c9800e6511a/relationships/appPreviewSets",
+      "related": "https://api.appstoreconnect.apple.com/v1/appStoreVersionLocalizations/af6cc798-92a6-4166-8e48-3c9800e6511a/appPreviewSets"
+     }
+    },
+    "searchKeywords": {
+     "links": {
+      "self": "https://api.appstoreconnect.apple.com/v1/appStoreVersionLocalizations/af6cc798-92a6-4166-8e48-3c9800e6511a/relationships/searchKeywords",
+      "related": "https://api.appstoreconnect.apple.com/v1/appStoreVersionLocalizations/af6cc798-92a6-4166-8e48-3c9800e6511a/searchKeywords"
+     }
+    }
+   },
+   "links": {
+    "self": "https://api.appstoreconnect.apple.com/v1/appStoreVersionLocalizations/af6cc798-92a6-4166-8e48-3c9800e6511a"
+   }
+  },
+  {
+   "type": "appStoreVersionLocalizations",
+   "id": "87084dde-dc90-4212-ae48-72757d3db8d8",
+   "attributes": {
+    "description": "Dos formas de mantener tu n\u00famero real solo para ti.\n\nUN SEGUNDO N\u00daMERO PARA TUS C\u00d3DIGOS DE VERIFICACI\u00d3N\nAlquila un n\u00famero de tel\u00e9fono real de EE. UU. o Canad\u00e1 y cons\u00e9rvalo mientras dure tu suscripci\u00f3n. \u00dasalo para registrarte en WhatsApp, TikTok, DoorDash y la mayor\u00eda de las dem\u00e1s apps: el c\u00f3digo llega a la app en segundos y se copia con un toque.\n\n- Funciona con WhatsApp, TikTok, DoorDash y la mayor\u00eda de las dem\u00e1s apps\n- Los c\u00f3digos y SMS de remitentes de EE. UU. y Canad\u00e1 llegan a la app, ordenados por remitente\n- Cambia a un n\u00famero nuevo con el mismo prefijo cuando quieras, por unos pocos cr\u00e9ditos\n- Elige una ciudad de EE. UU. o Canad\u00e1\n- Tambi\u00e9n hace llamadas salientes: 100 minutos al mes a EE. UU. y Canad\u00e1, y 50 pa\u00edses m\u00e1s pagados con tus cr\u00e9ditos\n\nLO QUE ESTE N\u00daMERO A\u00daN NO HACE\nEnviar SMS, recibir SMS desde fuera de EE. UU. y Canad\u00e1 y recibir llamadas no est\u00e1n disponibles. Algunas plataformas rechazan los n\u00fameros virtuales: si un c\u00f3digo no llega, cambia de n\u00famero.\n\nN\u00daMEROS TEMPORALES PARA C\u00d3DIGOS DE VERIFICACI\u00d3N\nAlgunos registros solo necesitan un c\u00f3digo una vez. Elige el servicio y el pa\u00eds, obt\u00e9n un n\u00famero que funcione, y el c\u00f3digo aparece en la app en cuanto llega.\n\n- M\u00e1s de 380 servicios en 69 pa\u00edses\n- Cada pa\u00eds muestra su tasa de entrega de la red antes de que gastes nada, para que elijas con informaci\u00f3n clara\n- Paga con cr\u00e9ditos, solo por lo que uses\n- Si no llega el c\u00f3digo en 8 minutos, tus cr\u00e9ditos se devuelven autom\u00e1ticamente\n\nUNA DIRECCI\u00d3N DE CORREO TEMPORAL\n\u00bfNecesitas una direcci\u00f3n en lugar de un n\u00famero? Obt\u00e9n una bandeja de entrada desechable en un dominio real de consumo y lee el c\u00f3digo en la app. Tu primera direcci\u00f3n es gratis; el plan vSMS Mail agrega hasta 25 direcciones al d\u00eda.\n\nC\u00d3MO FUNCIONAN LOS CR\u00c9DITOS\nLos cr\u00e9ditos se compran en paquetes y se gastan por n\u00famero. Los precios var\u00edan seg\u00fan el servicio y el pa\u00eds porque nuestro propio costo tambi\u00e9n var\u00eda. Los paquetes de cr\u00e9ditos nunca se renuevan solos, y todo lo que falla se reembolsa sin que tengas que pedirlo.\n\nLO QUE NO HACEMOS\nNo vendemos tus datos, no mostramos anuncios ni pedimos tus contactos. Iniciar sesi\u00f3n con Apple o con un correo electr\u00f3nico es toda la cuenta que necesitas. Un n\u00famero que rentas es solo tuyo mientras lo conserves.\n\nTEN EN CUENTA\nUn segundo n\u00famero rentado no puede comunicarse con el 911 ni con ning\u00fan otro servicio de emergencia. Usa siempre el n\u00famero propio de tu tel\u00e9fono para emergencias. Algunos servicios bloquean los n\u00fameros temporales, y cuando eso ocurre, es posible que un c\u00f3digo no llegue; tus cr\u00e9ditos se devuelven cuando esto pasa.\n\nLas suscripciones se renuevan mensual o anualmente hasta que las canceles. Admin\u00edstralas o canc\u00e9lalas cuando quieras en la configuraci\u00f3n de tu ID de Apple.\n\nT\u00e9rminos de uso (EULA): https://www.apple.com/legal/internet-services/itunes/dev/stdeula/",
+    "locale": "es-MX",
+    "keywords": "desechable,anonimo,codigo,verificacion,recibir,virtual,mensaje,buzon,generator,throwaway,inbox",
+    "marketingUrl": null,
+    "promotionalText": null,
+    "supportUrl": "https://superficial-watch-d12.notion.site/Help-3704b908b4b780fd8d39ea0fd6078efd?source=copy_link",
+    "whatsNew": "\u2022 La tienda de segundo n\u00famero ahora abre con n\u00fameros de EE. UU., con Canad\u00e1 y Puerto Rico a un toque. Cada n\u00famero muestra la bandera de su pa\u00eds.\n\u2022 La pesta\u00f1a N\u00famero se abre directamente en tu n\u00famero.\n\u2022 Correcci\u00f3n de errores."
+   },
+   "relationships": {
+    "appScreenshotSets": {
+     "links": {
+      "self": "https://api.appstoreconnect.apple.com/v1/appStoreVersionLocalizations/87084dde-dc90-4212-ae48-72757d3db8d8/relationships/appScreenshotSets",
+      "related": "https://api.appstoreconnect.apple.com/v1/appStoreVersionLocalizations/87084dde-dc90-4212-ae48-72757d3db8d8/appScreenshotSets"
+     }
+    },
+    "appPreviewSets": {
+     "links": {
+      "self": "https://api.appstoreconnect.apple.com/v1/appStoreVersionLocalizations/87084dde-dc90-4212-ae48-72757d3db8d8/relationships/appPreviewSets",
+      "related": "https://api.appstoreconnect.apple.com/v1/appStoreVersionLocalizations/87084dde-dc90-4212-ae48-72757d3db8d8/appPreviewSets"
+     }
+    },
+    "searchKeywords": {
+     "links": {
+      "self": "https://api.appstoreconnect.apple.com/v1/appStoreVersionLocalizations/87084dde-dc90-4212-ae48-72757d3db8d8/relationships/searchKeywords",
+      "related": "https://api.appstoreconnect.apple.com/v1/appStoreVersionLocalizations/87084dde-dc90-4212-ae48-72757d3db8d8/searchKeywords"
+     }
+    }
+   },
+   "links": {
+    "self": "https://api.appstoreconnect.apple.com/v1/appStoreVersionLocalizations/87084dde-dc90-4212-ae48-72757d3db8d8"
+   }
+  },
+  {
+   "type": "appStoreVersionLocalizations",
+   "id": "5e24ea79-64e7-4a80-991c-28e4b1fe869b",
+   "attributes": {
+    "description": "Duas formas de manter seu n\u00famero real s\u00f3 para voc\u00ea.\n\nUM SEGUNDO N\u00daMERO PARA SEUS C\u00d3DIGOS DE VERIFICA\u00c7\u00c3O\nAlugue um n\u00famero de telefone real dos EUA ou do Canad\u00e1 e mantenha-o enquanto durar sua assinatura. Use-o para se cadastrar no WhatsApp, TikTok, DoorDash e na maioria dos outros apps: o c\u00f3digo chega ao app em segundos, com um toque para copiar.\n\n- Funciona com WhatsApp, TikTok, DoorDash e a maioria dos outros apps\n- C\u00f3digos e SMS de remetentes dos EUA e do Canad\u00e1 chegam ao app, organizados por remetente\n- Troque por um n\u00famero novo com o mesmo c\u00f3digo de \u00e1rea quando quiser, por poucos cr\u00e9ditos\n- Escolha uma cidade dos EUA ou do Canad\u00e1\n- Tamb\u00e9m faz chamadas de sa\u00edda: 100 minutos por m\u00eas para EUA e Canad\u00e1, e mais 50 pa\u00edses pagos com seus cr\u00e9ditos\n\nO QUE ESTE N\u00daMERO AINDA N\u00c3O FAZ\nEnviar SMS, receber SMS de fora dos EUA e do Canad\u00e1 e receber chamadas n\u00e3o est\u00e3o dispon\u00edveis. Algumas plataformas recusam n\u00fameros virtuais: se um c\u00f3digo n\u00e3o chegar, troque de n\u00famero.\n\nN\u00daMEROS TEMPOR\u00c1RIOS PARA C\u00d3DIGOS DE VERIFICA\u00c7\u00c3O\nAlguns cadastros s\u00f3 precisam de um c\u00f3digo uma vez. Escolha o servi\u00e7o e o pa\u00eds, obtenha um n\u00famero funcional, e o c\u00f3digo aparece no app assim que chega.\n\n- Mais de 380 servi\u00e7os em 69 pa\u00edses\n- Cada pa\u00eds mostra sua taxa de entrega da rede antes de voc\u00ea gastar qualquer coisa, para escolher com informa\u00e7\u00e3o\n- Pague com cr\u00e9ditos, s\u00f3 pelo que usar\n- Se o c\u00f3digo n\u00e3o chegar em 8 minutos, seus cr\u00e9ditos s\u00e3o devolvidos automaticamente\n\nUM ENDERE\u00c7O DE E-MAIL TEMPOR\u00c1RIO\nPrecisa de um endere\u00e7o em vez de um n\u00famero? Ganhe uma caixa de entrada descart\u00e1vel em um dom\u00ednio real de uso comum e leia o c\u00f3digo no app. Seu primeiro endere\u00e7o \u00e9 gr\u00e1tis; o plano vSMS Mail adiciona at\u00e9 25 endere\u00e7os por dia.\n\nCOMO OS CR\u00c9DITOS FUNCIONAM\nOs cr\u00e9ditos s\u00e3o comprados em pacotes e gastos por n\u00famero. Os pre\u00e7os variam por servi\u00e7o e pa\u00eds porque nosso pr\u00f3prio custo tamb\u00e9m varia. Os pacotes de cr\u00e9ditos nunca s\u00e3o renovados automaticamente, e tudo que falha \u00e9 reembolsado sem voc\u00ea precisar pedir.\n\nO QUE N\u00c3O FAZEMOS\nN\u00e3o vendemos seus dados, n\u00e3o exibimos an\u00fancios nem pedimos seus contatos. Entrar com a Apple ou com um e-mail \u00e9 toda a conta de que voc\u00ea precisa. Um n\u00famero que voc\u00ea aluga \u00e9 s\u00f3 seu enquanto voc\u00ea o mantiver.\n\nOBSERVA\u00c7\u00c3O\nUm segundo n\u00famero alugado n\u00e3o consegue acionar o 911 nem qualquer outro servi\u00e7o de emerg\u00eancia. Sempre use o n\u00famero pr\u00f3prio do seu telefone em emerg\u00eancias. Alguns servi\u00e7os bloqueiam n\u00fameros tempor\u00e1rios, e quando isso acontece um c\u00f3digo pode n\u00e3o chegar - seus cr\u00e9ditos voltam quando isso ocorre.\n\nAs assinaturas s\u00e3o renovadas mensal ou anualmente at\u00e9 serem canceladas. Gerencie ou cancele quando quiser nas configura\u00e7\u00f5es da sua conta Apple.\n\nTermos de Uso (EULA): https://www.apple.com/legal/internet-services/itunes/dev/stdeula/",
+    "locale": "pt-BR",
+    "keywords": "descartavel,anonimo,codigo,verificacao,receber,virtual,mensagem,caixa,generator,throwaway,inbox",
+    "marketingUrl": null,
+    "promotionalText": null,
+    "supportUrl": "https://superficial-watch-d12.notion.site/Help-3704b908b4b780fd8d39ea0fd6078efd?source=copy_link",
+    "whatsNew": "\u2022 A loja de segundo n\u00famero agora abre com n\u00fameros dos EUA, com Canad\u00e1 e Porto Rico a um toque. Cada n\u00famero mostra a bandeira do seu pa\u00eds.\n\u2022 A aba N\u00famero abre direto no seu n\u00famero.\n\u2022 Corre\u00e7\u00f5es de erros."
+   },
+   "relationships": {
+    "appScreenshotSets": {
+     "links": {
+      "self": "https://api.appstoreconnect.apple.com/v1/appStoreVersionLocalizations/5e24ea79-64e7-4a80-991c-28e4b1fe869b/relationships/appScreenshotSets",
+      "related": "https://api.appstoreconnect.apple.com/v1/appStoreVersionLocalizations/5e24ea79-64e7-4a80-991c-28e4b1fe869b/appScreenshotSets"
+     }
+    },
+    "appPreviewSets": {
+     "links": {
+      "self": "https://api.appstoreconnect.apple.com/v1/appStoreVersionLocalizations/5e24ea79-64e7-4a80-991c-28e4b1fe869b/relationships/appPreviewSets",
+      "related": "https://api.appstoreconnect.apple.com/v1/appStoreVersionLocalizations/5e24ea79-64e7-4a80-991c-28e4b1fe869b/appPreviewSets"
+     }
+    },
+    "searchKeywords": {
+     "links": {
+      "self": "https://api.appstoreconnect.apple.com/v1/appStoreVersionLocalizations/5e24ea79-64e7-4a80-991c-28e4b1fe869b/relationships/searchKeywords",
+      "related": "https://api.appstoreconnect.apple.com/v1/appStoreVersionLocalizations/5e24ea79-64e7-4a80-991c-28e4b1fe869b/searchKeywords"
+     }
+    }
+   },
+   "links": {
+    "self": "https://api.appstoreconnect.apple.com/v1/appStoreVersionLocalizations/5e24ea79-64e7-4a80-991c-28e4b1fe869b"
+   }
+  }
+ ],
+ "links": {
+  "self": "https://api.appstoreconnect.apple.com/v1/appStoreVersions/61c4b4d0-a49d-4842-a3cd-459ca0d17d88/appStoreVersionLocalizations?limit=20"
+ },
+ "meta": {
+  "paging": {
+   "total": 13,
+   "limit": 20
+  }
+ }
+}

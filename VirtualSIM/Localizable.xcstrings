@@ -4237,6 +4237,47 @@
         }
       }
     },
+    "An American or Canadian number that texts US and Canadian phones, both ways": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Eine amerikanische oder kanadische Nummer, die SMS mit US- und kanadischen Handys in beide Richtungen austauscht"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Un número estadounidense o canadiense que envía y recibe mensajes con teléfonos de EE. UU. y Canadá"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Un numéro américain ou canadien qui échange des SMS avec les téléphones américains et canadiens, dans les deux sens"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Un numero statunitense o canadese che scambia messaggi con telefoni di USA e Canada, in entrambe le direzioni"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "米国・カナダの電話とSMSを双方向でやり取りできる、アメリカまたはカナダの番号"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Um número americano ou canadense que troca mensagens com telefones dos EUA e do Canadá, nos dois sentidos"
+          }
+        }
+      }
+    },
     "An email and a\npassword. That's it.": {
       "localizations": {
         "de": {
@@ -15019,6 +15060,47 @@
           "stringUnit": {
             "state": "translated",
             "value": "Chamada recebida"
+          }
+        }
+      }
+    },
+    "Incoming call · 4 min": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Eingehender Anruf · 4 Min."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Llamada entrante · 4 min"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Appel entrant · 4 min"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Chiamata in arrivo · 4 min"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "着信 · 4分"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Chamada recebida · 4 min"
           }
         }
       }
@@ -29190,6 +29272,88 @@
         }
       }
     },
+    "Take calls on it, and call out to dozens of countries": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nimm darauf Anrufe an und telefoniere in Dutzende Länder"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Recibe llamadas en él y llama a decenas de países"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Recevez des appels dessus et appelez des dizaines de pays"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ricevi chiamate su di esso e chiama decine di Paesi"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "この番号で着信を受け、数十カ国に発信できます"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Receba chamadas nele e ligue para dezenas de países"
+          }
+        }
+      }
+    },
+    "Take incoming calls in the app — they don't use your minutes": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Eingehende Anrufe in der App annehmen – sie verbrauchen keine Minuten"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Recibe llamadas en la app: no consumen tus minutos"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Recevez des appels dans l'app — ils n'utilisent pas vos minutes"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ricevi chiamate nell'app: non consumano i tuoi minuti"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "アプリで着信を受けられます（通話時間は消費しません）"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Receba chamadas no app — elas não consomem seus minutos"
+          }
+        }
+      }
+    },
     "Taking a little longer than usual. This keeps working if you close the app.": {
       "localizations": {
         "de": {
@@ -29832,6 +29996,47 @@
           "stringUnit": {
             "state": "translated",
             "value": "Testado por nós"
+          }
+        }
+      }
+    },
+    "Text and call US and Canadian numbers, and take calls and codes on it. Your real number never leaves your phone.": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sende SMS an US- und kanadische Nummern, rufe sie an und empfange Anrufe und Codes. Deine echte Nummer verlässt dein Telefon nie."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Envía mensajes y llama a números de EE. UU. y Canadá, y recibe llamadas y códigos. Tu número real nunca sale de tu teléfono."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Envoyez des SMS et appelez des numéros américains et canadiens, et recevez appels et codes. Votre vrai numéro ne quitte jamais votre téléphone."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Invia messaggi e chiama numeri statunitensi e canadesi, e ricevi chiamate e codici. Il tuo numero reale non lascia mai il telefono."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "米国・カナダの番号とSMSや通話ができ、着信や認証コードも受け取れます。あなたの本当の番号が端末から出ることはありません。"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Envie mensagens e ligue para números dos EUA e do Canadá, e receba chamadas e códigos. Seu número real nunca sai do seu telefone."
           }
         }
       }
@@ -32398,6 +32603,47 @@
           "stringUnit": {
             "state": "translated",
             "value": "Este número ainda não envia mensagens fora do Canadá e dos EUA. Ele continua recebendo mensagens de qualquer lugar."
+          }
+        }
+      }
+    },
+    "This number has been released. Resubscribe to get a new one.": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Diese Nummer wurde freigegeben. Schließe erneut ab, um eine neue zu erhalten."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Este número se ha liberado. Vuelve a suscribirte para obtener uno nuevo."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ce numéro a été libéré. Réabonnez-vous pour en obtenir un nouveau."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Questo numero è stato rilasciato. Riabbonati per ottenerne uno nuovo."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "この番号は解放されました。再登録すると新しい番号を取得できます。"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Este número foi liberado. Assine novamente para obter um novo."
           }
         }
       }
@@ -39792,6 +40038,47 @@
           "stringUnit": {
             "state": "translated",
             "value": "Sua assinatura está ativa, mas nenhum número foi atribuído. Já fomos avisados e vamos resolver. Por favor, não assine de novo."
+          }
+        }
+      }
+    },
+    "Your subscription lapsed and this number has been released. Resubscribe and we'll set you up with a new one.": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dein Abo ist abgelaufen und diese Nummer wurde freigegeben. Schließe erneut ab und wir richten dir eine neue ein."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tu suscripción caducó y este número se ha liberado. Vuelve a suscribirte y te daremos uno nuevo."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Votre abonnement a expiré et ce numéro a été libéré. Réabonnez-vous et nous vous en attribuerons un nouveau."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Il tuo abbonamento è scaduto e questo numero è stato rilasciato. Riabbonati e te ne assegneremo uno nuovo."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "サブスクリプションが失効し、この番号は解放されました。再登録すると新しい番号をご用意します。"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sua assinatura expirou e este número foi liberado. Assine novamente e configuraremos um novo para você."
           }
         }
       }

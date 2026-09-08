@@ -664,7 +664,15 @@ struct LineStatusBanner: View {
                  text: "Your subscription lapsed. You can still receive texts and calls, but you can't send texts or call out until you renew.")
         case .suspended:
             Copy(icon: "lock", tint: theme.fail,
-                 text: "Your number is on hold. Resubscribe to get it back before it's released for good.")
+                 // 🔴 THIS MUST NOT PROMISE THE NUMBER BACK. The 7-day hold was
+                 // retired on 2026-09-05 (`20260905130000`): `suspend_line_claim`
+                 // sets `hold_until = now()` and ignores its argument, so a
+                 // lapsed line goes suspended -> releasing in the SAME sweep and
+                 // `release-lines` deletes it at Telnyx within ~30 minutes. And
+                 // resubscribing provisions a DIFFERENT number
+                 // (`reprovisionAfterRenewal`), so "get it back" was promising
+                 // the one outcome the server guarantees cannot happen.
+                 text: "Your subscription lapsed and this number has been released. Resubscribe and we'll set you up with a new one.")
         case .failed:
             Copy(icon: "exclamationmark.triangle", tint: theme.fail,
                  text: "We couldn't finish setting up your number. You haven't been charged for a number you don't have.")

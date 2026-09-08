@@ -184,7 +184,9 @@ struct ComposeScreen: View {
         case .pastDue:
             return "Renew your subscription to send messages again."
         case .suspended:
-            return "Your number is on hold. Resubscribe to use it again."
+            // No hold since 2026-09-05 — the number is gone, and resubscribing
+            // provisions a new one. See LineScreen's banner.
+            return "This number has been released. Resubscribe to get a new one."
         case .notLive:
             return "Your number isn't ready yet."
         case nil:

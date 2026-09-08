@@ -390,11 +390,13 @@ private struct OwnershipPage: View {
     /// The three things a reader is entitled to know before they are asked to
     /// sign in: what it costs, where the number is, and what we do with them.
     ///
-    /// ⚠️ "Canadian numbers" belongs HERE, not in a trust footer. The demo card
-    /// shows a 🇨🇦 flag and a +1 number, which a reader in Berlin or Bogotá will
-    /// read as "a number local to me" — and the store only corrects that after
-    /// they have signed in and picked a city. Saying it on the same screen as
-    /// the flag is the whole point.
+    /// ⚠️ "American or Canadian numbers" belongs HERE, not in a trust footer.
+    /// The demo card shows a 🇺🇸 flag and a +1 number, which a reader in Berlin
+    /// or Bogotá will read as "a number local to me" — and the store only
+    /// corrects that after they have signed in. Saying it on the same screen as
+    /// the flag is the whole point. (Flag and sample number were 🇨🇦/+1 437
+    /// until 2026-09-08, three days after the store defaulted every reader to
+    /// the US — they told a German reader they would get a Toronto number.)
     private var terms: some View {
         Card(elevation: .flat, fill: theme.chipBg) {
             VStack(spacing: 0) {
@@ -416,9 +418,9 @@ private struct OwnershipPage: View {
                 // rows in the database, not against a provider's capability
                 // flag: `domestic_two_way: true` is exactly what we believed
                 // before the 10DLC refusals started.
-                BenefitRow(icon: "flag", label: "A Canadian number that receives texts from US and Canadian phones")
+                BenefitRow(icon: "flag", label: "An American or Canadian number that texts US and Canadian phones, both ways")
                 RowRule()
-                BenefitRow(icon: RIcon.phone, label: "Call out to the US, Canada and dozens more countries")
+                BenefitRow(icon: RIcon.phone, label: "Take calls on it, and call out to dozens of countries")
                 RowRule()
                 BenefitRow(icon: RIcon.shield,
                            label: "No ads, no tracking, no email list",
@@ -603,8 +605,8 @@ private struct LineDemo: View {
 
     private var numberRow: some View {
         HStack(spacing: 10) {
-            Text(verbatim: "🇨🇦").font(.system(size: 24))
-            MonoText("+1 (437) 555-0128", size: 21, weight: .medium, color: theme.text)
+            Text(verbatim: "🇺🇸").font(.system(size: 24))
+            MonoText("+1 (212) 555-0128", size: 21, weight: .medium, color: theme.text)
             Spacer(minLength: 0)
         }
         .padding(.horizontal, 18)
@@ -681,16 +683,18 @@ private struct LineDemo: View {
         .padding(.vertical, 11)
     }
 
-    /// An OUTGOING call, restored on 2026-08-18 when calling first connected.
+    /// An INCOMING call — honest since 2026-09-08, when inbound calling
+    /// connected for the first time in the product's history (proven on a
+    /// physical device, app open and closed, with a real PSTN call).
     ///
-    /// It was an incoming call once, then a third conversation for the year the
-    /// dialer did not exist. Outgoing rather than incoming is not a style
-    /// choice: inbound calling has never worked and carries four open client
-    /// bugs, so an "Incoming call" row would be the one thing on this card that
-    /// has never happened for anybody.
+    /// It was OUTGOING from 2026-08-18 to 2026-09-08 for a good reason: inbound
+    /// had never once worked, so an "Incoming call" row would have been the one
+    /// thing on this card that had never happened for anybody. It is now the
+    /// most distinctive true claim the product has — a rented number that
+    /// actually rings.
     private var callRow: some View {
         HStack(spacing: 12) {
-            Image(systemName: "phone.arrow.up.right.fill")
+            Image(systemName: "phone.arrow.down.left.fill")
                 .font(.system(size: 13, weight: .semibold))
                 .foregroundStyle(theme.accent2)
                 .frame(width: 32, height: 32)
@@ -700,7 +704,7 @@ private struct LineDemo: View {
                 Text("Dana")
                     .font(RFont.text(14, weight: .semibold))
                     .foregroundStyle(theme.text)
-                Text("Outgoing call · 4 min")
+                Text("Incoming call · 4 min")
                     .font(RFont.text(13))
                     .foregroundStyle(theme.text2)
                     .lineLimit(1)

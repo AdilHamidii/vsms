@@ -38,7 +38,7 @@ struct LineRecentsView: View {
                     EmptyState(
                         icon: RIcon.phone,
                         title: "No calls yet",
-                        message: "Calls you make from this number appear here."
+                        message: "Calls you make and receive on this number appear here."
                     )
                     .padding(.top, 6)
                 }
