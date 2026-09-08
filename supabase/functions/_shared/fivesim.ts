@@ -373,3 +373,72 @@ export const cancel = (orderId: string) => lifecycle("cancel", orderId);
 /** Ban the number so 5sim does not re-issue it. Refuses with `order has sms`
  *  once a code landed, which is correct and is treated as success. */
 export const ban = (orderId: string) => lifecycle("ban", orderId);
+
+
+/** Pools 5sim says will deliver MORE THAN ONE SMS on the same activation.
+ *
+ *  Source: 5sim's own FAQ, "How do I receive verification message again?",
+ *  read 2026-09-08. Their FIRST sentence is the other half of this, and it is
+ *  why `finish` must be DEFERRED rather than called the moment a code lands:
+ *
+ *    "If you finish an order, then there is no way to request and receive SMS
+ *     using the same number again."
+ *
+ *  We were calling it 25 seconds after arrival, which destroyed the only
+ *  mechanism that can deliver a re-sent code to the number a user's account is
+ *  actually registered on. `user/reuse/{product}/{number}` is NOT the way back:
+ *  it is refused after a cancel AND after a finish (paid probes 2026-08-18 and
+ *  2026-09-08, the latter 400 `reuse not possible` at $0.00).
+ *
+ *  ⚠️ THIS IS 5SIM'S CLAIM, NOT OUR MEASUREMENT. Nothing here has been proven
+ *  by a second code actually arriving. The first one that does is the probe —
+ *  see the `resend_promoted` log line in poll-active-orders. If second codes
+ *  never land on a pool named here, this list is wrong, not its caller.
+ *
+ *  Deliberately NOT sourced from the route table: it is provider knowledge that
+ *  changes when 5sim changes it, and a stale row would hold an activation open
+ *  for a message that cannot come.
+ */
+const RESEND_POOLS_ANY_COUNTRY: ReadonlySet<string> = new Set([
+  "virtual2", "virtual21", "virtual26", "virtual34", "virtual36", "virtual38",
+  "virtual40", "virtual47", "virtual49", "virtual51", "virtual52", "virtual53",
+  "virtual54", "virtual58",
+]);
+
+/** Pools the FAQ scopes to particular countries. `virtual8` is listed for USA
+ *  and Canada, `virtual12` for Canada alone — so an England fill on virtual8 is
+ *  NOT covered, and treating it as covered would hold a number open for a
+ *  message that never comes. */
+const RESEND_POOLS_BY_COUNTRY: ReadonlyMap<string, ReadonlySet<string>> = new Map([
+  ["virtual8", new Set(["usa", "canada"])],
+  ["virtual12", new Set(["canada"])],
+]);
+
+/** Can this (country, pool) take a SECOND SMS on the same activation?
+ *
+ *  Fails CLOSED on anything unrecognised — a null operator (`operator_used` is
+ *  nullable, and null means "not recorded", which is not the same as
+ *  "eligible"), the unpinned sentinel "any", or a pool 5sim has not named. A
+ *  false positive is not free: we defer `finish`, keep holding the number, and
+ *  show the user a countdown for a code that cannot arrive.
+ */
+export function supportsResend(
+  country: string | null | undefined,
+  operator: string | null | undefined,
+): boolean {
+  const op = (operator ?? "").trim().toLowerCase();
+  const cty = (country ?? "").trim().toLowerCase();
+  if (!op || !cty || op === "any") return false;
+  if (RESEND_POOLS_ANY_COUNTRY.has(op)) return true;
+  return RESEND_POOLS_BY_COUNTRY.get(op)?.has(cty) ?? false;
+}
+
+/** How long we hold a delivered activation open waiting for another SMS.
+ *
+ *  5sim closes the order themselves 5 minutes after the LAST message, and the
+ *  clock restarts on each one — so this is a PER-MESSAGE window, never a total
+ *  budget, and no copy built on it may count down from a fixed total. Matching
+ *  their number exactly keeps our sweep and their auto-close in agreement;
+ *  going longer would only produce a countdown that outlives the activation it
+ *  describes. */
+export const RESEND_WINDOW_MS = 5 * 60 * 1000;
