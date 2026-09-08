@@ -1,3 +1,4 @@
+import Combine
 import SwiftUI
 
 /// The code arrived. The whole job of this screen is to get those digits into
@@ -20,8 +21,18 @@ struct OtpScreen: View {
     @State private var copied = false
     @State private var appeared = false
     @State private var showCredits = false
+    /// The order as last read from the server. `order` is a snapshot taken when
+    /// this cover was presented, so a second code promoted onto the row while
+    /// the screen is open would never appear without re-reading it.
+    @State private var live: Order?
+    @State private var now = Date()
 
-    private var otpValue: String { order.otp ?? "" }
+    private let tick = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
+
+    /// Everything on this screen reads through here, never `order` directly.
+    private var current: Order { live ?? order }
+
+    private var otpValue: String { current.otp ?? "" }
     private var otpDigits: [String] { otpValue.map { String($0) } }
 
     var body: some View {
@@ -32,7 +43,9 @@ struct OtpScreen: View {
                     topBar
                     serviceStrip
                     codeCard
+                    resendNotice
                     messageBubble
+                    earlierCodes
                     balanceCard
                     whatNext
                 }
@@ -42,6 +55,22 @@ struct OtpScreen: View {
             .scrollIndicators(.hidden)
         }
         .onAppear(perform: arrive)
+        .onReceive(tick) { now = $0 }
+        .task(id: order.id) {
+            // Only while a window is actually open — an ineligible pool must
+            // never generate polling traffic. Ten seconds against a five-minute
+            // window is ~30 reads worst case, and it stops the moment the
+            // window lapses or the screen goes away.
+            while !Task.isCancelled,
+                  let until = current.resendWatchUntil, until > Date() {
+                try? await Task.sleep(for: .seconds(10))
+                if Task.isCancelled { return }
+                guard let fresh = try? await OrdersAPI(client: api)
+                    .fetch(orderId: order.id) else { continue }
+                live = Order(server: fresh, service: order.service,
+                             country: order.country)
+            }
+        }
         // Presented from HERE rather than routed through ContentView because
         // this screen is a fullScreenCover, and a cover's content does not
         // reliably inherit @Observable environment objects — the same reason
@@ -174,6 +203,60 @@ struct OtpScreen: View {
             .padding(.vertical, 26)
         }
         .padding(.horizontal, 16)
+    }
+
+    /// Tells the user, in the only terms that are true, how long the number can
+    /// still receive another code.
+    ///
+    /// 🔴 THE CLOCK RESTARTS ON EVERY MESSAGE — five minutes from the LAST SMS,
+    /// not a budget from the first. So this always renders the time left on the
+    /// CURRENT deadline and never a fraction of a fixed total.
+    ///
+    /// Absent entirely when `resendWatchUntil` is nil: that means the pool
+    /// cannot take a second SMS, and advertising one would be a promise the
+    /// provider has not made.
+    @ViewBuilder private var resendNotice: some View {
+        if let until = current.resendWatchUntil, until > now {
+            Card {
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack(spacing: 8) {
+                        Image(systemName: RIcon.inbox)
+                            .font(.system(size: 13, weight: .medium))
+                            .foregroundStyle(theme.text3)
+                        MicroLabel("Need another code?")
+                        Spacer(minLength: 0)
+                        MonoText(timeLeft(Int(until.timeIntervalSince(now))),
+                                 size: 12, color: theme.text2)
+                    }
+                    Text("Ask \(current.service.name) to send it again and it arrives on this same number.")
+                        .font(RFont.text(13))
+                        .foregroundStyle(theme.text2)
+                }
+            }
+        }
+    }
+
+    /// mm:ss. Deliberately not RelativeDateTimeFormatter: "in 4 minutes" reads
+    /// as an estimate, and this is a hard provider deadline.
+    private func timeLeft(_ seconds: Int) -> String {
+        let s = max(0, seconds)
+        return String(format: "%d:%02d", s / 60, s % 60)
+    }
+
+    /// Only once a second code has actually arrived. One code needs no list —
+    /// it is already the thing filling the screen.
+    @ViewBuilder private var earlierCodes: some View {
+        let history = current.codeHistory
+        if history.count > 1 {
+            Card {
+                VStack(alignment: .leading, spacing: 6) {
+                    MicroLabel("Earlier codes")
+                    ForEach(Array(history.dropFirst()), id: \.at) { entry in
+                        MonoText(entry.code, size: 15, color: theme.text2)
+                    }
+                }
+            }
+        }
     }
 
     private var messageBubble: some View {
@@ -345,13 +428,13 @@ struct OtpScreen: View {
     }
 
     private var hasRawMessage: Bool {
-        !(order.server.rawMessage?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "").isEmpty
+        !(current.server.rawMessage?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "").isEmpty
     }
 
     /// When the code actually landed, not a hardcoded "just now" — this card
     /// is also reached from order history, where "just now" was simply false.
     private var arrivedAgo: String {
-        guard let at = order.server.arrivedAt else { return "" }
+        guard let at = current.server.arrivedAt else { return "" }
         let f = RelativeDateTimeFormatter()
         f.unitsStyle = .abbreviated
         return f.localizedString(for: at, relativeTo: Date())
@@ -368,7 +451,7 @@ struct OtpScreen: View {
     /// Falls back to showing just the code, clearly labelled, rather than
     /// fabricating a sentence around it.
     private var rawMessageAttributed: AttributedString {
-        if let raw = order.server.rawMessage?.trimmingCharacters(in: .whitespacesAndNewlines),
+        if let raw = current.server.rawMessage?.trimmingCharacters(in: .whitespacesAndNewlines),
            !raw.isEmpty {
             var body = AttributedString(raw)
             body.font = RFont.text(14)
