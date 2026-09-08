@@ -24,11 +24,10 @@
 
 import { handleCors, json } from "../_shared/cors.ts";
 import { admin, callerUserId } from "../_shared/supabaseAdmin.ts";
+import { searchNumbers, faultOf, type AvailableNumber } from "../_shared/telnyx.ts";
 import {
-  searchNumbers, orderNumber, getOrder, findNumberId, attachMessagingProfile,
-  releaseNumber, faultOf, type AvailableNumber,
-} from "../_shared/telnyx.ts";
-import { provisionLineVoice } from "../_shared/lineVoice.ts";
+  completeLineProvision, DEFAULT_LINE_COUNTRY,
+} from "../_shared/lineProvision.ts";
 import {
   sellableCountry, localitiesFor, catalogFaultOf, loadLineCatalogConfig,
   withinWholesaleCeiling, type LineLocality,
@@ -39,7 +38,7 @@ import { NANP } from "../_shared/phone.ts";
  *  `public.line_localities`, so the picker, the reserve step and this one agree
  *  on what "Toronto" means by construction rather than by anyone remembering
  *  to edit three files. */
-const DEFAULT_COUNTRY = "CA";
+const DEFAULT_COUNTRY = DEFAULT_LINE_COUNTRY;
 
 /** Owner decision 2026-08-06: 20 credits/month for 100 SMS + 50 minutes.
  *  A credit nets $0.397 blended, so this is ~$7.94 against ~$1 rent plus
@@ -49,9 +48,6 @@ const DEFAULT_COUNTRY = "CA";
 const RENT_CREDITS = 20;
 const SMS_ALLOWANCE = 100;
 const VOICE_ALLOWANCE_SECONDS = 3000;
-
-const ORDER_POLL_ATTEMPTS = 10;
-const ORDER_POLL_MS = 1000;
 
 async function refund(sb: ReturnType<typeof admin>, lineId: string, reason: string) {
   const { data, error } = await sb.rpc("refund_credit_line_claim", { p_line: lineId });
@@ -230,148 +226,31 @@ Deno.serve(async (req) => {
     }
   }
 
-  // ── 3. Buy it. `customer_reference` = the line id is what makes orphan
-  //      reconciliation possible: a number we own with no live line pointing at
-  //      it is otherwise invisible until the invoice.
-  const order = await orderNumber(wanted, lineId, {
+  // ── 3-7. Buy it, configure it, activate it ───────────────────────────────
+  // ONE sequence, shared with `verify-line-subscription` and with the
+  // reprovision path in `apple-notifications` (`_shared/lineProvision.ts`).
+  // 🔴 EVERY failure after step 2 refunds — the money moved before the provider
+  // was ever called, so the refund is the other half of the charge, and that is
+  // what `onFail` carries here.
+  const done = await completeLineProvision(sb, {
+    lineId, e164: wanted, country, numberType,
     requirementGroupId: sellable.requirementGroupId,
-  });
-  if (faultOf(order)) {
-    await refund(sb, lineId, `order_${order.type}`);
-    return json({ error: "provision_failed" }, { status: 502 });
-  }
-
-  // ── 4. Stamp the order id NOW, not on success. A purchase that fails after
-  //      the buy is exactly when this handle matters: the order is ASYNCHRONOUS
-  //      and the number may still arrive after we stop polling.
-  const { error: orderIdErr } = await sb.rpc("record_line_order", {
-    p_line: lineId, p_order_id: order.orderId,
-  });
-  if (orderIdErr) {
-    console.error(JSON.stringify({
-      alert: "line_order_id_unrecorded", line: lineId, order: order.orderId,
-      detail: orderIdErr.message,
-    }));
-  }
-
-  // ── 5. Poll. ─────────────────────────────────────────────────────────────
-  let e164: string | null = null;
-  for (let i = 0; i < ORDER_POLL_ATTEMPTS; i++) {
-    const st = await getOrder(order.orderId);
-    if (faultOf(st)) break;
-    const n = st.numbers[0];
-    // ⚠️ `requirement-info-pending` means BOUGHT AND UNUSABLE pending
-    // regulatory documents. It reads like progress and is a dead end — the
-    // mistake that cost $3.83 on a GB number. Our catalog said this country
-    // needs none, so seeing it here means the CATALOG is wrong.
-    if (n?.status === "requirement-info-pending") {
-      const id = await findNumberId(wanted);
-      if (typeof id === "string") await releaseNumber(id);
-      // Same self-healing write as `verify-line-subscription`: Telnyx's refusal
-      // is evidence and it beats our own probe, so the next user does not walk
-      // into the same wall. `refresh_line_country_sellability()` preserves an
-      // `order_rejected` block rather than re-opening it.
-      const { error: blockErr } = await sb.from("line_country_catalog")
-        .update({ sell_state: "blocked", sell_reason: "order_rejected" })
-        .eq("country_code", country).eq("number_type", numberType);
-      if (blockErr) {
-        console.error(JSON.stringify({
-          alert: "line_catalog_selfheal_failed", country,
-          number_type: numberType, detail: blockErr.message,
-        }));
-      }
-      await refund(sb, lineId, "requirements_pending");
-      return json({ error: "provision_failed" }, { status: 502 });
-    }
-    if (st.status === "success" && n?.e164) { e164 = n.e164; break; }
-    if (st.status === "failed") break;
-    await new Promise((r) => setTimeout(r, ORDER_POLL_MS));
-  }
-
-  if (!e164) {
-    // Might still land after we stop looking, so do NOT release blindly — the
-    // orphan reconciler sweeps a number that arrived late. Refund and page.
-    await refund(sb, lineId, "order_timeout");
-    return json({ error: "provision_failed" }, { status: 504 });
-  }
-
-  // ── 6/7. Configure and activate. ─────────────────────────────────────────
-  // The messaging profile is what routes inbound SMS to our webhook, and it is
-  // NOT settable on the main number resource (error 10027) — it lives on the
-  // /messaging sub-resource.
-  const numberId = await findNumberId(e164);
-  const msgProfile = Deno.env.get("TELNYX_MESSAGING_PROFILE_ID") ?? null;
-  if (typeof numberId === "string" && msgProfile) {
-    const attached = await attachMessagingProfile(numberId, msgProfile);
-    if (faultOf(attached)) {
-      // Not fatal — the number exists and voice works — but inbound SMS goes
-      // nowhere, so it pages.
-      console.error(JSON.stringify({
-        alert: "line_msg_profile_failed", line: lineId, detail: attached.detail,
-      }));
-    }
-  }
-
-  // 🔴 VOICE IS PROVISIONED HERE, not lazily on first dialer open. Attaching
-  // the number's voice to a connection is what makes it RING, and it used to
-  // happen only in `mint-line-token` — so a number was sold that could not
-  // receive a call until its owner opened the Number tab. Zero inbound calls
-  // had ever been received. Best-effort: a voice fault must not fail a
-  // purchase that already took the money, and `mint-line-token` still repairs
-  // whatever is missing on the next open.
-  const voice = await provisionLineVoice(
-    sb,
-    { id: lineId, provider_number_id: typeof numberId === "string" ? numberId : null },
-    // The claim below writes these columns as part of activation; writing them
-    // first would target a line that is not live yet.
-    { persistIds: false },
-  );
-  if (voice.faults.length) {
-    console.error(JSON.stringify({
-      alert: "line_voice_provision_failed", line: lineId,
-      steps: voice.faults.map((f) => f.step),
-      detail: voice.faults.map((f) => f.fault.detail).join("; "),
-    }));
-  }
-
-  const { data: activated, error: actErr } = await sb.rpc("activate_line_claim", {
-    p_line: lineId,
-    p_number_id: typeof numberId === "string" ? numberId : null,
-    p_connection: voice.connectionId,
-    p_msg_profile: msgProfile,
-    p_voice_profile: voice.voiceProfileId,
-    p_credential: voice.credentialId,
     // The period the rent just bought. `begin_credit_line_rental` already set
     // current_period_end and next_debit_at 30 days out; this keeps the claim's
     // own view consistent with them.
-    p_period_end: new Date(Date.now() + 30 * 86_400_000).toISOString(),
-    // From the server-side re-quote, never from the request: this is what we
-    // PAY, and a client-supplied cost is a client-supplied margin.
-    p_monthly_cost_cents: monthlyCents,
+    periodEnd: new Date(Date.now() + 30 * 86_400_000).toISOString(),
+    // From the server-side re-quote above, never from the request: this is what
+    // we PAY, and a client-supplied cost is a client-supplied margin.
+    monthlyCents,
+    onFail: (reason) => refund(sb, lineId, reason),
   });
-  if (actErr || activated !== true) {
-    // The number is BOUGHT. Refunding the credits is right — the user has no
-    // usable line — and the orphan reconciler is what recovers the DID, which
-    // is why the line is not left half-activated.
-    console.error(JSON.stringify({
-      alert: "line_activate_failed", line: lineId,
-      detail: actErr?.message ?? "claim returned false",
-    }));
-    await refund(sb, lineId, "activate_failed");
-    return json({ error: "provision_failed" }, { status: 500 });
+  if (!done.ok) {
+    return json({ error: done.reason }, { status: done.status });
   }
-
-  // `activate_line_claim` has no `p_attached`, so the one fact that decides
-  // whether the phone RINGS is recorded separately — and only after the line is
-  // live, which is what `record_line_voice_binding` scopes itself to.
-  if (voice.attached) {
-    await sb.rpc("record_line_voice_binding", {
-      p_line: lineId, p_attached: true,
-    });
-  }
+  const e164 = done.e164;
 
   return json({
     ok: true, line_id: lineId, e164, rent_credits: RENT_CREDITS,
-    inbound_ready: voice.attached,
+    inbound_ready: done.inboundReady,
   });
 });

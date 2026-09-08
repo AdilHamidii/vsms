@@ -27,12 +27,16 @@ import {
  *  (every figure derived from it is prefixed "~"). */
 const USD_PER_CREDIT = 0.45;
 
-/** Warn below ~5x the wholesale ceiling of a single order, matching the
- *  low-balance threshold poll-active-orders alerts on. Keep in lockstep with
- *  MAX_ORDER_COST_USD there — this said 20 while the pager fired at 37.50, so
- *  between the two the pager screamed and the owner's only standing view
- *  rendered the balance with no warning at all. */
-const LOW_BALANCE_USD = 37.5;
+/** The SMS-provider low-balance mark — 5sim and HeroSMS. OWNER DECISION
+ *  2026-09-08: $5.00, down from $37.50 (which was ~5x the wholesale ceiling of
+ *  a single order, back when the pager was a four-rung ladder).
+ *
+ *  Keep in lockstep with BALANCE_ALERT_USD in `poll-active-orders/index.ts` —
+ *  that is the PAGER, this is the DISPLAY. This constant said 20 while the
+ *  pager fired at 37.50 once already, and between the two the pager screamed
+ *  while the owner's only standing view rendered the balance with no warning
+ *  at all. */
+const LOW_BALANCE_USD = 5;
 
 /** What each provider currently pays for. Displayed next to the balance so a
  *  low reading is actionable ("which product just died?") rather than an
@@ -64,11 +68,13 @@ const RETIRED_PROVIDERS = new Set(["smspva", "smspool", "virtualsms"]);
  *  window; keep the two numbers equal.) */
 const BALANCE_FRESH_MS = 10 * 60 * 1000;
 
-/** Low-water mark for the Telnyx float, SEPARATE from LOW_BALANCE_USD. The SMS
- *  threshold ($37.50) is sized to single-order wholesale that can reach tens of
- *  dollars; Telnyx rent is $1/number/month, so $37.50 would print a permanent
- *  "top up" and train the owner to ignore the one warning that matters. */
-export const TELNYX_LOW_USD = 5;
+/** Low-water mark for the Telnyx float, SEPARATE from LOW_BALANCE_USD. OWNER
+ *  DECISION 2026-09-08: $10.00, DOUBLE the SMS mark rather than below it —
+ *  a dry Telnyx balance does not merely block a new sale, it means an EXISTING
+ *  subscriber's $1/month number cannot be renewed.
+ *  Keep in lockstep with BALANCE_ALERT_USD.telnyx_health in
+ *  `poll-active-orders/index.ts`. */
+export const TELNYX_LOW_USD = 10;
 
 /** Apple's commission. 15% is the Small Business Program rate (under $1M/yr);
  *  the standard rate is 30%. Deliberately a named constant, and the rate is
@@ -1065,187 +1071,211 @@ export function formatDelivery(raw: Record<string, unknown>, windowLabel: string
 
 // ── /subs ───────────────────────────────────────────────────────────────────
 
-/** `/subs` — subscriptions against lines, summary first.
+/** LIST prices, USD, per product suffix — the FALLBACK ONLY, used when Apple's
+ *  own signed price is missing from the row. Every active row today carries a
+ *  real `price_milli` (from the ASSN renewal info), so this map decides
+ *  nothing in the normal case; when it is used the rendering says so with a *
+ *  and a footnote, because a list price is not what the customer was billed
+ *  (storefront pricing is per territory — see /revenue's FX note).
+ *  ⚠️ Rows still exist at the pre-2026-09-02 $9.99 monthly / $99.99 yearly, and
+ *  they render from their OWN price_milli, never from here. Keep this map in
+ *  step with the live ASC ladder. */
+const LIST_PRICE_USD: Record<string, number> = {
+  "line.monthly": 5.99,
+  "line.yearly": 59.99,
+  "mail.monthly": 2.99,
+  "mail.yearly": 29.99,
+};
+
+/** Months in a billing period, from the product id. A yearly is normalised to
+ *  its per-month equivalent so the two plans can be added up at all — a raw
+ *  $59.99 sitting in a "per month" column would overstate MRR 12×. */
+function periodMonths(product: unknown): number {
+  return String(product ?? "").endsWith(".yearly") ? 12 : 1;
+}
+
+/** The ladder key for a product id, e.g. "line.yearly". */
+function ladderKey(product: unknown): string {
+  return String(product ?? "").split(".").slice(-2).join(".");
+}
+
+type ActiveSub = {
+  family?: string; product?: string; state?: string; auto_renew?: boolean;
+  price_milli?: number | null; currency?: string | null;
+  ends_at?: string; environment?: string;
+};
+
+/** `/subs` — ONE question: which subscriptions are LIVE right now, when does
+ *  each one end, and what is each paying per month. (Owner decision,
+ *  2026-09-08. The old rendering was subscription-state counts against
+ *  line-status counts — a reconciliation view that never listed a mail
+ *  subscriber and listed every expired and revoked line row.)
  *
- *  It renders all-zero on a bad day and that is the point. This is the product
- *  whose lifecycle shipped with `reclaim_lapsed_lines()` scheduled in no cron
- *  job and `release-lines` never written: an ordinary Apple cancellation left
- *  the number rented at $1/month forever, discoverable only on the Telnyx
- *  invoice. Subscription state and LINE state are shown side by side and any
- *  divergence is called out rather than left to be noticed.
+ *  ENTITLED, not "the state column says active": `ops_subs`.`active_subs`
+ *  filters on `state in ('active','grace') and greatest(expires_at,
+ *  grace_expires_at) > now()`, the same predicate `has_email_subscription()`
+ *  uses. NEVER coalesce there — see 20260908100000's own note.
  *
- *  Three sections, no more: Second Number · Temp-mail · Money & health. The
- *  old version stacked five with nothing but blank lines between them. */
+ *  Money is normalised to a MONTH. A yearly prints both figures
+ *  ("$59.99/yr ≈ $5.00/mo"): the yearly number is the one the owner
+ *  recognises, the monthly one is the only one that can be summed.
+ *
+ *  The one thing kept from the old view is the divergence warning: a live line
+ *  with no subscription is rent we pay for nothing, and this is the only place
+ *  it is checked. */
 export function formatSubs(raw: Record<string, unknown>): string {
   const s = (raw ?? {}) as {
-    subs_total?: number; subs_active?: number;
-    subs_by_state?: { state?: string; n?: number }[];
-    lines_total?: number;
+    active_subs?: ActiveSub[];
     lines_by_status?: { status?: string; n?: number }[];
-    lines_by_billing?: { billing?: string; n?: number }[];
+    lines_total?: number;
     monthly_cost_cents?: number;
-    trials_tracked?: boolean;
-    subs_list?: {
-      product?: string; state?: string; auto_renew?: boolean;
-      price_milli?: number; currency?: string; expires_at?: string;
-      environment?: string; created_at?: string;
-    }[];
-    subs_not_shown?: number;
-    active_billed?: { currency?: string; milli?: number; n?: number }[];
-    notifications_7d?: {
-      type?: string; subtype?: string; n?: number;
-      unprocessed?: number; errored?: number;
-    }[];
-    telnyx?: BalanceReading;
     dev_hidden?: { lines?: number; subs?: number; mail_subs?: number };
-    mail?: {
-      total?: number; active?: number;
-      by_state?: { state?: string; n?: number }[];
-      auto_renew_on?: number;
-      enforced?: boolean;
-    };
+    mail?: { enforced?: boolean };
   };
 
-  const active = s.subs_active ?? 0;
-  const mail = s.mail ?? {};
+  const rows = s.active_subs ?? [];
+  const lineRows = rows.filter((r) => r.family !== "mail");
+  const mailRows = rows.filter((r) => r.family === "mail");
   const activeLines = (s.lines_by_status ?? [])
     .filter((r) => ["active", "grace", "past_due"].includes(r.status ?? ""))
     .reduce((a, r) => a + (r.n ?? 0), 0);
-  const net = LINE_PRICE_USD * (1 - APPLE_COMMISSION);
-  const renewing = (s.subs_list ?? []).filter(
-    (r) => r.auto_renew !== false && (r.state === "active" || r.state === "grace"),
-  ).length;
+
+  // Per-currency monthly totals. Mixed currencies are NEVER silently added —
+  // the same rule /revenue follows. Every row is USD today, so this is
+  // insurance rather than decoration.
+  const billedByCcy = new Map<string, number>();
+  // What the free periods WILL bill once they convert, at list price. Kept
+  // apart from the billed total: a $0 trial is not revenue yet.
+  let pendingUsd = 0;
+  let usedFallback = false;
+  let freeCount = 0;
+
+  /** One rendered row. Also totals its monthly contribution — so every row
+   *  must be passed through this, including the ones the cap hides. */
+  function render(r: ActiveSub, now: Date): string {
+    const plan = planWord(r.product);
+    const months = periodMonths(r.product);
+    const ccy = String(r.currency ?? "USD").toUpperCase();
+    const billed = typeof r.price_milli === "number" ? r.price_milli / 1000 : null;
+    const list = LIST_PRICE_USD[ladderKey(r.product)];
+
+    let priceBit: string;
+    if (billed != null && billed > 0) {
+      const perMonth = billed / months;
+      billedByCcy.set(ccy, (billedByCcy.get(ccy) ?? 0) + perMonth);
+      priceBit = months > 1
+        ? `${esc(money(r.price_milli, ccy))}/yr ≈ ${esc(money(perMonth * 1000, ccy))}/mo`
+        : `${esc(money(r.price_milli, ccy))}/mo`;
+    } else if (billed === 0) {
+      // A $0 billed price is a FREE PERIOD. It is an INFERENCE — no offer-type
+      // column exists anywhere in this schema — and it is labelled as one.
+      freeCount += 1;
+      if (list != null) { pendingUsd += list / months; usedFallback = true; }
+      priceBit = list != null
+        ? `free period · then ~${esc(usd(list / months))}/mo*`
+        : `free period`;
+    } else {
+      // No signed price at all. Fall back to the published ladder, flagged.
+      if (list != null) {
+        billedByCcy.set("USD", (billedByCcy.get("USD") ?? 0) + list / months);
+        usedFallback = true;
+        priceBit = `~${esc(usd(list / months))}/mo*`;
+      } else {
+        priceBit = `<i>price unknown</i>`;
+      }
+    }
+
+    const when = r.ends_at ? parisSmart(ts(r.ends_at), now) : "?";
+    const left = r.ends_at ? ` (${until(ts(r.ends_at), now)})` : "";
+    const ends = r.auto_renew === false
+      ? `🔕 ends ${esc(when)}${esc(left)}`
+      : `▶️ renews ${esc(when)}${esc(left)}`;
+    const grace = r.state === "grace" ? " · <b>in grace</b>" : "";
+    const env = r.environment && r.environment !== "Production"
+      ? ` · ${esc(r.environment)}` : "";
+    return `   • ${esc(plan)} · ${priceBit}${grace}${env} · ${ends}`;
+  }
+
+  const now = new Date();
+  // Rendered BEFORE the header, because rendering is what totals the money.
+  const lineOut = capped(lineRows, 10);
+  const mailOut = capped(mailRows, 10);
+  const lineBody = lineOut.shown.map((r) => render(r, now));
+  const mailBody = mailOut.shown.map((r) => render(r, now));
+  // A hidden row still has to count toward the total, or the MRR figure
+  // silently shrinks as subscribers are added. Render and discard the text.
+  for (const r of lineRows.slice(lineOut.shown.length)) render(r, now);
+  for (const r of mailRows.slice(mailOut.shown.length)) render(r, now);
+
+  const usdMonthly = billedByCcy.get("USD") ?? 0;
+  const otherCcy = [...billedByCcy.entries()].filter(([c]) => c !== "USD");
+  const net = usdMonthly * (1 - APPLE_COMMISSION);
 
   const lines: string[] = [];
-  lines.push(`📞 <b>${esc(n("subscription", active))} active · ` +
-             `${esc(n("line", activeLines))} live · ` +
-             `~${esc(usd(active * net))}/mo net</b>`);
-  // The divergence warning is LED WITH, not buried mid-list: a live line whose
-  // subscription is gone is rent we pay for nothing; a live subscription with
-  // no line is a customer paying for nothing. Both are silent, both happened.
-  if (active !== activeLines) {
-    lines.push(`⚠️ <b>${esc(active)} active sub(s) vs ${esc(activeLines)} live ` +
-               `line(s)</b> — these must match.`);
+  lines.push(`📋 <b>${esc(n("live subscription", rows.length))} · ` +
+             `${esc(usd(usdMonthly))}/mo billed · ~${esc(usd(net))}/mo net</b>`);
+  if (otherCcy.length > 0) {
+    lines.push(`   <i>plus ` +
+      otherCcy.map(([c, v]) => `${esc(c)} ${v.toFixed(2)}`).join(" + ") +
+      `/mo, not converted</i>`);
   }
-  if (renewing === 0 && active > 0) {
-    lines.push(`⚠️ <b>none of them will renew</b> — auto-renew is off on every one`);
-  }
-  lines.push("");
-
-  // ── 1. Second Number ──────────────────────────────────────────────────────
-  if ((s.subs_total ?? 0) === 0) {
-    lines.push("<b>Second Number</b> — <i>no subscribers yet</i>");
-  } else {
-    const states = (s.subs_by_state ?? [])
-      .map((r) => `${esc(r.state ?? "?")} ${esc(r.n ?? 0)}`).join(" · ");
-    lines.push(`<b>Second Number</b> ${esc(s.subs_total ?? 0)} subs — ${states}`);
-    // One row per subscription: plan, running vs cancelled, expiry in Paris.
-    // auto_renew is ASSN-authoritative (20260815100000); "cancelled" means
-    // auto-renew off — the line stays live until the period ends, so state
-    // stays 'active'. A zero billed price is rendered as a free period: an
-    // INFERENCE from price_milli = 0 (offerType is not persisted anywhere),
-    // never a tracked fact.
-    const { shown, hidden } = capped(s.subs_list ?? [], 12);
-    for (const r of shown) {
-      const pid = r.product ?? "";
-      const plan = pid.endsWith(".monthly") ? "monthly"
-        : pid.endsWith(".yearly") ? "yearly" : (pid || "?");
-      const free = r.price_milli === 0 ? " · free period" : "";
-      const env = r.environment && r.environment !== "Production"
-        ? ` · ${esc(r.environment)}` : "";
-      const when = r.expires_at ? parisSmart(ts(r.expires_at)) : "?";
-      const status = r.state === "active"
-        ? (r.auto_renew !== false
-            ? `▶️ renews ${esc(when)}`
-            : `🔕 cancelled — ends ${esc(when)}`)
-        : `${esc(r.state ?? "?")} — ${esc(when)}`;
-      lines.push(`   • ${esc(plan)}${free}${env} · ${status}`);
-    }
-    if (hidden > 0) lines.push(`   <i>… and ${esc(hidden)} more, not shown</i>`);
-  }
-  if ((s.lines_total ?? 0) > 0) {
-    const st = (s.lines_by_status ?? [])
-      .map((r) => `${esc(r.status ?? "?")} ${esc(r.n ?? 0)}`).join(" · ");
-    const bill = (s.lines_by_billing ?? [])
-      .map((r) => `${esc(r.billing ?? "?")} ${esc(r.n ?? 0)}`).join(" · ");
-    lines.push(`   📱 ${esc(s.lines_total ?? 0)} lines — ${st}` +
-               (bill ? ` · billed ${bill}` : "") +
-               ` · rent <b>${esc(usd((s.monthly_cost_cents ?? 0) / 100))}/mo</b>`);
-  } else {
-    lines.push(`   📱 <i>no numbers rented</i>`);
+  // A live line whose subscription is gone is rent we pay for nothing; a live
+  // subscription with no line is a customer paying for nothing. Both are
+  // silent, both have happened, and this is the only place either is checked.
+  if (lineRows.length !== activeLines) {
+    lines.push(`⚠️ <b>${esc(lineRows.length)} live number sub(s) vs ` +
+               `${esc(activeLines)} live line(s)</b> — these must match.`);
   }
 
-  // ── 2. Temp-mail ──────────────────────────────────────────────────────────
-  //
-  // 🔴 THE ENFORCEMENT STATE IS READ, NEVER ASSERTED. This block used to print
-  // "enforcement is OFF" as literal text — true when written, and a lie from
-  // the instant the switch is flipped, which is exactly the moment somebody
-  // opens /subs to check the flip landed.
   lines.push("");
-  const enforced = mail.enforced === true;
-  lines.push(`<b>Temp-mail</b> ${esc(mail.total ?? 0)} subs · ` +
-             `${esc(mail.active ?? 0)} entitled · paywall ` +
-             (enforced ? "<b>ON</b>" : "<b>OFF</b>"));
-  if (!enforced) {
-    lines.push(`   <i>the pre-2.2 daily free cap still applies</i>`);
-  }
-  if ((mail.total ?? 0) > 0) {
-    const mstates = (mail.by_state ?? [])
-      .map((r) => `${esc(r.state ?? "?")} ${esc(r.n ?? 0)}`).join(" · ");
-    lines.push(`   ${mstates} · auto-renew on ${esc(mail.auto_renew_on ?? 0)}`);
-    // "entitled" uses has_email_subscription()'s own predicate (greatest of
-    // expires_at / grace_expires_at); by_state is the RAW state count with no
-    // expiry filter. Same table, so they must match — a gap means a row is
-    // stuck in active/grace past its own expiry, i.e. an ASSN notification
-    // that has not landed or has not been processed.
-    const stateActive = (mail.by_state ?? [])
-      .filter((r) => r.state === "active" || r.state === "grace")
-      .reduce((a, r) => a + (r.n ?? 0), 0);
-    if ((mail.active ?? 0) !== stateActive) {
-      lines.push(`   ⚠️ <b>${esc(mail.active ?? 0)} entitled vs ${esc(stateActive)} ` +
-                 `in an active/grace state</b> — an ASSN notification has not landed.`);
+  if (lineRows.length === 0) {
+    lines.push(`<b>Second Number</b> — <i>nobody subscribed</i>`);
+  } else {
+    lines.push(`<b>Second Number</b> — ${esc(n("live sub", lineRows.length))}`);
+    lines.push(...lineBody);
+    if (lineOut.hidden > 0) {
+      lines.push(`   <i>… and ${esc(lineOut.hidden)} more, not shown</i>`);
     }
   }
 
-  // ── 3. Money and health ───────────────────────────────────────────────────
   lines.push("");
-  lines.push(`<b>Money &amp; health</b>`);
-  const billed = (s.active_billed ?? [])
-    .map((b) => `${esc((b.currency ?? "?").toUpperCase())} ` +
-                `${((b.milli ?? 0) / 1000).toFixed(2)} ×${esc(b.n ?? 0)}`).join(" + ");
-  if (billed) lines.push(`💱 actually billed: ${billed}`);
-  const notifs = s.notifications_7d ?? [];
-  if (notifs.length === 0) {
-    lines.push(`🔔 ASSN last 7d: <i>none</i>`);
+  const enforced = s.mail?.enforced === true;
+  const paywall = ` · paywall ` + (enforced ? "<b>ON</b>" : "<b>OFF</b>");
+  if (mailRows.length === 0) {
+    lines.push(`<b>Temp-mail</b> — <i>nobody subscribed</i>${paywall}`);
   } else {
-    lines.push(`🔔 ASSN last 7d: ` + notifs.map((x) =>
-      `${esc(x.type ?? "?")}${x.subtype ? `/${esc(x.subtype)}` : ""} ×${esc(x.n ?? 0)}`,
-    ).join(" · "));
-    const stuck = notifs.reduce((a, x) => a + (x.unprocessed ?? 0), 0);
-    const bad = notifs.reduce((a, x) => a + (x.errored ?? 0), 0);
-    if (stuck > 0 || bad > 0) {
-      lines.push(`   ⚠️ ${esc(stuck)} unprocessed · ${esc(bad)} errored — a dropped ` +
-                 `notification is a lapse the state machine never sees`);
+    lines.push(`<b>Temp-mail</b> — ${esc(n("live sub", mailRows.length))}${paywall}`);
+    lines.push(...mailBody);
+    if (mailOut.hidden > 0) {
+      lines.push(`   <i>… and ${esc(mailOut.hidden)} more, not shown</i>`);
     }
   }
-  lines.push(balanceLineFrom({ provider: "Telnyx", ...(s.telnyx ?? {}) }, TELNYX_LOW_USD));
 
   // ── caveats ───────────────────────────────────────────────────────────────
   lines.push("");
-  lines.push(`<i>MRR = ${esc(active)} × $${LINE_PRICE_USD.toFixed(2)} list − Apple ` +
-             `${Math.round(APPLE_COMMISSION * 100)}% (Small Business Program) = ` +
-             `${esc(usd(net))} each.</i>`);
-  // ⚠️ Reported as untracked, never as "0 trials". line_sub_state has no trial
-  // member and ASSN's offerType is not persisted, so a zero would be an
-  // assertion we cannot make.
-  if (s.trials_tracked !== true) {
-    lines.push(`<i>"free period" is inferred from a $0 billed price — no ` +
-               `offer-type column exists. /trials for the conversion timeline.</i>`);
+  if (freeCount > 0) {
+    lines.push(`<i>${esc(freeCount)} of them are in a free period (inferred from a ` +
+               `$0 billed price — no offer-type column exists), worth ` +
+               `${esc(usd(pendingUsd))}/mo if every one converts. /trials for the ` +
+               `timeline.</i>`);
+  }
+  lines.push(`<i>Yearly plans are shown per month (÷12). Prices are what Apple ` +
+             `actually billed` +
+             (usedFallback
+               ? `; * = the published list price, used only where no billed ` +
+                 `price exists`
+               : ``) +
+             `. Net is after Apple ${Math.round(APPLE_COMMISSION * 100)}% ` +
+             `(Small Business Program).</i>`);
+  if ((s.lines_total ?? 0) > 0) {
+    lines.push(`<i>Telnyx rent on every number we hold: ` +
+               `${esc(usd((s.monthly_cost_cents ?? 0) / 100))}/mo.</i>`);
   }
   const dev = s.dev_hidden ?? {};
-  if ((dev.lines ?? 0) > 0 || (dev.subs ?? 0) > 0) {
+  if ((dev.lines ?? 0) > 0 || (dev.subs ?? 0) > 0 || (dev.mail_subs ?? 0) > 0) {
     lines.push(`<i>dev account hidden: ${esc(dev.lines ?? 0)} line(s), ` +
-               `${esc(dev.subs ?? 0)} sub(s) — they cost real rent.</i>`);
+               `${esc(dev.subs ?? 0)} number sub(s), ${esc(dev.mail_subs ?? 0)} ` +
+               `mail sub(s) — they cost real rent.</i>`);
   }
   lines.push(stamp());
   return lines.join("\n");

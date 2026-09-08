@@ -169,9 +169,15 @@ struct LineAPI {
     private static let threadColumns =
         "id,line_id,peer_e164,last_message_at,last_preview,unread_count,blocked,created_at"
 
+    // `error_code` (2026-09-08) is what makes a failed send explainable: the
+    // webhook writes the provider's own reason there, and without it a
+    // carrier rejection and a wrong number are the same red "Not sent".
+    // ⚠️ These lists must equal the decoding model's stored properties — a
+    // column dropped here makes an OPTIONAL property silently nil and throws
+    // on a non-optional one. Re-derive from `LineMessage` when it changes.
     private static let messageColumns =
         "id,thread_id,line_id,direction,e164_from,e164_to,body,status,segments," +
-        "sent_at,received_at,created_at"
+        "error_code,sent_at,received_at,created_at"
 
     private static let callColumns =
         "id,line_id,direction,peer_e164,status,started_at,answered_at,ended_at," +

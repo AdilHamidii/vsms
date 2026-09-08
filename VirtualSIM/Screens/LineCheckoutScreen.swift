@@ -68,7 +68,7 @@ struct LineCheckoutScreen: View {
                             // What this number does NOT do, collapsed. It used
                             // to be the tail of the benefit ledger, directly
                             // above the plan picker — so the last thing read
-                            // before choosing a plan was three "Not yet" rows.
+                            // before choosing a plan was the limitations list.
                             // It stays ON the purchase screen (3.1.2(a): the
                             // limitations are terms the buyer accepts before
                             // paying, not a footnote), one tap away instead of
@@ -437,6 +437,16 @@ struct LineCheckoutScreen: View {
                     BenefitRow(icon: RIcon.message,
                                label: "Receive texts and verification codes from US and Canadian senders")
                     RowRule()
+                    // ⚠️ "Send" is stated WITHOUT a delivery promise, and the
+                    // matching "Good to know" row below carries the caveat.
+                    // Outbound has one measured delivery in this product's
+                    // history and it was on-net between two of our own
+                    // numbers, with no 10DLC campaign registered anywhere —
+                    // so this row may say what the number will ADDRESS and
+                    // must never say that a message will arrive.
+                    BenefitRow(icon: "paperplane",
+                               label: "Send texts to US and Canadian numbers")
+                    RowRule()
                     // OUTGOING only. "in and out" was here until 2026-08-22;
                     // inbound calling has never connected once in the product's
                     // history (four open client bugs — see CLAUDE.md Known-open),
@@ -478,7 +488,7 @@ struct LineCheckoutScreen: View {
 
     // MARK: - What it does NOT do
 
-    /// The three "Not yet" rows, collapsed by default.
+    /// The limitations, collapsed by default — four rows since 2026-09-08.
     ///
     /// ⚠️ It must stay ON this screen. This is the 3.1.2(a) disclosure screen —
     /// the one immediately before the purchase — and owner decision 2026-08-18
@@ -516,8 +526,25 @@ struct LineCheckoutScreen: View {
                     VStack(spacing: 0) {
                         // Muted tint + "Not yet" hint keeps each one a ledger
                         // line rather than an alarm.
+                        // 🔴 REPLACED, NOT DELETED (2026-09-08). "Sending
+                        // texts — Not yet" came off because sending is back;
+                        // what took its place is the honest residue of that
+                        // change. A message we accept can still be refused by
+                        // the recipient's carrier minutes later — no number we
+                        // own carries a 10DLC campaign — and this is the
+                        // 3.1.2(a) disclosure screen, so a buyer who meets
+                        // that after paying is a refund and a
+                        // CONSUMPTION_REQUEST. `hint` says "Sometimes" rather
+                        // than "Not yet": it is a real risk, not an absent
+                        // feature.
+                        BenefitRow(icon: "paperplane",
+                                   label: "Some networks block texts sent from virtual numbers",
+                                   hint: "Sometimes",
+                                   tint: theme.text3)
+                            .opacity(0.72)
+                        RowRule()
                         BenefitRow(icon: RIcon.message,
-                                   label: "Sending texts from this number",
+                                   label: "Sending texts outside the US and Canada",
                                    hint: "Not yet",
                                    tint: theme.text3)
                             .opacity(0.72)

@@ -235,6 +235,16 @@ export const WATCHDOG_COPY: Record<string, WatchdogCopy> = {
     what: (d) => `HeroSMS float is running out. ${esc(d)}`,
     action: "Top up HeroSMS — it funds SMS routes AND the whole temp-e-mail line.",
   },
+  // Telnyx joined watchdog_money_checks in 20260908110000 with an ABSOLUTE
+  // $10 floor and no runway branch (it has no `orders` rows to burn). The
+  // generic `-float` fallback would say "every order on it is refused", which
+  // is the wrong consequence: a dry Telnyx balance also means an EXISTING
+  // subscriber's number cannot be renewed.
+  "telnyx-float": {
+    group: "Money", sev: "🔴",
+    what: (d) => `Telnyx float is under the floor. ${esc(d)}`,
+    action: "Top up Telnyx — no new number can be rented AND an existing subscriber's number cannot be renewed.",
+  },
   "debit-credit-lines": {
     group: "Money", sev: "🔴",
     what: (d) => `Credit-billed line rent is not being charged. ${esc(d)}`,

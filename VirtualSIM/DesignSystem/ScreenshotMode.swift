@@ -123,14 +123,15 @@ extension ScreenshotMode {
     /// Three conversations, because the point of a rented number is that it
     /// holds history across different people — which one thread cannot show.
     ///
-    /// 🔴 EVERY PREVIEW HERE IS INBOUND, AND THAT IS NOT A STYLE CHOICE. A
-    /// `"You: Yes, 7pm 👍"` row lived at `t2` and rendered an OUTGOING message
-    /// — a capability this product refuses at the server on every attempt
-    /// (`outbound_sms_retired`, outbound SMS dropped 2026-08-18). These
-    /// fixtures feed App Store screenshots, so that row was a marketing claim
-    /// that we can send texts, in the same class as the listing copy that
-    /// promised texts "in and out" and had to be purged. **If a fixture line
-    /// starts with "You:", it is a bug.**
+    /// 🔴 EVERY PREVIEW HERE IS INBOUND, AND THAT IS STILL NOT A STYLE CHOICE.
+    /// A `"You: Yes, 7pm 👍"` row lived at `t2` and was removed on 2026-08-18
+    /// when outbound SMS was retired. Sending was restored on 2026-09-08
+    /// (NANP → NANP) — but these fixtures feed **App Store screenshots**, and
+    /// the only outbound message this product has ever measured was an on-net
+    /// send between two of our own numbers, with no 10DLC campaign registered
+    /// anywhere. A screenshot is a marketing claim, and the evidence does not
+    /// support that one yet. **Keep every fixture inbound until a send to a
+    /// real handset is proven.**
     static var sampleThreads: [LineThread] {
         let now = Date()
         return [
@@ -159,11 +160,11 @@ extension ScreenshotMode {
     /// The open conversation behind the `thread` frame — **inbound only**.
     ///
     /// 🔴 It used to alternate directions, on the reasoning that "a one-sided
-    /// list does not show that this is a real two-way number". It is not a
-    /// two-way number: `send-line-message` refuses every send with
-    /// `outbound_sms_retired`, the composer was deleted from `ThreadScreen`,
-    /// and the store pitch carries "Sending texts — Not yet". Two outgoing
-    /// bubbles in an App Store screenshot were a claim the app cannot honour.
+    /// list does not show that this is a real two-way number". The composer is
+    /// back (2026-09-08) and NANP sends are accepted again, so that reasoning
+    /// is no longer wrong on its face — but it is still unearned: outbound has
+    /// exactly one measured delivery and it was on-net. Two outgoing bubbles in
+    /// an App Store screenshot remain a claim we cannot evidence.
     ///
     /// What replaces them is the strongest honest pitch there is: codes
     /// arriving, each with the one-tap Copy affordance under it.
@@ -175,7 +176,7 @@ extension ScreenshotMode {
                 id: id, threadId: "t1", lineId: "sample-line", direction: dir,
                 e164From: dir == .inbound ? "+18885550111" : "+12125550128",
                 e164To: dir == .inbound ? "+12125550128" : "+18885550111",
-                body: body, status: .delivered, segments: 1,
+                body: body, status: .delivered, segments: 1, errorCode: nil,
                 sentAt: dir == .outbound ? now.addingTimeInterval(-ago) : nil,
                 receivedAt: dir == .inbound ? now.addingTimeInterval(-ago) : nil,
                 createdAt: now.addingTimeInterval(-ago))

@@ -44,20 +44,26 @@ const EMERGENCY = new Set(["911", "112", "999", "000", "110", "119", "988"]);
 
 const MAX_BODY = 1600;
 
-/** 🔴 OUTBOUND SMS IS RETIRED (owner decision, 2026-08-18).
+/** The +1 bloc. Mirrors `_shared/phone.ts`'s `NANP`; used here only to decide
+ *  whether the `supports_sms` lookup below is worth a round trip. */
+const NANP_LINE = new Set(["US", "CA", "PR", "VI"]);
+
+/** 🔴 OUTBOUND SMS IS BACK ON, NANP → NANP ONLY (owner decision, 2026-09-08).
  *
- *  Sending is the one capability on this line needing carrier approval — 10DLC
- *  brand + campaign, or toll-free verification — and both require declaring a
- *  use case that "we rent numbers and users send whatever they like" cannot
- *  satisfy. The owner is not pursuing either. Lifetime outbound is 1 sent
- *  against 6 failed (`40010`); inbound is 3 of 3.
+ *  It was retired on 2026-08-18 on the strength of four `40010` failures, all
+ *  cross-border from the one country we then sold. A US → CA send delivered on
+ *  2026-09-08, so the blanket refusal is gone and `canSendTo` now allows any
+ *  NANP pair — see `_shared/nanp.ts` for the policy and for the reasons it is
+ *  still narrower than "sending works".
  *
- *  ⚠️ Typed `boolean`, NOT inferred as the literal `true`, and that is
- *  load-bearing rather than styling: with a literal, TypeScript folds the whole
- *  send path below into unreachable code, loses every narrowing across it, and
- *  `deno check` fails with 14 errors on code that is correct. The annotation
- *  keeps the path type-checked so it stays maintainable while switched off. */
-const OUTBOUND_SMS_RETIRED: boolean = true;
+ *  ⚠️ **Nothing here may be read as proof that sending works.** The one
+ *  measured delivery was ON-NET (both numbers are on our own Telnyx account)
+ *  and no number we own carries a 10DLC campaign, so a real carrier may still
+ *  reject a message we accepted. That rejection arrives ASYNCHRONOUSLY as a
+ *  delivery receipt on `telnyx-webhook`, which settles the row `failed` with
+ *  the provider's reason in `line_messages.error_code` and hands the allowance
+ *  back. A 200 from this endpoint means "queued at the carrier", never
+ *  "delivered", and the client must render it that way. */
 
 Deno.serve(async (req) => {
   const pre = handleCors(req);
@@ -84,30 +90,6 @@ Deno.serve(async (req) => {
     return json({ error: "emergency_blocked" }, { status: 400 });
   }
 
-  // Refused HERE, above everything, rather than by deleting the endpoint:
-  // shipped 2.0 still renders a composer, so this is the surface those clients
-  // hit. They render the generic 409 copy (`outbound_sms_retired` reaches
-  // `APIError` only in 2.1), which is still strictly better than spending a
-  // segment of the allowance to buy a carrier rejection the user cannot act on.
-  //
-  // Everything below is left INTACT on purpose: if a registration path ever
-  // clears, flipping the flag restores a send path known to have worked rather
-  // than asking someone to rebuild it. Delete both together, never the flag
-  // alone — the `canSendTo` guard further down is still the right refusal for a
-  // cross-border send and must survive this being switched back on.
-  // ⚠️ NO `line_has_no_sms` BRANCH HERE, DELIBERATELY. A country whose local
-  // numbers cannot do SMS (GB, DE, FR, NL, PL, AU — measured 2026-08-26) is
-  // exactly the case that reason would name, but answering it requires reading
-  // the caller's line, i.e. a database round trip on a path that refuses
-  // unconditionally one line below. Building it would also be a code path that
-  // contradicts the retirement: it can only ever be reached by deleting the
-  // flag. If outbound SMS is ever switched back on, add the check immediately
-  // after `resolveCallerLine` — where the line's `country_code` is already in
-  // hand and `line_country_catalog.supports_sms` is one lookup away — not here.
-  if (OUTBOUND_SMS_RETIRED) {
-    return json({ error: "outbound_sms_retired" }, { status: 409 });
-  }
-
   const sb = admin();
 
   // WHICH line to send from. A user may now hold several, so the client names
@@ -119,14 +101,40 @@ Deno.serve(async (req) => {
   // one row: the moment a second number existed, sending a text returned
   // `lookup_failed` for every message.
   const line = await resolveCallerLine(
-    sb, userId, body.line_id, undefined, "id, e164, status, country_code");
+    sb, userId, body.line_id, undefined,
+    "id, e164, status, country_code, number_type");
   if (!line) return json({ error: "line_unavailable" }, { status: 409 });
+
+  // 🔴 A NUMBER THAT CANNOT DO SMS AT ALL. GB, DE, FR, NL, PL and AU local
+  // numbers carry no `sms` feature (measured 2026-08-26, `.claude/rules/
+  // providers.md`), so a send from one is a guaranteed failure the catalog can
+  // name before the allowance is spent. The retirement comment that used to
+  // stand here asked for exactly this check, in exactly this position, "where
+  // the line's country_code is already in hand".
+  //
+  // Only for a NON-NANP line, deliberately: every NANP number we own supports
+  // SMS, so paying a round trip on the only path anybody uses today would be a
+  // cost with no reader. And it refuses ONLY on an explicit `false` — a
+  // missing row or a failed read passes, because inventing a refusal out of
+  // missing data is how a catalogue loses destinations it could serve (the
+  // same fail-open rule `canSendTo` applies to an unknown sender).
+  const cc = (line as { country_code?: string }).country_code;
+  if (cc && !NANP_LINE.has(cc.toUpperCase())) {
+    const { data: cat } = await sb.from("line_country_catalog")
+      .select("supports_sms")
+      .eq("country_code", cc.toUpperCase())
+      .eq("number_type",
+          String((line as { number_type?: string }).number_type ?? "local"))
+      .maybeSingle();
+    if (cat && (cat as { supports_sms?: boolean | null }).supports_sms === false) {
+      return json({ error: "line_has_no_sms", from_country: cc }, { status: 409 });
+    }
+  }
 
   // `toE164` defaults a bare national string to +1 only for a +1 line. Assert
   // it here as well so the refusal is LOGGED with the country that caused it —
   // a bare `bad_number` from a non-NANP line is otherwise indistinguishable
   // from a typo.
-  const cc = (line as { country_code?: string }).country_code;
   if (!assumesNanp(cc) && !to.startsWith("+")) {
     console.error(JSON.stringify({
       alert: "line_message_ambiguous_number", line: line.id, country: cc,
@@ -147,18 +155,18 @@ Deno.serve(async (req) => {
   const recipient = toE164(to, { lineCountry: cc ?? null });
   if (!recipient) return json({ error: "bad_number" }, { status: 400 });
 
-  // 🔴 REFUSE A SEND WE KNOW THE CARRIER WILL REJECT.
+  // 🔴 REFUSE A SEND THE NUMBER ITSELF CANNOT MAKE.
   //
-  // Every cross-border attempt has come back `40010: The sending number is not
-  // 10DLC-registered but is required to be by the carrier` — 6 of 7 lifetime
-  // outbound messages. Attempting it anyway reserves a segment, calls the
-  // provider, fails, and refunds: a round trip whose only product is a red
-  // "Not sent" under the user's message. Refusing up front costs them nothing
-  // and can say WHY, which the provider's failure could not.
+  // Since 2026-09-08 this refuses only what the number's own capability
+  // forbids: `features.sms.international_outbound` is FALSE on all 12 numbers
+  // we own, so any non-NANP destination is a guaranteed failure. NANP → NANP
+  // passes — see `_shared/nanp.ts` for the measurement that reopened it, and
+  // for why one on-net delivery is not proof that sending works.
   //
-  // This is the same shape as `create-order`'s pre-charge provider-balance
-  // guard: when we already know the answer, do not spend the user's allowance
-  // to hear it from someone else.
+  // Same shape as `create-order`'s pre-charge provider-balance guard: when we
+  // already know the answer, do not spend a segment of a hard-stop allowance
+  // to hear it from someone else. What we do NOT know — whether a carrier will
+  // filter an unregistered sender — is left to the delivery receipt.
   const reach = canSendTo(cc, recipient);
   if (!reach.ok) {
     return json({

@@ -1,30 +1,41 @@
 import SwiftUI
 
-/// One conversation on the rented line — READ ONLY since 2026-08-18.
+/// One conversation on the rented line.
 ///
 /// A cover rather than a navigation push, and that is forced by the layout:
 /// `TabBar` is a ZStack overlay pinned to the bottom of `ContentView` on every
 /// tab, so a push would leave the floating tab bar sitting on top of the
-/// content.
+/// composer.
 ///
-/// 🔴 **THE COMPOSER IS GONE, along with its allowance counter and its
-/// past-due "renew to send again" prompt** (owner decision: outbound SMS is
-/// dropped, not delayed — it is the only capability needing carrier approval
-/// and lifetime outbound is 1 sent against 6 failed). A text field that
-/// accepts input and then fails at the carrier is worse than no text field:
-/// the user types, waits, and gets a red "Not sent" they cannot act on.
+/// ── The composer's history, because it governs what this screen may say ───
 ///
-/// This screen now does what the product does — it shows what arrived, and
-/// offers one tap to copy a verification code out of it.
+/// It was DELETED on 2026-08-18 with the outbound-SMS retirement, on the
+/// reasoning that "a text field that accepts input and then fails at the
+/// carrier is worse than no text field: the user types, waits, and gets a red
+/// 'Not sent' they cannot act on." Restored 2026-09-08 (owner decision) after
+/// a US → CA send delivered.
+///
+/// ⚠️ **That objection was never answered, only outweighed — so the failure
+/// path is the part that has to be right.** The one measured delivery was
+/// on-net between two of our own numbers and no number we own carries a 10DLC
+/// campaign, so a carrier rejection remains entirely possible and arrives
+/// ASYNCHRONOUSLY, minutes later, as a delivery receipt. `MessageBubble`
+/// therefore renders a per-message failure with the reason
+/// (`LineMessage.failureReason`) rather than a bare red mark, and the 6-second
+/// poll below is what makes that reason appear without the user leaving.
+/// Nothing on this screen may promise that a sent message will arrive.
 struct ThreadScreen: View {
     @Environment(\.theme) private var theme
     @Environment(AppState.self) private var state
     @Environment(APIClient.self) private var api
     @Environment(CallController.self) private var calls
 
+    @State private var draft = ""
+    @State private var isSending = false
     @State private var showActions = false
     @State private var reported = false
     @State private var showNameSheet = false
+    @FocusState private var composerFocused: Bool
 
     private var thread: LineThread? {
         state.lineThreads.first { $0.id == state.openThreadId }
@@ -42,7 +53,7 @@ struct ThreadScreen: View {
                 header
                 Divider().overlay(theme.sep)
                 transcript
-                readOnlyNote
+                composer
             }
         }
         .task {
@@ -256,47 +267,118 @@ struct ThreadScreen: View {
         }
     }
 
-    // MARK: - Read-only note
+    // MARK: - Composer
 
-    /// One quiet line where the composer used to be.
+    /// Disabled WITH ITS REASON showing, never failing on send.
     ///
-    /// Deleting the composer removed the failure, but it also removed the
-    /// EXPLANATION: a user who opens a conversation and finds no text field
-    /// hunts for it, decides the app is broken or the thread is somehow
-    /// locked, and — measured — cancels. Saying it outright costs one line and
-    /// turns a missing control into a stated limitation, which is the same
-    /// choice the store pitch and the checkout ledger already make ("Sending
-    /// texts — Not yet").
+    /// The `blockReason` ladder is the load-bearing part and the reason this
+    /// was rebuilt from the deleted original rather than reinvented: "you have
+    /// used your texts" and "your payment failed" send the user to two
+    /// different places, and telling a past-due user to wait for a reset that
+    /// is not coming is the worse of the two mistakes.
     ///
-    /// Muted `text3` on the page background, NOT a banner: this is a permanent
-    /// fact about the product, and a permanent tinted banner is chrome the eye
-    /// stops seeing while training the user to ignore the real ones
-    /// (`LineStatusBanner` sits in that role and only appears when something
-    /// is actually wrong).
-    ///
-    /// ⚠️ "yet" is the owner's framing on every other surface and is kept for
-    /// consistency — but do not turn it into a date or a promise. Outbound SMS
-    /// is DROPPED, not scheduled: it needs 10DLC registration nobody is
-    /// pursuing.
-    private var readOnlyNote: some View {
-        Text("This number receives texts. Replying isn't available yet.")
-            .font(RFont.text(12))
-            .foregroundStyle(theme.text3)
-            .multilineTextAlignment(.center)
-            .fixedSize(horizontal: false, vertical: true)
-            .frame(maxWidth: .infinity)
-            .padding(.horizontal, 24)
-            .padding(.top, 10)
-            .padding(.bottom, 18)
+    /// The peer-outside-NANP case is new (2026-09-08). `send-line-message`
+    /// refuses a non-+1 recipient with `international_sms` because the
+    /// number's own `international_outbound` is false — so a thread opened by
+    /// an inbound message from abroad gets a stated reason instead of a text
+    /// field that spends a round trip to say no.
+    private var composer: some View {
+        VStack(spacing: 6) {
+            if let reason = blockReason {
+                HStack(spacing: 7) {
+                    Image(systemName: "exclamationmark.circle")
+                        .font(.system(size: 11, weight: .semibold))
+                    Text(reason)
+                        .font(RFont.text(12))
+                        .fixedSize(horizontal: false, vertical: true)
+                    Spacer(minLength: 0)
+                }
+                .foregroundStyle(theme.warn)
+                .padding(.horizontal, 4)
+            }
+
+            HStack(alignment: .bottom, spacing: 10) {
+                TextField("Message", text: $draft, axis: .vertical)
+                    .font(RFont.text(15))
+                    .foregroundStyle(theme.text)
+                    .lineLimit(1...5)
+                    .focused($composerFocused)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 10)
+                    .background(theme.elev, in: .rect(cornerRadius: 18))
+                    .disabled(blockReason != nil)
+
+                Button(action: send) {
+                    Image(systemName: RIcon.send)
+                        .font(.system(size: 15, weight: .bold))
+                        .foregroundStyle(canSend ? theme.onInk : theme.text3)
+                        .frame(width: 38, height: 38)
+                        .background(canSend ? theme.ink : theme.chipBg, in: .circle)
+                }
+                .buttonStyle(.plain)
+                .disabled(!canSend)
+                .accessibilityLabel(Text("Send"))
+            }
+
+            if blockReason == nil, let left = state.line?.smsRemaining {
+                Text("\(left) texts left this month")
+                    .font(RFont.text(11))
+                    .foregroundStyle(theme.text3)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 4)
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.top, 8)
+        .padding(.bottom, 12)
+        .background(theme.bg)
     }
 
-    // The composer — text field, send button, `blockReason`, the "N texts left
-    // this month" counter and `send()` — was DELETED on 2026-08-18. Its
-    // `blockReason` ladder is worth remembering rather than resurrecting: it
-    // distinguished "you have used your texts" from "your payment failed",
-    // which was the right distinction while sending existed. It does not
-    // exist now, and a disabled composer with an explanation would still be a
-    // text field on screen advertising a capability that is never coming.
+    private var canSend: Bool {
+        !isSending && blockReason == nil
+            && !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    /// A peer this number cannot address at all. Not a fault and not a
+    /// temporary state — the capability reads false at the carrier — so it
+    /// belongs in the same ladder as the allowance and the lapse.
+    private var peerOutsideNanp: Bool {
+        guard !peer.isEmpty else { return false }
+        return !(peer.hasPrefix("+1") && peer.filter(\.isNumber).count == 11)
+    }
+
+    private var blockReason: LocalizedStringKey? {
+        if thread?.blocked == true { return "You've blocked this number. Unblock it to send." }
+        if peerOutsideNanp { return "This number can only text US and Canadian numbers." }
+        guard let line = state.line else { return "Your number isn't ready yet." }
+        switch line.sendBlock {
+        case .allowanceExhausted:
+            return "You've used this month's texts. They reset when your subscription renews."
+        case .pastDue:
+            return "Renew your subscription to send messages again."
+        case .suspended:
+            return "Your number is on hold. Resubscribe to use it again."
+        case .notLive:
+            return "Your number isn't ready yet."
+        case nil:
+            return nil
+        }
+    }
+
+    private func send() {
+        guard let peer = thread?.peerE164 else { return }
+        let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else { return }
+        Task {
+            isSending = true
+            defer { isSending = false }
+            let ok = await state.sendLineMessage(using: LineAPI(client: api), to: peer, text: text)
+            // Cleared only on success, so a refused send does not lose what the
+            // user typed — retyping a message the app threw away is a worse
+            // failure than the send itself.
+            if ok { draft = "" }
+        }
+    }
 }
 
 /// The centred date chip between two calendar days.
@@ -382,8 +464,46 @@ struct MessageBubble: View {
                     if message.isOutbound { statusMark }
                 }
                 .padding(.horizontal, 4)
+
+                // 🔴 A SEND CAN FAIL MINUTES AFTER IT LOOKED SENT. The
+                // delivery receipt is asynchronous, so this is the only place
+                // the real outcome is ever stated — and "Not sent" alone
+                // leaves the user retrying a message that will fail
+                // identically every time. The reason comes from
+                // `LineMessage.failureReason`, which is deliberately vague
+                // where the provider's data is vague.
+                if let reason = failureCopy {
+                    Text(reason)
+                        .font(RFont.text(10))
+                        .foregroundStyle(theme.fail)
+                        .multilineTextAlignment(message.isOutbound ? .trailing : .leading)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(.horizontal, 4)
+                }
             }
             if !message.isOutbound { Spacer(minLength: 50) }
+        }
+    }
+
+    /// Plain English for a carrier's diagnostic, or nil when the message did
+    /// not fail.
+    ///
+    /// ⚠️ It never names 10DLC, the campaign, or the provider. The user has no
+    /// part in a carrier registration programme and cannot act on its
+    /// vocabulary; what they CAN act on is "this network refused it, the same
+    /// message to a different number may go through". `unknown` deliberately
+    /// says less rather than guessing between a spam filter, a wrong number
+    /// and a block — Telnyx sends the same coarse status for all three.
+    private var failureCopy: LocalizedStringKey? {
+        switch message.failureReason {
+        case .carrierBlocked:
+            return "The recipient's network refused this message."
+        case .badNumber:
+            return "That number couldn't be reached."
+        case .unknown:
+            return "This message wasn't delivered."
+        case nil:
+            return nil
         }
     }
 

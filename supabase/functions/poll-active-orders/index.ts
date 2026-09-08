@@ -13,36 +13,41 @@ import { getBalance as getTelnyxBalance, faultOf as telnyxFaultOf } from "../_sh
 import { sendPush } from "../_shared/apns.ts";
 import { notifySafe, esc } from "../_shared/telegram.ts";
 
-// The most a single order can cost us, in dollars — MUST track
-// MAX_WHOLESALE_CENTS in sync-prices (750 as of 2026-07-27).
+// ── Balance alerting: ONE level per provider, not a ladder ──────────────────
 //
-// This ladder used to be a hard-coded [20, 10, 5, 1] justified as "5x the
-// wholesale ceiling for a single order ($4)". When the ceiling moved to $7.50
-// the ladder did not, so at the live SMSPVA balance of $3.55 the monitor read
-// tier 3 ("low") while ~1,500 routes — every WhatsApp route among them — could
-// not be funded AT ALL. A user ordering one was guaranteed a BALANCE_ERROR,
-// charged and refunded. Deriving the tiers keeps that honest through the next
-// ceiling change.
-const MAX_ORDER_COST_USD = 7.5;
-
-// 5x the priciest single order, so the first page still leaves room to act.
-const LOW_BALANCE_USD = MAX_ORDER_COST_USD * 5;
-
-// Escalation ladder. The original single edge-trigger fired once at $20 and
-// then NEVER AGAIN — both providers sat "low" for days while sliding toward
-// $0 (= 100% order failure) with no further page. Each threshold crossing now
-// pages once; recovery above a tier re-arms it automatically.
+// OWNER DECISION 2026-09-08: page only at 5sim < $5.00, HeroSMS < $5.00 and
+// Telnyx < $10.00.
 //
-// The last rung is the ceiling itself: below it we cannot fill the most
-// expensive route in the catalog, which is a real outage for that inventory
-// even though the balance is not zero.
-const BALANCE_TIERS = [
-  LOW_BALANCE_USD,               // 37.50
-  MAX_ORDER_COST_USD * 3,        // 22.50
-  MAX_ORDER_COST_USD * 1.5,      // 11.25
-  MAX_ORDER_COST_USD,            //  7.50
-];
-
+// History, because the old shape was deliberate and its reasoning is now
+// retired rather than forgotten: the thresholds used to be a four-rung ladder
+// derived from the $7.50 single-order wholesale ceiling ([37.50, 22.50,
+// 11.25, 7.50]) so that each
+// crossing paged once on the way down. At the owner's actual top-up cadence
+// (hands-off, funded on demand) that meant three warnings before the one that
+// matters, on the single channel that has to stay readable — and alert
+// fatigue on that channel is how a real outage gets missed. The runway check
+// in `watchdog_money_checks()` is the thing that now catches "healthy balance,
+// about to be spent"; this pager only catches "nearly empty".
+//
+// Telnyx is $10, double the SMS providers, because it does not merely block a
+// new sale: a line costs $1 up front plus $1/month FOREVER, so a dry Telnyx
+// balance means an EXISTING subscriber's number cannot be renewed.
+//
+// Keep in lockstep with LOW_BALANCE_USD / TELNYX_LOW_USD in
+// `_shared/opsFormat.ts` (the DISPLAY warning) and with the absolute-balance
+// clause in `watchdog_money_checks()` (migration 20260908110000). Three copies,
+// exactly the drift this repo keeps paying for — change them in one commit.
+const BALANCE_ALERT_USD: Record<string, number> = {
+  "5sim_health": 5,
+  herosms_health: 5,
+  telnyx_health: 10,
+  // Not named by the owner. SMSPVA is the rollback target and eSIM Access is
+  // muted while the eSIM line is parked, so both sit at the SMS level rather
+  // than inventing a threshold for a provider nobody asked about.
+  smspva_health: 5,
+  esimaccess_health: 5,
+};
+const DEFAULT_BALANCE_ALERT_USD = 5;
 // ── HeroSMS fail-fast ───────────────────────────────────────────────────────
 //
 // How long a HeroSMS order may sit with a number and no code before we refund
@@ -170,34 +175,42 @@ Deno.serve(async (req) => {
   /** Record one provider's balance. Each call is independently guarded so an
    *  outage at one provider can never suppress the other's reading — which is
    *  precisely how SMSPVA would stay invisible on the day it matters.
-   *  Alerts once per BALANCE_TIERS threshold crossing (worsening only);
-   *  climbing back above a tier re-arms it. The 6-hourly digest carries the
-   *  standing status; this is the instant page. */
+   *  Pages ONCE when the balance crosses below this provider's own
+   *  BALANCE_ALERT_USD level; climbing back above it re-arms the page. The
+   *  6-hourly digest carries the standing status; this is the instant page. */
   async function recordBalance(
     key: string, label: string, read: () => Promise<number | null>,
     /** Extra fields merged into the stored blob, read AFTER `read()` so a
      *  provider can hand back more than a balance without a second call. */
     readExtra?: () => Promise<Record<string, unknown> | null>,
-    /** Write the reading but skip the tier pages. Used for eSIM Access while
+    /** Write the reading but skip the page. Used for eSIM Access while
      *  the eSIM line is PAUSED: "balance EMPTY — orders failing NOW" is false
      *  when nothing can order, and a false page on the one channel that must
-     *  stay readable is how a real one gets missed. The tier is still stamped
-     *  so unpausing does not replay old crossings. */
+     *  stay readable is how a real one gets missed. The level is still
+     *  stamped so unpausing does not replay a crossing that already happened. */
     muteAlerts = false,
   ) {
     try {
       const bal = await read();
       if (bal == null || !Number.isFinite(bal)) return;
-      const low = bal < LOW_BALANCE_USD;
-      // 0 = healthy, 1 = below $20 … 4 = below $1 (effectively empty).
-      const tier = BALANCE_TIERS.filter((t) => bal < t).length;
+      const threshold = BALANCE_ALERT_USD[key] ?? DEFAULT_BALANCE_ALERT_USD;
+      const low = bal < threshold;
+      // 0 = healthy, 1 = below this provider's alert level. `alert_tier` keeps
+      // its name and its 0/1 semantics so every existing reader (and every
+      // stamped row) still parses; there is simply no rung above 1 any more.
+      const tier = low ? 1 : 0;
 
       const { data: prev } = await sb
         .from("app_config").select("value").eq("key", key).maybeSingle();
       const prevVal = prev?.value as { low?: boolean; alert_tier?: number } | null;
       // Older readings predate alert_tier; treat a legacy low=true as tier 1
       // so redeploying doesn't re-page for the crossing that already paged.
-      const prevTier = prevVal?.alert_tier ?? (prevVal?.low ? 1 : 0);
+      // CLAMPED at 1 because rows stamped by the old four-rung ladder carry
+      // tiers up to 4: without the clamp a provider sitting at alert_tier 4
+      // could never satisfy `tier > prevTier` again and its page would be
+      // permanently disarmed — silently, which is the exact failure this
+      // function has already shipped once.
+      const prevTier = Math.min(prevVal?.alert_tier ?? (prevVal?.low ? 1 : 0), 1);
 
       // Send FIRST, then stamp the tier — and only stamp the escalation if the
       // send actually landed.
@@ -211,13 +224,10 @@ Deno.serve(async (req) => {
       // three sites did not.
       let alerted = true;
       if (tier > prevTier && !muteAlerts) {
-        console.error(`${key} balance $${bal} crossed below $${BALANCE_TIERS[tier - 1]}`);
+        console.error(`${key} balance $${bal} crossed below $${threshold}`);
         alerted = await notifySafe(
-          tier >= BALANCE_TIERS.length
-            ? `🚨 <b>${label} balance EMPTY: $${bal.toFixed(2)}</b>\n` +
-              `Orders on this provider are failing NOW — top up immediately.`
-            : `⚠️ <b>${label} balance low: $${bal.toFixed(2)}</b>\n` +
-              `Crossed below $${BALANCE_TIERS[tier - 1]} — top up before orders start failing.`,
+          `🚨 <b>${label} balance low: $${bal.toFixed(2)}</b>\n` +
+          `Under $${threshold.toFixed(2)} — top up before orders start failing.`,
         );
         if (!alerted) {
           console.error(`${key} balance page FAILED to send — not recording tier ${tier}, will retry next run`);

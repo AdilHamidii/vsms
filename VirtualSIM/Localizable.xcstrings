@@ -87,6 +87,7 @@
       }
     },
     "%@ / month": {
+      "extractionState": "stale",
       "localizations": {
         "de": {
           "stringUnit": {
@@ -127,6 +128,7 @@
       }
     },
     "%@ / year": {
+      "extractionState": "stale",
       "localizations": {
         "de": {
           "stringUnit": {
@@ -1207,7 +1209,6 @@
       }
     },
     "%lld credits": {
-      "extractionState": "stale",
       "localizations": {
         "de": {
           "stringUnit": {
@@ -1873,7 +1874,6 @@
       }
     },
     "%lld texts left this month": {
-      "extractionState": "stale",
       "localizations": {
         "de": {
           "stringUnit": {
@@ -1914,7 +1914,6 @@
       }
     },
     "%lld texts left this month.": {
-      "extractionState": "stale",
       "localizations": {
         "de": {
           "stringUnit": {
@@ -2035,6 +2034,7 @@
       }
     },
     "%lld%%": {
+      "extractionState": "stale",
       "localizations": {
         "de": {
           "stringUnit": {
@@ -3264,6 +3264,7 @@
       }
     },
     "A real Canadian phone number that stays yours.": {
+      "extractionState": "stale",
       "localizations": {
         "de": {
           "stringUnit": {
@@ -3345,6 +3346,7 @@
       }
     },
     "A real US or Canadian number that receives your verification codes.": {
+      "extractionState": "stale",
       "localizations": {
         "de": {
           "stringUnit": {
@@ -3385,6 +3387,7 @@
       }
     },
     "A real person reads these. If we're asleep you'll get a reply as soon as we're up, and you'll be notified.": {
+      "extractionState": "stale",
       "localizations": {
         "de": {
           "stringUnit": {
@@ -3627,6 +3630,7 @@
       }
     },
     "Active · renews %@": {
+      "extractionState": "stale",
       "localizations": {
         "de": {
           "stringUnit": {
@@ -4193,6 +4197,7 @@
       }
     },
     "Also makes calls to 50+ countries, priced per minute": {
+      "extractionState": "stale",
       "localizations": {
         "de": {
           "stringUnit": {
@@ -4729,6 +4734,7 @@
       }
     },
     "Ask us anything": {
+      "extractionState": "stale",
       "localizations": {
         "de": {
           "stringUnit": {
@@ -6831,6 +6837,7 @@
       }
     },
     "Change this number": {
+      "extractionState": "stale",
       "localizations": {
         "de": {
           "stringUnit": {
@@ -6871,6 +6878,7 @@
       }
     },
     "Change this number?": {
+      "extractionState": "stale",
       "localizations": {
         "de": {
           "stringUnit": {
@@ -6911,6 +6919,7 @@
       }
     },
     "Chat with us": {
+      "extractionState": "stale",
       "localizations": {
         "de": {
           "stringUnit": {
@@ -7355,6 +7364,7 @@
       }
     },
     "Choose a city": {
+      "extractionState": "stale",
       "localizations": {
         "de": {
           "stringUnit": {
@@ -9700,6 +9710,7 @@
       }
     },
     "Couldn't send that. Please try again.": {
+      "extractionState": "stale",
       "localizations": {
         "de": {
           "stringUnit": {
@@ -12664,7 +12675,6 @@
       }
     },
     "From %@": {
-      "extractionState": "stale",
       "localizations": {
         "de": {
           "stringUnit": {
@@ -13441,6 +13451,7 @@
       }
     },
     "Getting a new number…": {
+      "extractionState": "stale",
       "localizations": {
         "de": {
           "stringUnit": {
@@ -13561,6 +13572,7 @@
       }
     },
     "Give it to marketplaces, dating apps, a side business or a bank. Your verification codes and texts land here, with one tap to copy the code.": {
+      "extractionState": "stale",
       "localizations": {
         "de": {
           "stringUnit": {
@@ -14164,6 +14176,7 @@
       }
     },
     "Held until": {
+      "extractionState": "stale",
       "localizations": {
         "de": {
           "stringUnit": {
@@ -15540,6 +15553,7 @@
       }
     },
     "Just need a one-off verification code?": {
+      "extractionState": "stale",
       "localizations": {
         "de": {
           "stringUnit": {
@@ -16387,6 +16401,7 @@
       }
     },
     "Make calls from the app": {
+      "extractionState": "stale",
       "localizations": {
         "de": {
           "stringUnit": {
@@ -17965,7 +17980,6 @@
       }
     },
     "New message": {
-      "extractionState": "stale",
       "localizations": {
         "de": {
           "stringUnit": {
@@ -22227,6 +22241,7 @@
       }
     },
     "Payment due": {
+      "extractionState": "stale",
       "localizations": {
         "de": {
           "stringUnit": {
@@ -22350,7 +22365,6 @@
       }
     },
     "Phone number": {
-      "extractionState": "stale",
       "localizations": {
         "de": {
           "stringUnit": {
@@ -22432,6 +22446,7 @@
       }
     },
     "Pick a different number": {
+      "extractionState": "stale",
       "localizations": {
         "de": {
           "stringUnit": {
@@ -22676,6 +22691,7 @@
       }
     },
     "Pick your number": {
+      "extractionState": "stale",
       "localizations": {
         "de": {
           "stringUnit": {
@@ -23078,7 +23094,6 @@
       }
     },
     "Price": {
-      "extractionState": "stale",
       "localizations": {
         "de": {
           "stringUnit": {
@@ -23899,6 +23914,7 @@
       }
     },
     "Receive texts and codes in the app": {
+      "extractionState": "stale",
       "localizations": {
         "de": {
           "stringUnit": {
@@ -24100,6 +24116,7 @@
       }
     },
     "Received": {
+      "extractionState": "stale",
       "localizations": {
         "de": {
           "stringUnit": {
@@ -24584,6 +24601,7 @@
       }
     },
     "Remove name": {
+      "extractionState": "stale",
       "localizations": {
         "de": {
           "stringUnit": {
@@ -24664,7 +24682,6 @@
       }
     },
     "Renew your subscription to send messages again.": {
-      "extractionState": "stale",
       "localizations": {
         "de": {
           "stringUnit": {
@@ -24705,6 +24722,7 @@
       }
     },
     "Renews": {
+      "extractionState": "stale",
       "localizations": {
         "de": {
           "stringUnit": {
@@ -26269,7 +26287,6 @@
       }
     },
     "Send": {
-      "extractionState": "stale",
       "localizations": {
         "de": {
           "stringUnit": {
@@ -26512,7 +26529,88 @@
         }
       }
     },
+    "Send texts to US and Canadian numbers": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Texte an US- und kanadische Nummern senden"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Envía mensajes a números de EE. UU. y Canadá"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Envoyez des textos vers des numéros américains et canadiens"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Invia messaggi a numeri statunitensi e canadesi"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "米国とカナダの番号にテキストを送信"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Envie mensagens para números dos EUA e do Canadá"
+          }
+        }
+      }
+    },
+    "Sending isn't available from this number right now.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Das Senden ist von dieser Nummer derzeit nicht möglich."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ahora mismo no se pueden enviar mensajes desde este número."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "L'envoi n'est pas disponible depuis ce numéro pour le moment."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Al momento non è possibile inviare messaggi da questo numero."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "現在この番号からは送信できません。"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No momento não é possível enviar mensagens deste número."
+          }
+        }
+      }
+    },
     "Sending texts from this number": {
+      "extractionState": "stale",
       "localizations": {
         "de": {
           "stringUnit": {
@@ -26548,6 +26646,46 @@
           "stringUnit": {
             "state": "translated",
             "value": "Enviar SMS deste número"
+          }
+        }
+      }
+    },
+    "Sending texts outside the US and Canada": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Texte außerhalb der USA und Kanadas senden"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Enviar mensajes fuera de EE. UU. y Canadá"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Envoyer des textos hors des États-Unis et du Canada"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Inviare messaggi fuori da Stati Uniti e Canada"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "米国とカナダ以外へのテキスト送信"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Enviar mensagens fora dos EUA e do Canadá"
           }
         }
       }
@@ -26996,6 +27134,7 @@
       }
     },
     "Show different numbers": {
+      "extractionState": "stale",
       "localizations": {
         "de": {
           "stringUnit": {
@@ -27519,7 +27658,48 @@
         }
       }
     },
+    "Some networks block texts sent from virtual numbers": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Manche Netze blockieren Texte von virtuellen Nummern"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Algunas redes bloquean los mensajes enviados desde números virtuales"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Certains réseaux bloquent les textos envoyés depuis des numéros virtuels"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Alcune reti bloccano i messaggi inviati da numeri virtuali"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "一部のネットワークは仮想番号からのテキストをブロックします"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Algumas operadoras bloqueiam mensagens enviadas de números virtuais"
+          }
+        }
+      }
+    },
     "Some platforms refuse virtual numbers. If a code doesn't arrive, switch to a new number for %lld credits.": {
+      "extractionState": "stale",
       "localizations": {
         "de": {
           "stringUnit": {
@@ -27560,6 +27740,7 @@
       }
     },
     "Some platforms refuse virtual numbers. If a code doesn't arrive, switch to a new number for a few credits.": {
+      "extractionState": "stale",
       "localizations": {
         "de": {
           "stringUnit": {
@@ -27998,6 +28179,46 @@
           "stringUnit": {
             "state": "translated",
             "value": "Algo deu errado. Tente novamente."
+          }
+        }
+      }
+    },
+    "Sometimes": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Manchmal"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "A veces"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Parfois"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "A volte"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "場合によっては"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Às vezes"
           }
         }
       }
@@ -28726,6 +28947,7 @@
       }
     },
     "Switch number": {
+      "extractionState": "stale",
       "localizations": {
         "de": {
           "stringUnit": {
@@ -28766,6 +28988,7 @@
       }
     },
     "Switch number · %lld credits": {
+      "extractionState": "stale",
       "localizations": {
         "de": {
           "stringUnit": {
@@ -28846,6 +29069,7 @@
       }
     },
     "Switch to a new number whenever you need": {
+      "extractionState": "stale",
       "localizations": {
         "de": {
           "stringUnit": {
@@ -28886,6 +29110,7 @@
       }
     },
     "Switch to a new number?": {
+      "extractionState": "stale",
       "localizations": {
         "de": {
           "stringUnit": {
@@ -29612,6 +29837,7 @@
       }
     },
     "Text it from your own phone — the message appears here within seconds.": {
+      "extractionState": "stale",
       "localizations": {
         "de": {
           "stringUnit": {
@@ -30015,7 +30241,6 @@
       }
     },
     "That doesn't look like a phone number yet.": {
-      "extractionState": "stale",
       "localizations": {
         "de": {
           "stringUnit": {
@@ -30411,6 +30636,46 @@
           "stringUnit": {
             "state": "translated",
             "value": "Essa mensagem não foi enviada. Nada foi descontado da sua franquia — tente novamente."
+          }
+        }
+      }
+    },
+    "That number couldn't be reached.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Diese Nummer war nicht erreichbar."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No se pudo contactar con ese número."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ce numéro n'a pas pu être joint."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Non è stato possibile raggiungere quel numero."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "その番号には届きませんでした。"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Não foi possível alcançar esse número."
           }
         }
       }
@@ -31255,6 +31520,46 @@
         }
       }
     },
+    "The recipient's network refused this message.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Das Netz des Empfängers hat diese Nachricht abgelehnt."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "La red del destinatario rechazó este mensaje."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Le réseau du destinataire a refusé ce message."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "La rete del destinatario ha rifiutato questo messaggio."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "受信者のネットワークがこのメッセージを拒否しました。"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "A operadora do destinatário recusou esta mensagem."
+          }
+        }
+      }
+    },
     "The window closed before anything arrived, so your %lld credits went back to your balance.": {
       "localizations": {
         "de": {
@@ -31656,6 +31961,206 @@
         }
       }
     },
+    "This message wasn't delivered.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Diese Nachricht wurde nicht zugestellt."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Este mensaje no se entregó."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ce message n'a pas été remis."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Questo messaggio non è stato consegnato."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "このメッセージは配信されませんでした。"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Esta mensagem não foi entregue."
+          }
+        }
+      }
+    },
+    "This number can make calls but can't send or receive texts.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Diese Nummer kann anrufen, aber keine Texte senden oder empfangen."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Este número puede hacer llamadas, pero no enviar ni recibir mensajes."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ce numéro peut passer des appels, mais ne peut ni envoyer ni recevoir de textos."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Questo numero può chiamare, ma non può inviare o ricevere messaggi."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "この番号は通話できますが、テキストの送受信はできません。"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Este número pode fazer chamadas, mas não enviar ou receber mensagens."
+          }
+        }
+      }
+    },
+    "This number can only text US and Canadian numbers.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Diese Nummer kann nur US- und kanadische Nummern anschreiben."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Este número solo puede enviar mensajes a números de EE. UU. y Canadá."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ce numéro ne peut envoyer des textos qu'à des numéros américains et canadiens."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Questo numero può inviare messaggi solo a numeri statunitensi e canadesi."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "この番号は米国とカナダの番号にのみテキストを送信できます。"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Este número só pode enviar mensagens para números dos EUA e do Canadá."
+          }
+        }
+      }
+    },
+    "This number can only text US and Canadian numbers. It can still receive texts from US and Canadian senders.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Diese Nummer kann nur US- und kanadische Nummern anschreiben. Texte von Absendern in den USA und Kanada empfängt sie weiterhin."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Este número solo puede enviar mensajes a números de EE. UU. y Canadá. Sigue recibiendo mensajes de remitentes de EE. UU. y Canadá."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ce numéro ne peut envoyer des textos qu'à des numéros américains et canadiens. Il continue de recevoir les textos d'expéditeurs américains et canadiens."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Questo numero può inviare messaggi solo a numeri statunitensi e canadesi. Continua a ricevere messaggi da mittenti di Stati Uniti e Canada."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "この番号は米国とカナダの番号にのみテキストを送信できます。米国とカナダの送信者からのテキストは引き続き受信できます。"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Este número só pode enviar mensagens para números dos EUA e do Canadá. Ele continua recebendo mensagens de remetentes dos EUA e do Canadá."
+          }
+        }
+      }
+    },
+    "This number can only text numbers in its own country right now. It can still receive texts.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Diese Nummer kann derzeit nur Nummern im eigenen Land anschreiben. Texte empfängt sie weiterhin."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Por ahora, este número solo puede enviar mensajes a números de su propio país. Sigue recibiendo mensajes."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pour l'instant, ce numéro ne peut envoyer des textos qu'à des numéros de son propre pays. Il continue de recevoir des textos."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Per ora questo numero può inviare messaggi solo a numeri del suo stesso paese. Continua a ricevere messaggi."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "この番号は現在、同じ国の番号にのみテキストを送信できます。テキストの受信は引き続き可能です。"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Por enquanto, este número só pode enviar mensagens para números do próprio país. Ele continua recebendo mensagens."
+          }
+        }
+      }
+    },
     "This number can't call 911 or any emergency service. Always use your phone's own number for emergencies.": {
       "localizations": {
         "de": {
@@ -31817,7 +32322,6 @@
       }
     },
     "This number can't text emergency services. Use your phone's own number.": {
-      "extractionState": "stale",
       "localizations": {
         "de": {
           "stringUnit": {
@@ -31858,6 +32362,7 @@
       }
     },
     "This number can't text outside Canada and the US yet. It can still receive texts from anywhere.": {
+      "extractionState": "stale",
       "localizations": {
         "de": {
           "stringUnit": {
@@ -31978,6 +32483,7 @@
       }
     },
     "This number receives texts but doesn't send them. Calls work — tap the phone icon.": {
+      "extractionState": "stale",
       "localizations": {
         "de": {
           "stringUnit": {
@@ -32018,6 +32524,7 @@
       }
     },
     "This number receives texts. Replying isn't available yet.": {
+      "extractionState": "stale",
       "localizations": {
         "de": {
           "stringUnit": {
@@ -32542,7 +33049,6 @@
       }
     },
     "To": {
-      "extractionState": "stale",
       "localizations": {
         "de": {
           "stringUnit": {
@@ -33160,7 +33666,6 @@
       }
     },
     "Try another city": {
-      "extractionState": "stale",
       "localizations": {
         "de": {
           "stringUnit": {
@@ -36279,6 +36784,7 @@
       }
     },
     "Works with WhatsApp, TikTok, DoorDash and most other apps. The code lands here, with one tap to copy it.": {
+      "extractionState": "stale",
       "localizations": {
         "de": {
           "stringUnit": {
@@ -36935,6 +37441,7 @@
       }
     },
     "You'll get a new number in the same area code for %lld credits. %@ is given up for good — you can't get it back, and anything still sending codes to it won't reach you.": {
+      "extractionState": "stale",
       "localizations": {
         "de": {
           "stringUnit": {
@@ -37269,7 +37776,6 @@
       }
     },
     "You've blocked this number. Unblock it to send.": {
-      "extractionState": "stale",
       "localizations": {
         "de": {
           "stringUnit": {
@@ -37551,7 +38057,6 @@
       }
     },
     "You've used this month's texts. They reset when your subscription renews.": {
-      "extractionState": "stale",
       "localizations": {
         "de": {
           "stringUnit": {
@@ -37876,6 +38381,7 @@
       }
     },
     "Your Canadian number can only text Canadian numbers right now. It can still receive texts from anywhere.": {
+      "extractionState": "stale",
       "localizations": {
         "de": {
           "stringUnit": {
@@ -38567,6 +39073,7 @@
       }
     },
     "Your number is at the top of this screen — tap it to copy.": {
+      "extractionState": "stale",
       "localizations": {
         "de": {
           "stringUnit": {
@@ -38727,7 +39234,6 @@
       }
     },
     "Your number is on hold. Resubscribe to use it again.": {
-      "extractionState": "stale",
       "localizations": {
         "de": {
           "stringUnit": {
@@ -38809,7 +39315,6 @@
       }
     },
     "Your number isn't ready yet.": {
-      "extractionState": "stale",
       "localizations": {
         "de": {
           "stringUnit": {
@@ -38890,6 +39395,7 @@
       }
     },
     "Your own number": {
+      "extractionState": "stale",
       "localizations": {
         "de": {
           "stringUnit": {
@@ -38970,6 +39476,7 @@
       }
     },
     "Your plan": {
+      "extractionState": "stale",
       "localizations": {
         "de": {
           "stringUnit": {
@@ -39290,6 +39797,7 @@
       }
     },
     "Your subscription lapsed. You can still receive texts and calls, but you can't call out until you renew.": {
+      "extractionState": "stale",
       "localizations": {
         "de": {
           "stringUnit": {
@@ -39366,6 +39874,46 @@
           "stringUnit": {
             "state": "translated",
             "value": "Sua assinatura expirou. Você ainda recebe mensagens e chamadas, mas não pode enviar nem ligar até renovar."
+          }
+        }
+      }
+    },
+    "Your subscription lapsed. You can still receive texts and calls, but you can't send texts or call out until you renew.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ihr Abo ist abgelaufen. Sie können weiterhin Texte und Anrufe empfangen, aber bis zur Verlängerung keine Texte senden und nicht anrufen."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tu suscripción venció. Aún puedes recibir mensajes y llamadas, pero no podrás enviar mensajes ni llamar hasta que la renueves."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Votre abonnement a expiré. Vous pouvez toujours recevoir textos et appels, mais vous ne pourrez ni envoyer de textos ni appeler avant de le renouveler."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Il tuo abbonamento è scaduto. Puoi ancora ricevere messaggi e chiamate, ma non potrai inviare messaggi né chiamare finché non lo rinnovi."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "サブスクリプションが失効しました。テキストと着信は引き続き受け取れますが、更新するまでテキストの送信と発信はできません。"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sua assinatura expirou. Você ainda recebe mensagens e chamadas, mas não poderá enviar mensagens nem ligar até renovar."
           }
         }
       }

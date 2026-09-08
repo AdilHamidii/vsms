@@ -705,11 +705,24 @@ registration regime is exactly the kind of thing that is enforced probabilistica
 before it is enforced absolutely. This file's own standing rule — treat presence
 as the only signal, re-measure before quoting — was not applied to it.
 
-⚠️ **`_shared/nanp.ts` now REFUSES a cross-border or international send before
-spending the user's allowance**, because attempting one buys a guaranteed
-failure. It carries the Canadian NPA table, since +1 alone cannot tell Canada
-from the United States. **It is temporary: DELETE it when a registration path
-clears, rather than adding exceptions to it.**
+⚠️ **`_shared/nanp.ts` REFUSES a send outside NANP before spending the user's
+allowance**, because `international_outbound` is false on every number we own
+and attempting one buys a guaranteed failure. **AMENDED 2026-09-08: the
+CROSS-BORDER refusal is gone — NANP is treated as one bloc (US/CA/PR/VI), so
+US→CA is allowed.** It still carries the Canadian NPA table, since +1 alone
+cannot tell Canada from the United States, but that is now a *label* for copy
+and catalogue decisions, NOT the bloc test — use `isNanpNumber` for the bloc,
+because `nanpCountry` reports PR and VI as US. **The remaining refusal is
+temporary: DELETE it when Telnyx grants international outbound, rather than
+adding exceptions to it.**
+
+🔴 **THE "CANADA NEEDS NO 10DLC" RETRACTION BELOW STANDS, BUT ITS
+GENERALISATION DOES NOT.** The four failing sends were all CA→US; that says
+Canadian longcodes cannot reach US carriers unregistered. It does NOT say a US
+number cannot send — nothing had ever tested one. A US→CA send on 2026-09-08
+was delivered (on-net, between two numbers we own — see CLAUDE.md's Known-open
+entry for why that is weak evidence). **Outbound to a real off-net handset is
+still unproven, and no number on the account carries a 10DLC campaign.**
 
 **The two paths that remain, both requiring an approval that can be refused:**
 

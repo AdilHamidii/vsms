@@ -32,6 +32,13 @@ import {
   subscriptionFamily, mailPlanLabel,
 } from "../_shared/iap.ts";
 import { findNumberId, releaseNumber, faultOf } from "../_shared/telnyx.ts";
+import {
+  completeLineProvision, pickLineNumber, DEFAULT_LINE_COUNTRY,
+} from "../_shared/lineProvision.ts";
+import {
+  sellableCountry, catalogFaultOf, loadLineCatalogConfig,
+} from "../_shared/lineCatalog.ts";
+import { sendPush } from "../_shared/apns.ts";
 import { sendMessage, esc } from "../_shared/telegram.ts";
 import { alertHtml } from "../_shared/tgAlert.ts";
 import { parisFull } from "../_shared/tgFormat.ts";
@@ -360,12 +367,22 @@ async function process(sb: ReturnType<typeof admin>, n: Awaited<ReturnType<typeo
           assn_renewal_no_live_line: originalTx, reason: data?.reason ?? null,
         }));
       }
-      // Money landed on a subscription whose number is already gone: the
-      // customer has paid and holds no line, and nothing re-provisions one
-      // for them. This is the accepted residual of releasing with no hold
-      // (20260905130000) — accepted on the condition that it PAGES rather
-      // than sits in a log. `already_applied` is a retry, not this case.
-      if (data?.ok === true && data?.reason !== "already_applied" && !data?.line_id) {
+      // Money landed on a subscription whose number is already gone — the
+      // accepted residual of releasing with no hold (20260905130000). Since
+      // 2026-09-08 it is no longer merely paged: a RENEWAL provisions a new
+      // number automatically (owner decision — "if we don't have their number
+      // anymore just give them a new one").
+      //
+      // 🔴 DID_RENEW ONLY, deliberately. A renewal is silent — no client call
+      // is in flight, so nobody is on screen choosing a number and there is
+      // nothing to race. SUBSCRIBED (including RESUBSCRIBE) is the opposite:
+      // `verify-line-subscription` owns that path, the user is picking their
+      // own number in the app right now, and provisioning from here would take
+      // that choice away and refuse their own call with `line_exists`. It
+      // keeps the page it has always had.
+      if (type === "DID_RENEW") {
+        await reprovisionAfterRenewal(sb, originalTx, periodEnd, n.notificationUUID, tx);
+      } else if (data?.ok === true && data?.reason !== "already_applied" && !data?.line_id) {
         await alertOwner(alertHtml({
           sev: "🟠", title: "Renewal landed on a released line",
           what: `tx ${esc(originalTx)} · ${esc(linePlanLabel(tx))}` +
@@ -546,6 +563,281 @@ async function process(sb: ReturnType<typeof admin>, n: Awaited<ReturnType<typeo
       // Unknown types are RECORDED and ignored, never guessed at. Apple adds
       // notification types; encoding a guess is what broke eSIM refunds.
       console.log(JSON.stringify({ assn_unhandled: type, subtype: sub }));
+  }
+}
+
+/**
+ * A renewal landed. If the subscriber holds no live line, buy them a new one.
+ *
+ * ── Why this exists ───────────────────────────────────────────────────────
+ * Since 20260905130000 a lapsed line is released within ~30 minutes and there
+ * is no hold. Apple retries a declined card for up to 60 days, so a billing
+ * recovery routinely arrives long after the number is gone: `apply_line_renewal`
+ * marks the subscription active and revives nothing. Before 2026-09-08 that
+ * paged a human and stopped there, so a paying customer sat with no number
+ * until somebody read Telegram.
+ *
+ * ── 🔴 THE IDEMPOTENCE ARGUMENT (this is the whole risk) ──────────────────
+ * Apple delivers the same notification up to five times. This function is
+ * reached on retries too, because it asks the DATABASE whether a line exists
+ * rather than trusting `apply_line_renewal`'s tombstone — deliberately, since
+ * keying on the tombstone would make a FAILED provisioning unrepeatable, which
+ * is precisely the case this exists for (the Telnyx balance was $0.51 the day
+ * it shipped, and an empty account fails as 20100).
+ *
+ * So the guard is the ROW, not a flag:
+ *
+ *   1. `line_reprovision_target` refuses when any live Apple line exists — the
+ *      cheap common case, one read.
+ *   2. `begin_line_rental` takes `pg_advisory_xact_lock(user)`, re-checks
+ *      occupancy inside it, and inserts under
+ *      `phone_lines_one_apple_line_per_user` — a PARTIAL unique index covering
+ *      provisioning|active|grace|past_due|suspended|releasing. Two concurrent
+ *      deliveries cannot both insert; the loser gets `line_exists` and stops.
+ *   3. The number is ORDERED only after that row exists — everything before it
+ *      is a read and buys nothing — so there is at most one buy per live row.
+ *   4. A failed attempt ends `failed`, which is OUTSIDE that index, so the
+ *      next retry starts clean instead of being locked out.
+ *
+ * N deliveries therefore produce at most one number, and a failure stays
+ * recoverable. Nothing here is keyed on the notification uuid, on purpose.
+ *
+ * Never throws: a provisioning problem must not put Apple's retry ladder to
+ * work on a renewal we already applied. It pages instead, and the next retry
+ * (or a manual replay once the float is topped up) tries again on its own.
+ */
+async function reprovisionAfterRenewal(
+  sb: ReturnType<typeof admin>,
+  originalTx: string,
+  periodEnd: string | null,
+  notificationUUID: string,
+  tx: Awaited<ReturnType<typeof verifyTransactionJWS>>,
+) {
+  try {
+    // 🔴 PRODUCTION ONLY, and this is a money gate rather than a purity one.
+    // `verify-line-subscription` deliberately provisions in Sandbox so the App
+    // Store reviewer gets a working number — that path is untouched. But a
+    // Sandbox subscription renews every few MINUTES, and each renewal that
+    // follows a lapse-and-release would buy another real $1 number on our real
+    // Telnyx account, forever, with nobody watching. A sandbox line that
+    // lapsed does not need replacing.
+    if (tx.environment !== "Production") {
+      console.log(JSON.stringify({
+        line_reprovision_skipped: originalTx, environment: tx.environment,
+      }));
+      return;
+    }
+
+    const { data: target, error: targetErr } = await sb
+      .rpc("line_reprovision_target", { p_original_tx: originalTx });
+    if (targetErr) {
+      console.error(JSON.stringify({
+        alert: "line_reprovision_target_failed", tx: originalTx,
+        detail: targetErr.message,
+      }));
+      return;
+    }
+    // They already hold a line: the overwhelmingly normal renewal. Silence is
+    // correct here — the ordinary "renewed" alert is the only one wanted.
+    if (target?.reason === "line_exists") return;
+
+    if (target?.ok !== true) {
+      // A renewal we cannot act on is money taken for nothing, which is what
+      // the old `renew_noline` page was for — kept, now with the cause named.
+      await alertOwner(alertHtml({
+        sev: "🟠", title: "Renewal landed on a released line",
+        what: `tx ${esc(originalTx)} · ${esc(linePlanLabel(tx))}` +
+          (tx.price != null && tx.currency
+            ? ` — ${(tx.price / 1000).toFixed(2)} ${esc(tx.currency)}` : "") +
+          `\ncould not auto-provision: ${esc(String(target?.reason ?? "unknown"))}`,
+        why: target?.reason === "unknown_subscription"
+          ? "We hold no subscription row for this transaction, so nothing says which account paid. It cannot be attributed from here."
+          : target?.reason === "no_prior_line"
+          ? "This subscription has never held a number, so there is no place to put them back — a different failure with a different fix."
+          : "The subscription is not in a live state, so provisioning would pay rent for nothing.",
+        action: "Reach out, or refund via Apple.",
+        at: new Date(),
+      }), sb, `renew_noline:${notificationUUID}`, "line_event");
+      return;
+    }
+
+    const userId = String(target.user_id);
+    const product = String(target.product_id ?? tx.productId);
+    const numberType = String(target.number_type ?? "local");
+    const wantedCountry = String(target.country_code ?? DEFAULT_LINE_COUNTRY)
+      .toUpperCase();
+
+    // The country gate, fail-CLOSED as everywhere else. Their OWN country
+    // first, so a subscriber who chose Toronto is not silently moved; if it
+    // has since been blocked (a regulatory change, or a Telnyx rejection
+    // self-healed into the catalog) fall back to the server default — a number
+    // in the wrong country beats no number on a subscription they have paid
+    // for, and the alert says so.
+    const cfg = await loadLineCatalogConfig(sb);
+    let country = wantedCountry;
+    let sellable = await sellableCountry(sb, country, numberType, cfg);
+    if (catalogFaultOf(sellable) && country !== DEFAULT_LINE_COUNTRY) {
+      country = DEFAULT_LINE_COUNTRY;
+      sellable = await sellableCountry(sb, country, numberType, cfg);
+    }
+    if (catalogFaultOf(sellable)) {
+      await reprovisionFailedAlert(sb, notificationUUID, originalTx, tx,
+        `country_not_sellable (${wantedCountry}: ${sellable.reason})`);
+      return;
+    }
+
+    // Read-only at the provider: a search buys nothing, so it is safe before
+    // the row-creating claim and safe to run concurrently with another
+    // delivery of the same notification.
+    const picked = await pickLineNumber(sb, {
+      country, numberType, features: sellable.features, cfg,
+      localityId: country === wantedCountry
+        ? (target.locality as string | null) ?? null
+        : null,
+    });
+    if (!picked.ok) {
+      await reprovisionFailedAlert(sb, notificationUUID, originalTx, tx,
+        `${picked.reason} (${country})`);
+      return;
+    }
+
+    // ── The mutex. Everything above this line is a read. ──────────────────
+    const { data: begun, error: beginErr } = await sb.rpc("begin_line_rental", {
+      p_user: userId,
+      p_e164: picked.offer.phoneNumber,
+      p_country: country,
+      p_number_type: numberType,
+      p_original_tx: originalTx,
+      p_product: product,
+    });
+    if (beginErr) {
+      await reprovisionFailedAlert(sb, notificationUUID, originalTx, tx,
+        `begin_line_rental: ${beginErr.message}`);
+      return;
+    }
+    if (begun?.ok !== true) {
+      // `line_exists` means a concurrent delivery won the race and is
+      // provisioning right now — the guard working, and silent. `lines_paused`
+      // is the owner's kill switch and must never be worked around, so that
+      // one pages instead.
+      if (begun?.reason === "line_exists") return;
+      await reprovisionFailedAlert(sb, notificationUUID, originalTx, tx,
+        String(begun?.reason ?? "begin_line_rental refused"));
+      return;
+    }
+    const lineId = String(begun.line_id);
+
+    // `begin_line_rental` has no `p_locality`; this is the same best-effort
+    // stamp `rent-line-credits` writes, and it is only ever read by a
+    // non-NANP swap.
+    if (picked.place?.id) {
+      const { error: locErr } = await sb.from("phone_lines")
+        .update({ locality: picked.place.id }).eq("id", lineId);
+      if (locErr) {
+        console.error(JSON.stringify({
+          alert: "line_locality_unrecorded", line: lineId, detail: locErr.message,
+        }));
+      }
+    }
+
+    const done = await completeLineProvision(sb, {
+      lineId, e164: picked.offer.phoneNumber, country, numberType,
+      requirementGroupId: sellable.requirementGroupId,
+      // 🔴 THE RENEWAL'S OWN PERIOD END, and it is load-bearing. Without it
+      // the row carries no `current_period_end`; with a stale one
+      // `reclaim_lapsed_lines` branch (d) suspends the line on the next
+      // 15-minute sweep and `release-lines` deletes the number ~15 minutes
+      // after that — buying and throwing away a $1 number on every retry.
+      periodEnd,
+      monthlyCents: picked.offer.monthlyCents,
+      // Apple owns the money and there is nothing to refund. Failing the line
+      // is what frees the user to rent again — and, because `failed` sits
+      // outside the partial unique index, what lets the next retry proceed.
+      onFail: async (reason) => {
+        const { error } = await sb.rpc("fail_line_claim",
+          { p_line: lineId, p_reason: reason });
+        if (error) {
+          console.error(JSON.stringify({
+            alert: "line_fail_claim_failed", lineId, detail: error.message,
+          }));
+        }
+      },
+    });
+    if (!done.ok) {
+      await reprovisionFailedAlert(sb, notificationUUID, originalTx, tx,
+        `provisioning failed (${country})`);
+      return;
+    }
+
+    await pushNewNumber(sb, userId, done.e164);
+    await alertOwner(alertHtml({
+      sev: "ℹ️", title: "Renewal reprovisioned a number",
+      what: `tx ${esc(originalTx)} · ${esc(linePlanLabel(tx))}\n` +
+        `new number ${esc(done.e164)} (${esc(country)})` +
+        (target.previous_e164
+          ? `\nreplaces ${esc(String(target.previous_e164))}, released earlier`
+          : "") +
+        (country !== wantedCountry
+          ? `\n⚠️ ${esc(wantedCountry)} is no longer sellable — moved to ${esc(country)}`
+          : ""),
+      why: "They renewed after we had already released their number, so a replacement was provisioned automatically. The old number is gone for good and anyone texting it will not reach them.",
+      at: new Date(),
+    }), sb, `reprovisioned:${notificationUUID}`, "line_event");
+  } catch (e) {
+    console.error(JSON.stringify({
+      alert: "line_reprovision_threw", tx: originalTx, detail: String(e),
+    }));
+  }
+}
+
+/** One page shape for every way the auto-provision can fail, so the owner
+ *  always learns the REASON rather than only that it did not happen. 🟠 rather
+ *  than 🔴: the money is not lost, it is unspent — the next Apple retry or a
+ *  Telnyx top-up recovers it without anyone touching the database. */
+async function reprovisionFailedAlert(
+  sb: ReturnType<typeof admin>, notificationUUID: string, originalTx: string,
+  tx: Awaited<ReturnType<typeof verifyTransactionJWS>>, reason: string,
+) {
+  await alertOwner(alertHtml({
+    sev: "🟠", title: "Renewal could not be given a new number",
+    what: `tx ${esc(originalTx)} · ${esc(linePlanLabel(tx))}` +
+      (tx.price != null && tx.currency
+        ? ` — ${(tx.price / 1000).toFixed(2)} ${esc(tx.currency)}` : "") +
+      `\nreason: ${esc(reason)}`,
+    why: "They renewed after we released their number, and buying a replacement failed. They have paid and hold no line.",
+    action: "Check the Telnyx balance first — an empty account fails as 20100. Apple retries this notification for up to 72h, so a top-up can fix it with no further action.",
+    at: new Date(),
+  }), sb, `reprovision_failed:${notificationUUID}`, "line_event");
+}
+
+/** Tell the user their number changed. The OLD number is gone for good, so
+ *  anyone who texts it will not reach them — which is why this is a push
+ *  rather than something they discover next time they open the app.
+ *
+ *  ⚠️ It carries NO `orderId`: `PushManager` routes on that key and would
+ *  deep-link into the SMS refund screen. `kind` is checked first there and an
+ *  unrecognised kind falls through to no navigation, so shipped builds show
+ *  the banner and open normally rather than the wrong screen. */
+async function pushNewNumber(
+  sb: ReturnType<typeof admin>, userId: string, e164: string,
+) {
+  try {
+    const { data: devices } = await sb.from("push_devices")
+      .select("token, environment").eq("user_id", userId);
+    for (const d of devices ?? []) {
+      await sendPush(String(d.token), {
+        alertTitle: "Your number changed",
+        alertBody: `${e164} is your new number. The old one was released when ` +
+          `the subscription lapsed, so give this one out instead.`,
+        customData: { kind: "line_number" },
+      }, (d.environment as "sandbox" | "production" | null) ?? undefined);
+    }
+  } catch (e) {
+    // A push must never fail the notification: they have their number either
+    // way, and the app shows it.
+    console.error(JSON.stringify({
+      alert: "line_number_push_failed", detail: String(e),
+    }));
   }
 }
 

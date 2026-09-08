@@ -131,13 +131,19 @@ struct Line: Codable, Identifiable, Hashable {
     // I still do", so making them subtract is a tax paid on every glance —
     // the same reasoning as `DataRing`.
 
-    // ⚠️ There is deliberately NO `smsRemaining` / `hasSmsLeft` / `smsFraction`
-    // any more. Outbound SMS was dropped on 2026-08-18 and nothing can spend
-    // that allowance, so a "texts left" figure is a cap on a capability the
-    // product does not sell. It must not come back as an INBOUND counter
-    // either: inbound is never metered, and a received-texts figure would
-    // invent a limit that does not exist. `smsAllowance` / `smsUsed` stay as
-    // decoded columns of the `my_line` view and nothing renders them.
+    // `smsRemaining` came BACK on 2026-09-08 with the composer. It was deleted
+    // on 2026-08-18 because nothing could spend the allowance, which made a
+    // "texts left" figure a cap on a capability we did not sell. Sending is on
+    // again (NANP → NANP), so the allowance is spendable and the figure is a
+    // real one.
+    //
+    // ⚠️ The half of that rule that still stands: this must NEVER become an
+    // INBOUND counter. Inbound is not metered, and a received-texts figure
+    // would invent a limit that does not exist. It counts outbound segments
+    // and nothing else.
+    var smsRemaining: Int { max(0, smsAllowance - smsUsed) }
+    var hasSmsLeft: Bool { smsRemaining > 0 }
+
     var voiceSecondsRemaining: Int { max(0, voiceAllowanceSeconds - voiceUsedSeconds) }
     var voiceMinutesRemaining: Int { voiceSecondsRemaining / 60 }
 
@@ -172,11 +178,27 @@ struct Line: Codable, Identifiable, Hashable {
     // ⚠️ `callBlock` has NO CALLERS — the dialer reads `voiceSecondsRemaining`
     // directly. Kept because it is the correct shape for the dialer's refusal
     // and deleting it would invite the next person to hand-roll the check a
-    // fourth time. Its `sendBlock` twin is GONE: it lost its last caller when
-    // the composer was deleted in the 2026-08-18 outbound-SMS pivot, and
-    // unlike this one it has no future — there is nothing left to send.
-    // A `SendBlock.message` accessor lived here for a few hours on 08-18 and
-    // was removed with the composer that rendered it.
+    // fourth time.
+
+    /// Why the composer is blocked, or nil when it is not.
+    ///
+    /// Restored 2026-09-08 with outbound SMS. The distinction it carries is the
+    /// whole reason it exists: "you have used your texts" and "your payment
+    /// failed" send the user to two different places, and telling a past-due
+    /// user to wait for a reset that is not coming is the worse mistake.
+    ///
+    /// A `grace` line can still send — that is the entire point of Apple's
+    /// billing grace period, and `begin_outbound_message` accepts it too, so
+    /// this and the server agree by construction.
+    var sendBlock: SendBlock? {
+        switch status {
+        case .active, .grace:
+            return hasSmsLeft ? nil : .allowanceExhausted
+        case .pastDue:  return .pastDue
+        case .suspended: return .suspended
+        default:        return .notLive
+        }
+    }
 
     var callBlock: SendBlock? {
         switch status {
@@ -212,6 +234,16 @@ struct LineMessage: Codable, Identifiable, Hashable {
     let body: String?
     let status: LineMsgStatus
     let segments: Int
+    /// Why this message failed, as the PROVIDER described it — the string
+    /// `telnyx-webhook` builds from the receipt: `"delivery_failed (40010: The
+    /// sending number is not 10DLC-registered…)"`. Optional because it is only
+    /// ever written on a terminal failure, and because 2.10 and older builds do
+    /// not select the column at all.
+    ///
+    /// 🔴 IT IS NEVER SHOWN VERBATIM. It is a carrier's diagnostic, in English,
+    /// about a registration regime the user has no part in — `failureReason`
+    /// below is the only thing a screen may render.
+    let errorCode: String?
     let sentAt: Date?
     let receivedAt: Date?
     let createdAt: Date
@@ -221,6 +253,40 @@ struct LineMessage: Codable, Identifiable, Hashable {
     /// carries a time rather than a blank.
     var timestamp: Date { sentAt ?? receivedAt ?? createdAt }
     var isOutbound: Bool { direction == .outbound }
+
+    /// The three things that can go wrong on a send, as far as the data can
+    /// actually tell them apart.
+    ///
+    /// ⚠️ Only `carrierBlocked` is identified with any confidence, because
+    /// Telnyx names 10DLC explicitly (`40010`, and the 4xx0x family around it).
+    /// Everything else collapses into `unknown` on purpose: Telnyx's coarse
+    /// status is `delivery_failed` for a bad number, a carrier block and a spam
+    /// filter alike, and guessing between them would put a specific, wrong
+    /// instruction in front of the user. Saying less is the correct failure
+    /// here — the same rule as `_shared/emailStatus.ts` mapping an unknown
+    /// vendor status to "still waiting" rather than inventing a terminal one.
+    enum FailureReason { case carrierBlocked, badNumber, unknown }
+
+    var failureReason: FailureReason? {
+        guard status == .failed else { return nil }
+        guard let raw = errorCode?.lowercased(), !raw.isEmpty else { return .unknown }
+        // 40010 is the 10DLC rejection this product has met more than any
+        // other. The words are matched too, because Telnyx has more than one
+        // code in that family and the detail text is the stable part.
+        if raw.contains("40010") || raw.contains("10dlc") || raw.contains("campaign")
+            || raw.contains("not registered") || raw.contains("brand") {
+            return .carrierBlocked
+        }
+        // Telnyx's own vocabulary for a destination that does not exist. Kept
+        // deliberately narrow: these are the phrases it actually sends, not a
+        // guess at what an unreachable number might look like.
+        if raw.contains("invalid destination") || raw.contains("invalid_destination")
+            || raw.contains("unallocated") || raw.contains("not in service")
+            || raw.contains("40300") {
+            return .badNumber
+        }
+        return .unknown
+    }
 }
 
 struct LineCall: Codable, Identifiable, Hashable {

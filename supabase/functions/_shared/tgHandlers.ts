@@ -266,8 +266,9 @@ export const handlers: Record<string, Handler> = {
       balanceLine("5sim", five?.balance_usd),
       balanceLine("HeroSMS", hero?.balance_usd),
       balanceLine("esimaccess", ea?.balance_usd),
-      // Telnyx gets its own low-water mark: the SMS $37.50 threshold would
-      // print a permanent "top up" against $1/month rent.
+      // Telnyx gets its own low-water mark ($10 vs the SMS providers' $5,
+      // owner decision 2026-09-08): running dry there does not merely block a
+      // sale, it means an existing subscriber's number cannot be renewed.
       balanceLine("Telnyx", telnyx?.balance_usd, TELNYX_LOW_USD),
       stalePoller ? "⚠️ balance readings are STALE — the poller may be dead" : "",
       failing.length > 0

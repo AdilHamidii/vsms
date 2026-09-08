@@ -368,6 +368,305 @@ Deno.serve(async (req) => {
     ? await req.json().catch(() => ({})) as Record<string, unknown>
     : {};
 
+  // ── Modes 14/15: DISPOSABLE TEST NUMBERS ─────────────────────────────────
+  //
+  // 🔴 WRITING MODES. ~$1 upfront + $1/month each.
+  //
+  // Why they exist: every number on the account belongs to a paying subscriber
+  // except one. Testing outbound SMS by texting a customer's rented number
+  // puts a probe message in that customer's inbox, which is not ours to do.
+  // A disposable number costs a dollar and removes the dilemma entirely.
+  //
+  // ⚠️ These numbers are ORPHANS by construction — no `phone_lines` row holds
+  // them — so `release-lines`' orphan sweep will delete them on its own once
+  // they are 24h old (ORPHAN_MIN_AGE_MS). `release_number` is the tidy path;
+  // the sweep is the backstop if a probe run dies half way.
+  if (body.probe === "order_test_number") {
+    const country = String(body.country ?? "US").toUpperCase();
+    if (!/^[A-Z]{2}$/.test(country)) {
+      return Response.json({ error: "country must be ISO2" }, { status: 400 });
+    }
+    const sb = admin();
+    const search = await fetch(
+      `${TELNYX}/available_phone_numbers?filter[country_code]=${country}` +
+      `&filter[phone_number_type]=local&filter[features][]=sms&filter[limit]=1`,
+      { headers: { Authorization: `Bearer ${key}` } });
+    const sj = await search.json().catch(() => ({})) as
+      { data?: { phone_number?: string }[] };
+    const candidate = sj.data?.[0]?.phone_number ?? null;
+    if (!candidate) {
+      return Response.json({ error: "no_inventory", country }, { status: 409 });
+    }
+
+    const order = await fetch(`${TELNYX}/number_orders`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        phone_numbers: [{ phone_number: candidate }],
+        customer_reference: "vsms-smsprobe",
+      }),
+    });
+    const orderText = await order.text();
+    let oj: Record<string, unknown> | null = null;
+    try { oj = JSON.parse(orderText) as Record<string, unknown>; } catch { /* raw */ }
+
+    // Number orders are ASYNCHRONOUS (pending → success). Poll, then attach the
+    // messaging profile — without it the number cannot send at all, and that
+    // omission would read exactly like a registration refusal.
+    const orderId = ((oj?.data as { id?: string } | undefined)?.id) ?? null;
+    let numberId: string | null = null;
+    let orderStatus: string | null = null;
+    for (let i = 0; i < 8 && orderId; i++) {
+      await sleep(2000);
+      const r = await fetch(`${TELNYX}/number_orders/${orderId}`,
+                            { headers: { Authorization: `Bearer ${key}` } });
+      const j = await r.json().catch(() => ({})) as
+        { data?: { status?: string; phone_numbers?: { id?: string }[] } };
+      orderStatus = j.data?.status ?? null;
+      if (orderStatus === "success") {
+        const list = await fetch(
+          `${TELNYX}/phone_numbers?filter[phone_number]=${encodeURIComponent(candidate)}`,
+          { headers: { Authorization: `Bearer ${key}` } });
+        const lj = await list.json().catch(() => ({})) as { data?: { id?: string }[] };
+        numberId = lj.data?.[0]?.id ?? null;
+        break;
+      }
+    }
+
+    let messagingAttached: unknown = null;
+    if (numberId && body.messaging_profile_id) {
+      const m = await fetch(`${TELNYX}/phone_numbers/${numberId}/messaging`, {
+        method: "PATCH",
+        headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ messaging_profile_id: String(body.messaging_profile_id) }),
+      });
+      // Read back. `messaging_profile_id` is one of the fields this API has
+      // silently accepted and discarded before.
+      const back = await fetch(`${TELNYX}/phone_numbers/${numberId}/messaging`,
+                               { headers: { Authorization: `Bearer ${key}` } });
+      const bj = await back.json().catch(() => ({})) as
+        { data?: { messaging_profile_id?: string } };
+      messagingAttached = { http: m.status, read_back: bj.data?.messaging_profile_id ?? null };
+    }
+
+    const result = {
+      mode: "order_test_number", at: new Date().toISOString(), country,
+      phone_number: candidate, order_id: orderId, order_status: orderStatus,
+      number_id: numberId, messaging: messagingAttached,
+      http: order.status, body: order.ok ? undefined : trunc(orderText, 700),
+    };
+    await sb.from("app_config").upsert(
+      { key: "telnyx_test_number_probe", value: result }, { onConflict: "key" });
+    return Response.json(result);
+  }
+
+  // Attach a messaging profile to a number we already own. Split out from
+  // `order_test_number` because a number order is ASYNCHRONOUS and can outlast
+  // that mode's poll — leaving a paid-for number that cannot send, which reads
+  // exactly like a registration refusal if you do not know to look.
+  if (body.probe === "attach_messaging") {
+    const e164 = String(body.e164 ?? "");
+    const profile = String(body.messaging_profile_id ?? "");
+    if (!/^\+[1-9]\d{6,15}$/.test(e164) || !profile) {
+      return Response.json({ error: "e164 and messaging_profile_id required" }, { status: 400 });
+    }
+    const list = await fetch(
+      `${TELNYX}/phone_numbers?filter[phone_number]=${encodeURIComponent(e164)}`,
+      { headers: { Authorization: `Bearer ${key}` } });
+    const lj = await list.json().catch(() => ({})) as { data?: { id?: string }[] };
+    const id = lj.data?.[0]?.id ?? null;
+    if (!id) return Response.json({ error: "not_on_account", e164 }, { status: 404 });
+
+    const m = await fetch(`${TELNYX}/phone_numbers/${id}/messaging`, {
+      method: "PATCH",
+      headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ messaging_profile_id: profile }),
+    });
+    const back = await fetch(`${TELNYX}/phone_numbers/${id}/messaging`,
+                             { headers: { Authorization: `Bearer ${key}` } });
+    const bj = await back.json().catch(() => ({})) as
+      { data?: Record<string, unknown> };
+    return Response.json({
+      mode: "attach_messaging", e164, number_id: id, http: m.status,
+      read_back: bj.data?.messaging_profile_id ?? null,
+      features: bj.data?.features ?? null,
+      eligible: bj.data?.eligible_messaging_products ?? null,
+    });
+  }
+
+  if (body.probe === "release_number") {
+    const e164 = String(body.e164 ?? "");
+    if (!/^\+[1-9]\d{6,15}$/.test(e164)) {
+      return Response.json({ error: "e164 required" }, { status: 400 });
+    }
+    const sb = admin();
+    // 🔴 Refuse to release a number a live line holds. This mode exists to
+    // clean up probe numbers; pointed at a subscriber's number it would delete
+    // the product they are paying for.
+    const { data: held } = await sb.from("phone_lines")
+      .select("id, status").eq("e164", e164).neq("status", "released").maybeSingle();
+    if (held) {
+      return Response.json(
+        { error: "number_held_by_live_line", line: held.id, status: held.status },
+        { status: 409 });
+    }
+    const list = await fetch(
+      `${TELNYX}/phone_numbers?filter[phone_number]=${encodeURIComponent(e164)}`,
+      { headers: { Authorization: `Bearer ${key}` } });
+    const lj = await list.json().catch(() => ({})) as { data?: { id?: string }[] };
+    const id = lj.data?.[0]?.id ?? null;
+    if (!id) return Response.json({ error: "not_on_account", e164 }, { status: 404 });
+    const del = await fetch(`${TELNYX}/phone_numbers/${id}`,
+      { method: "DELETE", headers: { Authorization: `Bearer ${key}` } });
+    return Response.json({ mode: "release_number", e164, number_id: id, http: del.status });
+  }
+
+  // ── Mode 12: the MESSAGING / REGISTRATION audit ───────────────────────────
+  //
+  // Outbound SMS has been written off since 2026-08-17 on the strength of FOUR
+  // messages, all sent from ONE Canadian longcode on one evening. The fleet is
+  // now majority US, and no US number has ever attempted a send — so the
+  // premise "outbound does not work" has never been tested against the numbers
+  // we actually sell. This reads the account's real registration state instead
+  // of re-deriving it from that note.
+  //
+  // Read-only. Every path here is a GET.
+  if (body.probe === "messaging") {
+    const budget = { left: 40 };
+    const sb = admin();
+    const { data: lines } = await sb.from("phone_lines")
+      .select("e164, country_code, status, provider_number_id, provider_msg_profile_id")
+      .neq("status", "released").order("created_at");
+
+    // Account-level registration. `10dlc/brand` reporting totalRecords: 0 is
+    // what makes every US A2P send a guaranteed carrier rejection.
+    const account: Record<string, unknown> = {
+      brands: await get(key, "/10dlc/brand", budget, true),
+      campaigns: await get(key, "/10dlc/campaign", budget, true),
+      messaging_profiles: await get(key, "/messaging_profiles", budget, true),
+      tollfree_verifications: await get(
+        key, "/messaging_tollfree/verification/requests?page[size]=10", budget, true),
+    };
+
+    // Per number: the fields that decide whether a send is even attempted.
+    // `messaging_product` (A2P vs P2P) and the three `features.sms` booleans
+    // are the ones that have silently no-op'd on PATCH before — read, never
+    // assume. A number carrying no campaign id cannot send US A2P at all.
+    const numbers: Record<string, unknown>[] = [];
+    for (const l of (lines ?? []).slice(0, 14)) {
+      if (!l.provider_number_id) continue;
+      const r = await get(key, `/phone_numbers/${l.provider_number_id}/messaging`, budget, true);
+      const d = (r.data ?? null) as Record<string, unknown> | null;
+      numbers.push({
+        e164: l.e164, country: l.country_code, line_status: l.status,
+        http: r.http,
+        messaging_profile_id: d?.messaging_profile_id ?? null,
+        messaging_product: d?.messaging_product ?? null,
+        eligible_messaging_products: d?.eligible_messaging_products ?? null,
+        messaging_campaign_id: d?.messaging_campaign_id ?? null,
+        traffic_type: d?.traffic_type ?? null,
+        features: d?.features ?? null,
+        body: r.http >= 400 ? r.body : undefined,
+      });
+    }
+
+    const result = { mode: "messaging", at: new Date().toISOString(), account, numbers };
+    await sb.from("app_config").upsert(
+      { key: "telnyx_messaging_probe", value: result }, { onConflict: "key" });
+    return Response.json(result);
+  }
+
+  // ── Mode 13: SEND ONE REAL MESSAGE between two numbers WE OWN ─────────────
+  //
+  // 🔴 WRITING MODE, AND IT COSTS ~$0.004. It is also the only thing that can
+  // settle this: every capability flag on the number resource has, at least
+  // once in this adapter, reported something the carrier then contradicted.
+  //
+  // Both endpoints must be numbers on our own account. That is a safety
+  // property, not a convenience: a probe that can text an arbitrary handset is
+  // a probe that can be used to spam, and the cron secret alone should not be
+  // able to reach a stranger's phone. It also makes the result readable — we
+  // own the receiving end, so an inbound webhook proves DELIVERY rather than
+  // mere acceptance, which is the exact distinction the one "sent" message of
+  // 2026-08-17 never resolved (it never got a delivery receipt).
+  //
+  // Telnyx accepts a message and rejects it asynchronously, so a 200 here means
+  // nothing at all. The mode therefore polls the message back for its final
+  // status and errors — the read-back rule this adapter has now paid for five
+  // times.
+  if (body.probe === "send_test") {
+    const from = String(body.from ?? "");
+    const to = String(body.to ?? "");
+    const text = String(body.text ?? "vSMS delivery probe — please ignore.");
+    if (!/^\+[1-9]\d{6,15}$/.test(from) || !/^\+[1-9]\d{6,15}$/.test(to)) {
+      return Response.json({ error: "from and to must be E.164" }, { status: 400 });
+    }
+    const sb = admin();
+    // Ownership is checked against TELNYX's own inventory, not `phone_lines`.
+    // That is both stricter and broader: stricter because it is the account
+    // that actually bills, broader because a disposable test number has no
+    // line row and must still be usable here. The invariant that matters —
+    // this probe can never reach a handset we do not own — holds either way.
+    const ownedAt = async (e164: string) => {
+      const r = await fetch(
+        `${TELNYX}/phone_numbers?filter[phone_number]=${encodeURIComponent(e164)}`,
+        { headers: { Authorization: `Bearer ${key}` } });
+      if (!r.ok) return false;
+      const j = await r.json().catch(() => ({})) as { data?: unknown[] };
+      return Array.isArray(j.data) && j.data.length > 0;
+    };
+    if (!(await ownedAt(from)) || !(await ownedAt(to))) {
+      return Response.json({ error: "both_numbers_must_be_ours" }, { status: 409 });
+    }
+
+    const send = await fetch(`${TELNYX}/messages`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ from, to, text }),
+    });
+    const sendText = await send.text();
+    let sendJson: Record<string, unknown> | null = null;
+    try { sendJson = JSON.parse(sendText) as Record<string, unknown>; } catch { /* raw */ }
+    const msgId = ((sendJson?.data as { id?: string } | undefined)?.id) ?? null;
+
+    // Poll for the terminal state. A rejection lands within a few seconds and
+    // arrives as `to[0].status = "delivery_failed"` plus an `errors[]` array —
+    // NOT as a non-2xx on the POST above.
+    const polls: unknown[] = [];
+    let final: Record<string, unknown> | null = null;
+    if (msgId) {
+      for (let i = 0; i < 6; i++) {
+        await sleep(2500);
+        const r = await fetch(`${TELNYX}/messages/${msgId}`,
+                              { headers: { Authorization: `Bearer ${key}` } });
+        const j = await r.json().catch(() => ({})) as { data?: Record<string, unknown> };
+        const d = j.data ?? null;
+        const st = ((d?.to as { status?: string }[] | undefined)?.[0]?.status) ?? null;
+        polls.push({ at: i, status: st, errors: d?.errors ?? null });
+        final = d;
+        if (st && st !== "queued" && st !== "sending") break;
+      }
+    }
+
+    const result = {
+      mode: "send_test", at: new Date().toISOString(), from, to,
+      http: send.status,
+      message_id: msgId,
+      accepted: send.ok,
+      post_body: send.ok ? undefined : trunc(sendText, 700),
+      final_status: ((final?.to as { status?: string }[] | undefined)?.[0]?.status) ?? null,
+      errors: final?.errors ?? null,
+      parts: final?.parts ?? null,
+      cost: final?.cost ?? null,
+      carrier: ((final?.to as { carrier?: string }[] | undefined)?.[0]?.carrier) ?? null,
+      line_type: ((final?.to as { line_type?: string }[] | undefined)?.[0]?.line_type) ?? null,
+      polls,
+    };
+    await sb.from("app_config").upsert(
+      { key: "telnyx_send_test_probe", value: result }, { onConflict: "key" });
+    return Response.json(result);
+  }
+
   // ── Mode 2: the detail-record probe ───────────────────────────────────────
   if (body.probe === "cdr") {
     const days = Math.min(Math.max(Number(body.days ?? 30) || 30, 1), 90);

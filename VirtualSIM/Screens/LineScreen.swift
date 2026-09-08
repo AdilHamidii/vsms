@@ -129,8 +129,9 @@ private struct LiveLineView: View {
                 Spacer(minLength: 0)
             }
 
-            // Hidden on a build with no voice client — see `dialFAB`.
-            if !line.status.isSettingUp { dialFAB }
+            // Follows the segment; the call half is hidden on a build with no
+            // voice client — see `actionFAB`.
+            if !line.status.isSettingUp { actionFAB }
         }
         .background(theme.bg)
         .sheet(isPresented: $showingSettings, onDismiss: openStoreIfRequested) {
@@ -393,32 +394,58 @@ private struct LiveLineView: View {
     /// finding the segment that holds the keypad — and on the empty state it
     /// competed with the empty-state copy for the same 200 points of screen.
     ///
+    /// ONE floating action, and it follows the segment — keypad on Recents,
+    /// new message on Messages.
+    ///
+    /// Two FABs in the same corner is the obvious alternative and it is worse:
+    /// the thumb target is one place, and stacking them would put the less
+    /// relevant action under the more relevant one on both segments. A phone
+    /// app makes the same choice — the keypad lives in Recents, the pencil in
+    /// Messages.
+    ///
     /// 🔴 HIDDEN, never disabled, when no voice client is attached. A disabled
     /// button still advertises the feature, and on a build without the SDK that
-    /// is a promise the app cannot keep. Same rule as the removed "New message"
-    /// button, and as `RecentRow`'s call-back glyph.
+    /// is a promise the app cannot keep. Same rule as `RecentRow`'s call-back
+    /// glyph. The COMPOSE half has no equivalent gate: `send-line-message` is
+    /// always reachable, and every refusal it can make (allowance, lapse,
+    /// international recipient) is stated inside `ComposeScreen` where the
+    /// user can see which one applies.
     @ViewBuilder
-    private var dialFAB: some View {
-        if calling.isVoiceAvailable {
-            Button {
-                RHaptic.select()
-                state.flow = .dialer
-            } label: {
-                Image(systemName: "circle.grid.3x3.fill")
-                    .font(.system(size: 22, weight: .semibold))
-                    .foregroundStyle(theme.onInk)
-                    .frame(width: 60, height: 60)
-                    .background(theme.ink, in: .circle)
-                    .contentShape(.circle)
+    private var actionFAB: some View {
+        switch seg {
+        case .messages:
+            fab(icon: "square.and.pencil", label: Text("New message")) {
+                state.flow = .compose
             }
-            .buttonStyle(.plain)
-            .pressable(0.94)
-            .accessibilityLabel(Text("Make a call"))
-            .padding(.trailing, 20)
-            // Clears the floating tab bar, which is 28pt off the bottom and
-            // ~56pt tall. Same clearance the scrolling lists reserve.
-            .padding(.bottom, 108)
+        case .recents:
+            if calling.isVoiceAvailable {
+                fab(icon: "circle.grid.3x3.fill", label: Text("Make a call")) {
+                    state.flow = .dialer
+                }
+            }
         }
+    }
+
+    private func fab(icon: String, label: Text,
+                     action: @escaping () -> Void) -> some View {
+        Button {
+            RHaptic.select()
+            action()
+        } label: {
+            Image(systemName: icon)
+                .font(.system(size: 22, weight: .semibold))
+                .foregroundStyle(theme.onInk)
+                .frame(width: 60, height: 60)
+                .background(theme.ink, in: .circle)
+                .contentShape(.circle)
+        }
+        .buttonStyle(.plain)
+        .pressable(0.94)
+        .accessibilityLabel(label)
+        .padding(.trailing, 20)
+        // Clears the floating tab bar, which is 28pt off the bottom and
+        // ~56pt tall. Same clearance the scrolling lists reserve.
+        .padding(.bottom, 108)
     }
 
     // MARK: - Provisioning
@@ -541,13 +568,10 @@ private struct LiveLineView: View {
         }
     }
 
-    // 🔴 A "New message" button lived here, in both states, and is GONE
-    // (owner decision, 2026-08-18: outbound SMS is dropped, not delayed).
-    // Every send this product ever attempted to a US number came back
-    // `40010 — the sending number is not 10DLC-registered`, and registration
-    // is not being pursued. HIDDEN rather than disabled, which is the rule the
-    // dial FAB also follows: a disabled button still advertises the feature,
-    // and here the feature is never coming back.
+    // The "New message" affordance came back on 2026-09-08 with outbound SMS,
+    // as the Messages half of `actionFAB` rather than as an inline button in
+    // both states — one floating action per segment, in the place the thumb
+    // already goes for the keypad.
 }
 
 // MARK: - Shared plumbing
@@ -631,12 +655,13 @@ struct LineStatusBanner: View {
                  text: "There's a problem with your payment. Update it to keep your number. Everything still works for now.")
         case .pastDue:
             Copy(icon: "exclamationmark.circle", tint: theme.fail,
-                 // The receive/dial split is the point of this banner: inbound
+                 // The receive/send split is the point of this banner: inbound
                  // stays on because the user cannot control who contacts them,
-                 // while outbound is what lapsing withdraws. It said "send or
-                 // dial out" — sending is gone product-wide, so naming it here
-                 // would advertise a capability by describing its loss.
-                 text: "Your subscription lapsed. You can still receive texts and calls, but you can't call out until you renew.")
+                 // while outbound is what lapsing withdraws. Sending is named
+                 // again since 2026-09-08 because `begin_outbound_message`
+                 // genuinely refuses a `past_due` line — the banner has to
+                 // match the refusal the composer will give.
+                 text: "Your subscription lapsed. You can still receive texts and calls, but you can't send texts or call out until you renew.")
         case .suspended:
             Copy(icon: "lock", tint: theme.fail,
                  text: "Your number is on hold. Resubscribe to get it back before it's released for good.")
@@ -654,11 +679,11 @@ struct LineStatusBanner: View {
 /// A conversation, the way a messages app lists one: avatar, who, the last
 /// thing they said, when.
 ///
-/// 🔴 THERE IS NO COMPOSE AFFORDANCE ANYWHERE ON THIS LIST, and adding one back
-/// is a regression. Outbound SMS was dropped product-wide on 2026-08-18 —
-/// `send-line-message` refuses every send with `outbound_sms_retired`. The
-/// long-press menu is deliberately limited to naming and copying: both act on
-/// the peer, neither promises a message.
+/// The ROW still carries no compose affordance, and that is unchanged by the
+/// 2026-09-08 return of outbound SMS: tapping a row opens the conversation,
+/// which is where the composer is. The long-press menu stays limited to naming
+/// and copying — both act on the peer, and a third "message" item would
+/// duplicate the tap. Starting a NEW conversation is the Messages FAB.
 struct ThreadRow: View {
     @Environment(\.theme) private var theme
     let thread: LineThread

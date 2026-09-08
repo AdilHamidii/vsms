@@ -31,24 +31,58 @@ export function nanpCountry(e164: string): "US" | "CA" | null {
   return CA_NPA.has(d.slice(1, 4)) ? "CA" : "US";
 }
 
+/** The NANP countries that share +1. Mirrors `phone.ts`'s `NANP` — kept as its
+ *  own constant because that file answers "may I default a bare number to +1"
+ *  and this one answers "may this line text that number". Two questions, and
+ *  only this one is policy. */
+const NANP_CC = new Set(["US", "CA", "PR", "VI"]);
+
+/** Is this a +1 number at all? PR (787/939) and VI (340) resolve to "US"
+ *  through `nanpCountry`, which is fine as a LABEL and wrong as a country — so
+ *  the bloc membership test is deliberately separate from the label. */
+export function isNanpNumber(e164: string): boolean {
+  const d = e164.replace(/\D/g, "");
+  return d.length === 11 && d.startsWith("1");
+}
+
 /**
  * Can a line in `lineCc` actually deliver a text to `recipient`?
  *
- * 🔴 MEASURED, NOT ASSUMED. Telnyx reports our Canadian longcode as
- * `domestic_two_way: true` with `international_outbound: false`, and every send
- * to a US number is rejected with `40010: The sending number is not
- * 10DLC-registered but is required to be by the carrier`. Lifetime outbound is
- * **1 sent against 6 failed**; inbound is 3 of 3.
+ * 🔴 POLICY, 2026-09-08: **NANP → NANP is ALLOWED. Everything else is refused.**
  *
- * ⚠️ `.claude/rules/providers.md` still records a CA→US send DELIVERING on
- * 2026-08-05 with no brand and no campaign — the measurement the whole
- * "sell Canadian numbers, no paperwork" launch was built on. It is no longer
- * true in production; either carriers tightened enforcement or that single test
- * slipped through ahead of it. Trust the 40010s, not the note.
+ * Why the blanket cross-border refusal was wrong:
  *
- * ⚠️ THIS IS TEMPORARY AND SHOULD BE DELETED, not tuned. It encodes a
- * registration gap, not a fact about telephony. When toll-free verification or
- * 10DLC clears, remove the check rather than adding exceptions to it.
+ * - It was written on 2026-08-18 from FOUR sends on one evening, every one of
+ *   them from a CANADIAN number to a US number, every one `40010` (the sending
+ *   number is not attached to a 10DLC campaign). At the time Canada was the
+ *   only country we sold, so "cross-border fails" and "sends from a Canadian
+ *   longcode fail" were the same observation wearing the more general name.
+ * - On 2026-09-08 a send from a US number we own to a Canadian number we own
+ *   was **delivered**, with no error, and the inbound webhook landed it in the
+ *   recipient's app. The fleet is now 7 US + 5 CA numbers and no US number had
+ *   ever attempted a send.
+ *
+ * ⚠️ **THAT SEND WAS ON-NET — both endpoints are numbers on our own Telnyx
+ * account — so it may never have crossed a real carrier's spam or registration
+ * filter, and no 10DLC campaign is registered on any number we own
+ * (`messaging_campaign_id` is null on all 12, read from
+ * `app_config.telnyx_messaging_probe`, 2026-09-08). OUTBOUND SMS TO A REAL
+ * HANDSET IS NOT PROVEN.** Nothing built on this may claim that it works. A
+ * carrier rejection arrives asynchronously as a delivery receipt, so the
+ * failure is surfaced from `line_messages.error_code` in the thread rather
+ * than predicted here.
+ *
+ * 🔴 **NON-NANP DESTINATIONS STAY REFUSED, and that is a capability rather
+ * than a policy guess:** `features.sms.international_outbound` reads **false**
+ * on all 12 numbers we own (same probe, same day), and the messaging profile's
+ * `whitelisted_destinations` is `["CA","GB","US"]`. Attempting one spends a
+ * segment of a hard-stop allowance to buy a guaranteed failure — the same
+ * shape as `create-order`'s pre-charge provider-balance guard.
+ *
+ * ⚠️ Still temporary in the sense the old note meant: re-read the probe before
+ * widening this, and never widen it on the strength of a single successful
+ * send — that is exactly the mistake the 2026-08-05 "Canada needs no
+ * paperwork" measurement made in the other direction.
  */
 export function canSendTo(
   lineCc: string | null | undefined, recipient: string,
@@ -62,22 +96,20 @@ export function canSendTo(
   // destinations it could serve.
   if (!from) return { ok: true };
 
-  // A non-NANP DESTINATION is not unknown — it is definitely international, and
-  // `features.sms.international_outbound` reads FALSE on our numbers. Letting
-  // it through was the first version's bug: a text to +33 sailed past this
-  // check, reserved a segment, and failed at the provider exactly like a US
-  // one. Refusing it is not a guess; it is the number's own capability.
-  if (from === "US" || from === "CA") {
-    if (!to) {
-      return { ok: false, reason: "international", from, to: "INTL" };
-    }
-    if (from !== to) return { ok: false, reason: "cross_border", from, to };
-    return { ok: true };
+  if (NANP_CC.has(from)) {
+    // Inside the plan: US ⇄ CA ⇄ PR ⇄ VI, in any combination. One measured
+    // delivery (US → CA, 2026-09-08) plus `domestic_two_way: true` on every
+    // number we own. PR and VI ride here because they ARE +1 US area codes.
+    if (isNanpNumber(recipient)) return { ok: true };
+    // Outside it, the number's own capability says no.
+    return { ok: false, reason: "international", from, to: "INTL" };
   }
 
-  // A sender we do not classify (no NANP line exists today) keeps the old
-  // permissive behaviour rather than being grounded by a rule written for
-  // someone else's numbering plan.
+  // A sender we do not classify (no non-NANP line exists today) keeps the old
+  // permissive behaviour toward its own region rather than being grounded by a
+  // rule written for someone else's numbering plan — but a NANP destination
+  // from there is an international send its own number almost certainly cannot
+  // make either.
   if (!to) return { ok: true };
-  return from === to ? { ok: true } : { ok: false, reason: "cross_border", from, to };
+  return { ok: false, reason: "cross_border", from, to };
 }

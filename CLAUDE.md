@@ -30,11 +30,20 @@ when nobody has the relevant file open.
 **fourth** line — rentable second numbers, billed by **StoreKit subscription
 rather than credits** — is LIVE ON THE APP STORE in 2.0. ⚠️ **PIVOTED
 2026-08-18 (owner decision): the product is now "RECEIVE texts + codes from
-US/Canadian senders, and CALL OUT worldwide". OUTBOUND SMS IS DROPPED** — it is
-the one capability needing carrier approval (10DLC), which the owner will not
-pursue. In 2.1 every send affordance is gone (`ComposeScreen` deleted,
-`ThreadScreen` is read-only, `.compose` flow removed) and `send-line-message`
-refuses everything with `outbound_sms_retired`. The tab is the SECOND tab (Home
+US/Canadian senders, and CALL OUT worldwide". OUTBOUND SMS WAS DROPPED** — it
+was the one capability needing carrier approval (10DLC). ⚠️ **RESTORED
+2026-09-08 (owner decision), NANP → NANP ONLY, AND STILL UNPROVEN TO A REAL
+HANDSET.** The 2026-08-18 retirement rested on four sends in one evening, all
+from a CANADIAN number to US numbers, all `40010` — at the time Canada was the
+only country sold, so "cross-border fails" and "Canadian longcodes fail" were
+one observation under the more general name. No US number had ever attempted a
+send, and the fleet is now 7 US + 5 CA. A US→CA send on 2026-09-08 was
+**delivered** — but **ON-NET, between two numbers we own**, so it may never
+have crossed a carrier filter; `messaging_campaign_id` is **null on all 12
+numbers**. `send-line-message`, `ComposeScreen`, `.compose` and the thread
+composer are all back; anything outside NANP is still refused up front
+(`international_outbound` is false on every number we own). **No copy,
+comment or screenshot may claim sending works.** The tab is the SECOND tab (Home
 is first — reverted 2026-08-08; this line said "first tab" for ten days after).
 **Six numbers rented, five subscriptions, and all five cancelled auto-renew —
 median 3.9 minutes after paying.**
@@ -75,8 +84,11 @@ SDK, login only on the Number tab, answering not using `answerFromCallkit`)
 were real and are fixed in build 52 — but they were never sufficient, because
 no INVITE ever reached the device. See Known-open → INBOUND CALLING.
 "Take calls from anywhere" is not a claim this product can make. Meanwhile
-**outbound SMS is 1 sent against 6 failed** (`40010`, 10DLC).
-Inbound SMS works, 3 of 3. See "Rentable second numbers". iOS frontend in SwiftUI + Supabase backend (Postgres + Auth + Edge Functions + pg_cron).
+**outbound SMS is 1 sent against 3 failed to an off-net handset** (`40010`,
+10DLC) plus **1 delivered ON-NET** (2026-09-08, US→CA, both numbers ours —
+weak evidence by construction). Re-derive, never quote this line:
+`select status, count(*) from line_messages where direction='outbound'
+group by 1;` Inbound SMS works, 21 of 21. See "Rentable second numbers". iOS frontend in SwiftUI + Supabase backend (Postgres + Auth + Edge Functions + pg_cron).
 
 **Provider split as of 2026-08-10 — 5sim is the PRIMARY SMS provider; HeroSMS
 and SMSPVA still serve the services 5sim does not map; HeroSMS also serves the
@@ -343,7 +355,7 @@ under `VirtualSIM/`. ~6.7k tokens.
 ### Backend layout
 
 - `supabase/migrations/` — chronological SQL, each phase ships its own file
-- `supabase/functions/_shared/` — `providers.ts` (unified router; per-SERVICE ownership across 5sim/SMSPVA/HeroSMS with NO cross-provider fallback — order/poll functions call this, NOT a specific provider), `fivesim.ts` (5sim REST wrapper — the PRIMARY SMS adapter), `herosms.ts` (SMS-Activate `handler_api` wrapper), `heromail.ts` (HeroSMS `/api/v1`, the temp-EMAIL line), `emailStatus.ts`, `smspva.ts` (v2 REST wrapper), `smspool.ts` (eSIM + balance ONLY — the SMS surface was deleted 2026-07-30), `apns.ts` (HTTP/2 + JWT), `cors.ts`, `iap.ts` (Apple receipt chain verification), `telegram.ts`, `opsFormat.ts`, `supabaseAdmin.ts`, `telnyx.ts` (the rented-line adapter: Ed25519 webhook verification, numbers, messaging, voice credentials and detail records), `lineCatalog.ts` (the fail-closed sellability gate every line seller calls — see "Line country catalog" below). This list is INCOMPLETE and has been for weeks (`ls supabase/functions/_shared | wc -l` read **24** on 2026-08-27) — count, don't trust it.
+- `supabase/functions/_shared/` — `providers.ts` (unified router; per-SERVICE ownership across 5sim/SMSPVA/HeroSMS with NO cross-provider fallback — order/poll functions call this, NOT a specific provider), `fivesim.ts` (5sim REST wrapper — the PRIMARY SMS adapter), `herosms.ts` (SMS-Activate `handler_api` wrapper), `heromail.ts` (HeroSMS `/api/v1`, the temp-EMAIL line), `emailStatus.ts`, `smspva.ts` (v2 REST wrapper), `smspool.ts` (eSIM + balance ONLY — the SMS surface was deleted 2026-07-30), `apns.ts` (HTTP/2 + JWT), `cors.ts`, `iap.ts` (Apple receipt chain verification), `telegram.ts`, `opsFormat.ts`, `supabaseAdmin.ts`, `telnyx.ts` (the rented-line adapter: Ed25519 webhook verification, numbers, messaging, voice credentials and detail records), `lineCatalog.ts` (the fail-closed sellability gate every line seller calls — see "Line country catalog" below), `lineProvision.ts` (the ONE order→poll→messaging→voice→activate sequence, shared by `verify-line-subscription`, `rent-line-credits` and `apple-notifications`' reprovision path — it was written out three times, which is how voice provisioning ended up in one path and not another). This list is INCOMPLETE and has been for weeks (`ls supabase/functions/_shared | wc -l` read **24** on 2026-08-27) — count, don't trust it.
 - `supabase/functions/<name>/index.ts` — one per endpoint, all Deno.serve
 - `supabase/README.md` — deployment + secret setup walkthrough
 
@@ -512,7 +524,8 @@ time, auto-renew on/off, what will bill), `/failures [24h|7d]` (no-number and
 no-code orders by route, e-mail/eSIM/call failures, blocked routes),
 `/orders`, `/delivery`, `/route <service> [country]` (why something is
 unavailable — status, price, pool rate, stock, 7d orders/codes), `/balance`,
-`/revenue` `/profit`, `/subs`, `/lines` (no arg now LISTS live lines with usage
+`/revenue` `/profit`, `/subs` (only the ENTITLED subscriptions, each with its
+expiry in Paris and its price normalised to a MONTH), `/lines` (no arg now LISTS live lines with usage
 and real rent; `on|off` unchanged), `/support` (threads waiting, oldest first),
 `/alerts` (what is firing + ladder/cooldown states), `/funnel`, `/config`
 (read-only: grant, e-mail caps, pause switches, swap price), `/announce`,
@@ -730,9 +743,11 @@ Production purchases, with **cohort** activation and buyer rates over the
 signups in the window and the signup grant read live from
 `app_config.signup_bonus_credits`. **`/delivery [24h|7d|30d]`** is per provider
 with the watchdog verdict, the SMSPVA hidden-route count and one balance line
-per provider. **`/subs`** is subscriptions by state against lines by status, and
-it *warns when the two disagree* — a live line with no subscription is rent we
-pay for nothing. `/help` lists everything and the unknown-command fallback now
+per provider. **`/subs`** answers ONE question — which
+subscriptions are LIVE right now, when does each end, and what is each paying
+per month — for BOTH families at once (see the block below). It still *warns
+when subs and lines disagree*: a live line with no subscription is rent we pay
+for nothing. `/help` lists everything and the unknown-command fallback now
 points at it rather than dumping the whole list.
 
 ⚠️ **The same commit fixed three measurement defects in `ops_snapshot` /
@@ -745,6 +760,116 @@ cohort is now `status in ('received','expired') and not from_default`, identical
 to `run_watchdog`'s, which is why `/delivery` and the watchdog now agree exactly
 (11/44). Cancels, refusals, rescued codes and default-landed orders each get
 their own line instead. Live effect on the 7d digest: **15% → 25%**.
+
+### `/subs` = the live subscriptions only (2026-09-08)
+
+**Owner decision: `/subs` answers ONE question — which subscriptions are LIVE
+right now, when does each end, and how much is each paying per month.** It
+used to be subscription-STATE counts against LINE-status counts plus a mail
+summary: a reconciliation view that never listed a mail subscriber and listed
+every expired and revoked line row.
+
+Backed by a new `active_subs` key on `ops_subs()` (migration
+`20260908100000`, two hunks, the live prosrc verified md5-identical to
+`20260818160004`'s body before editing). Rules that are load-bearing:
+
+- 🔴 **ENTITLED, not "the state column says active".** The predicate is
+  `state in ('active','grace') AND greatest(expires_at, grace_expires_at) >
+  now()` — byte-identical to `has_email_subscription()` and to the `mail` →
+  `active` key beside it. **NEVER `coalesce`**: a subscriber who went through
+  a grace period and then renewed carries a STALE `grace_expires_at` in the
+  past alongside a fresh, later `expires_at`, and coalesce takes the first
+  non-null regardless of which is later — reporting a fully-paid renewed
+  subscriber as inactive. That bug shipped once already (fixed 2026-08-19).
+- **BOTH families in one list** — `line_subscriptions` and
+  `email_subscriptions` are separate Apple groups and one user may hold both,
+  so they are rendered as two blocks of the same shape rather than a list plus
+  a summary.
+- **Money is normalised to a MONTH, and it comes from Apple's own signed
+  price** (`price_milli` / `currency` on the row), not from a table. A yearly
+  prints both (`$59.99/yr ≈ $5.00/mo`): the yearly figure is the one the owner
+  recognises, the monthly one is the only one that can be summed. Rows still
+  exist at the pre-2026-09-02 $9.99 monthly, and they render as $9.99 —
+  which is the whole point of reading the row.
+  `LIST_PRICE_USD` in `_shared/opsFormat.ts` is a FALLBACK ONLY, used where no
+  billed price exists, and every figure taken from it is marked `*` with a
+  footnote. Keep it in step with the live ASC ladder (line 5.99 / 59.99, mail
+  2.99 / 29.99).
+- **A `$0` billed price is a FREE PERIOD, and that is an INFERENCE** — no
+  offer-type column exists anywhere in this schema. Those rows are counted and
+  totalled SEPARATELY ("worth $X/mo if every one converts"), never folded into
+  the billed MRR: a trial is not revenue yet.
+- **Mixed currencies are never silently added.** Non-USD monthly totals print
+  on their own line, unconverted — the same rule `/revenue` follows.
+- **A row hidden by the 10-row cap still counts toward the total.** The
+  formatter renders every row and throws away the text of the hidden ones;
+  without that the MRR figure would silently shrink as subscribers are added.
+- **The subs-vs-lines divergence warning survives**, because it is the only
+  place either half is checked: a live line with no subscription is rent we
+  pay for nothing, a live subscription with no line is a customer paying for
+  nothing, and both have happened.
+
+Dropped from the rendering (available elsewhere, and they were not the
+question): the raw state histograms, the ASSN 7-day notification table, the
+`active_billed` per-currency block and the Telnyx balance line (`/balance`,
+`/now` and `/alerts` all carry it). Every one of those KEYS is still in the
+payload — nothing was removed from `ops_subs()` — so restoring any of them is
+formatter-only.
+
+### Balance alerts: ONE level per provider (2026-09-08)
+
+🔴 **Owner decision: page at 5sim < $5.00, HeroSMS < $5.00, Telnyx < $10.00.
+Nothing else.** The four-rung ladder derived from `MAX_ORDER_COST_USD`
+(`[37.50, 22.50, 11.25, 7.50]`) is **DELETED** — at the owner's hands-off,
+fund-on-demand cadence it meant three warnings before the one that matters, on
+the single channel that has to stay readable.
+
+**Telnyx is $10, DOUBLE the SMS providers, and that is deliberate**: a dry
+Telnyx balance does not merely block a new sale, it means an EXISTING
+subscriber's $1/month number cannot be renewed.
+
+🔴 **THE SAME NUMBER LIVES IN THREE PLACES AND WILL DRIFT. Change them in one
+commit:**
+
+| copy | where | what it does |
+|---|---|---|
+| `BALANCE_ALERT_USD` | `poll-active-orders/index.ts` | the instant Telegram PAGE, once per crossing |
+| `LOW_BALANCE_USD` / `TELNYX_LOW_USD` | `_shared/opsFormat.ts` | the "⚠️ top up" DISPLAY on `/balance`, `/now`, `/delivery` |
+| `v_floor` | `watchdog_money_checks()` (migration `20260908110000`) | the standing watchdog verdict |
+
+- **`alert_tier` keeps its name and is now 0 or 1**, so every stamped row and
+  every reader still parses. The read is **clamped at 1** (`Math.min(...)`):
+  rows stamped by the old ladder carry tiers up to 4, and without the clamp a
+  provider sitting at `alert_tier: 4` could never satisfy `tier > prevTier`
+  again — its page would be permanently disarmed, silently, which is the exact
+  failure this function has already shipped once.
+- **The RUNWAY check is untouched** (`balance ÷ 7-day burn < 5 days`,
+  `watchdog_money_checks`), and so is the zero-burn "route may be dead" branch
+  and `create-order`'s `alertLowBalanceBlock` shortfall pager. The absolute
+  floor catches "nearly empty"; runway catches "healthy balance, about to be
+  spent". Neither subsumes the other: at $0.20/day of burn, $2.00 reads as a
+  10-day runway and pages nothing while a single $1.50 route is already
+  unfundable.
+- 🔴 **Telnyx is now IN `watchdog_money_checks` for the first time.**
+  `telnyx_health` has been written minutely since 2026-08-06 and the watchdog
+  had never read it. It gets the absolute floor only — it has no `orders`
+  rows, so its burn is 0 and it falls out of the runway branch by
+  construction. It fired on the live state the moment it landed ($6.00 against
+  the $10 floor), which is correct, not a false positive.
+- The check NAME stays `<provider>-float` because `_shared/tgAlert.ts` resolves
+  its copy from that suffix; `telnyx-float` additionally has its own
+  `WATCHDOG_COPY` entry, because the generic fallback says "every order on it
+  is refused", which is the wrong consequence for rent.
+- Migration procedure followed (a one-line refactor that changes a watchdog
+  threshold is a monitoring outage): regenerated from `pg_get_functiondef` and
+  diffed against the live definition — exactly the two intended hunks plus the
+  new `v_floor` declaration differ; every other clause byte-identical.
+
+⚠️ **`MAX_ORDER_COST_USD` is GONE from `poll-active-orders`** — it existed
+only to derive the ladder, and a dead constant named like a live threshold is
+how the next reader gets it wrong. `MAX_WHOLESALE_CENTS` in the three syncs is
+untouched. **NOT changed, and worth knowing it exists:** `winback/index.ts`'s
+`claimSafe = balUsd >= 7.5`, a cohort liveness gate rather than an alert.
 
 ### Announcement banner + `/announce`, `/esim` (2026-07-31)
 
@@ -1635,14 +1760,72 @@ Three properties that are load-bearing:
   measured against Telnyx's own list, the account held 13 numbers for 6
   paying lines, and every lapsed subscriber in the product's history had
   auto-renew OFF at expiry — the 7-day "fix your card" window protected a
-  recovery that never once happened. **Accepted residual:** a billing
-  recovery landing after the release (Apple retries a declined card for up
-  to 60 days) finds no line — `apply_line_renewal` activates the
-  subscription and revives nothing; the customer has paid and holds no
-  number until they provision one in the app. `apple-notifications` PAGES
-  this (`renew_noline:<uuid>`, 🟠) instead of console.logging it.
+  recovery that never once happened. **A LATE BILLING RECOVERY IS NOW
+  REPROVISIONED AUTOMATICALLY** — see the block below; it was an accepted
+  residual until 2026-09-08, when it fired on a $59.99 yearly.
   `scripts/verify-line-lapse-backstop.sql` (6 cases) asserts `releasing`,
   not a hold.
+
+🔴 **A RENEWAL THAT LANDS ON A RELEASED LINE BUYS THE SUBSCRIBER A NEW NUMBER
+(owner decision 2026-09-08: "if we don't have their number anymore just give
+them a new one"). Migration `20260908120000` + `reprovisionAfterRenewal` in
+`apple-notifications`.** Apple retries a declined card for up to 60 days and a
+lapsed number is gone in ~30 minutes, so a billing recovery routinely arrives
+long after the release: `apply_line_renewal` marks the subscription active and
+revives nothing. It used to page and stop there.
+
+Now `line_reprovision_target(original_tx)` (read-only SQL) answers *should this
+renewal provision, and where*, and the edge function does the buying through the
+same `_shared/lineProvision.ts` sequence the two rental paths use. Properties
+that are load-bearing:
+
+- **DID_RENEW ONLY.** `SUBSCRIBED`/`RESUBSCRIBE` keeps the old page, because
+  `verify-line-subscription` owns that path and the user is picking their own
+  number on screen — provisioning from here would take that choice away and
+  refuse their own call with `line_exists`.
+- 🔴 **IDEMPOTENCE IS THE ROW, NOT A FLAG, AND IT IS DELIBERATELY NOT KEYED ON
+  THE NOTIFICATION UUID.** Apple delivers up to five times. `begin_line_rental`
+  (advisory lock + occupancy check + `phone_lines_one_apple_line_per_user`) is
+  the mutex, and the number is ORDERED only after that row exists — everything
+  before it is a read that buys nothing. A failed attempt ends `failed`, which
+  sits OUTSIDE that partial index, so the next retry or a manual replay can
+  still succeed. A uuid tombstone would have locked the recovery out in exactly
+  the case this exists for.
+- **`activate_line_claim` is handed the RENEWAL's own `periodEnd`.** Without it
+  `reclaim_lapsed_lines` branch (d) suspends the new line on the next
+  15-minute sweep and `release-lines` deletes it — buying and throwing away a
+  $1 number on every retry. Asserted, with a control, in
+  `scripts/verify-line-reprovision.sql`.
+- **Their own country and city first**, from the released row; the server
+  default (`DEFAULT_LINE_COUNTRY` = CA, one definition in
+  `_shared/lineProvision.ts`) only when that country is no longer sellable, and
+  the alert says so. The sellability gate still fails CLOSED.
+- **Telegram flips meaning:** ℹ️ `reprovisioned:<uuid>` naming the new number on
+  success, 🟠 `reprovision_failed:<uuid>` **with the reason** on failure, and
+  the old 🟠 `renew_noline:<uuid>` only when nothing can be done —
+  `unknown_subscription` (nothing links the transaction to a user),
+  `no_prior_line`, `subscription_not_active`. All on the existing `line_event`
+  kind, so no constraint widening.
+- **Production only.** `verify-line-subscription` still provisions in Sandbox so
+  the reviewer gets a number; this path refuses, because a Sandbox subscription
+  renews every few MINUTES and each post-lapse renewal would buy another real
+  $1 number on the real Telnyx account.
+- **The user is pushed** (`kind: "line_number"`, no `orderId`): their old number
+  is gone and anyone texting it will not reach them. `PushManager` checks `kind`
+  first and falls through to no navigation on one it does not know, so shipped
+  builds show the banner harmlessly.
+- ⚠️ **Untested against a real Telnyx buy** — the account balance was **$0.51**
+  on 2026-09-08, so a live attempt fails `20100 Insufficient Funds` and takes
+  the `reprovision_failed` page. That is the code working; the buy half is
+  proven only by the two rental paths that share it.
+- ⚠️ **The 2026-09-08 case that prompted this CANNOT be recovered by it.**
+  Original tx `700002748363888` ($59.99 yearly, DID_RENEW/BILLING_RECOVERY) has
+  **no `line_subscriptions` row and no `phone_lines` row at all**, and the
+  signed transaction carries no `appAccountToken` — so nothing in the database
+  says which account paid. It is `unknown_subscription`, i.e. our own purchase
+  call never landed on 2026-08-22, not a released line. **That is a second,
+  open defect: a subscription can exist at Apple with no trace here.**
+
 - **A `grace` row with a NULL `grace_until`** (the renewal-info JWS carried no
   `gracePeriodExpiresDate`) falls back to `current_period_end + 16 days` —
   Apple's MAXIMUM grace. The fallback can only ever fire LATER than a real
@@ -1758,7 +1941,7 @@ minutes, whereas a CDR-settled call is exactly one that does NOT carry a
 backstop.
 
 **`probe-telnyx-connection` gained a second mode for diagnosing it** (it now
-has ELEVEN: `connection_id=`, `cdr`, `coverage`, `numbers` — the owned-number
+has SIXTEEN — five added 2026-09-08 for the outbound-SMS question: `messaging` (10DLC brands/campaigns, the messaging profile, and every number's `messaging_product` / `messaging_campaign_id` / `features.sms`, → `app_config.telnyx_messaging_probe`) is READ-ONLY; `send_test`, `order_test_number`, `attach_messaging` and `release_number` WRITE. 🔴 `send_test` verifies BOTH endpoints against Telnyx's own inventory before sending, so it can never text a handset we do not own — that is a safety property, not a convenience, since the cron secret alone must not reach a stranger's phone. `release_number` refuses a number a live line holds. The rest: `connection_id=`, `cdr`, `coverage`, `numbers` — the owned-number
 reconciliation, see the orphan-sweep note above — and, since 2026-09-07,
 `push_credentials` (every `mobile_push_credential` + the configured one read
 back, public cert PEM included, → `app_config.telnyx_push_credentials_probe`)
@@ -3719,7 +3902,7 @@ for essentially every hidden route.
   ```
   (Note `db query` parses a leading `--` SQL comment as a CLI flag — always use `--file`, never inline SQL that starts with a comment.) Properly repairing the 43 is a separate, careful job: back-fill each missing file from `schema_migrations.statements` rather than reverting anything.
 - **Clients get `UPDATE` on `profiles.display_name` ONLY.** RLS is row-level and cannot restrict columns, so a table-wide UPDATE grant let any user PATCH their own `referred_by` / `referral_rewarded_at` — pointing the referral at themselves and nulling the payout flag to farm 5 credits per purchase forever. The `SECURITY DEFINER` guards *read* those columns to decide, so writable inputs made them decorative.
-- **An order refused for insufficient provider float PAGES you** (`create-order`'s `alertLowBalanceBlock`, `app_config.low_balance_block`). This is NOT the balance-tier ladder in `poll-active-orders`: that fires on `[37.50, 22.50, 11.25, 7.50]` whether or not anyone is buying, and since the 2026-08-04 ceiling removal it can miss this case completely — a route may need **$60** of float while the lowest rung is $7.50, so every tier reads healthy while real customers are turned away. The page carries the **shortfall** (not just the balance), the route, and a refusal count since the last alert, and states the customer was NOT charged — the shipped copy says `provider_unreachable`, which does not mean "we are out of float". ⚠️ The eSIM and e-mail paths have **no pre-charge guard at all** and still charge-then-refund on a dry balance; they would need the guard before they could page.
+- **An order refused for insufficient provider float PAGES you** (`create-order`'s `alertLowBalanceBlock`, `app_config.low_balance_block`). This is NOT the balance pager in `poll-active-orders`: that fires on `BALANCE_ALERT_USD` (5sim $5 · HeroSMS $5 · Telnyx $10 — owner decision 2026-09-08, replacing the old `[37.50, 22.50, 11.25, 7.50]` ladder) whether or not anyone is buying, and it can miss this case completely — a route may need **$60** of float while the page does not fire until $5, so the balance reads healthy while real customers are turned away. The page carries the **shortfall** (not just the balance), the route, and a refusal count since the last alert, and states the customer was NOT charged — the shipped copy says `provider_unreachable`, which does not mean "we are out of float". ⚠️ The eSIM and e-mail paths have **no pre-charge guard at all** and still charge-then-refund on a dry balance; they would need the guard before they could page.
 - **Both provider balances are monitored**, written every minute by `poll-active-orders` into `app_config.smspva_health` / `smspool_health`, and reported by the bot labelled with what they fund. A missing reading renders as "no reading", never omitted — an absent line reads as healthy, which is exactly the failure that hid SMSPVA having no monitoring at all while it served 100% of SMS.
 - **PostgREST `max_rows` is now `60000`** (`alter role authenticator set pgrst.db_max_rows`). The catalog is ~18.5k routes and moved 6,962 → 16,320 → 18,492 in 36h purely from provider changes. Crossing the cap makes PostgREST **truncate silently** — HTTP 206, no error, the app just gets fewer routes and every missing one renders "Unavailable" or keeps a stale price. That is indistinguishable from "the prices are wrong" from the phone. Keep large headroom; it is nearly free.
 - **CatalogAPI fetches only routes where `retail_credits IS NOT NULL OR status != 'active'`**. After sync-prices, all routes have a price → query effectively returns everything. The filter exists so a fresh project without sync data doesn't pull empty rows.
@@ -3778,7 +3961,7 @@ for essentially every hidden route.
 - **`revoke execute … from anon, authenticated` IS A NO-OP while PUBLIC holds the grant.** `CREATE FUNCTION` grants EXECUTE to PUBLIC by default, and anon/authenticated are members of PUBLIC — so the revoke line present on ~35 migrations changes nothing on its own, and the function stays callable at `/rest/v1/rpc/<name>`. Read the ACL, not the migration: a secured function is `postgres=X/postgres | service_role=X/postgres`, a leaking one has a **leading `=X/postgres`** (empty grantee = PUBLIC). Caught 2026-07-27 when `revenue_snapshot` — the first function created after the default-privileges hardening — shipped world-callable *with* its revoke line, exposing gross revenue, wholesale cost and profit to anyone holding the publishable key (SECURITY DEFINER, so RLS was no help). `20260727211000` revoked the *default* for anon/authenticated but **not for PUBLIC**, so every future function kept arriving public. Fixed in `20260727240000`: `alter default privileges in schema public revoke execute on functions from public`, plus explicit `from public, anon, authenticated` on the four affected functions. Assert with `has_function_privilege('anon', p.oid,'execute')` — it must be **0 rows** across `pg_proc` in `public`; a passing `revoke` statement proves nothing.
 - **`ALTER DEFAULT PRIVILEGES` grants `anon`/`authenticated` rights on every FUTURE object.** Until 2026-07-27 that was `arwdDxtm` on future tables and `EXECUTE` on future functions — so any new table missing `enable row level security` would have been world-**writable** at `/rest/v1/<table>`, and any new SECURITY DEFINER function missing its revoke callable at `/rest/v1/rpc/<name>`. That is how `run_watchdog` became public. The postgres-owned defaults are now revoked (SELECT retained; RLS still governs rows); **the `supabase_admin` half is NOT applied** — it needs membership in that role, which the CLI's postgres connection lacks. Statements are in `20260727211000_default_privileges.sql`. Note this is a backstop, not a licence to skip the explicit `revoke execute` on every new function.
 - **A one-line refactor that changes a watchdog threshold is a monitoring outage.** Rebuilding `run_watchdog` for unrelated coverage silently narrowed the delivery check from 24h/≥10 to 6h/≥8 **and deleted its second branch** (≥20 conclusive at <10%). Measured: the max conclusive orders in ANY 6h window over 30 days is 8, against a gate of 8 — the check became effectively unreachable, leaving zero delivery-outcome coverage. When you re-create a function from `pg_get_functiondef`, diff it against the prior definition clause by clause; the dump is also **truncated** by most tooling, which is how a nonexistent `url` column on `net._http_response` got invented in the same rewrite.
-- **A constant duplicated across files WILL drift.** `MAX_WHOLESALE_CENTS` lives in three sync functions (and as `MAX_ORDER_COST_USD` in `poll-active-orders`, and as `LOW_BALANCE_USD` in `_shared/opsFormat.ts`). Changing it in one place on 2026-07-27 stripped 1,432 routes of their carrier pin and premium price, and left the digest warning at $20 while the pager fired at $37.50. (`CREDIT_DIVISOR` was the worst offender — five copies across four syncs — until 2026-08-28, when SMS pricing was consolidated into `_shared/pricing.ts`; the surviving duplicates are `ESIM_MARGIN`/`CREDIT_VALUE_USD`, two each.) `MAX_WHOLESALE_CENTS`'s three syncs are now `sync-prices`, `sync-smspva-operators` and `sync-herosms`. Change them in one commit or consolidate them into `_shared/`.
+- **A constant duplicated across files WILL drift.** `MAX_WHOLESALE_CENTS` lives in three sync functions (its `MAX_ORDER_COST_USD` copy in `poll-active-orders` was DELETED on 2026-09-08 — it existed only to derive the balance ladder that went with it). The BALANCE ALERT LEVEL is its own three-copy drift class: `BALANCE_ALERT_USD` in `poll-active-orders` (the pager), `LOW_BALANCE_USD` / `TELNYX_LOW_USD` in `_shared/opsFormat.ts` (the display), and the `v_floor` case in `watchdog_money_checks()` (the watchdog). All three carry 5sim/HeroSMS **$5** and Telnyx **$10** as of 2026-09-08 — change them in one commit.. Changing it in one place on 2026-07-27 stripped 1,432 routes of their carrier pin and premium price, and left the digest warning at $20 while the pager fired at $37.50. (`CREDIT_DIVISOR` was the worst offender — five copies across four syncs — until 2026-08-28, when SMS pricing was consolidated into `_shared/pricing.ts`; the surviving duplicates are `ESIM_MARGIN`/`CREDIT_VALUE_USD`, two each.) `MAX_WHOLESALE_CENTS`'s three syncs are now `sync-prices`, `sync-smspva-operators` and `sync-herosms`. Change them in one commit or consolidate them into `_shared/`.
 - **Deleting an IAP receipt to force StoreKit redelivery can eat the payment.** `iap-verify` used to delete the row when `wallet_credit` failed, assuming StoreKit would retry. But the client runs **two** paths into that endpoint (`Transaction.updates` and the `Transaction.unfinished` sweep), so a concurrent duplicate may already have been answered `already_credited` and called `finish()` — retiring the transaction forever. It now zeroes `granted_credits` (keeping both the audit trail and the replay guard), and the duplicate branch refuses to confirm a receipt that has no matching `wallet_transactions` row.
 - **EVERY grant is farmable through account deletion unless it is tombstoned OUTSIDE the `auth.users` cascade.** This is the single most repeated money bug in this codebase — it has now been found **four** times, once per grant. Everything user-scoped cascades, so delete → sign in again erases our only record and mints the grant afresh. Apple *mandates* the Delete Account button, so this is not an edge case. The four grants and their tombstones: **signup credits** → `signup_grants` (hash of the email); **referral +2** → `signup_grants.referral_redeemed_at` (same key); **IAP purchases** → `public.iap_grants` (keyed on Apple's `transaction_id`); **the temp-e-mail lifetime free address** → `public.email_free_grants` (same two email hashes, added 2026-08-26 — see the temp-e-mail subscription section). ⚠️ **The fourth is the proof the rule needs restating rather than trusting: it is not denominated in credits, so nobody read it as a "grant", and it shipped counting `email_orders` rows that cascade — farmed 55 times from one identity before it was caught.** A grant is anything we hand out once per person. Each tombstone table must have **no foreign key to `auth.users`** — a reference there is precisely what deletes the row with the account. The email hash works because Apple's private-relay address is stable per (user, app), so it survives deletion while storing no address; all four fail **open** on a null email, because a missed grant on a real signup costs more than a rare duplicate. **If you add a fifth grant, it needs a tombstone in the same commit.**
 
@@ -4017,9 +4200,12 @@ It is a starting point for "is this roughly right", never a citation.
   that serves the NEXT order". `rate_source='seeded'` is now **1** row (was
   338): `20260803121000` was finally applied on 08-06 and cleared every seeded
   grade inherited from a provider that no longer serves the route.
-- **Balances: 5sim $8.89 (rating 96/96), HeroSMS $9.41** (08-05 15:05Z). Both
-  `low`, both at alert tier 3 on a `[37.50, 22.50, 11.25, 7.50]` ladder. **Both
-  are near the $7.50 single-order ceiling — top up.**
+- **Balances** move hourly — re-query, never quote:
+  `select key, value->>'balance_usd' from app_config where key like '%_health';`
+  The PAGE fires at one level per provider (owner decision 2026-09-08): **5sim
+  < $5.00 · HeroSMS < $5.00 · Telnyx < $10.00**. Reading 2026-09-08 09:40Z:
+  5sim $10.02, HeroSMS $14.94, Telnyx $6.00 (**under its floor — `telnyx-float`
+  is firing**), eSIM Access $88.62.
 - **App Store**: live version is **1.9 (build 31) `READY_FOR_SALE`**; **2.0
   (build 39) is `WAITING_FOR_REVIEW`** as of 2026-08-10, resubmitted after the
   08-09 human rejection (3.1.2(c) subscription EULA/privacy links + Guideline 5
@@ -4759,6 +4945,23 @@ definitive "not attributed"; only 7 are ASA). Two tables, migration
 
 ### Known-open
 
+🔴 **A SUBSCRIPTION CAN EXIST AT APPLE WITH NO TRACE IN OUR DATABASE, AND IT
+HAS (found 2026-09-08).** Original tx `700002748363888` — a $59.99 yearly
+bought 2026-08-22, grace 08-25, billing recovery 09-08 — has three rows in
+`line_notifications` and **nothing** in `line_subscriptions` or `phone_lines`.
+`ensureSubscriptionRow` attributes from a LINE, so with no line there is no
+user; the signed transaction carries no `appAccountToken`, so nothing else
+links it either. The customer has paid twice and holds nothing, and the new
+auto-reprovision path refuses it as `unknown_subscription` — correctly, since
+inventing a user would bind an Apple entitlement to the wrong account. Root
+cause is upstream: our own `verify-line-subscription` call never landed on the
+purchase. **The fix is `appAccountToken` on the StoreKit purchase** (client
+change) so a notification is attributable without a prior line; until then
+these are recoverable only by hand, from the App Store Connect side. Re-derive:
+`select notification_type, subtype, created_at from line_notifications where
+original_transaction_id = '700002748363888' order by created_at;`
+
+
 ⚠️ **The e-mail subscription's retroactive lifetime wall would end the app's
 highest-volume surface, and shipping it or parking it is an owner decision
 still outstanding (2026-08-19).** Measured 2026-08-19 over the trailing 14
@@ -4804,21 +5007,64 @@ either — recorded here so it is not silently inherited as new scope.
 included, until both read `line_subscriptions` and `email_subscriptions`
 alongside `iap_receipts`.
 
-🔴 **OUTBOUND SMS DOES NOT WORK, AND IT IS THE PRODUCT (2026-08-17).**
-Lifetime: **1 sent / 6 failed** (the one "sent" never got a delivery receipt).
-Inbound: **3 of 3**. Every cross-border send returns `40010: The sending number
-is not 10DLC-registered but is required to be by the carrier`, and the number
-also reports `features.sms.international_outbound: false`. The claim that
-Canadian numbers need no 10DLC is **RETRACTED** — see `.claude/rules/providers.md`.
+🟠 **OUTBOUND SMS IS RESTORED (NANP→NANP) BUT IS NOT PROVEN TO A REAL
+HANDSET — 2026-09-08. Do not read the restoration as evidence.**
 
-`send-line-message` now refuses cross-border (`cross_border_sms`) and non-NANP
-(`international_sms`) sends up front rather than spending a segment to buy a
-failure, and checkout/store no longer promise sending. **The decisive untested
-case is CA → CA**: `domestic_two_way: true` says it should work with no
-registration, and nobody has tried it. One message decides whether this product
-has a market today or is receive-only until toll-free verification or 10DLC
-clears — both of which require declaring a use case that "users send whatever
-they like" does not satisfy.
+**What the 2026-08-17 verdict actually measured.** Lifetime outbound was
+called "1 sent / 6 failed"; `line_messages` holds **4 rows** (1 `sent`, 3
+`failed`), every one from **`+14377832487`, a CANADIAN number, on one evening,
+to US numbers**, every one `40010: The sending number is not 10DLC-registered`.
+Canada was then the only country we sold, so "cross-border fails" and "sends
+from a Canadian longcode fail" were the SAME observation wearing the more
+general name — and it was generalised to "outbound does not work". **No US
+number had ever attempted a send.**
+
+**What is now measured.** 2026-09-08, a fresh US number → a CA number we own:
+**delivered, no errors**, and the inbound webhook landed it in the recipient's
+app. 🔴 **ON-NET — both endpoints are numbers on our own Telnyx account — so
+it may never have crossed a carrier's spam or registration filter. It is
+strong evidence AGAINST a total block and weak evidence FOR delivery.** One
+delivery is not a delivery rate; that exact error produced the original wrong
+conclusion (`.claude/rules/providers.md`, the 2026-08-05 CA send).
+
+**The registration state, read live and not inferred** (`app_config.
+telnyx_messaging_probe`, written by `probe-telnyx-connection` mode
+`messaging`): **`messaging_campaign_id` is NULL on all 12 numbers**, there is
+no 10DLC brand and no campaign on the account, `messaging_product` is `A2P`
+everywhere, `features.sms.international_outbound` is **false** on all 12, and
+the messaging profile's `whitelisted_destinations` is `["CA","GB","US"]`.
+Telnyx's error reference defines **`40010` as exactly "the sending number is
+not attached to a 10DLC campaign"**, so an off-net US A2P send is refused by
+the destination carrier by design.
+
+**The NANP policy in `_shared/nanp.ts`** — NANP is ONE bloc (PR and VI are US
+area codes; `isNanpNumber` tests the bloc, `nanpCountry` is only a US/CA
+*label* and reports PR/VI as US): NANP→NANP allowed; NANP→anything else
+refused `international_sms`; an unknown sender country still fails open.
+The international refusal is a **capability** check, not a policy guess —
+`international_outbound` is false on every number we own, so attempting one
+spends a hard-stop allowance segment to buy a certain failure.
+
+⚠️ **THE DECISIVE TEST IS STILL OUTSTANDING: one send to a REAL HANDSET on a
+real carrier, off-net.** Until it passes, treat sending as unproven, and note
+the client ships a composer regardless (owner decision) with an honest
+per-message failure state rather than a promise. `probe-telnyx-connection`
+mode `send_test` performs a send between two numbers we own (both endpoints
+are verified against Telnyx's inventory, so it can never text a stranger);
+modes `order_test_number` / `release_number` buy and drop a $1 disposable
+number, because every number on the account but one belongs to a paying
+subscriber and testing into their inbox is not ours to do.
+
+**If it fails off-net, the paths are 10DLC or toll-free, and both need an
+approvable use case** — researched against Telnyx's docs 2026-09-08:
+Sole Proprietor is **one campaign, one number** (useless for a fleet);
+Standard 10DLC wants an EIN and has **no named P2P / "second number" use
+case** (nearest is "Mixed"); the documented architecture for our shape is a
+**partner/ISV shared campaign**, which Telnyx routes to their team rather than
+self-service. Toll-free verification is ~5 business days with a
+"Conversational/Alerts" use case. None of these confirm that "consumers rent a
+number and text whoever they like" is approvable — that is genuinely
+unaddressed by the public docs and needs a conversation with Telnyx.
 
 ✅ **INBOUND CALLING WORKS — 2026-09-08, verified on a physical device with
 the app OPEN and with the app CLOSED, using a real PSTN call from one of our

@@ -27,23 +27,19 @@ import {
   verifyTransactionJWS, subscriptionFamily, IapVerificationError,
   linePlanLabel,
 } from "../_shared/iap.ts";
+import { searchNumbers, faultOf } from "../_shared/telnyx.ts";
 import {
-  orderNumber, getOrder, findNumberId, attachMessagingProfile,
-  releaseNumber, searchNumbers, faultOf,
-} from "../_shared/telnyx.ts";
-import { provisionLineVoice } from "../_shared/lineVoice.ts";
+  completeLineProvision, DEFAULT_LINE_COUNTRY,
+} from "../_shared/lineProvision.ts";
 import { sendMessage, esc } from "../_shared/telegram.ts";
 import { sellableCountry, catalogFaultOf } from "../_shared/lineCatalog.ts";
 import { NANP } from "../_shared/phone.ts";
 
-/** Shipped 2.3 sends no country. Defaults on BOTH null and absent. */
-const DEFAULT_COUNTRY = "CA";
-
-/** Telnyx number orders are asynchronous: `pending` → `success`, measured under
- *  5s. Poll rather than trusting a webhook — a webhook outage must not strand a
- *  purchase Apple has already taken money for. */
-const ORDER_POLL_ATTEMPTS = 8;
-const ORDER_POLL_MS = 1200;
+/** Shipped 2.3 sends no country. Defaults on BOTH null and absent.
+ *  ⚠️ One definition, in `_shared/lineProvision.ts`: this default is also the
+ *  fallback place `apple-notifications` reprovisions into, and two copies of it
+ *  is how the three CITIES maps drifted. */
+const DEFAULT_COUNTRY = DEFAULT_LINE_COUNTRY;
 
 /** ⚠️ The App Store reviewer subscribes in SANDBOX. `iap-verify` grants credits
  *  only on Production, for excellent reasons — a Sandbox receipt is genuinely
@@ -206,163 +202,30 @@ Deno.serve(async (req) => {
     return json({ error: "country_not_sellable" }, { status: 409 });
   }
 
-  // ── 4. Buy it ────────────────────────────────────────────────────────────
-  // `customer_reference` is set to the line id, and that single field is what
-  // makes orphan reconciliation possible later: a number we own with no live
-  // line pointing at it is otherwise invisible until the invoice.
-  //
-  // `requirementGroupId` is non-null only for a country selling under an
-  // APPROVED pre-verified bundle; for US/CA it is null and the request body is
-  // byte-identical to the shape that has always worked.
-  const order = await orderNumber(wanted, lineId, {
+  // ── 4-7. Buy it, configure it, activate it ───────────────────────────────
+  // ONE sequence, shared with `rent-line-credits` and with the reprovision
+  // path in `apple-notifications` (`_shared/lineProvision.ts`). It used to be
+  // written out here and again there; a third copy is how voice provisioning
+  // ended up in one path and not the other.
+  const done = await completeLineProvision(sb, {
+    lineId, e164: wanted, country, numberType,
     requirementGroupId: sellable.requirementGroupId,
+    periodEnd,
+    // Re-quoted AFTER the buy, from the number we actually got.
+    quoteCost: (got) => quoteMonthlyCents(got, country, numberType, sellable.features),
+    // Apple owns the money on this line and we cannot refund it from here, so
+    // "undo" is freeing the user to rent again, plus a page.
+    onFail: (reason) => failLine(sb, lineId, reason, userId, tx.originalTransactionId),
   });
-  if (faultOf(order)) {
-    await failLine(sb, lineId, `order_${order.type}`, userId, tx.originalTransactionId);
-    return json({ error: "provision_failed" }, { status: 502 });
+  if (!done.ok) {
+    return json({ error: done.reason }, { status: done.status });
   }
-
-  // Stamp the order id NOW, not on success. A purchase that fails after the
-  // buy is precisely when this handle matters — the order is ASYNCHRONOUS, the
-  // number may still arrive after we stop polling, and `activate_line_claim`
-  // never runs on that path. Without it an orphan is invisible until the
-  // invoice. Errors are logged, never fatal: the number is already bought.
-  const { error: orderIdErr } = await sb.rpc("record_line_order", {
-    p_line: lineId, p_order_id: order.orderId,
-  });
-  if (orderIdErr) {
-    console.error(JSON.stringify({
-      alert: "line_order_id_unrecorded", line: lineId, order: order.orderId,
-      detail: orderIdErr.message,
-    }));
-  }
-
-  let e164: string | null = null;
-  for (let i = 0; i < ORDER_POLL_ATTEMPTS; i++) {
-    const st = await getOrder(order.orderId);
-    if (faultOf(st)) break;
-    const n = st.numbers[0];
-    // ⚠️ `requirement-info-pending` means BOUGHT AND UNUSABLE pending
-    // regulatory documents. It reads like progress and is a dead end — this is
-    // what cost $3.83 on a GB number. Our catalog said this country needs no
-    // documents, so seeing it here means the catalog is WRONG, and the number
-    // must be released, not waited on.
-    if (n?.status === "requirement-info-pending") {
-      await releaseIfPossible(wanted);
-      // ── Self-healing ─────────────────────────────────────────────────────
-      // Telnyx's refusal is EVIDENCE and it beats our own probe. Blocking the
-      // country here means the NEXT user does not walk into the same wall and
-      // pay $9.99 to find it. `refresh_line_country_sellability()` preserves a
-      // row already blocked for `order_rejected` rather than re-opening it, so
-      // this survives the nightly sync and clears only when a real reason
-      // replaces it. Best-effort: the purchase is already lost either way, so
-      // a failed write must not change the answer to the user.
-      const { error: blockErr } = await sb.from("line_country_catalog")
-        .update({ sell_state: "blocked", sell_reason: "order_rejected" })
-        .eq("country_code", country).eq("number_type", numberType);
-      if (blockErr) {
-        console.error(JSON.stringify({
-          alert: "line_catalog_selfheal_failed", country,
-          number_type: numberType, detail: blockErr.message,
-        }));
-      }
-      await failLine(sb, lineId, "requirements_pending", userId, tx.originalTransactionId);
-      return json({ error: "provision_failed" }, { status: 502 });
-    }
-    if (st.status === "success" && n?.e164) { e164 = n.e164; break; }
-    if (st.status === "failed") break;
-    await new Promise((r) => setTimeout(r, ORDER_POLL_MS));
-  }
-
-  if (!e164) {
-    // Might still land after we stop looking, so do NOT release blindly — the
-    // orphan reconciler is what sweeps a number that arrived late. Failing the
-    // line keeps the user out of a half-state and pages a human.
-    await failLine(sb, lineId, "order_timeout", userId, tx.originalTransactionId);
-    return json({ error: "provision_failed" }, { status: 504 });
-  }
-
-  // ── 5. Configure and activate ────────────────────────────────────────────
-  // The messaging profile is what routes inbound SMS to our webhook. Attaching
-  // it is NOT settable on the main number resource (error 10027) — it lives on
-  // the /messaging sub-resource.
-  const numberId = await findNumberId(e164);
-  const msgProfile = Deno.env.get("TELNYX_MESSAGING_PROFILE_ID") ?? null;
-  if (typeof numberId === "string" && msgProfile) {
-    const attached = await attachMessagingProfile(numberId, msgProfile);
-    if (faultOf(attached)) {
-      // Not fatal to the purchase — the number exists and voice works — but it
-      // means inbound SMS goes nowhere, so it pages.
-      console.error(JSON.stringify({
-        alert: "line_msg_profile_failed", line: lineId, detail: attached.detail,
-      }));
-    }
-  }
-
-  // 🔴 VOICE IS PROVISIONED HERE, not lazily on first dialer open — see
-  // `_shared/lineVoice.ts`. Attaching the number's voice to a connection is
-  // what makes it RING, and it lived only in `mint-line-token`, so a
-  // subscription bought a number that could not receive a call until its owner
-  // opened the Number tab. Best-effort: Apple has already taken the money, so a
-  // voice fault must not fail the purchase, and the lazy path still repairs it.
-  const voice = await provisionLineVoice(
-    sb,
-    { id: lineId, provider_number_id: typeof numberId === "string" ? numberId : null },
-    { persistIds: false },
-  );
-  if (voice.faults.length) {
-    console.error(JSON.stringify({
-      alert: "line_voice_provision_failed", line: lineId,
-      steps: voice.faults.map((f) => f.step),
-      detail: voice.faults.map((f) => f.fault.detail).join("; "),
-    }));
-  }
-
-  const { data: activated, error: actErr } = await sb.rpc("activate_line_claim", {
-    p_line: lineId,
-    p_number_id: typeof numberId === "string" ? numberId : null,
-    p_connection: voice.connectionId,
-    p_msg_profile: msgProfile,
-    p_voice_profile: voice.voiceProfileId,
-    p_credential: voice.credentialId,
-    p_period_end: periodEnd,
-    // ⚠️ RE-QUOTED SERVER-SIDE, never taken from the request. Nothing reports
-    // this again — the order response returns `cost_information: null` and the
-    // number resource has no price field at all — so this is the only chance
-    // to record it, and it is what we PAY. It used to be `body.monthly_cents`,
-    // handed back by the client from the reserve step: a client-supplied COST,
-    // the same category of mistake as a client-supplied price, and one that
-    // makes the whole line look more profitable than it is.
-    p_monthly_cost_cents: await quoteMonthlyCents(e164, country, numberType,
-                                                  sellable.features),
-    p_order_id: order.orderId,
-  });
-  if (actErr || activated !== true) {
-    // 🔴 THE PROVISIONING LOCKOUT. This branch used to return 500 and stop,
-    // leaving the row `provisioning` forever — and because
-    // phone_lines_one_live_per_user counts that status, the user was BARRED
-    // from renting again while still paying Apple, with no path back except an
-    // Apple refund. The number kept billing us too. Fail the line so they are
-    // free, and give the number back so we stop paying for it; the 15-minute
-    // reclaim sweep is the backstop if even this write is lost.
-    console.error(JSON.stringify({
-      alert: "line_activate_failed", line: lineId, detail: actErr?.message,
-    }));
-    await releaseIfPossible(e164);
-    await failLine(sb, lineId, "activate_failed", userId, tx.originalTransactionId);
-    return json({ error: "provision_failed" }, { status: 500 });
-  }
-
-  // `activate_line_claim` has no `p_attached`, so the one fact that decides
-  // whether the phone RINGS is recorded separately, after the line is live.
-  if (voice.attached) {
-    await sb.rpc("record_line_voice_binding", { p_line: lineId, p_attached: true });
-  }
+  const e164 = done.e164;
 
   await alertNewLine(sb, e164, tx.originalTransactionId, tx.environment,
     linePlanLabel(tx));
 
-  return json({ ok: true, line_id: lineId, e164, inbound_ready: voice.attached });
+  return json({ ok: true, line_id: lineId, e164, inbound_ready: done.inboundReady });
 });
 
 async function failLine(
@@ -376,20 +239,6 @@ async function failLine(
   console.error(JSON.stringify({
     alert: "line_provision_failed", reason, user: userId, tx: originalTx,
   }));
-}
-
-async function releaseIfPossible(e164: string) {
-  const id = await findNumberId(e164);
-  if (typeof id !== "string") return;
-  const r = await releaseNumber(id);
-  // A release we could not make must not vanish. The line still gets failed,
-  // and `release-lines`' orphan sweep is what finds a number whose
-  // customer_reference points at a dead row — but only if we say so here.
-  if (faultOf(r)) {
-    console.error(JSON.stringify({
-      alert: "line_orphan_number", e164, detail: r.detail,
-    }));
-  }
 }
 
 /** What Telnyx charges US for this number, per month, in cents.

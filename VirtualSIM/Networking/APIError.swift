@@ -296,28 +296,37 @@ enum APIError: Error, LocalizedError {
                 // them leaking our provider configuration into the app.
                 case "destination_unavailable":
                     return String(localized: "We can't call this country yet.")
-                // Outbound SMS was retired product-wide on 2026-08-18, so
-                // `send-line-message` refuses every send with this code. The
-                // message must not read as a fault or a temporary outage —
-                // nothing is coming back — and it points at the capability that
-                // DOES work outward, which is calling.
+                // ⚠️ DEAD ON THE CURRENT SERVER, KEPT DELIBERATELY. Sending was
+                // restored on 2026-09-08 and `send-line-message` no longer
+                // emits this — but the retirement was one constant, and a
+                // rollback (or an older deployed bundle) would start emitting
+                // it again with no client release. The copy is now neutral
+                // rather than the old "doesn't send them", which would be a
+                // false statement about the product if it ever rendered.
                 case "outbound_sms_retired":
-                    return String(localized: "This number receives texts but doesn't send them. Calls work — tap the phone icon.")
+                    return String(localized: "Sending isn't available from this number right now.")
+                // The country's own numbers carry no SMS capability at all
+                // (GB, DE, FR, NL, PL, AU local — measured). Not a fault and
+                // not temporary, so it must not invite a retry.
+                case "line_has_no_sms":
+                    return String(localized: "This number can make calls but can't send or receive texts.")
                 case "recipient_blocked":
                     return String(localized: "You've blocked this number. Unblock it to send a message.")
-                // Names the real limit instead of the carrier's rejection.
-                // Every cross-border send has come back "the sending number is
-                // not 10DLC-registered", which is true, unfixable by the user,
-                // and meaningless to them. What they can act on is: this number
-                // texts Canada today, and it can still RECEIVE from anywhere.
+                // ⚠️ NO LONGER REACHABLE FROM A NANP LINE (2026-09-08): US, CA,
+                // PR and VI now text each other freely, so `canSendTo` returns
+                // `cross_border` only for a non-NANP sender — and no non-NANP
+                // line exists today. The copy is country-agnostic for that
+                // reason: naming Canada was correct while Canada was the only
+                // country we sold, and would be wrong the moment it is not.
                 case "cross_border_sms":
-                    return String(localized: "Your Canadian number can only text Canadian numbers right now. It can still receive texts from anywhere.")
+                    return String(localized: "This number can only text numbers in its own country right now. It can still receive texts.")
                 // Separate from the cross-border case on purpose: "text a
-                // Canadian number instead" is useless advice to someone
-                // messaging Europe, and telling them the wrong workaround is
-                // worse than telling them none.
+                // number nearby instead" is useless advice to someone
+                // messaging Europe, and the wrong workaround is worse than
+                // none. This is the number's own capability, not a policy —
+                // `international_outbound` reads false on every number we own.
                 case "international_sms":
-                    return String(localized: "This number can't text outside Canada and the US yet. It can still receive texts from anywhere.")
+                    return String(localized: "This number can only text US and Canadian numbers. It can still receive texts from US and Canadian senders.")
                 // Emitted by `begin-line-call`. All four were absent, so every
                 // one fell through to the HTTP-status fallback — which for
                 // `bad_number` meant reporting the user's own typo as a fault
