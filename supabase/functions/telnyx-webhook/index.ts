@@ -439,11 +439,23 @@ async function handleInboundCall(
     return;
   }
 
-  // `from` is the real caller, so the app shows who is ringing rather than
-  // the number being called.
+  // 🔴 `from` MUST BE A NUMBER WE OWN — the caller's number silently fails.
+  //
+  // Measured 2026-09-08. A direct Call Control leg with `from` = the line's
+  // own e164 rang the device. The same leg raised by `transfer` with `from` =
+  // the real caller (+33…, +1659…) returned 200, produced `call.bridged`, and
+  // never reached the phone — three times, from two different countries.
+  // Telnyx accepts the command and drops the leg, the silent-no-op pattern
+  // this adapter has now hit four times.
+  //
+  // So the ANI is the line's own number and the CALLER travels as the display
+  // name, which is what the app renders anyway. A caller ID the carrier will
+  // not accept is worse than a display name: it produces a phone that never
+  // rings, with a 200 in the log.
   const res = await command("transfer", {
     to: `sip:${sipUser}@sip.telnyx.com`,
-    from: caller ?? called,
+    from: called,
+    from_display_name: caller ?? "",
     timeout_secs: 30,
   });
   if (!res.ok) {
