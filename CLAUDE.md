@@ -49,16 +49,24 @@ INBOUND DOES NOT WORK — final verdict 2026-09-07, three-agent audit + live
 Telnyx read-backs:** in the trailing 30 days **13 real inbound calls reached
 Telnyx on sold lines (plus 98 to the released probe number), 0 were answered,
 0 produced a device leg, 0 were recorded** — every one `call_sec 0`,
-`answered_at null`. Provisioning is correct (9/9 numbers routed to their
-credential connection, our own push credential on all 9, cert valid to
-2027-09-05); the break is in the CLIENT: a VoIP push into an app that is not
-already connected is never handed to the SDK (`handleVoIPPush` returns on a
-nil voice token), the app only logs in to Telnyx when the Number tab is
-opened, and answering does not use `answerFromCallkit`. So the phone may
-ring and the call can never connect. **Those client defects are FIXED in
-build 52 (2.10, submitted 2026-09-07 07:56Z, `WAITING_FOR_REVIEW`) — still
-unverified by any real call at submission.** See Known-open → INBOUND
-CALLING.
+`answered_at null`. 🔴 **THE CAUSE WAS FOUND 2026-09-08 AND IT IS THE LOGIN
+CREDENTIAL, NOT THE PUSH PATH: the app authenticated with a token minted from
+an ON-DEMAND telephony credential, which Telnyx documents as OUTBOUND-ONLY.**
+Read live from `/sip_registration_status` with the app connected — the
+telephony credential `gencredz…` was `registered: true` while the connection
+the DID actually points at, `vsmsvsms…`, was `registered: false` and had
+NEVER registered since 2026-08-23. A number is addressed to the CONNECTION,
+so Telnyx found no contact and cleared each call in under a second with no
+`webrtc` leg. **Outbound needs only AUTHENTICATION; only inbound needs
+REGISTRATION — which is exactly why 131 outbound calls worked while no
+inbound call ever did, with nothing throwing anywhere.** Fixed in **2.11
+build 53** (`mint-line-token` now returns the connection's own
+`sip_username`/`sip_password` alongside the token; the client logs in with
+`.sip`). ⚠️ **Still unverified by a real ringing phone.** The earlier
+client defects (a push into a not-already-connected app never reaching the
+SDK, login only on the Number tab, answering not using `answerFromCallkit`)
+were real and are fixed in build 52 — but they were never sufficient, because
+no INVITE ever reached the device. See Known-open → INBOUND CALLING.
 "Take calls from anywhere" is not a claim this product can make. Meanwhile
 **outbound SMS is 1 sent against 6 failed** (`40010`, 10DLC).
 Inbound SMS works, 3 of 3. See "Rentable second numbers". iOS frontend in SwiftUI + Supabase backend (Postgres + Auth + Edge Functions + pg_cron).
@@ -1743,15 +1751,27 @@ minutes, whereas a CDR-settled call is exactly one that does NOT carry a
 backstop.
 
 **`probe-telnyx-connection` gained a second mode for diagnosing it** (it now
-has SIX: `connection_id=`, `cdr`, `coverage`, `numbers` — the owned-number
+has EIGHT: `connection_id=`, `cdr`, `coverage`, `numbers` — the owned-number
 reconciliation, see the orphan-sweep note above — and, since 2026-09-07,
 `push_credentials` (every `mobile_push_credential` + the configured one read
 back, public cert PEM included, → `app_config.telnyx_push_credentials_probe`)
 and `inbound_cdr` (every detail record in the window, filtered CLIENT-SIDE to
 `direction=inbound` / `cld` ∈ our numbers, joined to `line_calls` →
 `app_config.telnyx_inbound_probe`; client-side because an unknown filter key
-on this endpoint returns 200-with-zero-rows). ⚠️ Mode-1 reads in PARALLEL
-take 429 — one at a time.):
+on this endpoint returns 200-with-zero-rows), plus, since 2026-09-08,
+`line_voice` (one line's credential + number + number/voice + connection,
+secrets redacted, AND `/sip_registration_status` for BOTH addresses of record
+— the read that found the inbound cause; → `app_config.telnyx_line_voice_probe`)
+and **`set_translated_number`, the ONE writing mode in the file** — every other
+mode is read-only and must stay that way; it takes `line_id` + `value` (`""`
+reverts) and touches a single line's number.
+⚠️ Three shapes on `/sip_registration_status`, all learned from its own 400s
+rather than any fetchable doc: the param is **`username`**, NOT
+`filter[sip_username]`; **`credential_type`** accepts only
+`uac_external_credential` | `telephony_credential` | `sip_credential_connection`;
+and the reply is a **BARE object**, so the shared `get()` helper's `.data`
+unwrap stores null on a 200 — that mode keeps the raw text instead.
+⚠️ Mode-1 reads in PARALLEL take 429 — one at a time.):
 `POST {"probe":"cdr","session_ids":[…],"days":30}` (same cron-secret gate,
 still read-only, writes nothing). It sweeps every window-filter shape × every
 plausible `record_type`, looks each session id up under five filter keys in
@@ -3863,7 +3883,14 @@ SMS provider again, walk this list:
 Every number below has been wrong within a day of being written at least once.
 It is a starting point for "is this roughly right", never a citation.
 
-- **iOS**: `MARKETING_VERSION 2.10`, `CURRENT_PROJECT_VERSION 52`.
+- **iOS**: `MARKETING_VERSION 2.11`, `CURRENT_PROJECT_VERSION 53`.
+  **2.10 (build 52) is `READY_FOR_SALE` — approved and live, read from ASC
+  2026-09-08.** Its train is therefore CLOSED to new builds (`altool` answers
+  90186 *"The train version '2.10' is closed for new build submissions"*),
+  which is why the inbound fix is 2.11. **2.11 (build 53) is uploaded, VALID,
+  and in the internal TestFlight group "Friends" — NOT submitted for review**:
+  inbound calling has been claimed working twice on reasoning alone and was
+  wrong both times, so a real ringing phone comes before the submission.
   **2.10 is now BUILD 52, SUBMITTED 2026-09-07 07:56Z — `WAITING_FOR_REVIEW`,
   submission `9377bdbc-…` on the SAME version `61c4b4d0-…`** (build 51's
   submission `7d060143-…` was cancelled by owner instruction the same
@@ -4779,7 +4806,54 @@ has a market today or is receive-only until toll-free verification or 10DLC
 clears — both of which require declaring a use case that "users send whatever
 they like" does not satisfy.
 
-🔴 **INBOUND CALLING DOES NOT WORK — FINAL VERDICT 2026-09-07 (three Opus
+🔴 **THE CAUSE OF INBOUND WAS FOUND ON 2026-09-08, AND IT IS NOT ANY OF THE
+CLIENT DEFECTS BELOW.** The app logged in with a token minted from an
+**on-demand telephony credential**. Telnyx documents that credential type as
+outbound-only, verbatim: *"inbound calls directly to on-demand generated
+credential is not currently supported. The purpose for on demand generated
+credentials is purely for outbound calls."*
+(support.telnyx.com/en/articles/7029684-telephony-credentials-types)
+
+**Measured, not reasoned.** `mint-line-token` returned 200 at 19:15:16 and an
+inbound call arrived at 19:15:25 — the app was connected. At that moment
+`GET /sip_registration_status?username=<u>&credential_type=<t>` read:
+
+| identity | registered |
+|---|---|
+| `telephony_credential` `gencredz…` (what the app logged in as) | **true**, 19:15:17 |
+| `sip_credential_connection` `vsmsvsms…` (what the DID points at) | **false**, `"trying"`, never |
+
+Telnyx then produced **8 sessions in 9 seconds**, every one `sip-trunking`
+only, `call_sec 0`, `NORMAL_CLEARING`, **no `webrtc` record at all** — the
+call never reached the WebRTC gateway because there was no registered contact
+to send it to. A second test at 19:59 produced 18 sessions in 21 seconds,
+identical.
+
+**The fix (2.11 build 53, on TestFlight 2026-09-08, UNVERIFIED by a real
+call):** `mint-line-token` returns the connection's own
+`sip_username`/`sip_password` **alongside** the token — the token stays, because
+shipped builds ≤ 2.10(52) read only `token` and dropping it would remove
+OUTBOUND from every live user. `VoiceCredential` is the client seam; `.sip`
+registers and can be rung, `.token` authenticates and never can.
+`VoiceCredentialStore` prefers `.sip` with **no expiry check** (it is a
+long-lived connection user, not a JWT) — preferring a still-valid token there
+would rebuild the exact bug. `inboundReady` is now the CONJUNCTION of the
+server's provisioning and whether the login can register at all.
+
+⚠️ **Rotation was rejected for now**: the client mints more than once per cold
+launch (measured 13 s apart), so rotating per mint would invalidate the
+registration the previous mint just made. The password is therefore
+long-lived and on the device, bounded by the per-line `daily_spend_limit`.
+
+❌ **DISPROVED THE SAME DAY — do not retry:** setting the number's
+`translated_number` to the credential username. Applied to a real line, read
+back, called: identical 18-session teardown, reverted. Routing follows the
+connection's registration, not the header.
+
+*History below, kept because the client defects were real and the reasoning
+shows how the wrong layer was blamed for a month.*
+
+🔴 **INBOUND CALLING DOES NOT WORK — verdict 2026-09-07 (three Opus
 audits: server provisioning vs Telnyx docs, client vs the resolved TelnyxRTC
 4.1.2 source, live Telnyx read-backs; the owner asked for a verdict after
 asserting 2.10 "even receives").** The decisive evidence is the new
