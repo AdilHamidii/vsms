@@ -221,7 +221,6 @@ final class CallController: NSObject {
             // fallback must not leave the app claiming it can receive calls.
             var credential = grant.voiceCredential
             do {
-                VoiceCredentialStore.save(credential)
                 try await voice.connect(credential)
             } catch where credential.canReceiveInbound {
                 // 🔴 REPORTED, not just printed. This is the one failure on the
@@ -236,9 +235,17 @@ final class CallController: NSObject {
                 ])
                 print("CallController:: SIP login failed, falling back to token: \(error)")
                 credential = .token(grant.token)
-                VoiceCredentialStore.save(credential)
                 try await voice.connect(credential)
             }
+            // 🔴 SAVED ONLY AFTER A SUCCESSFUL CONNECT, and that ordering is
+            // the whole point. Persisting before the attempt wrote a `.sip`
+            // credential that cannot log in into the Keychain, where the PUSH
+            // path then read it first — so a login failure in the foreground
+            // silently poisoned every future inbound call, including on
+            // launches where the token would have worked. Only a credential
+            // that has actually logged in is worth waking a terminated app
+            // with.
+            VoiceCredentialStore.save(credential)
             // 🔴 BOTH halves are required and they fail independently.
             // `grant.inboundReady` is the SERVER's provisioning (the number is
             // attached and the connection holds our push credential);
@@ -944,10 +951,21 @@ extension CallController: PKPushRegistryDelegate {
             if let api = apiClient {
                 do {
                     let grant = try await LineAPI(client: api).mintVoiceToken(lineId: activeLineId)
-                    let credential = grant.voiceCredential
-                    VoiceCredentialStore.save(credential)
                     lineE164 = grant.e164
-                    if deliverPush(pending, credential: credential) { return }
+                    // 🔴 BOTH credentials are tried, in this order, and the
+                    // fallback is not optional. `.sip` is the only one an
+                    // inbound call can be routed to directly, but if Telnyx
+                    // refuses that login the token still attaches the pushed
+                    // call — and a phone that rings and then fails to connect
+                    // is the exact experience that made a subscriber cancel
+                    // four minutes after buying. Whichever one works is the
+                    // one we persist.
+                    for candidate in grant.pushCredentialsInPreferenceOrder {
+                        if deliverPush(pending, credential: candidate) {
+                            VoiceCredentialStore.save(candidate)
+                            return
+                        }
+                    }
                 } catch {
                     print("CallController:: push credential mint failed (attempt \(attempt + 1)): \(error)")
                 }

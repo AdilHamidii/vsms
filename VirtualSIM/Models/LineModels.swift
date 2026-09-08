@@ -306,6 +306,18 @@ struct LineVoiceToken: Codable, Hashable {
     /// Whether this login can ring. Reported separately from `inboundReady`,
     /// which describes the SERVER's provisioning — both must hold.
     var canRegisterForInbound: Bool { voiceCredential.canReceiveInbound }
+
+    /// Everything worth trying when a VoIP push has to be attached, best
+    /// first and with no duplicates.
+    ///
+    /// A push arrives while the phone is already ringing, so trying the second
+    /// credential costs a socket attempt and is far cheaper than a call that
+    /// rings and then dies — which is what a single failing credential
+    /// produces.
+    var pushCredentialsInPreferenceOrder: [VoiceCredential] {
+        let first = voiceCredential
+        return first.canReceiveInbound ? [first, .token(token)] : [first]
+    }
 }
 
 // MARK: - Buying one
