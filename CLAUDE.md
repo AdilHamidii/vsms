@@ -30,20 +30,30 @@ when nobody has the relevant file open.
 **fourth** line — rentable second numbers, billed by **StoreKit subscription
 rather than credits** — is LIVE ON THE APP STORE in 2.0. ⚠️ **PIVOTED
 2026-08-18 (owner decision): the product is now "RECEIVE texts + codes from
-US/Canadian senders, and CALL OUT worldwide". OUTBOUND SMS WAS DROPPED** — it
-was the one capability needing carrier approval (10DLC). ⚠️ **RESTORED
-2026-09-08 (owner decision), NANP → NANP ONLY, AND STILL UNPROVEN TO A REAL
-HANDSET.** The 2026-08-18 retirement rested on four sends in one evening, all
-from a CANADIAN number to US numbers, all `40010` — at the time Canada was the
-only country sold, so "cross-border fails" and "Canadian longcodes fail" were
-one observation under the more general name. No US number had ever attempted a
-send, and the fleet is now 7 US + 5 CA. A US→CA send on 2026-09-08 was
-**delivered** — but **ON-NET, between two numbers we own**, so it may never
-have crossed a carrier filter; `messaging_campaign_id` is **null on all 12
-numbers**. `send-line-message`, `ComposeScreen`, `.compose` and the thread
-composer are all back; anything outside NANP is still refused up front
-(`international_outbound` is false on every number we own). **No copy,
-comment or screenshot may claim sending works.** The tab is the SECOND tab (Home
+US/Canadian senders, and CALL OUT worldwide". OUTBOUND SMS WAS DROPPED** on
+2026-08-18 as "the one capability needing carrier approval (10DLC)".
+✅ **THAT WAS WRONG, AND IT IS RESTORED: OUTBOUND SMS WORKS — PROVEN
+2026-09-08 OFF-NET, from the app on a real device to the owner's own US
+mobile on a real carrier, with NO 10DLC brand and NO campaign registered
+(`messaging_campaign_id` is null on all 12 numbers).**
+
+**Why the wrong verdict held for three weeks, because the shape recurs:** it
+rested on four sends in ONE evening, every one from a **Canadian** number to
+**US** numbers, every one `40010`. Canada was then the only country we sold,
+so "cross-border fails" and "sends from a Canadian longcode fail" were the
+SAME observation wearing the more general name — and the general name is what
+got recorded. **No US number had ever attempted a send.** The fleet is now 7
+US + 5 CA. Generalising from the single worst case in the matrix is the error;
+`40010` names the SENDING number's registration, so it was never evidence
+about US-origin traffic.
+
+`send-line-message`, `ComposeScreen`, `.compose` and the thread composer are
+all back, NANP → NANP. ⚠️ **Sending OUTSIDE NANP is still refused up front,
+and how real that limit is has NOT been settled** — see Known-open. It has
+two independent gates and one of them is OURS: the messaging profile's
+`whitelisted_destinations` read `["CA","GB","US"]` on 2026-09-08, which is an
+editable setting, not a carrier rule (GB being in it proves the field is not
+NANP-limited). The tab is the SECOND tab (Home
 is first — reverted 2026-08-08; this line said "first tab" for ten days after).
 **Six numbers rented, five subscriptions, and all five cancelled auto-renew —
 median 3.9 minutes after paying.**
@@ -83,10 +93,10 @@ client defects (a push into a not-already-connected app never reaching the
 SDK, login only on the Number tab, answering not using `answerFromCallkit`)
 were real and are fixed in build 52 — but they were never sufficient, because
 no INVITE ever reached the device. See Known-open → INBOUND CALLING.
-"Take calls from anywhere" is not a claim this product can make. Meanwhile
-**outbound SMS is 1 sent against 3 failed to an off-net handset** (`40010`,
-10DLC) plus **1 delivered ON-NET** (2026-09-08, US→CA, both numbers ours —
-weak evidence by construction). Re-derive, never quote this line:
+"Take calls from anywhere" is not a claim this product can make. Outbound SMS
+DOES work from a US number to a US mobile (proven off-net 2026-09-08); the
+only failures on record are the four CA→US sends of 2026-08-17. Re-derive,
+never quote a figure from this line:
 `select status, count(*) from line_messages where direction='outbound'
 group by 1;` Inbound SMS works, 21 of 21. See "Rentable second numbers". iOS frontend in SwiftUI + Supabase backend (Postgres + Auth + Edge Functions + pg_cron).
 
@@ -5007,8 +5017,49 @@ either — recorded here so it is not silently inherited as new scope.
 included, until both read `line_subscriptions` and `email_subscriptions`
 alongside `iap_receipts`.
 
-🟠 **OUTBOUND SMS IS RESTORED (NANP→NANP) BUT IS NOT PROVEN TO A REAL
-HANDSET — 2026-09-08. Do not read the restoration as evidence.**
+✅ **OUTBOUND SMS WORKS (NANP→NANP) — PROVEN OFF-NET 2026-09-08**, from the
+app on a physical device to the owner's own US mobile on a real carrier, with
+no 10DLC brand and no campaign on the account. The on-net probe below came
+first and was correctly treated as weak; the off-net send is the evidence.
+
+🔴 **TEXTING OUTSIDE NANP IS GENUINELY BLOCKED — SETTLED BY EXPERIMENT
+2026-09-08, and the cause is NEITHER of the two flags this file blamed.**
+Two real sends from a US number we own to the owner's own French mobile,
+before and after adding FR to the profile whitelist, both returned:
+
+```
+40306  Alpha sender not configured
+       The messaging profile doesn't have an associated alphanumeric sender ID.
+```
+
+- **The whitelist is NOT the blocker.** `whitelisted_destinations` was
+  `["CA","GB","US"]`; FR was added, read back as `["CA","FR","GB","US"]`, the
+  send was retried, and **the error was byte-identical**. The whitelist was
+  then reverted, leaving the account as found. So "our own setting is the
+  limit" — which this file asserted for a few minutes on the strength of GB
+  being in that list — is **wrong**, and the correction is the point: a
+  plausible mechanism that explains the symptom is not the mechanism.
+- **`features.sms.international_outbound: false` is not what fires either.**
+  The refusal happens at the messaging profile, before the number's own
+  capability is consulted.
+- **What it actually means:** France (like most of Europe) will not accept a
+  foreign long code as an A2P sender, so Telnyx wants an **alphanumeric sender
+  ID** for that destination. An alphanumeric sender is **ONE-WAY** — the
+  recipient sees a brand name instead of the user's number and **cannot
+  reply** — so configuring one would not give this product international
+  texting. It would give a different product. It is also pre-registered
+  per-country in much of Europe.
+- **Conclusion: NANP → NANP is the honest boundary**, and `_shared/nanp.ts`'s
+  up-front refusal of non-NANP destinations is correct — not as a guess, but
+  because the alternative spends a hard-stop allowance segment to buy a 40306.
+  Re-test with `probe-telnyx-connection` mode `send_test` before ever
+  widening it.
+
+⚠️ **`daily_spend_limit` on the messaging profile is `$2.00/day`, account-wide
+across ALL messaging, and it was set while sending was retired.** With sending
+live and 17 live subscriptions, one user in a loop can exhaust it and stop
+every subscriber's outbound texts for the rest of the day. Raise it
+deliberately (owner decision) rather than discovering it as an outage.
 
 **What the 2026-08-17 verdict actually measured.** Lifetime outbound was
 called "1 sent / 6 failed"; `line_messages` holds **4 rows** (1 `sent`, 3

@@ -494,6 +494,67 @@ Deno.serve(async (req) => {
     });
   }
 
+  // Read / edit the MESSAGING PROFILE.
+  //
+  // 🔴 `whitelisted_destinations` is OUR OWN setting and it silently caps
+  // where every number can text. It read `["CA","GB","US"]` on 2026-09-08 —
+  // and GB being in it is the proof the field is not NANP-limited, i.e. the
+  // "you cannot text other countries" limit was partly self-inflicted rather
+  // than a carrier rule. A destination absent from this list is refused by
+  // Telnyx before the carrier ever sees it.
+  //
+  // `daily_spend_limit` is the other one to watch: it is an ACCOUNT-WIDE cap
+  // across all messaging, so one user in a loop can stop every subscriber's
+  // texts for the rest of the day.
+  //
+  // Read-only unless `destinations` or `daily_spend_limit` is supplied, and it
+  // reads back — a 200 on this API has meant nothing five times now.
+  if (body.probe === "messaging_profile") {
+    const id = String(body.profile_id ?? "");
+    if (!id) return Response.json({ error: "profile_id required" }, { status: 400 });
+    const path = `${TELNYX}/messaging_profiles/${encodeURIComponent(id)}`;
+
+    const patch: Record<string, unknown> = {};
+    if (Array.isArray(body.destinations)) {
+      const list = (body.destinations as unknown[]).map((c) => String(c).toUpperCase());
+      if (!list.every((c) => /^[A-Z]{2}$/.test(c))) {
+        return Response.json({ error: "destinations must be ISO2" }, { status: 400 });
+      }
+      patch.whitelisted_destinations = list;
+    }
+    if (body.daily_spend_limit != null) {
+      patch.daily_spend_limit = String(body.daily_spend_limit);
+      patch.daily_spend_limit_enabled = true;
+    }
+
+    let patchHttp: number | null = null;
+    let patchBody: string | undefined;
+    if (Object.keys(patch).length > 0) {
+      const r = await fetch(path, {
+        method: "PATCH",
+        headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
+        body: JSON.stringify(patch),
+      });
+      patchHttp = r.status;
+      if (!r.ok) patchBody = trunc(await r.text(), 600);
+    }
+
+    const back = await fetch(path, { headers: { Authorization: `Bearer ${key}` } });
+    const bj = await back.json().catch(() => ({})) as { data?: Record<string, unknown> };
+    const result = {
+      mode: "messaging_profile", at: new Date().toISOString(), profile_id: id,
+      patched: Object.keys(patch).length > 0 ? patch : null,
+      patch_http: patchHttp, patch_body: patchBody,
+      whitelisted_destinations: bj.data?.whitelisted_destinations ?? null,
+      daily_spend_limit: bj.data?.daily_spend_limit ?? null,
+      daily_spend_limit_enabled: bj.data?.daily_spend_limit_enabled ?? null,
+      name: bj.data?.name ?? null,
+    };
+    await admin().from("app_config").upsert(
+      { key: "telnyx_messaging_profile_probe", value: result }, { onConflict: "key" });
+    return Response.json(result);
+  }
+
   if (body.probe === "release_number") {
     const e164 = String(body.e164 ?? "");
     if (!/^\+[1-9]\d{6,15}$/.test(e164)) {
@@ -615,8 +676,27 @@ Deno.serve(async (req) => {
       const j = await r.json().catch(() => ({})) as { data?: unknown[] };
       return Array.isArray(j.data) && j.data.length > 0;
     };
-    if (!(await ownedAt(from)) || !(await ownedAt(to))) {
-      return Response.json({ error: "both_numbers_must_be_ours" }, { status: 409 });
+    // The SENDER must always be ours — that is not negotiable, it is whose
+    // number appears on the recipient's handset.
+    //
+    // The RECIPIENT may be an outside number ONLY with `allow_unowned: true`
+    // AND `confirm_to` repeating it exactly. The default is closed because a
+    // probe reachable with the cron secret alone must not be able to text a
+    // stranger; the escape hatch exists because the only test that settles
+    // international sending is one to a real handset off our account, and a
+    // typo'd destination would text an uninvolved person. Both fields are
+    // recorded in `app_config.telnyx_send_test_probe`, so a send to an outside
+    // number is never anonymous.
+    if (!(await ownedAt(from))) {
+      return Response.json({ error: "sender_must_be_ours" }, { status: 409 });
+    }
+    const unowned = body.allow_unowned === true;
+    if (!(await ownedAt(to))) {
+      if (!unowned || String(body.confirm_to ?? "") !== to) {
+        return Response.json(
+          { error: "recipient_not_ours", need: "allow_unowned + confirm_to" },
+          { status: 409 });
+      }
     }
 
     const send = await fetch(`${TELNYX}/messages`, {
