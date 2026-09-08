@@ -628,8 +628,17 @@ async function reprovisionAfterRenewal(
       return;
     }
 
+    // 🔴 `p_allow_first: true` — a subscriber who NEVER received a number is
+    // rescued here too, not only one whose number we released. The SQL still
+    // refuses it for the first 30 minutes, so this can never race our own
+    // client call, which owns the first purchase and lets the user pick.
+    // Beyond that window the client call is not coming: the incident this
+    // closes (tx 700002748363888) sat unprovisioned for seventeen days and was
+    // refunded, because every recovery path we had needed the user to reopen
+    // an app that had given them nothing.
     const { data: target, error: targetErr } = await sb
-      .rpc("line_reprovision_target", { p_original_tx: originalTx });
+      .rpc("line_reprovision_target",
+           { p_original_tx: originalTx, p_allow_first: true });
     if (targetErr) {
       console.error(JSON.stringify({
         alert: "line_reprovision_target_failed", tx: originalTx,
@@ -653,7 +662,7 @@ async function reprovisionAfterRenewal(
         why: target?.reason === "unknown_subscription"
           ? "We hold no subscription row for this transaction, so nothing says which account paid. It cannot be attributed from here."
           : target?.reason === "no_prior_line"
-          ? "This subscription has never held a number, so there is no place to put them back — a different failure with a different fix."
+          ? "This subscription has never held a number and is younger than 30 minutes, so our own purchase call may still be in flight. It is retried on the next notification."
           : "The subscription is not in a live state, so provisioning would pay rent for nothing.",
         action: "Reach out, or refund via Apple.",
         at: new Date(),
@@ -664,6 +673,9 @@ async function reprovisionAfterRenewal(
     const userId = String(target.user_id);
     const product = String(target.product_id ?? tx.productId);
     const numberType = String(target.number_type ?? "local");
+    // Null on a first provision (there is no earlier line to copy), which is
+    // exactly what the server default is for. The sellability gate below still
+    // fails closed either way.
     const wantedCountry = String(target.country_code ?? DEFAULT_LINE_COUNTRY)
       .toUpperCase();
 
@@ -841,6 +853,34 @@ async function pushNewNumber(
   }
 }
 
+/** The account named by Apple's `appAccountToken`, or null.
+ *
+ *  Validated against `auth.users` rather than trusted as a shape: the token is
+ *  whatever our client sent, so an unparsed or unknown one must attribute
+ *  NOTHING. Writing a subscription row against a dangling user id would be the
+ *  guessed `user_id` that `ensureSubscriptionRow` has always refused to invent
+ *  — this is a second SOURCE of attribution, never a weaker standard for it. */
+async function userFromAppAccountToken(
+  sb: ReturnType<typeof admin>,
+  tx: { appAccountToken?: string },
+): Promise<string | null> {
+  const token = (tx.appAccountToken ?? "").trim().toLowerCase();
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(token)) {
+    return null;
+  }
+  // `profiles` is one row per account and is reachable on the service role;
+  // `auth.users` is not exposed through PostgREST.
+  const { data, error } = await sb.from("profiles")
+    .select("user_id").eq("user_id", token).maybeSingle();
+  if (error) {
+    console.error(JSON.stringify({
+      alert: "app_account_token_lookup_failed", detail: error.message,
+    }));
+    return null;
+  }
+  return data?.user_id ? String(data.user_id) : null;
+}
+
 /** Create the subscription row when only a notification knows about it.
  *
  *  Attribution comes from the LINE, which is keyed on the same original
@@ -868,17 +908,24 @@ async function ensureSubscriptionRow(
   const { data: line, error: lineErr } = await sb.from("phone_lines")
     .select("user_id").eq("original_transaction_id", originalTx)
     .order("created_at", { ascending: false }).limit(1).maybeSingle();
-  if (lineErr || !line?.user_id) {
+
+  // The line is the PROVEN attribution and still wins. The token is the
+  // fallback for the case that cost a real customer a real $59.99: our own
+  // purchase call never landed, so no line was ever bought and there was
+  // nothing else on earth linking the entitlement to an account.
+  const userId = line?.user_id ? String(line.user_id)
+    : await userFromAppAccountToken(sb, tx);
+  if (lineErr || !userId) {
     console.error(JSON.stringify({
       alert: "assn_sub_unattributable", tx: originalTx,
-      detail: lineErr?.message ?? "no line for this transaction",
+      detail: lineErr?.message ?? "no line and no usable appAccountToken",
     }));
     return;
   }
 
   const { data, error } = await sb.rpc("record_line_subscription", {
     p_original_tx: originalTx,
-    p_user: line.user_id,
+    p_user: userId,
     p_product: tx.productId,
     p_state: "active",
     p_auto_renew: true,
@@ -919,7 +966,7 @@ async function handleMailNotification(
   periodEnd: string | null,
 ) {
   const originalTx = tx.originalTransactionId;
-  await ensureMailSubscriptionRow(sb, originalTx);
+  await ensureMailSubscriptionRow(sb, originalTx, tx, periodEnd);
 
   const type = n.notificationType;
   const sub = n.subtype ?? "";
@@ -1020,6 +1067,8 @@ async function handleMailNotification(
 async function ensureMailSubscriptionRow(
   sb: ReturnType<typeof admin>,
   originalTx: string,
+  tx: Awaited<ReturnType<typeof verifyTransactionJWS>>,
+  periodEnd: string | null,
 ) {
   const { data: existing, error: readErr } = await sb.from("email_subscriptions")
     .select("original_transaction_id")
@@ -1032,14 +1081,43 @@ async function ensureMailSubscriptionRow(
   }
   if (existing) return;
 
+  // Second attribution source, added for the same reason as the line
+  // handler's: Apple's retry ladder ends after a few days, so a purchase call
+  // that fails PERMANENTLY leaves a paying subscriber with no row, forever.
+  const userId = await userFromAppAccountToken(sb, tx);
+  if (userId) {
+    const { data, error } = await sb.rpc("record_email_subscription", {
+      p_original_tx: originalTx,
+      p_user: userId,
+      p_product: tx.productId,
+      p_state: "active",
+      p_auto_renew: true,
+      p_environment: tx.environment,
+      p_expires_at: periodEnd,
+      p_last_tx: tx.transactionId,
+      p_signed_tx: null,
+      p_storefront: tx.storefront ?? null,
+      p_price_milli: tx.price ?? null,
+      p_currency: tx.currency ?? null,
+    });
+    if (error || data?.ok !== true) {
+      console.error(JSON.stringify({
+        alert: "mail_assn_backfill_failed", tx: originalTx,
+        detail: error?.message ?? data?.reason,
+      }));
+      // Fall through to the retry throw: a failed write is not attribution.
+    } else {
+      return;
+    }
+  }
+
   // Unattributable: the purchase call has not landed yet. Apple retries on a
   // ladder, so throwing gets this notification redelivered after the client
-  // call completes — which is the outcome we want, and is what the line
-  // handler's equivalent could not do because it had a second attribution
-  // source.
+  // call completes — which is the outcome we want when the race is merely
+  // slow rather than lost.
   console.error(JSON.stringify({
     alert: "mail_assn_unattributable", tx: originalTx,
-    detail: "no email_subscriptions row yet; asking Apple to retry",
+    detail: "no email_subscriptions row and no usable appAccountToken",
   }));
   throw new Error(`mail_assn_unattributable: ${originalTx}`);
 }

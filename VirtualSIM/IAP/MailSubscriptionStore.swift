@@ -82,6 +82,11 @@ final class MailSubscriptionStore {
 
     private var apiClient: APIClient?
 
+    /// Whose purchases these are. Held as the `Session` object rather than a
+    /// copied id so the token can never be a stale user's: it is read at the
+    /// moment of purchase. See `PurchaseOptions`.
+    private var session: Session?
+
     #if DEBUG
     /// Prices for the App Store screenshot harness.
     ///
@@ -118,7 +123,10 @@ final class MailSubscriptionStore {
     var screenshotPricing: ScreenshotPricing?
     #endif
 
-    func attach(api: APIClient) { self.apiClient = api }
+    func attach(api: APIClient, session: Session) {
+        self.apiClient = api
+        self.session = session
+    }
 
     func product(for plan: MailPlan) -> Product? {
         let id = plan == .monthly ? MailProduct.monthlyId : MailProduct.yearlyId
@@ -231,7 +239,8 @@ final class MailSubscriptionStore {
         defer { isPurchasing = false }
         lastError = nil
         do {
-            switch try await product.purchase() {
+            switch try await product.purchase(
+                options: PurchaseOptions.forUser(session?.userId)) {
             case .success(let verification):
                 return await submit(verification)
             case .userCancelled:

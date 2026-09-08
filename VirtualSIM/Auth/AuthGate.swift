@@ -131,7 +131,7 @@ struct AuthGate: View {
             // assigned in a LATER task — which is how the mail subscription's
             // recovery path was silently dead. Both stores register here,
             // synchronously, in the same task that starts the sweep.
-            mailStore.attach(api: api)
+            mailStore.attach(api: api, session: session)
             // 🔴 RESOLVED HERE, NOT IN THE DOMAIN SHEET. `isEntitled` starts
             // false and `EmailDomainSheet.task` was its only refresher, so on
             // every cold launch a PAYING subscriber's Home screen priced the
@@ -152,12 +152,12 @@ struct AuthGate: View {
             iap.onMailSubscription = { [weak mailStore] result in
                 await mailStore?.submit(result) ?? false
             }
-            iap.attach(api: api)
+            iap.attach(api: api, session: session)
             // AFTER iap.attach, because this registers the subscription handler
             // on the single shared transaction listener that IAPStore owns.
             // Safe despite the sweep: `attach` only SCHEDULES it, so every
             // synchronous statement in this task runs first.
-            subs.attach(api: api, iap: iap)
+            subs.attach(api: api, iap: iap, session: session)
             // The real WebRTC client, which is what sets `isVoiceAvailable` and
             // makes the dialer reachable. Constructing it only opens a socket
             // when `prepareVoice()` mints a token, so a user with no line pays

@@ -11,6 +11,11 @@ final class IAPStore {
 
     private var apiClient: APIClient?
 
+    /// Whose purchases these are. Held as the `Session` object rather than a
+    /// copied id so the token can never be a stale user's: it is read at the
+    /// moment of purchase. See `PurchaseOptions`.
+    private var session: Session?
+
     init() {
         // A structural check with no caller is not a check. Debug-only, and it
         // runs before the paywall can ever be shown.
@@ -25,8 +30,9 @@ final class IAPStore {
         }
     }
 
-    func attach(api: APIClient) {
+    func attach(api: APIClient, session: Session) {
         self.apiClient = api
+        self.session = session
         // Sweep transactions that arrived BEFORE the API client existed.
         // `Transaction.updates` starts listening in init(), but attach() runs
         // later from AuthGate — so an update landing in that window hit
@@ -180,7 +186,8 @@ final class IAPStore {
                 "product": .string(pack.productId), "outcome": .string(outcome)])
         }
         do {
-            let result = try await product.purchase()
+            let result = try await product.purchase(
+                options: PurchaseOptions.forUser(session?.userId))
             switch result {
             case .success(let verification):
                 let accepted = await handle(verification)

@@ -4955,21 +4955,54 @@ definitive "not attributed"; only 7 are ASA). Two tables, migration
 
 ### Known-open
 
-🔴 **A SUBSCRIPTION CAN EXIST AT APPLE WITH NO TRACE IN OUR DATABASE, AND IT
-HAS (found 2026-09-08).** Original tx `700002748363888` — a $59.99 yearly
-bought 2026-08-22, grace 08-25, billing recovery 09-08 — has three rows in
-`line_notifications` and **nothing** in `line_subscriptions` or `phone_lines`.
-`ensureSubscriptionRow` attributes from a LINE, so with no line there is no
-user; the signed transaction carries no `appAccountToken`, so nothing else
-links it either. The customer has paid twice and holds nothing, and the new
-auto-reprovision path refuses it as `unknown_subscription` — correctly, since
-inventing a user would bind an Apple entitlement to the wrong account. Root
-cause is upstream: our own `verify-line-subscription` call never landed on the
-purchase. **The fix is `appAccountToken` on the StoreKit purchase** (client
-change) so a notification is attributable without a prior line; until then
-these are recoverable only by hand, from the App Store Connect side. Re-derive:
-`select notification_type, subtype, created_at from line_notifications where
-original_transaction_id = '700002748363888' order by created_at;`
+✅ **A SUBSCRIPTION COULD EXIST AT APPLE WITH NO TRACE IN OUR DATABASE — FIXED
+2026-09-08, and it cost a real refund first.** Original transaction
+`700002748363888` — a $59.99 yearly bought 2026-08-22 — carried four Apple
+notifications and **zero** rows in `line_subscriptions` and `phone_lines`. Our
+own `verify-line-subscription` call never landed, so nothing said which account
+paid: `ensureSubscriptionRow` attributes from a LINE, and there was no line.
+The customer received no number, was billed on the billing-recovery retry
+seventeen days later, cancelled within 80 minutes and was refunded — correctly.
+
+**Why every recovery this product had was insufficient.** They were all
+client-side: `SubscriptionStore.handle` deliberately leaves the StoreKit
+transaction unfinished so `IAPStore.restorePurchases()` sweeps it on the next
+launch. That is right and it is not enough — **it requires the user to reopen
+an app that has given them nothing.** This one never did.
+
+Three halves, all landed together; none works alone:
+- **`appAccountToken` on every purchase** (`VirtualSIM/IAP/PurchaseOptions.swift`,
+  used by all three stores). Apple echoes it back on every later signed
+  transaction, so a notification alone can name the account. ⚠️ It is CLIENT-set,
+  so it is a fallback and never an override: a line we actually sold is the
+  proven attribution and still wins. A token that is not a UUID present in
+  `profiles` attributes NOTHING — a dangling `user_id` is the guessed
+  attribution this code has always refused to invent.
+- **`ensureSubscriptionRow` / `ensureMailSubscriptionRow` read it** when no line
+  exists. The mail one keeps its retry-throw as the last resort, because Apple's
+  retry ladder ends after a few days and a permanently failed purchase call
+  otherwise leaves a paying subscriber with no row forever.
+- **`line_reprovision_target(p_original_tx, p_allow_first)`** (migration
+  `20260908150000`, DROP + CREATE — the argument list changed, and an overload
+  makes PostgREST refuse the RPC). With `p_allow_first` the renewal path now
+  also provisions a subscriber who NEVER held a number. 🔴 **The SQL still
+  refuses it for the first 30 minutes**, so it can never race our own client
+  call, which owns the first purchase and lets the user pick their own number;
+  past that window the client call is not coming. `country_code` is null on a
+  first provision and the caller's existing `DEFAULT_LINE_COUNTRY` fallback
+  covers it, behind the same fail-closed sellability gate.
+
+⚠️ **The client half ships with the next build**, so purchases made by 2.10 and
+earlier remain unattributable if their verify call fails. ⚠️ **The rescue fires
+on a NOTIFICATION, not on a timer** — a yearly whose only notification is
+INITIAL_BUY waits until its next Apple event. `line_unprovisioned_subscriptions
+(p_min_age_minutes, p_limit)` exists and is the ready-made candidate list for a
+15-minute sweep (entitled + Production + no live Apple line + one attempt per
+day), but **no function calls it yet**; wiring it needs the ~150-line
+provisioning sequence in `reprovisionAfterRenewal` extracted into
+`_shared/lineProvision.ts` first. Behavioural checks:
+`scripts/verify-line-first-provision.sql` (8 groups, rolled back, including the
+30-minute race guard and the one-attempt-per-day throttle).
 
 
 ⚠️ **The e-mail subscription's retroactive lifetime wall would end the app's

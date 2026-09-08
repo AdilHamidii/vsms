@@ -166,6 +166,11 @@ final class SubscriptionStore {
 
     private var apiClient: APIClient?
 
+    /// Whose purchases these are. Held as the `Session` object rather than a
+    /// copied id so the token can never be a stale user's: it is read at the
+    /// moment of purchase. See `PurchaseOptions`.
+    private var session: Session?
+
     /// What the client just bought, so the transaction handler — which may fire
     /// from the shared listener at any moment, including on a later launch —
     /// knows which number to provision. Nil means "we did not initiate this",
@@ -175,8 +180,9 @@ final class SubscriptionStore {
     /// defaults it, and a shipped build sends none.
     private var pending: (phoneNumber: String, city: String, monthlyCents: Int?, country: String?)?
 
-    func attach(api: APIClient, iap: IAPStore) {
+    func attach(api: APIClient, iap: IAPStore, session: Session) {
         self.apiClient = api
+        self.session = session
         // One listener, two products. See the class note.
         iap.onSubscription = { [weak self] result in
             await self?.handle(result) ?? false
@@ -340,7 +346,8 @@ final class SubscriptionStore {
         defer { isPurchasing = false }
 
         do {
-            let result = try await product.purchase()
+            let result = try await product.purchase(
+                options: PurchaseOptions.forUser(session?.userId))
             switch result {
             case .success(let verification):
                 let accepted = await handle(verification)

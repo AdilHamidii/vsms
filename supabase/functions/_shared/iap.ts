@@ -139,6 +139,21 @@ export interface AppleTransactionPayload {
   revocationDate?: number;
   revocationReason?: number;
 
+  /** The UUID our client passed as `appAccountToken` at purchase, echoed
+   *  back by Apple on this and EVERY later transaction for the subscription.
+   *
+   *  🔴 It is the only link from an Apple entitlement to one of our accounts
+   *  that survives our own verify call failing. Absent on every purchase made
+   *  before the client started setting it (and on any made by a build that
+   *  does not), so every reader must treat it as optional and fall back to
+   *  the line — never require it.
+   *
+   *  It is asserted by the CLIENT, so it names the beneficiary of a payment
+   *  the sender has already made. That makes it safe to trust as a fallback
+   *  (the worst a forged one achieves is paying for a stranger) but NOT as an
+   *  override: proven attribution from a line we actually sold wins. */
+  appAccountToken?: string;
+
   /** 1 = introductory, 2 = promotional, 3 = offer code. Apple omits it
    *  entirely on an ordinary paid period, so ABSENCE means "paying". */
   offerType?: number;
