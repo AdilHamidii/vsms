@@ -268,6 +268,7 @@ supabase functions deploy create-order check-order cancel-order register-push ia
 # until 2026-07-21 and silently 401'd on every daily run — zero nudges ever
 # sent, invisible because pg_net purges response history within hours.
 supabase functions deploy poll-active-orders sync-prices sync-5sim sync-herosms \
+  rescue-unprovisioned-lines \
   sync-esim-plans sync-smspva-operators sync-smspva-conversions winback \
   telegram-notify telegram-webhook daily-credit telegram-setup goodwill-credit \
   broadcast-push telnyx-webhook apple-notifications release-lines sync-telnyx-cdr \
@@ -360,8 +361,9 @@ supabase db query --linked "
 There is no test suite. Verify iOS with **`xcodebuild`** — `swiftc -typecheck`
 was retired on 2026-08-06 when the `TelnyxRTC` package landed (see above). The
 project now has **three** SwiftPM dependencies (TelnyxRTC 4.1.2, WebRTC 139.0.0,
-Starscream 4.0.8) and **116** Swift sources — re-count before trusting either;
-this said 96 for three days after the Number tab landed.
+Starscream 4.0.8) and **136** Swift sources (counted 2026-09-08 with
+`find VirtualSIM -name '*.swift' | wc -l`) — re-count before trusting either;
+this said 116 for a month, and 96 for three days after the Number tab landed.
 
 ⚠️ **A green build does NOT cover the two things calling can get wrong.** Both
 are runtime-only and silent: the `UIBackgroundModes` Info.plist key (see the
@@ -4160,23 +4162,28 @@ SMS provider again, walk this list:
 Every number below has been wrong within a day of being written at least once.
 It is a starting point for "is this roughly right", never a citation.
 
-- **iOS**: `MARKETING_VERSION 2.11`, `CURRENT_PROJECT_VERSION 57`.
+- **iOS**: `MARKETING_VERSION 2.11`, `CURRENT_PROJECT_VERSION 58`.
   **2.10 (build 52) is `READY_FOR_SALE` — approved and live, read from ASC
   2026-09-08.** Its train is therefore CLOSED to new builds (`altool` answers
   90186 *"The train version '2.10' is closed for new build submissions"*),
   which is why the inbound fix is 2.11.
-  🔴 **2.11 (build 57) is `DEVELOPER_REJECTED` as of 2026-09-08 — the owner
-  dev-rejected it after submission.** It had been submitted 10:43Z
-  (submission `c920cb30-…`, version `894db3da-…`); the cancel was safe
-  because that submission carried exactly ONE item and it was the
-  appStoreVersion — an IAP item would have made it a one-way door, so
-  **check `GET /v1/reviewSubmissions/<id>/items` before cancelling anything**.
-  Build 57 is still attached and VALID and all 13 localizations survived
-  untouched, so recovery is the documented path: attach a new build (or
-  re-attach 57), then a fresh `POST /v1/reviewSubmissions` + item +
-  `{submitted:true}`. Fifth exercise of the DEVELOPER_REJECTED recovery.
-  ⚠️ Read ASC rather than this bullet — it said "build 53 … NOT submitted for
-  review" while the live state was build 57 in review.
+  **2.11 (build 58) SUBMITTED 2026-09-08 15:44Z — `WAITING_FOR_REVIEW`**,
+  version `894db3da-…`, submission `88b0a10b-…`. Build 58 = build 57's
+  inbound-calling work + the second-code resend window's client half (the
+  countdown and the earlier-codes list). Release notes gained a second-code
+  bullet on all 13 locales, read back matching.
+  *Earlier the same day:* build 57 was submitted 10:43Z and **dev-rejected by
+  the owner**; the cancel was safe because that submission carried exactly ONE
+  item and it was the appStoreVersion — an IAP item would have made it a
+  one-way door, so **check `GET /v1/reviewSubmissions/<id>/items` before
+  cancelling anything**. 🔴 **Attaching build 58 flipped the version
+  `DEVELOPER_REJECTED` → `PREPARE_FOR_SUBMISSION` on its own — NO
+  `resolved:true` step was needed.** That gate applies only after a HUMAN App
+  Review rejection; after a developer's own cancel the plain attach-then-submit
+  path works. Sixth exercise of this recovery.
+  ⚠️ Read ASC rather than this bullet — `python3 scripts/asc-release.py status
+  2.11`. It has been wrong about the review state five versions running, and
+  the version of it written at 12:30Z today was stale by 15:44Z.
   **2.10 is now BUILD 52, SUBMITTED 2026-09-07 07:56Z — `WAITING_FOR_REVIEW`,
   submission `9377bdbc-…` on the SAME version `61c4b4d0-…`** (build 51's
   submission `7d060143-…` was cancelled by owner instruction the same
@@ -4263,12 +4270,20 @@ It is a starting point for "is this roughly right", never a citation.
   It is a decision error, not a typo: "still in review" is the argument for
   cutting another release. Read ASC — `GET /v1/apps/6774768570/appStoreVersions`
   answers it in one call — and never trust this bullet.
-- **Backend**: **45** edge function dirs besides `_shared`, **193** migration
-  files. (Counted 2026-08-20 with
-  `ls supabase/functions | grep -v _shared | wc -l` and
-  `ls supabase/migrations/*.sql | wc -l`. The previous figures — 41 / 178 —
-  were stale by 4 and 15 in three days; run the commands rather than trusting
-  this line, which has never once been correct when checked.)
+- **Backend**: **49** edge function dirs besides `_shared`, **226** migration
+  files, **26** files in `_shared`. (Counted 2026-09-08 with
+  `ls supabase/functions | grep -v _shared | wc -l`,
+  `ls supabase/migrations/*.sql | wc -l` and
+  `ls supabase/functions/_shared | wc -l`. The previous figures — 45 / 193 —
+  were stale by 4 and 33; run the commands rather than trusting this line,
+  which has never once been correct when checked.)
+  ⚠️ **`rescue-unprovisioned-lines` was in NEITHER deploy list until
+  2026-09-08** — cron-gated, with its `config.toml` entry, and importing
+  `_shared/lineProvision.ts`, so a `_shared` fix would have shipped to every
+  function except that one. It is now in the `--no-verify-jwt` list. Re-run the
+  check rather than trusting a sum: a function named in neither list is a
+  function nobody redeploys, which is exactly how a stale bundle survives a
+  fix. `probe-5sim` is still deliberately outside both lists.
   ✅ **The two deploy lists at the top of this file are EXHAUSTIVE**, asserted
   against that 41 programmatically on 08-17 — `rent-line-credits` and
   `sync-line-voice` were in NEITHER list until then, which is exactly how a
