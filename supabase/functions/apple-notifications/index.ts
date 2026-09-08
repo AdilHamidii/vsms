@@ -32,12 +32,9 @@ import {
   subscriptionFamily, mailPlanLabel,
 } from "../_shared/iap.ts";
 import { findNumberId, releaseNumber, faultOf } from "../_shared/telnyx.ts";
-import {
-  completeLineProvision, pickLineNumber, DEFAULT_LINE_COUNTRY,
-} from "../_shared/lineProvision.ts";
-import {
-  sellableCountry, catalogFaultOf, loadLineCatalogConfig,
-} from "../_shared/lineCatalog.ts";
+// The whole country gate now lives inside `provisionForSubscription`, which is
+// why nothing here imports `lineCatalog.ts` any more.
+import { provisionForSubscription } from "../_shared/lineProvision.ts";
 import { sendPush } from "../_shared/apns.ts";
 import { sendMessage, esc } from "../_shared/telegram.ts";
 import { alertHtml } from "../_shared/tgAlert.ts";
@@ -670,122 +667,33 @@ async function reprovisionAfterRenewal(
       return;
     }
 
-    const userId = String(target.user_id);
-    const product = String(target.product_id ?? tx.productId);
-    const numberType = String(target.number_type ?? "local");
-    // Null on a first provision (there is no earlier line to copy), which is
-    // exactly what the server default is for. The sellability gate below still
-    // fails closed either way.
-    const wantedCountry = String(target.country_code ?? DEFAULT_LINE_COUNTRY)
-      .toUpperCase();
-
-    // The country gate, fail-CLOSED as everywhere else. Their OWN country
-    // first, so a subscriber who chose Toronto is not silently moved; if it
-    // has since been blocked (a regulatory change, or a Telnyx rejection
-    // self-healed into the catalog) fall back to the server default — a number
-    // in the wrong country beats no number on a subscription they have paid
-    // for, and the alert says so.
-    const cfg = await loadLineCatalogConfig(sb);
-    let country = wantedCountry;
-    let sellable = await sellableCountry(sb, country, numberType, cfg);
-    if (catalogFaultOf(sellable) && country !== DEFAULT_LINE_COUNTRY) {
-      country = DEFAULT_LINE_COUNTRY;
-      sellable = await sellableCountry(sb, country, numberType, cfg);
-    }
-    if (catalogFaultOf(sellable)) {
-      await reprovisionFailedAlert(sb, notificationUUID, originalTx, tx,
-        `country_not_sellable (${wantedCountry}: ${sellable.reason})`);
-      return;
-    }
-
-    // Read-only at the provider: a search buys nothing, so it is safe before
-    // the row-creating claim and safe to run concurrently with another
-    // delivery of the same notification.
-    const picked = await pickLineNumber(sb, {
-      country, numberType, features: sellable.features, cfg,
-      localityId: country === wantedCountry
-        ? (target.locality as string | null) ?? null
-        : null,
-    });
-    if (!picked.ok) {
-      await reprovisionFailedAlert(sb, notificationUUID, originalTx, tx,
-        `${picked.reason} (${country})`);
-      return;
-    }
-
-    // ── The mutex. Everything above this line is a read. ──────────────────
-    const { data: begun, error: beginErr } = await sb.rpc("begin_line_rental", {
-      p_user: userId,
-      p_e164: picked.offer.phoneNumber,
-      p_country: country,
-      p_number_type: numberType,
-      p_original_tx: originalTx,
-      p_product: product,
-    });
-    if (beginErr) {
-      await reprovisionFailedAlert(sb, notificationUUID, originalTx, tx,
-        `begin_line_rental: ${beginErr.message}`);
-      return;
-    }
-    if (begun?.ok !== true) {
-      // `line_exists` means a concurrent delivery won the race and is
-      // provisioning right now — the guard working, and silent. `lines_paused`
-      // is the owner's kill switch and must never be worked around, so that
-      // one pages instead.
-      if (begun?.reason === "line_exists") return;
-      await reprovisionFailedAlert(sb, notificationUUID, originalTx, tx,
-        String(begun?.reason ?? "begin_line_rental refused"));
-      return;
-    }
-    const lineId = String(begun.line_id);
-
-    // `begin_line_rental` has no `p_locality`; this is the same best-effort
-    // stamp `rent-line-credits` writes, and it is only ever read by a
-    // non-NANP swap.
-    if (picked.place?.id) {
-      const { error: locErr } = await sb.from("phone_lines")
-        .update({ locality: picked.place.id }).eq("id", lineId);
-      if (locErr) {
-        console.error(JSON.stringify({
-          alert: "line_locality_unrecorded", line: lineId, detail: locErr.message,
-        }));
-      }
-    }
-
-    const done = await completeLineProvision(sb, {
-      lineId, e164: picked.offer.phoneNumber, country, numberType,
-      requirementGroupId: sellable.requirementGroupId,
-      // 🔴 THE RENEWAL'S OWN PERIOD END, and it is load-bearing. Without it
-      // the row carries no `current_period_end`; with a stale one
-      // `reclaim_lapsed_lines` branch (d) suspends the line on the next
-      // 15-minute sweep and `release-lines` deletes the number ~15 minutes
-      // after that — buying and throwing away a $1 number on every retry.
+    const done = await provisionForSubscription(sb, {
+      target: target as Record<string, unknown>,
+      originalTx,
+      productFallback: tx.productId,
+      // 🔴 THE RENEWAL'S OWN PERIOD END. Without it the row carries no
+      // `current_period_end`; with a stale one `reclaim_lapsed_lines` branch
+      // (d) suspends the line on the next 15-minute sweep and `release-lines`
+      // deletes the number ~15 minutes after that — buying and throwing away a
+      // $1 number on every retry.
       periodEnd,
-      monthlyCents: picked.offer.monthlyCents,
-      // Apple owns the money and there is nothing to refund. Failing the line
-      // is what frees the user to rent again — and, because `failed` sits
-      // outside the partial unique index, what lets the next retry proceed.
-      onFail: async (reason) => {
-        const { error } = await sb.rpc("fail_line_claim",
-          { p_line: lineId, p_reason: reason });
-        if (error) {
-          console.error(JSON.stringify({
-            alert: "line_fail_claim_failed", lineId, detail: error.message,
-          }));
-        }
-      },
     });
     if (!done.ok) {
+      // A concurrent delivery of the same notification won the race and is
+      // provisioning right now: the guard working, and silence is correct.
+      if (done.silent) return;
       await reprovisionFailedAlert(sb, notificationUUID, originalTx, tx,
-        `provisioning failed (${country})`);
+        done.reason);
       return;
     }
+    const { e164, country, wantedCountry } = done;
+    const userId = String((target as Record<string, unknown>).user_id);
 
-    await pushNewNumber(sb, userId, done.e164);
+    await pushNewNumber(sb, userId, e164);
     await alertOwner(alertHtml({
       sev: "ℹ️", title: "Renewal reprovisioned a number",
       what: `tx ${esc(originalTx)} · ${esc(linePlanLabel(tx))}\n` +
-        `new number ${esc(done.e164)} (${esc(country)})` +
+        `new number ${esc(e164)} (${esc(country)})` +
         (target.previous_e164
           ? `\nreplaces ${esc(String(target.previous_e164))}, released earlier`
           : "") +

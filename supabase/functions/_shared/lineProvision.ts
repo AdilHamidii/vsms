@@ -30,7 +30,8 @@ import {
 } from "./telnyx.ts";
 import { provisionLineVoice } from "./lineVoice.ts";
 import {
-  localitiesFor, withinWholesaleCeiling,
+  localitiesFor, withinWholesaleCeiling, loadLineCatalogConfig,
+  sellableCountry, catalogFaultOf,
   type LineCatalogConfig, type LineLocality,
 } from "./lineCatalog.ts";
 import { NANP } from "./phone.ts";
@@ -318,4 +319,163 @@ export async function pickLineNumber(
     }
   }
   return { ok: false, reason: "line_wholesale_ceiling" };
+}
+
+
+// ───────────────────────────────────────────────────────────────────────────
+// Provision a number for a subscription NOBODY IS ON SCREEN FOR.
+//
+// Extracted from `apple-notifications`' `reprovisionAfterRenewal` when a
+// second caller appeared (the rescue path for a subscriber who paid and never
+// received a number). It is the same class of duplication this file's own
+// header was written about: the reprovision glue is a fourth copy of "gate the
+// country, pick a number, take the mutex, finish the sequence", and the third
+// copy of the sequence itself is why five of six sold lines could not call.
+//
+// The CALLERS keep what genuinely differs: how loudly to speak. A notification
+// pages the owner per delivery with a dedupe ref; a sweep summarises a whole
+// run. So this returns a verdict and sends nothing.
+//
+// The sellability gate is imported directly: this module already depends on
+// `lineCatalog.ts` and nothing there depends back, so there is no cycle to
+// avoid. It still fails CLOSED — `catalogFaultOf` is the same check every
+// other seller makes, and an unreadable or stale catalog refuses rather than
+// guessing a country is sellable.
+
+export type SubscriptionProvisionResult =
+  | {
+    ok: true; lineId: string; e164: string;
+    /** Where we actually bought, which is not always where they asked. */
+    country: string; wantedCountry: string;
+  }
+  /** `silent` marks the outcomes that are the guard WORKING and must not page:
+   *  another delivery of the same notification, or a concurrent sweep, got
+   *  there first. Everything else is a real failure. */
+  | { ok: false; reason: string; silent?: boolean };
+
+export async function provisionForSubscription(
+  sb: SB,
+  o: {
+    /** `line_reprovision_target`'s `ok: true` payload, verbatim. */
+    target: Record<string, unknown>;
+    originalTx: string;
+    /** Used when the target carries no product (a first provision). */
+    productFallback: string;
+    /** 🔴 THE SUBSCRIPTION'S OWN PERIOD END. Without it the row carries no
+     *  `current_period_end`, and `reclaim_lapsed_lines` branch (d) suspends
+     *  the line on the next 15-minute sweep while `release-lines` deletes the
+     *  number ~15 minutes after that — buying and throwing away a $1 number on
+     *  every attempt. */
+    periodEnd: string | null;
+  },
+): Promise<SubscriptionProvisionResult> {
+  const { target, originalTx, periodEnd } = o;
+  const userId = String(target.user_id);
+  const product = String(target.product_id ?? o.productFallback);
+  const numberType = String(target.number_type ?? "local");
+  // Null on a FIRST provision — there is no earlier line to copy — which is
+  // exactly what the server default exists for.
+  const wantedCountry = String(target.country_code ?? DEFAULT_LINE_COUNTRY)
+    .toUpperCase();
+
+  // The country gate, fail-CLOSED as everywhere else. Their OWN country first,
+  // so a subscriber who chose Toronto is not silently moved; if it has since
+  // been blocked (a regulatory change, or a Telnyx rejection self-healed into
+  // the catalog) fall back to the server default — a number in the wrong
+  // country beats no number on a subscription they have paid for.
+  const cfg = await loadLineCatalogConfig(sb);
+  let country = wantedCountry;
+  let sellable = await sellableCountry(sb, country, numberType, cfg);
+  if (catalogFaultOf(sellable) && country !== DEFAULT_LINE_COUNTRY) {
+    country = DEFAULT_LINE_COUNTRY;
+    sellable = await sellableCountry(sb, country, numberType, cfg);
+  }
+  if (catalogFaultOf(sellable)) {
+    return {
+      ok: false,
+      reason: `country_not_sellable (${wantedCountry}: ${sellable.reason})`,
+    };
+  }
+  const gate = sellable;
+
+  // Read-only at the provider: a search buys nothing, so it is safe before the
+  // row-creating claim and safe to run concurrently with another attempt.
+  const picked = await pickLineNumber(sb, {
+    country,
+    numberType,
+    features: gate.features,
+    cfg,
+    localityId: country === wantedCountry
+      ? (target.locality as string | null) ?? null
+      : null,
+  });
+  if (!picked.ok) return { ok: false, reason: `${picked.reason} (${country})` };
+
+  // ── The mutex. Everything above this line is a read. ────────────────────
+  const { data: begun, error: beginErr } = await sb.rpc("begin_line_rental", {
+    p_user: userId,
+    p_e164: picked.offer.phoneNumber,
+    p_country: country,
+    p_number_type: numberType,
+    p_original_tx: originalTx,
+    p_product: product,
+  });
+  if (beginErr) {
+    return { ok: false, reason: `begin_line_rental: ${beginErr.message}` };
+  }
+  if (begun?.ok !== true) {
+    // `line_exists` means a concurrent delivery or sweep won the race and is
+    // provisioning right now — the guard working. `lines_paused` is the
+    // owner's kill switch and must never be worked around, so that one speaks.
+    return {
+      ok: false,
+      reason: String(begun?.reason ?? "begin_line_rental refused"),
+      silent: begun?.reason === "line_exists",
+    };
+  }
+  const lineId = String(begun.line_id);
+
+  // `begin_line_rental` has no `p_locality`; this is the same best-effort
+  // stamp `rent-line-credits` writes, and it is only ever read by a non-NANP
+  // swap.
+  if (picked.place?.id) {
+    const { error: locErr } = await sb.from("phone_lines")
+      .update({ locality: picked.place.id }).eq("id", lineId);
+    if (locErr) {
+      console.error(JSON.stringify({
+        alert: "line_locality_unrecorded",
+        line: lineId,
+        detail: locErr.message,
+      }));
+    }
+  }
+
+  const done = await completeLineProvision(sb, {
+    lineId,
+    e164: picked.offer.phoneNumber,
+    country,
+    numberType,
+    requirementGroupId: gate.requirementGroupId,
+    periodEnd,
+    monthlyCents: picked.offer.monthlyCents,
+    // Apple owns the money and there is nothing to refund. Failing the line is
+    // what frees the user to rent again — and, because `failed` sits outside
+    // the partial unique index, what lets a later attempt proceed.
+    onFail: async (reason) => {
+      const { error } = await sb.rpc("fail_line_claim", {
+        p_line: lineId,
+        p_reason: reason,
+      });
+      if (error) {
+        console.error(JSON.stringify({
+          alert: "line_fail_claim_failed",
+          lineId,
+          detail: error.message,
+        }));
+      }
+    },
+  });
+  if (!done.ok) return { ok: false, reason: `provisioning failed (${country})` };
+
+  return { ok: true, lineId, e164: done.e164, country, wantedCountry };
 }

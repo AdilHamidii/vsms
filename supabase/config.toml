@@ -158,6 +158,9 @@ verify_jwt = false
 verify_jwt = false
 [functions.release-lines]
 verify_jwt = false
+
+[functions.rescue-unprovisioned-lines]
+verify_jwt = false
 [functions.sync-telnyx-cdr]
 verify_jwt = false
 
