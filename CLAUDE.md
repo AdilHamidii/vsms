@@ -4954,10 +4954,17 @@ definitive "not attributed"; only 7 are ASA). Two tables, migration
   `category` / `affordable_only` / `email_mode`, so a zero result caused by
   OUR OWN filters is distinguishable from one caused by missing inventory —
   without that split the headline number is uninterpretable.
-- 🔴 **THE APP PRIVACY LABEL IS WEB-UI ONLY AND IS NOT YET UPDATED.** Probed
-  2026-08-30: `dataUsages`, `appDataUsages` and `appDataUsagesPublishState`
-  all return **404 PATH_ERROR** on this API key, so the headless pipeline
-  cannot touch it — this is the one release step that is not automatable.
+- 🔴 **THE APP PRIVACY LABEL IS WEB-UI ONLY. The owner reports both types
+  added on 2026-09-08; THAT IS UNVERIFIED AND UNVERIFIABLE FROM HERE.**
+  Re-probed the same day: `appDataUsages`, `dataUsages`,
+  `appDataUsagePublishState`, `appDataUsagesPublishState`, `privacyDetails`,
+  `appPrivacyDetails`, `appDataUsageCategories` and
+  `appDataUsageDataProtections` ALL return **404 PATH_ERROR** on this API key.
+  Eight paths, no read and no write: this is the one release step that is not
+  automatable, and no agent can confirm it — record it as a report, never as a
+  checked fact. ⚠️ **ASC keeps the labels as a DRAFT behind a separate
+  Publish**, and an unpublished draft looks complete on the page while taking
+  effect nowhere; that is the failure mode to check for.
   2.6 needs **Product Interaction (linked to identity)** for the funnel events
   AND **Search History (linked to identity)** for `service_search_empty`'s
   query text, or the submission misdeclares data collection. If the owner
