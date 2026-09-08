@@ -206,10 +206,20 @@ final class CallController: NSObject {
             // Persisted BEFORE the connect: a push can wake a terminated app,
             // and the credential is the one thing that path cannot obtain in
             // time. See `VoiceCredentialStore`.
-            VoiceCredentialStore.save(token: grant.token)
-            try await voice.connect(token: grant.token)
-            inboundReady = grant.inboundReady
-            readiness = grant.inboundReady ? .ready : .outboundOnly
+            let credential = grant.voiceCredential
+            VoiceCredentialStore.save(credential)
+            try await voice.connect(credential)
+            // 🔴 BOTH halves are required and they fail independently.
+            // `grant.inboundReady` is the SERVER's provisioning (the number is
+            // attached and the connection holds our push credential);
+            // `canRegisterForInbound` is whether THIS login registers the
+            // identity a call is routed to. A token-only login satisfies the
+            // first and can still never ring, which is precisely how the app
+            // advertised inbound for five weeks while no inbound call ever
+            // connected. Reporting the conjunction is what keeps that honest.
+            let ready = grant.inboundReady && grant.canRegisterForInbound
+            inboundReady = ready
+            readiness = ready ? .ready : .outboundOnly
             return true
         } catch {
             // ⚠️ ONLY A SERVER REFUSAL BECOMES A VISIBLE FAULT.
@@ -893,7 +903,8 @@ extension CallController: PKPushRegistryDelegate {
 
         // The fast path, and the one that matters: no network, no session, no
         // wait. This is what a terminated app has.
-        if let token = VoiceCredentialStore.validToken(), deliverPush(pending, token: token) {
+        if let stored = VoiceCredentialStore.validCredential(),
+           deliverPush(pending, credential: stored) {
             return
         }
 
@@ -903,9 +914,10 @@ extension CallController: PKPushRegistryDelegate {
             if let api = apiClient {
                 do {
                     let grant = try await LineAPI(client: api).mintVoiceToken(lineId: activeLineId)
-                    VoiceCredentialStore.save(token: grant.token)
+                    let credential = grant.voiceCredential
+                    VoiceCredentialStore.save(credential)
                     lineE164 = grant.e164
-                    if deliverPush(pending, token: grant.token) { return }
+                    if deliverPush(pending, credential: credential) { return }
                 } catch {
                     print("CallController:: push credential mint failed (attempt \(attempt + 1)): \(error)")
                 }
@@ -927,10 +939,10 @@ extension CallController: PKPushRegistryDelegate {
     /// One attempt. Returns false on a rejected handoff so the caller can try a
     /// fresher credential.
     private func deliverPush(
-        _ pending: (metadata: [String: Any], uuid: UUID), token: String
+        _ pending: (metadata: [String: Any], uuid: UUID), credential: VoiceCredential
     ) -> Bool {
         do {
-            try voice.handleVoIPPush(metadata: pending.metadata, token: token)
+            try voice.handleVoIPPush(metadata: pending.metadata, credential: credential)
             pendingPush = nil
             return true
         } catch {

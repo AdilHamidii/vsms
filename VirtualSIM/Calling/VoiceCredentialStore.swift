@@ -28,6 +28,8 @@ enum VoiceCredentialStore {
     private enum Key {
         static let token = "telnyx.voice_token"
         static let savedAt = "telnyx.voice_token_saved_at"
+        static let sipUser = "telnyx.sip_username"
+        static let sipPassword = "telnyx.sip_password"
     }
 
     /// How long an unparseable token is trusted for.
@@ -42,14 +44,37 @@ enum VoiceCredentialStore {
     /// about to be used for is a round trip away.
     private static let expiryMargin: TimeInterval = 60
 
-    static func save(token: String) {
-        KeychainStore.set(token, for: Key.token)
-        KeychainStore.set(String(Date().timeIntervalSince1970), for: Key.savedAt)
+    static func save(_ credential: VoiceCredential) {
+        switch credential {
+        case let .sip(username, password):
+            KeychainStore.set(username, for: Key.sipUser)
+            KeychainStore.set(password, for: Key.sipPassword)
+        case let .token(token):
+            KeychainStore.set(token, for: Key.token)
+            KeychainStore.set(String(Date().timeIntervalSince1970), for: Key.savedAt)
+        }
     }
 
     static func clear() {
         KeychainStore.remove(Key.token)
         KeychainStore.remove(Key.savedAt)
+        KeychainStore.remove(Key.sipUser)
+        KeychainStore.remove(Key.sipPassword)
+    }
+
+    /// The best stored credential, or nil when there is none usable.
+    ///
+    /// 🔴 SIP credentials win whenever both are present, and they carry NO
+    /// expiry check — they are the connection's own long-lived user, not a
+    /// minted JWT, and they are the only credential an inbound call can be
+    /// routed to. Preferring a still-valid token here would produce a session
+    /// that dials out and never rings, which is the exact bug this replaced.
+    static func validCredential(now: Date = Date()) -> VoiceCredential? {
+        if let user = KeychainStore.get(Key.sipUser), !user.isEmpty,
+           let password = KeychainStore.get(Key.sipPassword), !password.isEmpty {
+            return .sip(username: user, password: password)
+        }
+        return validToken(now: now).map { .token($0) }
     }
 
     /// The stored credential, or nil when there is none or it has expired.

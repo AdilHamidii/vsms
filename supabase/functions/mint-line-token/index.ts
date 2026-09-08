@@ -17,7 +17,7 @@
 
 import { handleCors, json } from "../_shared/cors.ts";
 import { admin, callerUserId } from "../_shared/supabaseAdmin.ts";
-import { mintCredentialToken, faultOf } from "../_shared/telnyx.ts";
+import { mintCredentialToken, getConnectionCredentials, faultOf } from "../_shared/telnyx.ts";
 import { provisionLineVoice, type LineVoiceRow } from "../_shared/lineVoice.ts";
 import { resolveCallerLine } from "../_shared/lines.ts";
 
@@ -88,8 +88,32 @@ Deno.serve(async (req) => {
   const token = await mintCredentialToken(credentialId);
   if (faultOf(token)) return voiceFault(sb, token, "mint_token");
 
+  // 🔴 THE TOKEN CANNOT RECEIVE CALLS, AND THAT IS NOT A BUG WE CAN FIX HERE.
+  // It is minted from an on-demand telephony credential, which Telnyx
+  // documents as outbound-only — see `getConnectionCredentials`, which carries
+  // the measurement and the quote. Inbound needs the CONNECTION's own SIP user
+  // to be registered, so that is what a client capable of using it logs in as.
+  //
+  // ⚠️ THE TOKEN IS STILL RETURNED, AND MUST BE. Shipped builds (≤ 2.10 build
+  // 52) read `token` and nothing else; dropping it would take OUTBOUND calling
+  // away from every user on the App Store to fix inbound for nobody. New
+  // clients prefer `sip_username`/`sip_password` when present and fall back to
+  // the token when they are not.
+  const sip = await getConnectionCredentials(String(voice.connectionId));
+  const sipOk = !faultOf(sip);
+  if (!sipOk) {
+    // Not fatal: outbound still works on the token. Record it so this is
+    // visible as "inbound cannot register" rather than as silence.
+    console.error(JSON.stringify(
+      { alert: "line_voice_fault", stage: "connection_credentials", ...sip }));
+  }
+
   return json({
     token: token.token,
+    // Present only when readable. A client MUST treat absence as "use the
+    // token", never as an error — that is what keeps this deploy safe to ship
+    // ahead of the build that consumes it.
+    ...(sipOk ? { sip_username: sip.username, sip_password: sip.password } : {}),
     e164: line.e164,
     // The client shows the meter and refuses to dial at zero, but the SERVER
     // is the authority — `begin-line-call` reserves the allowance before the

@@ -45,7 +45,7 @@ final class TelnyxVoiceClient: NSObject, VoiceClient, @unchecked Sendable {
     private let lock = NSLock()
     private var _call: TelnyxRTC.Call?
     private var _pushToken: String?
-    private var _voiceToken: String?
+    private var _credential: VoiceCredential?
     private var _isReady = false
     private var _lastError: Error?
     /// Whether the call in flight arrived as a VoIP push.
@@ -77,16 +77,16 @@ final class TelnyxVoiceClient: NSObject, VoiceClient, @unchecked Sendable {
 
     // MARK: - Session
 
-    func connect(token: String) async throws {
+    func connect(_ credential: VoiceCredential) async throws {
         if isReady { return }
 
         lock.withLock {
-            _voiceToken = token
+            _credential = credential
             _isReady = false
             _lastError = nil
         }
 
-        try client.connect(txConfig: config(token: token))
+        try client.connect(txConfig: config(credential))
 
         // Polled rather than awaited on a continuation: `onClientReady` and
         // `onClientError` can both fire, or neither, and a continuation resumed
@@ -106,7 +106,7 @@ final class TelnyxVoiceClient: NSObject, VoiceClient, @unchecked Sendable {
             _fromPush = false
             // Dropped too: a credential outlives the session it was minted
             // for, and the next sign-in on this device is a different account.
-            _voiceToken = nil
+            _credential = nil
         }
     }
 
@@ -124,13 +124,30 @@ final class TelnyxVoiceClient: NSObject, VoiceClient, @unchecked Sendable {
     /// guidance (`v3-to-v4.md:50`) is to pass it consistently at every
     /// connection point, `processVoIPNotification` included — the login it
     /// produces is what tags the user agent.
-    private func config(token: String) -> TxConfig {
-        TxConfig(
-            token: token,
-            pushDeviceToken: lock.withLock { _pushToken },
-            pushEnvironment: pushEnvironment,
-            enableMissedCallNotifications: true,
-            logLevel: .error)
+    private func config(_ credential: VoiceCredential) -> TxConfig {
+        let push = lock.withLock { _pushToken }
+        switch credential {
+        // 🔴 The SIP initializer is what makes the connection REGISTER, and a
+        // registration is the only thing an inbound call can be routed to.
+        // The token initializer below authenticates without registering the
+        // identity the phone number points at, so a session built from it can
+        // dial out forever and never ring.
+        case let .sip(username, password):
+            return TxConfig(
+                sipUser: username,
+                password: password,
+                pushDeviceToken: push,
+                pushEnvironment: pushEnvironment,
+                enableMissedCallNotifications: true,
+                logLevel: .error)
+        case let .token(token):
+            return TxConfig(
+                token: token,
+                pushDeviceToken: push,
+                pushEnvironment: pushEnvironment,
+                enableMissedCallNotifications: true,
+                logLevel: .error)
+        }
     }
 
     // MARK: - Calls
@@ -273,16 +290,16 @@ final class TelnyxVoiceClient: NSObject, VoiceClient, @unchecked Sendable {
     /// `TxServerConfiguration()` is the bare default on purpose: the SDK
     /// rebuilds it from the push metadata itself, keying the region off
     /// `voice_sdk_id` (`TxClient.swift:1474-1479`).
-    func handleVoIPPush(metadata: [String: Any], token: String) throws {
+    func handleVoIPPush(metadata: [String: Any], credential: VoiceCredential) throws {
         // Kept so a later `connect()` and any re-login reuse the same
         // credential the push flow authenticated with.
         lock.withLock {
-            _voiceToken = token
+            _credential = credential
             _fromPush = true
         }
         do {
             try client.processVoIPNotification(
-                txConfig: config(token: token),
+                txConfig: config(credential),
                 serverConfiguration: TxServerConfiguration(),
                 pushMetaData: metadata)
         } catch {

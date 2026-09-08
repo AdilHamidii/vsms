@@ -10,6 +10,36 @@ import Foundation
 /// INVITE timeout fires (`:838-858`); fulfilling it ourselves as well is a
 /// double-fulfill. Conversely an action nobody resolves is a call CallKit
 /// eventually kills on its own.
+/// What the app logs in to Telnyx with.
+///
+/// 🔴 **THE TWO CASES ARE NOT INTERCHANGEABLE, AND THE DIFFERENCE IS WHETHER
+/// THE PHONE CAN RING AT ALL.**
+///
+/// `.token` is minted from an on-demand telephony credential. It authenticates
+/// and it dials — 131 completed outbound calls deep — but Telnyx documents that
+/// credential type as outbound-only, and a call to the rented number never
+/// reaches it. Measured on a live line 2026-09-07 with the app connected: the
+/// telephony credential read `registered: true` while the connection the number
+/// actually points at read `registered: false`, and every inbound attempt was
+/// cleared by Telnyx in under a second with no media leg. That is the whole of
+/// why inbound has never once worked.
+///
+/// `.sip` is the CONNECTION's own user, which is the identity a DID is routed
+/// to. Registering as it is what makes an incoming call reach this device.
+///
+/// `.token` is kept because the server may be older than this build, and
+/// because outbound must never regress while inbound is being fixed.
+enum VoiceCredential: Equatable {
+    case sip(username: String, password: String)
+    case token(String)
+
+    /// True for the only case that can receive a call.
+    var canReceiveInbound: Bool {
+        if case .sip = self { return true }
+        return false
+    }
+}
+
 enum CallKitHandoff {
     /// The SDK now owns the action and will `fulfill()` or `fail()` it.
     case sdkOwnsAction
@@ -68,9 +98,13 @@ protocol VoiceClientDelegate: AnyObject, Sendable {
 protocol VoiceClient: AnyObject, Sendable {
     func setDelegate(_ delegate: VoiceClientDelegate?)
 
-    /// Connect using a short-lived credential from `mint-line-token`. The API
-    /// key never reaches the device.
-    func connect(token: String) async throws
+    /// Connect using a credential from `mint-line-token`. The API key never
+    /// reaches the device.
+    ///
+    /// ⚠️ Pass `.sip` whenever the server offered it — see `VoiceCredential`.
+    /// Connecting with `.token` yields a session that can dial out and can
+    /// never be rung.
+    func connect(_ credential: VoiceCredential) async throws
 
     func disconnect() async
 
@@ -175,14 +209,14 @@ protocol VoiceClient: AnyObject, Sendable {
     /// Called only AFTER `reportNewIncomingCall` has satisfied iOS — see the
     /// PushKit note in `CallController`.
     ///
-    /// `token` is passed in rather than read from the live session: the whole
-    /// point is that this path runs when there is no live session, from a
+    /// The credential is passed in rather than read from the live session: the
+    /// whole point is that this path runs when there is no live session, from a
     /// credential the caller either restored from the Keychain or just minted.
     /// It THROWS so the caller can tell a failed handoff from a silent one —
     /// `TxClient.processVoIPNotification` rejects metadata with no
     /// `voice_sdk_id` (`TxClient.swift:1459-1467`), which is the single most
     /// diagnostic failure on this path and used to be discarded.
-    func handleVoIPPush(metadata: [String: Any], token: String) throws
+    func handleVoIPPush(metadata: [String: Any], credential: VoiceCredential) throws
 }
 
 /// The stand-in used on the simulator and any build without a working SDK
@@ -201,7 +235,7 @@ final class NullVoiceClient: VoiceClient, @unchecked Sendable {
     }
 
     func setDelegate(_ delegate: VoiceClientDelegate?) {}
-    func connect(token: String) async throws { throw Unavailable.noVoiceSDK }
+    func connect(_ credential: VoiceCredential) async throws { throw Unavailable.noVoiceSDK }
     func disconnect() async {}
     func dial(to: String, from: String) async throws -> String? {
         throw Unavailable.noVoiceSDK
@@ -224,7 +258,7 @@ final class NullVoiceClient: VoiceClient, @unchecked Sendable {
     @discardableResult
     func registerPushToken(_ token: String) -> Bool { false }
     var isConnected: Bool { false }
-    func handleVoIPPush(metadata: [String: Any], token: String) throws {
+    func handleVoIPPush(metadata: [String: Any], credential: VoiceCredential) throws {
         throw Unavailable.noVoiceSDK
     }
 }

@@ -723,8 +723,12 @@ export async function createCredentialConnection(opts: {
   const r = await call<Record<string, unknown>>("POST", "/credential_connections", {
     connection_name: opts.name,
     user_name: sipSafe(opts.name),
-    // Telnyx requires a password on the connection even though the client
-    // authenticates with a short-lived token rather than these credentials.
+    // 🔴 THESE ARE THE CREDENTIALS THE APP LOGS IN WITH, as of 2026-09-08.
+    // This comment used to say the password existed only because Telnyx
+    // demands one "even though the client authenticates with a short-lived
+    // token" — that token is exactly why no inbound call ever connected. See
+    // `getConnectionCredentials`. Changing either field now changes what a
+    // device can register as, so a rotation logs every session out.
     password: sipPassword(),
     ...(opts.pushCredentialId
       ? { ios_push_credential_id: opts.pushCredentialId }
@@ -884,6 +888,56 @@ export async function ensurePushCredential(
     };
   }
   return true;
+}
+
+/** The connection's OWN SIP user — the identity inbound calls are routed to.
+ *
+ * 🔴 THIS IS NOT INTERCHANGEABLE WITH `mintCredentialToken`, AND THE
+ * DIFFERENCE IS THE WHOLE OF INBOUND CALLING.
+ *
+ * A token minted from a telephony credential authenticates fine and places
+ * outbound calls — 131 of them, proven — but Telnyx documents that credential
+ * type as outbound-only: *"inbound calls directly to on-demand generated
+ * credential is not currently supported. The purpose for on demand generated
+ * credentials is purely for outbound calls."*
+ * (support.telnyx.com/en/articles/7029684-telephony-credentials-types)
+ *
+ * Measured on a live line 2026-09-07, both read from
+ * `/sip_registration_status` while the app was connected:
+ *
+ *   telephony_credential      gencredz…    registered TRUE
+ *   sip_credential_connection vsmsvsms…    registered FALSE ("trying")
+ *
+ * A DID is addressed to the CONNECTION, so it finds no registered contact and
+ * Telnyx clears the call in under a second with no `webrtc` leg at all — which
+ * is exactly what every inbound call in this product's history has done.
+ * Outbound needs only authentication; ONLY inbound needs registration, which
+ * is why the two diverged for five weeks with nothing throwing.
+ *
+ * Returns the credentials as-is rather than rotating them. Rotation was
+ * considered and rejected for now: the client mints more than once per cold
+ * launch (measured 13s apart), so rotating per mint would invalidate the
+ * registration the previous mint just established, and a flapping
+ * registration is the same broken phone with a harder-to-read cause. */
+export async function getConnectionCredentials(
+  connectionId: string,
+): Promise<{ username: string; password: string } | TelnyxFault> {
+  const r = await call<Record<string, unknown>>(
+    "GET", `/credential_connections/${connectionId}`);
+  if (faultOf(r)) return r;
+  const username = String(r.user_name ?? "");
+  const password = String(r.password ?? "");
+  if (!username || !password) {
+    return {
+      telnyxFault: true,
+      type: "TRANSPORT_ERROR",
+      status: 200,
+      detail: `getConnectionCredentials: connection ${connectionId} returned ` +
+              `user_name=${JSON.stringify(r.user_name ?? null)} and ` +
+              `${password ? "a" : "no"} password — cannot register for inbound.`,
+    };
+  }
+  return { username, password };
 }
 
 /** A login for one line's connection. Cache the id on

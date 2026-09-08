@@ -266,6 +266,21 @@ struct LineCallGrant: Codable, Hashable {
 /// single telephony credential and expires on its own.
 struct LineVoiceToken: Codable, Hashable {
     let token: String
+    /// The CONNECTION's own SIP user, when the server could read it.
+    ///
+    /// 🔴 Inbound calls can only ring an app that registered as THIS identity.
+    /// `token` is minted from an on-demand telephony credential, which Telnyx
+    /// documents as outbound-only — it authenticates, it dials, and a call to
+    /// the number never reaches it. Measured on a live line: the credential
+    /// read `registered: true` while the connection the number points at read
+    /// `registered: false`, and every inbound call cleared in under a second
+    /// with no media leg.
+    ///
+    /// Optional because the server may be older than this build, or the read
+    /// may have failed. Absence means "fall back to the token" — outbound
+    /// keeps working — never an error.
+    let sipUsername: String?
+    let sipPassword: String?
     let e164: String
     let lineId: String
     /// Whether the number is actually attached to the voice application yet.
@@ -274,6 +289,23 @@ struct LineVoiceToken: Codable, Hashable {
     /// Surfaced rather than hidden so the app can say so, instead of the user
     /// discovering it when someone tries to call them.
     let inboundReady: Bool
+
+    /// What to actually log in with.
+    ///
+    /// Prefers the connection's SIP user, which is the only identity an
+    /// inbound call can be routed to, and falls back to the minted token so a
+    /// build newer than the server still places outbound calls.
+    var voiceCredential: VoiceCredential {
+        if let user = sipUsername, !user.isEmpty,
+           let password = sipPassword, !password.isEmpty {
+            return .sip(username: user, password: password)
+        }
+        return .token(token)
+    }
+
+    /// Whether this login can ring. Reported separately from `inboundReady`,
+    /// which describes the SERVER's provisioning — both must hold.
+    var canRegisterForInbound: Bool { voiceCredential.canReceiveInbound }
 }
 
 // MARK: - Buying one
