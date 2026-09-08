@@ -7,7 +7,12 @@ import { admin } from "../_shared/supabaseAdmin.ts";
 import { markDead, markSuccess, poll, type OrderProvider } from "../_shared/providers.ts";
 import { getBalanceUsd as getEsimaccessBalanceUsd } from "../_shared/esimaccess.ts";
 import { getBalanceUsd as getHeroBalanceUsd } from "../_shared/herosms.ts";
-import { getProfile as getFivesimProfile, type FiveProfile } from "../_shared/fivesim.ts";
+import {
+  getProfile as getFivesimProfile,
+  RESEND_WINDOW_MS,
+  supportsResend,
+  type FiveProfile,
+} from "../_shared/fivesim.ts";
 import { getBalance as getSmspvaBalance, isOk } from "../_shared/smspva.ts";
 import { getBalance as getTelnyxBalance, faultOf as telnyxFaultOf } from "../_shared/telnyx.ts";
 import { sendPush } from "../_shared/apns.ts";
@@ -700,6 +705,7 @@ Deno.serve(async (req) => {
     .from("orders")
     .select(`
       id, user_id, provider, smspva_id, cost_credits,
+      country_id, operator_used,
       service:service_id ( id, name )
     `)
     .eq("status", "waiting")
@@ -725,14 +731,40 @@ Deno.serve(async (req) => {
     if (result.state === "received" && result.code) {
       // Atomic claim: only flip waiting -> received once, so overlapping runs
       // don't double-notify a delivered code.
+      // 🔴 `finish` IS WHAT FORECLOSES A SECOND CODE, so on a pool 5sim says
+      // takes more than one SMS we do not call it yet. Their FAQ: "If you
+      // finish an order, then there is no way to request and receive SMS using
+      // the same number again." We were calling it 25 seconds after arrival,
+      // which is how a user who needed a re-sent code was left with no way to
+      // get it on the number their account is registered on.
+      //
+      // The activation stays open for RESEND_WINDOW_MS and the resend sweep at
+      // the top of this handler makes the deferred markSuccess call once the
+      // window lapses. If that sweep never runs, 5sim closes the activation
+      // itself after five minutes — we lose a little account rating, never
+      // money and never a code.
+      const canResend = (o.provider ?? "smspva") === "5sim" &&
+        supportsResend(
+          o.country_id as string | null,
+          o.operator_used as string | null,
+        );
+      const nowMs = Date.now();
+      const arrivedIso = new Date(nowMs).toISOString();
+
       const { data: claimed, error: uErr } = await sb
         .from("orders")
         .update({
           status: "received",
           otp: result.code,
           raw_message: result.fullText ?? null,
-          arrived_at: new Date().toISOString(),
-          closed_at: new Date().toISOString(),
+          arrived_at: arrivedIso,
+          closed_at: arrivedIso,
+          otp_history: [
+            { code: result.code, text: result.fullText ?? null, at: arrivedIso },
+          ],
+          resend_watch_until: canResend
+            ? new Date(nowMs + RESEND_WINDOW_MS).toISOString()
+            : null,
         })
         .eq("id", o.id)
         .eq("status", "waiting")
@@ -750,8 +782,20 @@ Deno.serve(async (req) => {
         continue;
       }
 
-      // Tell SMSPVA the activation succeeded — best-effort karma hygiene.
-      await markSuccess((o.provider ?? "smspva") as OrderProvider, o.smspva_id);
+      // Tell the provider the activation succeeded — best-effort karma hygiene.
+      // DEFERRED while a resend window is open; the sweep makes this call when
+      // the window closes. Calling it here is exactly the bug being fixed.
+      if (!canResend) {
+        await markSuccess((o.provider ?? "smspva") as OrderProvider, o.smspva_id);
+      } else {
+        console.log(JSON.stringify({
+          event: "resend_window_opened",
+          order: o.id,
+          country: o.country_id,
+          operator: o.operator_used,
+          until: new Date(nowMs + RESEND_WINDOW_MS).toISOString(),
+        }));
+      }
 
       arrived++;
       // Optional-chained: a null embed here used to throw out of the whole
