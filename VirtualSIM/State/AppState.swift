@@ -272,6 +272,15 @@ final class AppState {
     /// ordered before (a returning user genuinely wants their last route back).
     var needsServiceChoice = false
 
+    /// True until the user has picked a COUNTRY themselves.
+    ///
+    /// Separate from `needsServiceChoice` because the two are chosen on
+    /// different screens and either one being unmade must block the sale. The
+    /// app still RANKS countries best-first in the picker — that ranking is
+    /// genuinely useful — it simply no longer pre-selects one and prices it as
+    /// though the user had agreed to it.
+    var needsCountryChoice = false
+
     /// Guards one-time first-run selection seeding (see applyStartupSelection).
     @ObservationIgnored
     private var didSeedStartupSelection = false
@@ -1519,9 +1528,8 @@ final class AppState {
     /// Point the Home hero at something the user can actually act on, once per
     /// launch, after catalog + wallet + orders have loaded:
     ///  • returning user → mirror their most recent order as "Last used";
-    ///  • brand-new user → default to an affordable, recognizable service the
-    ///    welcome credit can buy, instead of WhatsApp/US (which costs far more
-    ///    than the 1-credit grant and left every first-run CTA greyed out).
+    ///  • brand-new user → NOTHING is selected. Both rows read "Not selected"
+    ///    until the user names a service and a country themselves.
     func applyStartupSelection() {
         guard !didSeedStartupSelection else { return }
         didSeedStartupSelection = true
@@ -1530,175 +1538,31 @@ final class AppState {
             lastService = services.first { $0.id == recent.service.id } ?? recent.service
             lastCountry = countries.first { $0.id == recent.country.id } ?? recent.country
             needsServiceChoice = false
+            needsCountryChoice = false
             return
         }
-        // 🔴 A first-run user gets a suggestion, NOT a purchase.
+        // 🔴 A first-run user is shown NOTHING pre-selected.
         //
-        // The pair below is still computed, because the hero needs something
-        // to price and the country ranking is genuinely useful once a service
-        // IS chosen. What changed on 2026-08-08 is that it no longer counts as
-        // the user's choice: `needsServiceChoice` keeps the Get-number button
-        // hidden until they pick, so the first tap is a decision rather than a
-        // transaction.
+        // `lastService`/`lastCountry` keep their seed values so every existing
+        // read stays total, but nothing renders them while the flags below are
+        // set — Home shows "Not selected" on both rows and `placeOrder` refuses
+        // outright. There is no computed pair to sell, so no path can sell one.
         //
-        // Why: measured 2026-08-07, six deliveroo/us orders from four
-        // brand-new users, every one on this exact default pair at exactly the
-        // grant size, all issued a number, NONE producing a code — while a
-        // deliberate order on the same route delivered in 86 seconds. Four of
-        // the six were never even cancelled, just left to expire. They were
-        // numbers nobody ever entered anywhere, because nobody had come for
-        // that service. The same shape produced the olx/us cluster on 08-04
-        // that was briefly investigated as sabotage.
+        // Why the earlier half-measure was not enough: from 2026-08-08 the app
+        // still COMPUTED a starter pair and merely hid the buy button behind
+        // `needsServiceChoice`. Orders stamped `from_default` fell sharply but
+        // never stopped — 16 in the week of 08-24 and 19 in the week of 08-31,
+        // producing ZERO codes between them. Measured over the 45 days to
+        // 2026-09-09: app-picked routes delivered 2 of 79 (2.5%) against 106 of
+        // 302 (35.1%) for routes the user named, and of 71 users whose FIRST
+        // order was app-picked, 1 got a code and only 8 ever came back.
         //
-        // Better copy cannot fix it — `WaitingScreen` already says "Paste it
-        // into <service>, then come back". The user understood; they simply
-        // had no use for the number. So the fix has to be at SELECTION.
-        if let (svc, cty) = affordableStarter() {
-            lastService = svc
-            lastCountry = cty
-        }
+        // The pair was always deliveroo/us, uber/uk or olx/us — services nobody
+        // had come for, so the SMS was never requested at all. That is why
+        // better copy cannot fix it and why hiding the button did not: as long
+        // as a pair exists, some path prices it, and some path sells it.
         needsServiceChoice = true
-    }
-
-    /// A recognizable service + country pair the current balance can afford,
-    /// ranked by the same evidence rule the rest of the app steers on.
-    ///
-    /// ⚠️ This does not merely choose "something affordable" — it chooses the
-    /// ONE route the entire new-user cohort lands on, because
-    /// `applyStartupSelection` points the Home hero at it and the hero is what
-    /// they tap. Measured 2026-08-03/04: setting the signup grant to 1 credit
-    /// sent **16 of 16 subsequent orders to olx**, from 9 different users, with
-    /// zero olx orders before that minute — every one from a wallet holding
-    /// exactly 1 credit.
-    ///
-    /// It used to return the FIRST entry in `preferred` with any affordable
-    /// route, so array position picked the service and the route's actual
-    /// quality was never compared across services. Grant size therefore
-    /// silently selected the cohort's destination: 1 cr → olx/us (23%),
-    /// 2–3 cr → deliveroo/Georgia (UNRATED), 5 cr → leboncoin/uk (52%). At the
-    /// 3-credit grant that is an unrated pool while 618 routes are reachable
-    /// and 58 of them publish above 60%.
-    ///
-    /// Worse, the list's own comment claimed it was "ordered by MEASURED
-    /// delivery". That was true when written and is now false: the measurement
-    /// was SMSPVA-era and describes a provider we no longer buy from. A frozen
-    /// ranking is not a ranking.
-    ///
-    /// Every candidate is now scored with `routeKey`; curated order survives
-    /// only as the final tie-break, where the evidence is genuinely silent.
-    private func affordableStarter() -> (Service, Country)? {
-        // Kept as the CANDIDATE SET, no longer as the ranking. These are
-        // services a first-run user plausibly recognises, minus the ones that
-        // measured worst: the original list led with telegram/instagram/google/
-        // whatsapp/facebook, almost exactly the set measuring ~9% delivered
-        // against ~52% for everything else.
-        //
-        // Meta and the messengers stay fully browsable; they're just not what a
-        // brand-new user is pointed at.
-        let preferred = ["leboncoin", "deliveroo", "glovo", "whatnot", "walmart",
-                         "vinted", "wallapop", "subito", "olx", "uber",
-                         "tiktok", "discord"]
-        let shortlist = preferred.compactMap { id in services.first { $0.id == id } }
-
-        // FIRST PASS — bounded by balance, so it can only return a route the
-        // user is able to buy right now.
-        if let pick = bestStarter(among: shortlist, affordableOnly: true) { return pick }
-        if let pick = bestStarter(among: services, affordableOnly: true) { return pick }
-
-        // SECOND PASS, ignoring balance entirely.
-        //
-        // Everything above is bounded by `price <= balance`, so at a ZERO
-        // balance every service returns nil and we used to fall through to
-        // `return nil` — which leaves the SEED default in place. That seed is
-        // whatsapp/us, which is `hidden`, so `cost()` returns nil and a
-        // brand-new user's very first screen renders its primary CTA as a
-        // disabled **"Unavailable / Pick another country"**.
-        //
-        // Survivable while the signup grant was 3–5 credits and this path was
-        // rare. The grant went to 0 on 2026-08-03 (`20260803070000`), so it is
-        // now what EVERY new user sees — on a product whose activation is a
-        // single-session event with a median signup→first-order of 123 seconds.
-        //
-        // An unaffordable but REAL route is strictly better: the CTA becomes a
-        // priced "Buy credits / Need N more" that opens the credits sheet. That
-        // is an honest description of the situation and a way out of it.
-        // "Unavailable" is neither — it reads as "this product is broken".
-        if let pick = bestStarter(among: shortlist, affordableOnly: false) { return pick }
-        return bestStarter(among: services, affordableOnly: false)
-    }
-
-    /// Best (service, country) pair among `candidates`, scored by `routeKey`.
-    ///
-    /// The candidate list's own order is the LAST tie-break rather than the
-    /// first, so a curated shortlist still expresses brand preference — but
-    /// only where the evidence has nothing to say. Any earlier and list
-    /// position outranks a measured pool rate, which is the bug this replaced.
-    ///
-    /// `affordableOnly` picks the country resolver: `bestAffordableCountry`
-    /// can only return something within `balance` (nil otherwise, which is what
-    /// lets an unaffordable service drop out of the running), while
-    /// `bestCountry` ignores balance for the zero-balance second pass.
-    private func bestStarter(among candidates: [Service],
-                             affordableOnly: Bool) -> (Service, Country)? {
-        var best: (pair: (Service, Country), key: (Int, Int, Int, Int, Int, Int))?
-        for (position, svc) in candidates.enumerated() {
-            guard let cty = affordableOnly ? bestAffordableCountry(for: svc)
-                                           : bestCountry(for: svc),
-                  let price = cost(for: svc, country: cty) else { continue }
-            let k = routeKey(svc, cty, price: price)
-            let key = (k.0, k.1, k.2, k.3, k.4, position)
-            if best == nil || key < best!.key { best = ((svc, cty), key) }
-        }
-        return best?.pair
-    }
-
-    /// Affordable country for `service`, chosen by the same evidence-first rule
-    /// as `bestCountry(for:)` rather than by lowest price.
-    ///
-    /// nil means "nothing here is within `balance`", which is what lets
-    /// `affordableStarter` move on and try another service. Do NOT make this
-    /// fall back to an unaffordable route — that search is the whole point of
-    /// the first pass, and collapsing it would pin every user to the first
-    /// preferred service regardless of what they can buy.
-    private func bestAffordableCountry(for service: Service) -> Country? {
-        guard let best = bestCountry(for: service),
-              let c = cost(for: service, country: best), c <= balance
-        else { return affordableFallbackCountry(for: service) }
-        return best
-    }
-
-    /// Best country for `service` the current balance can actually reach.
-    ///
-    /// This used to return the outright CHEAPEST affordable route with no
-    /// regard for evidence, and that fallback is the common path for a new
-    /// user, because the evidence-first pick is usually unaffordable at the
-    /// 3-credit signup grant. Measured 2026-07-28: it lands a brand-new user on
-    /// **leboncoin/co — 2 cr, never tested, in a country measuring 17% delivery
-    /// over 30 days** — while leboncoin/ch is 4-of-4 but costs 7.
-    ///
-    /// Cheapest is the one ranking rule guaranteed to surface the inventory
-    /// nobody has yet been willing to pay for. Now tiers exactly like
-    /// `bestCountry`: proven → untested-in-a-good-country → untested-unknown →
-    /// untested-in-a-bad-country → measured-failing, cheapest within a tier,
-    /// and still bounded by `balance` so it can only return something buyable.
-    ///
-    /// The country tier matters because at 3 credits the affordable set is
-    /// almost entirely untested (1,606 routes, against **2** with a record),
-    /// so route-level evidence has nothing to say and price used to decide by
-    /// default. Country-level evidence at least distinguishes Bulgaria (0 of 7)
-    /// from Switzerland (4 of 4).
-    ///
-    /// Still a mitigation, not a cure: landing new users on genuinely proven
-    /// inventory is a pricing question (grant size vs route price), not a
-    /// ranking one.
-    private func affordableFallbackCountry(for service: Service) -> Country? {
-        var best: (country: Country, key: RouteKey)?
-        for c in countries {
-            guard let price = cost(for: service, country: c), price <= balance else { continue }
-            let key = routeKey(service, c, price: price)
-            if best == nil || key < best!.key { best = (c, key) }
-        }
-        return best?.country
+        needsCountryChoice = true
     }
 
     /// Lowest = best. How good one (service, country) route is as something to
@@ -2502,6 +2366,14 @@ final class AppState {
     func confirmGetNumber(using orders: OrdersAPI, wallet: WalletAPI) async {
         guard let svc = checkoutService, let cty = checkoutCountry else { return }
         guard !isPlacingOrder else { return }   // no double-charge on double-tap
+        // 🔴 An unchosen pair is never sold, from ANY entry point.
+        //
+        // Hiding the Home CTA was not enough on its own: `from_default` orders
+        // kept arriving weekly through paths that reach checkout without going
+        // via the service sheet, and they delivered 2 of 79. This is the
+        // backstop that makes the class impossible rather than unlikely — the
+        // flags clear only when the user picks in `ServiceSheet`/`CountrySheet`.
+        guard !needsServiceChoice, !needsCountryChoice else { return }
         isPlacingOrder = true
         defer { isPlacingOrder = false }
         let concurrent = wantsConcurrentOrder

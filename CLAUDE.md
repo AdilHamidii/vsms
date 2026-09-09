@@ -729,12 +729,54 @@ who had never paid. Cheap inventory and non-serious users cannot be separated at
 this n. Settling it needs a two-arm test the owner declined.
 
 **`AppState.minDefaultCredits = 3`** demotes every route under 3 credits in the
-three picks the app makes FOR the user (starter, auto-landed country,
-post-failure retry) — a demotion, never a filter, so the hero can never go
-"Unavailable"; the user's own country list is untouched. 🔴 **The floor must
-never exceed the signup grant — change the two together.** They are currently
-EQUAL at 3; moving either alone re-opens the bug where every first pick was a
-price the new user could not pay.
+picks the app still makes FOR the user (auto-landed country, post-failure
+retry) — a demotion, never a filter, so the hero can never go "Unavailable";
+the user's own country list is untouched. 🔴 **The floor must never exceed the
+signup grant — change the two together.** They are currently EQUAL at 3; moving
+either alone re-opens the bug where every first pick was a price the new user
+could not pay.
+
+⚠️ **The STARTER is no longer one of those picks (2.12 build 60).** There is no
+first-run service/country pair at all — see "Nothing is pre-selected" below —
+so a demotion cannot rescue it and does not have to.
+
+### 🔴 Nothing is pre-selected on first run (2.12 build 60)
+
+`applyStartupSelection` computes no starter pair. A brand-new user sees **"Not
+selected"** on both the Service and Country rows, price "—", no evidence strip,
+and a CTA that walks them: *Choose a service* → *Choose a country* → *Get
+number*. `AppState.needsServiceChoice` and `needsCountryChoice` clear only when
+the user picks in `ServiceSheet`/`CountrySheet`, and **`confirmGetNumber`
+refuses outright while either is set** — that guard is the backstop, not the UI.
+
+**Why, measured over the 45 days to 2026-09-09:**
+
+| route chosen by | settled | delivered |
+|---|---|---|
+| the user | 302 | **35.1%** |
+| the app (`from_default`) | 79 | **2.5%** |
+
+Of 71 users whose FIRST order was app-picked, **1 got a code and 8 ever came
+back**; the user-picked cohort delivered 26.8%. The pair was always
+**deliveroo/us (62 orders, 43 users, 1 code)**, **uber/uk (27, 19, 1)** or
+**olx/us (16, 11, 0)** — services nobody had come for, so the SMS was never
+requested at all. `deliveroo/us` publishes a **77.3%** pool rate; that number is
+probably honest and measures a pool nobody was texting.
+
+🔴 **Two earlier fixes aimed at this and both missed, which is the lesson.**
+The 2026-08-08 change hid the buy button behind `needsServiceChoice` but still
+COMPUTED the pair — `from_default` orders fell from 46/week to 3 and then
+returned (16 in the week of 08-24, 19 in 08-31, zero codes between them),
+because paths reach checkout without passing through the service sheet. Earlier
+still, the curated starter list was swapped away from telegram/instagram/google/
+whatsapp/facebook because they measured ~9% delivered — **that swap traded 9%
+for 1.9%**, because the measurement conflated "the provider did not deliver a
+requested SMS" with "the user never requested one". **As long as a pair exists,
+some path prices it and some path sells it.** The fix had to be deleting the
+pair.
+
+`affordableStarter`, `bestStarter`, `bestAffordableCountry` and
+`affordableFallbackCountry` were deleted with it (141 lines).
 
 ### Changing the curve silently devalues every FIXED credit grant
 
@@ -1558,11 +1600,12 @@ Each has been wrong within a day of being written at least once.
 
 **Verified 2026-09-09:**
 
-- **iOS**: `MARKETING_VERSION 2.12`, `CURRENT_PROJECT_VERSION 59`. **2.12 (build
-  59) is `WAITING_FOR_REVIEW`** (submitted 18:28Z, version `614dfb01-…`,
-  submission `8651eae6-…`); **2.11 and every earlier version are
-  `READY_FOR_SALE`**. 2.12 carries the tab repositioning, the product-first line
-  store, the `OtpScreen` upsell and `/tabs`.
+- **iOS**: `MARKETING_VERSION 2.12`, `CURRENT_PROJECT_VERSION 60`. Build 59 was
+  submitted 2026-09-09 18:28Z, then **cancelled and replaced by build 60** to
+  carry the no-pre-selection change; version `614dfb01-…`. **2.11 and every
+  earlier version are `READY_FOR_SALE`**. 2.12 carries the tab repositioning,
+  the product-first line store, the `OtpScreen` upsell, `/tabs`, and the
+  first-run "Not selected" pair.
   ⚠️ **Read ASC, never this line** — `python3 scripts/asc-release.py status
   2.12`. It has been wrong about the review state five versions running, and
   that is a decision error, not a typo: "still in review" is the argument for

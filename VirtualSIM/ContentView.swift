@@ -677,6 +677,10 @@ struct ContentView: View {
                     state.checkoutPremium = state.defaultPremium(
                         for: state.configuringService, country: picked)
                 } else { state.lastCountry = picked }
+                // The user has now CHOSEN a country. Until this fires the
+                // Home row reads "Not selected" and `placeOrder` refuses —
+                // see `AppState.needsCountryChoice`.
+                state.needsCountryChoice = false
             })
         case .credits:
             CreditsSheet(balance: state.balance, needed: state.creditsShortfall, onPurchased: {

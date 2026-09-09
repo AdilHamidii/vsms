@@ -247,6 +247,16 @@ struct HomeScreen: View {
     /// wrong decision.
     private var isSuggestion: Bool { state.needsServiceChoice && !state.emailMode }
 
+    /// The user has not named a COUNTRY yet. E-mail mode has no country, so it
+    /// is never in this state.
+    private var needsCountry: Bool { state.needsCountryChoice && !state.emailMode }
+
+    /// Either half of the pair is still unchosen, so there is nothing to
+    /// price, grade or sell. Everything that would assert something about a
+    /// route keys on THIS, not on `isSuggestion` alone — a chosen service with
+    /// no country is just as much "not a purchase" as neither being chosen.
+    private var isIncomplete: Bool { isSuggestion || needsCountry }
+
     private var routeCost: Int? {
         state.cost(for: state.lastService, country: state.lastCountry)
     }
@@ -298,14 +308,28 @@ struct HomeScreen: View {
         HeroCard {
             VStack(alignment: .leading, spacing: 0) {
                 ReceiptRow(label: "Service", onTap: openServices, leading: {
-                    ServiceLogo(service: state.lastService, size: 32, radius: 9)
+                    // No logo while nothing is chosen: a brand mark IS a claim
+                    // that this is the service, and the row's whole job in this
+                    // state is to say that nothing has been picked.
+                    if isSuggestion {
+                        Image(systemName: RIcon.search)
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundStyle(theme.text3)
+                            .frame(width: 32, height: 32)
+                            .background(theme.inkSoft, in: .rect(cornerRadius: 9))
+                    } else {
+                        ServiceLogo(service: state.lastService, size: 32, radius: 9)
+                    }
                 }, trailing: {
-                    // The secondary line says WHOSE choice this is. Without it
-                    // the row is indistinguishable from a service the user
-                    // picked, which is the whole confusion this state creates.
-                    ReceiptValue(primary: state.lastService.name,
+                    // 🔴 Nothing is pre-selected. This used to name the app's own
+                    // pick with "Suggested. Tap to change" under it — still an
+                    // anchor, and still a route some path could sell. See
+                    // `AppState.applyStartupSelection`.
+                    ReceiptValue(primary: isSuggestion
+                                     ? String(localized: "Not selected")
+                                     : state.lastService.name,
                                  secondaryText: isSuggestion
-                                     ? String(localized: "Suggested. Tap to change")
+                                     ? String(localized: "What are you verifying?")
                                      : state.lastService.category,
                                  chev: true)
                 })
@@ -327,11 +351,26 @@ struct HomeScreen: View {
                     })
                 } else {
                     ReceiptRow(label: "Country", onTap: openCountries, leading: {
-                        FlagImage(country: state.lastCountry, size: 32, radius: 9)
+                        // Same rule as the service row: a flag is a claim.
+                        if needsCountry {
+                            Image(systemName: RIcon.globe)
+                                .font(.system(size: 15, weight: .semibold))
+                                .foregroundStyle(theme.text3)
+                                .frame(width: 32, height: 32)
+                                .background(theme.inkSoft, in: .rect(cornerRadius: 9))
+                        } else {
+                            FlagImage(country: state.lastCountry, size: 32, radius: 9)
+                        }
                     }, trailing: {
-                        ReceiptValue(primary: state.lastCountry.name, secondary: {
-                            MonoText(state.lastCountry.dialCode, size: 11, color: theme.text2)
-                        }, chev: true)
+                        if needsCountry {
+                            ReceiptValue(primary: String(localized: "Not selected"),
+                                         secondaryText: String(localized: "Where should the number be from?"),
+                                         chev: true)
+                        } else {
+                            ReceiptValue(primary: state.lastCountry.name, secondary: {
+                                MonoText(state.lastCountry.dialCode, size: 11, color: theme.text2)
+                            }, chev: true)
+                        }
                     })
                 }
 
@@ -406,7 +445,7 @@ struct HomeScreen: View {
     private var priceValue: some View {
         if state.emailMode {
             emailHeroPrice
-        } else if isSuggestion {
+        } else if isIncomplete {
             // No price, because nothing is on sale yet. A figure here is a
             // quote for a route the button will not buy, and the user reads it
             // as what THEIR verification will cost.
@@ -414,9 +453,17 @@ struct HomeScreen: View {
                 Text("—")
                     .font(RFont.display(22, weight: .bold))
                     .foregroundStyle(theme.text3)
-                Text("Once you pick a service")
-                    .font(RFont.text(12))
-                    .foregroundStyle(theme.text3)
+                // Names the step actually outstanding — with the service picked
+                // but no country, "Once you pick a service" is simply wrong.
+                if isSuggestion {
+                    Text("Once you pick a service")
+                        .font(RFont.text(12))
+                        .foregroundStyle(theme.text3)
+                } else {
+                    Text("Once you pick a country")
+                        .font(RFont.text(12))
+                        .foregroundStyle(theme.text3)
+                }
             }
         } else if let routeCost {
             VStack(alignment: .trailing, spacing: 1) {
@@ -469,7 +516,7 @@ struct HomeScreen: View {
         // The network rate is a real measurement about a real route — it is
         // simply not about the purchase this screen is offering, which is
         // currently no purchase at all.
-        if isSuggestion {
+        if isIncomplete {
             EmptyView()
         } else if state.showMetrics, state.emailMode {
             VStack(alignment: .leading, spacing: 0) {
@@ -637,12 +684,22 @@ struct HomeScreen: View {
         //
         // Deliberately a real, labelled action rather than a disabled button:
         // the next step IS picking a service, so the button should do that.
-        if state.needsServiceChoice && !state.emailMode {
+        if isSuggestion {
             PrimaryButton(
                 label: "Choose a service",
                 sub: String(localized: "What are you verifying?"),
                 icon: RIcon.search,
                 action: { RHaptic.select(); openServices() }
+            )
+        } else if needsCountry {
+            // The service is named but the country is not. The picker already
+            // ranks countries best-first for this service, so the ranking still
+            // does its work — it just no longer pre-answers the question.
+            PrimaryButton(
+                label: "Choose a country",
+                sub: String(localized: "Where should the number be from?"),
+                icon: RIcon.globe,
+                action: { RHaptic.select(); openCountries() }
             )
         } else if let routeCost {
             if state.balance < routeCost {
