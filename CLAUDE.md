@@ -1600,9 +1600,12 @@ Each has been wrong within a day of being written at least once.
 
 **Verified 2026-09-09:**
 
-- **iOS**: `MARKETING_VERSION 2.12`, `CURRENT_PROJECT_VERSION 60`. Build 59 was
-  submitted 2026-09-09 18:28Z, then **cancelled and replaced by build 60** to
-  carry the no-pre-selection change; version `614dfb01-…`. **2.11 and every
+- **iOS**: `MARKETING_VERSION 2.12`, `CURRENT_PROJECT_VERSION 60`. **2.12 (build
+  60) is `WAITING_FOR_REVIEW`** (submitted 2026-09-09 20:03Z, version
+  `614dfb01-…`, submission `96c701c1-…`). Build 59 was submitted 18:28Z the same
+  day and **cancelled and replaced** to carry the no-pre-selection change — the
+  cancel took the version through `DEVELOPER_REJECTED` and back, the documented
+  recovery path, and the 13 localizations survived untouched. **2.11 and every
   earlier version are `READY_FOR_SALE`**. 2.12 carries the tab repositioning,
   the product-first line store, the `OtpScreen` upsell, `/tabs`, and the
   first-run "Not selected" pair.
