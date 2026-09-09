@@ -4287,12 +4287,26 @@ SMS provider again, walk this list:
 Every number below has been wrong within a day of being written at least once.
 It is a starting point for "is this roughly right", never a citation.
 
-- **iOS**: `MARKETING_VERSION 2.11`, `CURRENT_PROJECT_VERSION 58`.
-  **2.10 (build 52) is `READY_FOR_SALE` — approved and live, read from ASC
-  2026-09-08.** Its train is therefore CLOSED to new builds (`altool` answers
-  90186 *"The train version '2.10' is closed for new build submissions"*),
-  which is why the inbound fix is 2.11.
-  **2.11 (build 58) SUBMITTED 2026-09-08 15:44Z — `WAITING_FOR_REVIEW`**,
+- **iOS**: `MARKETING_VERSION 2.12`, `CURRENT_PROJECT_VERSION 59`.
+  **2.11 (build 58) is `READY_FOR_SALE` — approved and live, read from ASC
+  2026-09-09**, which closes its train to new builds and is why the tab
+  repositioning is 2.12.
+  **2.12 (build 59) SUBMITTED 2026-09-09 18:28Z — `WAITING_FOR_REVIEW`**,
+  version `614dfb01-…`, submission `8651eae6-…`, build uploaded via altool
+  with `BuildMachineOSBuild` patched to 25F84 (verified inside the IPA, along
+  with `UIBackgroundModes` still carrying audio + voip). Carries: the rented
+  line as the FIRST and landing tab with temp SMS/e-mail second as "Temp";
+  the product-first line store (no numbers and no price on the first screen,
+  picker behind "Choose your number", calling row leading, swap sold as a
+  feature); the `OtpScreen` upsell that sells a rented number at the moment a
+  temporary code lands; and `/tabs number|temp`, the owner switch for the tab
+  order. Release notes rewritten on all 13 locales and read back matching;
+  descriptions carried over from 2.11 verbatim, since no capability changed.
+  ⚠️ **The picker sheet and the upsell card were never walked on a device** —
+  tap automation was unavailable, so both are build-and-screenshot verified
+  only. ⚠️ **The ASC screenshots still show the OLD store** (numbers + price
+  on the first screen); they were not re-taken for this submission.
+  *Historical:* **2.11 (build 58) submitted 2026-09-08 15:44Z**,
   version `894db3da-…`, submission `88b0a10b-…`. Build 58 = build 57's
   inbound-calling work + the second-code resend window's client half (the
   countdown and the earlier-codes list). Release notes gained a second-code
