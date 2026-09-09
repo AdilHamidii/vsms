@@ -547,6 +547,23 @@ struct LineCheckoutScreen: View {
                                    tint: theme.text3)
                             .opacity(0.72)
                         RowRule()
+                        // 🔴 MOVED HERE FROM THE STORE PITCH (2026-09-09), not
+                        // deleted. The store now sells the swap as a feature
+                        // ("any time, as many times as you want") instead of a
+                        // remedy, which removed the only place the app said
+                        // that a service can refuse a virtual number at all.
+                        // That is a real and common outcome — it is why the
+                        // swap exists — and a buyer who meets it after paying
+                        // is a refund and a CONSUMPTION_REQUEST. This is the
+                        // 3.1.2(a) surface, so it belongs here if it is
+                        // anywhere. `hint` is "Sometimes": a real risk, not an
+                        // absent feature.
+                        BenefitRow(icon: "questionmark.circle",
+                                   label: "Some services refuse virtual numbers — switch to a new one and try again",
+                                   hint: "Sometimes",
+                                   tint: theme.text3)
+                            .opacity(0.72)
+                        RowRule()
                         BenefitRow(icon: RIcon.message,
                                    label: "Sending texts outside the US and Canada",
                                    hint: "Not yet",

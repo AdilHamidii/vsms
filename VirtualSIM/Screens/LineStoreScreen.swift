@@ -83,7 +83,7 @@ struct LineStoreScreen: View {
         GeometryReader { proxy in
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
-                    header(kicker: "Second number", title: "A number for your codes")
+                    header(kicker: "Second number", title: "A number for all your apps")
 
                     Spacer(minLength: 16)
 
@@ -261,39 +261,64 @@ struct LineStoreScreen: View {
                     .padding(.bottom, 14)
 
                 RowRule(inset: 54)
+                // 🔴 CALLING LEADS (owner decision 2026-09-09), AND IT CARRIES
+                // NO FIGURES — no minute allowance, no per-minute price.
+                //
+                // That is safe ONLY because `LineCheckoutScreen.included`
+                // states both, one tap away and immediately before the
+                // purchase sheet: "N minutes of outgoing calls a month" AND
+                // "Call 50+ countries, priced per minute before you dial".
+                // ⚠️ **If either of those rows is ever removed from checkout,
+                // this row has to regain its figures in the same commit** —
+                // otherwise nothing in the funnel says the 50 are paid.
+                //
+                // What must NEVER be written here is that the 50 are free.
+                // `voice_rates` carries exactly ONE `covered_by_allowance` row
+                // — the +1 "United States & Canada" row; the other 49 enabled
+                // destinations are 0.75 credits/min against the WALLET, and
+                // `begin_intl_call_claim` refuses anything not enabled. "Free
+                // calls to the UK" is a promise the server declines at the
+                // moment of use. Re-derive before editing:
+                // `select iso2, credits_per_min, covered_by_allowance from
+                //  public.voice_rates where enabled;`
+                BenefitRow(icon: RIcon.phone,
+                           label: "Call over 50 countries, straight from the app",
+                           dense: true)
+                RowRule(inset: 54)
+                // The `live` tint stays on THIS row wherever it sits in the
+                // order: it is the semantic "this is proven", and inbound
+                // codes are the one claim with a real delivery record behind
+                // them (21 of 21 in `line_messages`). It is not decoration for
+                // whichever row happens to be first.
                 BenefitRow(icon: RIcon.message,
                            label: "Receive verification codes in the app",
                            tint: theme.live,
                            dense: true)
                 RowRule(inset: 54)
-                // 🔴 THE ALLOWANCE IS NANP-ONLY, AND THE SECOND CLAUSE IS NOT
-                // OPTIONAL. `voice_rates` carries exactly ONE row with
-                // `covered_by_allowance` — the +1 "United States & Canada"
-                // row. All 49 other enabled destinations (UK, France, Germany,
-                // Spain, Italy, the Netherlands…) are 0.75 credits/min and are
-                // charged to the WALLET on top of the subscription, and
-                // `begin_intl_call_claim` refuses any destination that is not
-                // enabled at all. "Free calls to the UK" would be a promise the
-                // server declines at the moment of use — an Apple refund and a
-                // 3.1.2 problem. Verify with
-                // `select iso2, credits_per_min, covered_by_allowance from
-                //  public.voice_rates where enabled;` before touching it.
-                BenefitRow(icon: RIcon.phone,
-                           label: "Call the US and Canada — 100 minutes included, plus 50 more countries at low per-minute rates",
-                           dense: true)
-                RowRule(inset: 54)
-                // The honest line, and the remedy priced live. NO client
-                // default for the figure — `app_config.line_swap_credits`
+                // The swap sold as a FEATURE rather than a remedy (owner
+                // decision 2026-09-09). "As many times as you want" is
+                // literally true: `app_config.line_swap_cooldown_days` is 0,
+                // so `begin_line_swap` imposes no cooldown and the only limit
+                // is the credit price. ⚠️ If a cooldown is ever introduced,
+                // this sentence becomes false and must change in the same
+                // commit.
+                //
+                // NO client default for the figure — `line_swap_credits`
                 // changes without a release, so when it is unknown the
                 // sentence drops the number rather than inventing one. Never
                 // `?? 8`.
+                //
+                // ⚠️ The caveat this row used to carry ("Might not work on
+                // every service") did NOT disappear: it moved to
+                // `LineCheckoutScreen`'s "Good to know" ledger, which is the
+                // 3.1.2(a) disclosure surface. Do not delete it from both.
                 if let cost = state.appStatus.lineSwapCredits {
                     BenefitRow(icon: "arrow.triangle.2.circlepath",
-                               label: "Might not work on every service — if a code doesn't arrive, switch to a new number for \(cost) credits",
+                               label: "Switch to a new number for only \(cost) credits — any time, as many times as you want",
                                dense: true)
                 } else {
                     BenefitRow(icon: "arrow.triangle.2.circlepath",
-                               label: "Might not work on every service — if a code doesn't arrive, switch to a new number for a few credits",
+                               label: "Switch to a new number any time, as many times as you want",
                                dense: true)
                 }
                 RowRule(inset: 54)

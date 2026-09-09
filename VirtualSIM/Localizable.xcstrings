@@ -3361,46 +3361,6 @@
         }
       }
     },
-    "A number for your codes": {
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Eine Nummer für deine Codes"
-          }
-        },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Un número para tus códigos"
-          }
-        },
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Un numéro pour vos codes"
-          }
-        },
-        "it": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Un numero per i tuoi codici"
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "認証コード用の番号"
-          }
-        },
-        "pt-BR": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Um número para seus códigos"
-          }
-        }
-      }
-    },
     "A real American or Canadian number that receives your verification codes.": {
       "localizations": {
         "de": {
@@ -18048,86 +18008,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Mensagens"
-          }
-        }
-      }
-    },
-    "Might not work on every service — if a code doesn't arrive, switch to a new number for %lld credits": {
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Funktioniert nicht bei jedem Dienst — kommt kein Code an, wechsle für %lld Credits zu einer neuen Nummer"
-          }
-        },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Puede no funcionar en todos los servicios: si no llega el código, cambia a un número nuevo por %lld créditos"
-          }
-        },
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Ne fonctionne pas avec tous les services — si le code n'arrive pas, changez de numéro pour %lld crédits"
-          }
-        },
-        "it": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Potrebbe non funzionare con tutti i servizi: se il codice non arriva, passa a un nuovo numero per %lld crediti"
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "一部のサービスでは使えないことがあります。コードが届かない場合は%lldクレジットで新しい番号に切り替えられます"
-          }
-        },
-        "pt-BR": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Pode não funcionar em todos os serviços — se o código não chegar, troque por um novo número por %lld créditos"
-          }
-        }
-      }
-    },
-    "Might not work on every service — if a code doesn't arrive, switch to a new number for a few credits": {
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Funktioniert nicht bei jedem Dienst — kommt kein Code an, wechsle für ein paar Credits zu einer neuen Nummer"
-          }
-        },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Puede no funcionar en todos los servicios: si no llega el código, cambia a un número nuevo por unos créditos"
-          }
-        },
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Ne fonctionne pas avec tous les services — si le code n'arrive pas, changez de numéro pour quelques crédits"
-          }
-        },
-        "it": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Potrebbe non funzionare con tutti i servizi: se il codice non arriva, passa a un nuovo numero per pochi crediti"
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "一部のサービスでは使えないことがあります。コードが届かない場合は数クレジットで新しい番号に切り替えられます"
-          }
-        },
-        "pt-BR": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Pode não funcionar em todos os serviços — se o código não chegar, troque por um novo número por alguns créditos"
           }
         }
       }
@@ -42351,47 +42231,6 @@
         }
       }
     },
-    "Call the US and Canada — 100 minutes included, plus 50 more countries at low per-minute rates": {
-      "extractionState": "manual",
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Telefoniere in die USA und nach Kanada — 100 Minuten inklusive, dazu 50 weitere Länder zu niedrigen Minutenpreisen"
-          }
-        },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Llama a EE. UU. y Canadá: 100 minutos incluidos, y 50 países más con tarifas bajas por minuto"
-          }
-        },
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Appelez les États-Unis et le Canada — 100 minutes incluses, plus 50 autres pays à bas tarif à la minute"
-          }
-        },
-        "it": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Chiama Stati Uniti e Canada — 100 minuti inclusi, più altri 50 paesi a tariffe al minuto basse"
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "米国とカナダへの通話は100分込み。ほか50か国も低料金の従量制で発信できます"
-          }
-        },
-        "pt-BR": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Ligue para EUA e Canadá — 100 minutos incluídos, além de mais 50 países com tarifas baixas por minuto"
-          }
-        }
-      }
-    },
     "Receives texts from US and Canadian numbers and services.": {
       "extractionState": "manual",
       "localizations": {
@@ -42552,6 +42391,211 @@
           "stringUnit": {
             "state": "translated",
             "value": "Ver números que você pode manter"
+          }
+        }
+      }
+    },
+    "A number for all your apps": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Eine Nummer für alle deine Apps"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Un número para todas tus apps"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Un numéro pour toutes vos applis"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Un numero per tutte le tue app"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "すべてのアプリに使える番号"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Um número para todos os seus apps"
+          }
+        }
+      }
+    },
+    "Call over 50 countries, straight from the app": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Telefoniere in über 50 Länder, direkt aus der App"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Llama a más de 50 países directamente desde la app"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Appelez plus de 50 pays directement depuis l’appli"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Chiama oltre 50 paesi direttamente dall’app"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "50か国以上へアプリから直接発信"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ligue para mais de 50 países direto do app"
+          }
+        }
+      }
+    },
+    "Switch to a new number for only %lld credits — any time, as many times as you want": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Wechsle für nur %lld Credits zu einer neuen Nummer — jederzeit und so oft du willst"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cambia a un número nuevo por solo %lld créditos: cuando quieras y las veces que quieras"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Changez de numéro pour seulement %lld crédits — quand vous voulez, autant de fois que vous voulez"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Passa a un nuovo numero per soli %lld crediti — quando vuoi e tutte le volte che vuoi"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "わずか%lldクレジットで新しい番号に変更 — いつでも、何回でも"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Troque para um novo número por apenas %lld créditos — quando quiser, quantas vezes quiser"
+          }
+        }
+      }
+    },
+    "Switch to a new number any time, as many times as you want": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Wechsle jederzeit zu einer neuen Nummer, so oft du willst"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cambia a un número nuevo cuando quieras, las veces que quieras"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Changez de numéro quand vous voulez, autant de fois que vous voulez"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Passa a un nuovo numero quando vuoi, tutte le volte che vuoi"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "いつでも、何回でも新しい番号に変更できます"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Troque para um novo número quando quiser, quantas vezes quiser"
+          }
+        }
+      }
+    },
+    "Some services refuse virtual numbers — switch to a new one and try again": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Manche Dienste akzeptieren keine virtuellen Nummern — wechsle zu einer neuen und versuche es erneut"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Algunos servicios no aceptan números virtuales: cambia a uno nuevo e inténtalo otra vez"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Certains services refusent les numéros virtuels — changez-en un et réessayez"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Alcuni servizi rifiutano i numeri virtuali — passa a uno nuovo e riprova"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "一部のサービスは仮想番号を受け付けません。新しい番号に変更して再度お試しください"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Alguns serviços recusam números virtuais — troque por um novo e tente de novo"
           }
         }
       }
