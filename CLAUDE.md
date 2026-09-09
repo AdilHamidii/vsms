@@ -2479,6 +2479,46 @@ from **Account → Support** only. Calling stays, demoted to one secondary row.
 `LineSwitchNumberButton` is the single entry point; since 2026-09-05 it reads
 **"Change number"** with NO price and opens `LineSwapSheet` — see "Swapping a
 line's number" for the choose-first-pay-last flow and why.
+### 🔴 The two product lines had never once overlapped (2026-09-09)
+
+Measured the day the number line became the launch tab, and it reframes every
+conversion argument about this product:
+
+| | |
+|---|---|
+| line subscribers, all time | **19** |
+| …who ever placed a temp-SMS order | **1** |
+| …who ever received a code | **0** |
+| users who received a code in the prior 30d | **69** |
+| …who ever opened the number store | 21 |
+| …who ever subscribed | **0** |
+
+**Every subscriber this product has ever had arrived cold and bought without
+touching the free product, and nobody who has seen the product work has ever
+bought.** The mechanical reason is that `OtpScreen` — the SMS line's success
+moment — sold nothing at all, while `EmailCodeScreen` has sold the mail plan at
+the identical moment since 2.3.
+
+`OtpScreen.keepNumberCard` (2026-09-09) is the missing offer: one quiet card
+below Done, no price, gated on `linesLoaded && no live line`, claiming only
+inbound codes and US/CA texts. Events `line_upsell_shown` /
+`line_upsell_tapped`.
+
+⚠️ **0 of 69 is NOT evidence these users won't pay — 48 of them never saw the
+offer.** Read it at ~100 `line_upsell_shown`: near-zero taps means the
+audiences really are disjoint and the answer is to STOP cross-selling, not to
+shout louder. Re-derive both figures rather than quoting this table.
+
+⚠️ **The funnel bottleneck is the payment moment, not traffic** (14d to
+09-09): 266 users saw the store → 133 saw numbers → 72 reached checkout → **19
+opened Apple's sheet → 3 paid**. Daily checkout views grew 4 → 40 while
+purchase attempts stayed flat at 3–6 and wins at 0–1. **Adding traffic to this
+funnel does nothing.** A monthly free trial is the obvious lever and the owner
+declined it on 2026-09-09 (numbers cost $1 each upfront, and 17 of 20 cancel at
+the sheet); note also that `SubscriptionStore.trialLabel` reads
+`yearlyProduct` ONLY, so a monthly offer would exist in ASC and render nowhere
+without a client change.
+
 ### The store leads with the PRODUCT, not the inventory (2026-09-09)
 
 🔴 **Owner decision: the store's first screen carries NO numbers and NO

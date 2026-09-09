@@ -42432,6 +42432,129 @@
           }
         }
       }
+    },
+    "This number goes away when the timer runs out": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Diese Nummer verschwindet, wenn die Zeit abgelaufen ist"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Este número desaparece cuando se acaba el tiempo"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ce numéro disparaît à la fin du compte à rebours"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Questo numero sparisce allo scadere del tempo"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "この番号は時間が切れると使えなくなります"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Este número desaparece quando o tempo acabar"
+          }
+        }
+      }
+    },
+    "A number of your own keeps receiving codes and texts from US and Canadian senders, for as long as you keep it.": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Eine eigene Nummer empfängt weiterhin Codes und SMS von Absendern aus den USA und Kanada, solange du sie behältst."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Un número propio sigue recibiendo códigos y mensajes de remitentes de EE. UU. y Canadá mientras lo conserves."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Un numéro à vous continue de recevoir les codes et les SMS d’expéditeurs américains et canadiens, aussi longtemps que vous le gardez."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Un numero tutto tuo continua a ricevere codici e messaggi da mittenti di Stati Uniti e Canada, finché lo mantieni."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "自分専用の番号なら、持ち続けているかぎり米国・カナダの送信者からのコードやSMSを受信し続けられます。"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Um número seu continua recebendo códigos e mensagens de remetentes dos EUA e do Canadá enquanto você o mantiver."
+          }
+        }
+      }
+    },
+    "See numbers you can keep": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nummern zum Behalten ansehen"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ver números que puedes conservar"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Voir les numéros à garder"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vedi i numeri che puoi tenere"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "持ち続けられる番号を見る"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ver números que você pode manter"
+          }
+        }
+      }
     }
   },
   "version": "1.1"

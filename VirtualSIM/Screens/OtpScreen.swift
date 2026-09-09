@@ -21,6 +21,8 @@ struct OtpScreen: View {
     @State private var copied = false
     @State private var appeared = false
     @State private var showCredits = false
+    /// One `line_upsell_shown` per presentation — see `keepNumberCard`.
+    @State private var upsellLogged = false
     /// The order as last read from the server. `order` is a snapshot taken when
     /// this cover was presented, so a second code promoted onto the row while
     /// the screen is open would never appear without re-reading it.
@@ -47,6 +49,7 @@ struct OtpScreen: View {
                     messageBubble
                     earlierCodes
                     balanceCard
+                    keepNumberCard
                     whatNext
                 }
                 .padding(.top, 6)
@@ -389,6 +392,97 @@ struct OtpScreen: View {
             }
             .padding(.horizontal, 16)
         }
+    }
+
+    // MARK: - The rented line, sold where the product has just worked
+
+    /// 🔴 **THE TWO PRODUCT LINES HAD NEVER ONCE OVERLAPPED, AND THIS SCREEN IS
+    /// WHY.** Measured 2026-09-09: of **19 line subscribers all-time, 1 had
+    /// ever placed a temp-SMS order and 0 had ever received a code**; over the
+    /// prior 30 days **69 users watched a code land, 21 ever opened the number
+    /// store, 0 subscribed.** Every subscriber this product has ever had
+    /// arrived cold. `EmailCodeScreen` has sold the mail plan at the identical
+    /// moment since 2.3; the number line had no equivalent anywhere, so the
+    /// warmest audience in the app was simply never asked.
+    ///
+    /// ⚠️ **0 of 69 is NOT yet evidence that these users won't pay.** 48 of
+    /// them never saw the offer at all. Read this at ~100 `line_upsell_shown`:
+    /// if `line_upsell_tapped` is near zero, the audiences really are disjoint
+    /// and the answer is to stop cross-selling, not to shout louder.
+    ///
+    /// Rules, inherited from `balanceCard` and `EmailCodeScreen.nextAddressCard`:
+    ///  • **Below Done, and below the top-up ask.** Done is still what this
+    ///    screen is for. An upsell ABOVE the code is exactly what was removed
+    ///    from this screen once already — see the type's own doc.
+    ///  • **Only when they have no live line.** A subscriber is asked nothing.
+    ///  • **Only once `linesLoaded` has answered**, so the card cannot flash in
+    ///    front of someone who already owns a number.
+    ///  • **No price.** The figure is StoreKit's and it is stated on
+    ///    `LineCheckoutScreen`; quoting it here would be a second place to
+    ///    drift, and this is an invitation rather than a paywall.
+    ///  • **Only claims that hold.** Inbound codes and texts from US/Canadian
+    ///    senders are proven (`line_messages`, 21 of 21). Nothing about calls,
+    ///    nothing about texting the rest of the world — those live on the
+    ///    checkout ledger where they can be read before paying.
+    ///  • It never touches the review prompt (App Store 5.6.4).
+    ///
+    /// ⚠️ Not gated on `lines_paused`: `AppStatus` does not carry that key, so
+    /// no client surface reads it — the Number tab's store behaves the same
+    /// way, and the server refuses with `lines_paused`, which `ErrorBanner`
+    /// already renders. Add the field and gate all of them together, or none.
+    @ViewBuilder
+    private var keepNumberCard: some View {
+        if showsKeepNumber {
+            Card {
+                VStack(alignment: .leading, spacing: 12) {
+                    HStack(spacing: 10) {
+                        Image(systemName: RIcon.phone)
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundStyle(theme.text2)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("This number goes away when the timer runs out")
+                                .font(RFont.text(14, weight: .semibold))
+                                .foregroundStyle(theme.text)
+                                .fixedSize(horizontal: false, vertical: true)
+                            Text("A number of your own keeps receiving codes and texts from US and Canadian senders, for as long as you keep it.")
+                                .font(RFont.text(12))
+                                .foregroundStyle(theme.text2)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                        Spacer(minLength: 0)
+                    }
+
+                    GhostButton(label: String(localized: "See numbers you can keep"),
+                                icon: RIcon.phone) {
+                        RHaptic.select()
+                        Analytics.shared.track("line_upsell_tapped")
+                        // Dismiss FIRST, then navigate. This screen is a
+                        // `fullScreenCover`; the number store is a TAB, so
+                        // leaving the cover up would hide the destination
+                        // behind it. Same order `whatNext` already uses.
+                        state.flow = nil
+                        state.intent = .line
+                        state.tab = .line
+                    }
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 14)
+            }
+            .padding(.horizontal, 16)
+            .onAppear {
+                // Once per presentation, not per body evaluation — SwiftUI
+                // re-runs this view for the 1-second timer tick, which would
+                // otherwise log an impression every second the screen is open
+                // and make the funnel read as enormous engagement.
+                guard !upsellLogged else { return }
+                upsellLogged = true
+                Analytics.shared.track("line_upsell_shown")
+            }
+        }
+    }
+
+    private var showsKeepNumber: Bool {
+        state.linesLoaded && !state.lines.contains { $0.status.isLive }
     }
 
     /// Everything that is about the NEXT thing rather than this one, kept
