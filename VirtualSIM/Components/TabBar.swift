@@ -15,16 +15,21 @@ struct TabBar: View {
         let label: String
         let icon: String
     }
-    /// Order encodes the business: temp SMS first (it is the launch tab, what
-    /// the listing sells and what an arriving user can afford), then rented
-    /// numbers, then the utility tab. Swapped 2026-08-08 — see `AppState.tab`.
+    /// Order encodes the business: the rented second number first (it is the
+    /// launch tab and what acquisition now points at), then the temp SMS and
+    /// temp e-mail lines, then the utility tab. Swapped 2026-09-09 — see
+    /// `AppState.tab` for what this ordering has cost before.
+    ///
+    /// `.home` keeps its enum name while its label reads "Temp": it hosts BOTH
+    /// temp SMS and temp e-mail (`AppState.emailMode` switches between them),
+    /// so neither product's name fits the tab on its own.
     ///
     /// The eSIM tab was removed 2026-09-08: the line has been paused since
     /// 2026-07-31 with no active plans, so it was a permanently empty store
     /// occupying a quarter of the bar.
     private let items: [Item] = [
-        .init(id: .home,    label: "Home",    icon: RIcon.home),
         .init(id: .line,    label: "Number",  icon: RIcon.phone),
+        .init(id: .home,    label: "Temp",    icon: RIcon.home),
         .init(id: .account, label: "Account", icon: RIcon.user),
     ]
 
@@ -73,6 +78,14 @@ struct TabBar: View {
                     .background(active ? theme.ink : Color.clear, in: .capsule)
                 }
                 .buttonStyle(.plain)
+                // 🔴 AN INACTIVE TAB IS AN ICON AND NOTHING ELSE, so without
+                // this SwiftUI derives the label from the SF SYMBOL: VoiceOver
+                // read the tabs as "Home", "person" — the symbol names, not the
+                // destinations. Harmless-looking until 2026-09-09, when the
+                // house icon moved onto the tab labelled "Temp" and the app
+                // started announcing a tab by the name of a DIFFERENT one.
+                .accessibilityLabel(LocalizedStringKey(item.label))
+                .accessibilityAddTraits(active ? [.isSelected] : [])
             }
         }
         .padding(6)

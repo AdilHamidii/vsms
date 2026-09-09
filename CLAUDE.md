@@ -53,8 +53,16 @@ and how real that limit is has NOT been settled** — see Known-open. It has
 two independent gates and one of them is OURS: the messaging profile's
 `whitelisted_destinations` read `["CA","GB","US"]` on 2026-09-08, which is an
 editable setting, not a carrier rule (GB being in it proves the field is not
-NANP-limited). The tab is the SECOND tab (Home
-is first — reverted 2026-08-08; this line said "first tab" for ten days after).
+NANP-limited). **The line is the FIRST tab AND the launch tab as of
+2026-09-09** (owner decision) — `AppTab` order is `line · home · account` and
+`AppState.tab` defaults to `.line`. It led once before, in 2.0 (Aug 15–19), and
+that cost `create-order` ~30 calls/day → 1 with zero first-day orders from 45
+signups, which is why it was reverted on 2026-08-08. The premise that makes it
+right this time is that acquisition now points here (the store name leads with
+the second number and both live ASA campaigns bid on "us number" intent) — so
+**if those campaigns are paused, re-examine this first.** The temp SMS + temp
+e-mail tab is second and is labelled **"Temp"**; it keeps the enum name `.home`
+because it hosts both lines and neither name fits it alone.
 **Six numbers rented, five subscriptions, and all five cancelled auto-renew —
 median 3.9 minutes after paying.**
 
@@ -2471,6 +2479,49 @@ from **Account → Support** only. Calling stays, demoted to one secondary row.
 `LineSwitchNumberButton` is the single entry point; since 2026-09-05 it reads
 **"Change number"** with NO price and opens `LineSwapSheet` — see "Swapping a
 line's number" for the choose-first-pay-last flow and why.
+### The store leads with the PRODUCT, not the inventory (2026-09-09)
+
+🔴 **Owner decision: the store's first screen carries NO numbers and NO
+price.** It is the app's launch surface now (see the tab note at the top of
+this file), so it reads: headline → four capability rows → one button,
+**"Choose your number"**, which opens the picker as a SHEET. The numbers, the
+country chips and the city list are all pages of that one sheet — the same
+shape `LineSwapSheet` already uses, sharing every row through
+`LinePickerRows.swift`. Tapping a number goes to `LineCheckoutScreen`, which
+is where the price is stated, in full, immediately before Apple's sheet
+(3.1.2(a) is satisfied there and was never satisfied by the store line).
+
+- 🔴 **THE CALLING ROW STATES THE ALLOWANCE, AND IT IS NANP-ONLY.**
+  `voice_rates` has exactly ONE row with `covered_by_allowance` — the +1
+  "United States & Canada" row. UK/FR/DE/ES/IT/NL and 43 others are
+  **0.75 credits/min charged to the wallet**, and `begin_intl_call_claim`
+  refuses anything not `enabled`. The copy is therefore "Call the US and
+  Canada — 100 minutes included, plus 50 more countries at low per-minute
+  rates". **"Free calls to the UK" was proposed and is FALSE** — it is a
+  promise the server declines at the moment of use, i.e. a refund and a
+  3.1.2 problem. Re-derive before touching it:
+  `select iso2, credits_per_min, covered_by_allowance from public.voice_rates
+   where enabled;`
+- **`usSoon` no longer mentions calling** (the capability row owns it) and is
+  now only the inbound-SMS limit, which is the one thing on the screen a
+  reader can be wrong about in a way that costs them money.
+- **The number search moved out of the screen's `.task` into `openPicker()`.**
+  Prefetching would fire `line_numbers_shown` for every visitor and silently
+  turn it into a second `line_store_view`. New event
+  `line_choose_number_tapped` sits between them. ⚠️ **`line_numbers_shown` is
+  not comparable across this release** — split the funnel on the ship date.
+- **`priceNote` is kept in the file, referenced by nothing.** This decision has
+  now reversed three times (no price 2026-08-06 → price 2026-08-23 → no price
+  2026-09-09); if cancellations inside the first minutes climb again, putting
+  it back is one line.
+- ⚠️ **The `-screenshot lineStore` frame no longer shows numbers**, so the ASC
+  screenshot taken from it describes a screen that no longer exists. Re-take
+  before the next submission.
+- ⚠️ **The picker sheet is BUILD-verified only** — the store screen itself was
+  screenshotted on the simulator, but tap automation was unavailable, so
+  nobody has actually walked country → city → number → checkout. Do that on a
+  device before shipping.
+
 **2.8 (2026-09-03, owner decision): the store is ONE screen, not four.**
 2.7's flow (pitch → country → city → number → checkout) measured 162
 `line_store_view` / 106 viewers / **0 subscriptions** in its first days
@@ -2479,7 +2530,11 @@ line's number" for the choose-first-pay-last flow and why.
 the line country catalog section. Re-measure before drawing conclusions from
 the 2.7 numbers.**), and
 the line was the only product with NO funnel event between "opened the tab"
-and "subscribed". `LineStoreScreen` now renders pitch + three real numbers +
+and "subscribed". ⚠️ **SUPERSEDED 2026-09-09 — see the section above: the
+numbers and the price are no longer on the store screen at all.** What
+survives from 2.8 is everything about WHERE the numbers come from and how
+they render, which now applies to the picker sheet instead. *2.8 text:*
+`LineStoreScreen` renders pitch + three real numbers +
 the price on one scroll (default place = **the US for everyone, owner
 decision 2026-09-06**, when the catalogue says US is sellable, else the
 server default CA/Toronto — 2.8/2.9 used the device storefront country when

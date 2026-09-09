@@ -50,13 +50,25 @@ struct LineStoreScreen: View {
 
     @State private var appeared = false
 
-    /// The place pickers, which are no longer steps in a flow. They are a
-    /// detour off a screen that already has an answer on it.
-    @State private var showsPlaceSheet = false
-    /// Which list the sheet is showing. A country selection moves it to that
-    /// country's cities INSIDE the sheet, so the two lists keep the ordering
-    /// the old two steps had without owning the whole screen.
-    @State private var sheetShowsCountries = false
+    /// The picker, as PAGES OF ONE SHEET rather than a screen and a detour off
+    /// it (2026-09-09 — see the doc on `body`). Same shape as `LineSwapSheet`,
+    /// which already walks country → city → number in a single sheet; the two
+    /// share every row through `LinePickerRows.swift`.
+    ///
+    /// ⚠️ Nested `.sheet` presentations are the thing this avoids. A country
+    /// list presented ON TOP of the number list is two dismiss gestures deep
+    /// and loses the drag-to-dismiss contract; paging one sheet keeps the
+    /// whole picker at one level.
+    private enum SheetPage {
+        case numbers, countries, cities
+    }
+    /// 🔴 **`isPresented` + a separate page, NEVER `.sheet(item:)`.** Paging by
+    /// mutating the sheet's own `item` changes its identity, and SwiftUI
+    /// answers that by DISMISSING and re-presenting — so every step of
+    /// country → city → number would slide the sheet off the screen and back
+    /// on. The presentation is one thing; which page it shows is another.
+    @State private var showsPicker = false
+    @State private var sheetPage: SheetPage = .numbers
 
     /// How many numbers the screen offers at once.
     ///
@@ -77,7 +89,7 @@ struct LineStoreScreen: View {
 
                     pitch.riseIn(appeared, index: 0)
 
-                    numbers.padding(.top, 18).riseIn(appeared, index: 1)
+                    chooseNumber.padding(.top, 18).riseIn(appeared, index: 1)
 
                     usSoon.padding(.top, 16).riseIn(appeared, index: 3)
 
@@ -100,7 +112,7 @@ struct LineStoreScreen: View {
             }
         }
         .background(theme.bg)
-        .sheet(isPresented: $showsPlaceSheet) { placeSheet }
+        .sheet(isPresented: $showsPicker) { placeSheet }
         // Set BEFORE any await. This flag drives `riseIn`, so awaiting a
         // network call first left the entire screen at opacity 0 until Telnyx
         // answered — which is exactly what "the rent number screen takes too
@@ -116,17 +128,16 @@ struct LineStoreScreen: View {
             if state.lineCountry == nil, let iso = defaultCountry() {
                 state.lineCountry = iso
             }
-            // Numbers before the product: the search is the slow half and it
-            // is what this screen is for. `priceNote` renders nothing until
-            // StoreKit answers and then fills in a beat later, without moving
-            // anything above it.
+            // 🔴 NO NUMBER SEARCH HERE. The numbers moved behind the CTA on
+            // 2026-09-09, and `line_numbers_shown` has to keep meaning "the
+            // reader saw real numbers" — prefetching would fire it for every
+            // visitor and silently turn it into a second `line_store_view`.
+            // The search runs in `openPicker()` instead, which is the one
+            // place a reader can be looking at the list.
             //
             // Screenshot frames seed the offers directly — a live search from
             // `simctl` returns nothing and would wipe the fixture, the same
             // trap `AppState.loadLineThreads` documents.
-            if !ScreenshotMode.isActive, state.lineOffers.isEmpty {
-                await reloadNumbers()
-            }
             // Keeps the product warm for the paywall: the store is the app's
             // first screen and `LineCheckoutScreen` renders a redacted
             // placeholder while StoreKit is still answering. Idempotent, so
@@ -255,6 +266,22 @@ struct LineStoreScreen: View {
                            tint: theme.live,
                            dense: true)
                 RowRule(inset: 54)
+                // 🔴 THE ALLOWANCE IS NANP-ONLY, AND THE SECOND CLAUSE IS NOT
+                // OPTIONAL. `voice_rates` carries exactly ONE row with
+                // `covered_by_allowance` — the +1 "United States & Canada"
+                // row. All 49 other enabled destinations (UK, France, Germany,
+                // Spain, Italy, the Netherlands…) are 0.75 credits/min and are
+                // charged to the WALLET on top of the subscription, and
+                // `begin_intl_call_claim` refuses any destination that is not
+                // enabled at all. "Free calls to the UK" would be a promise the
+                // server declines at the moment of use — an Apple refund and a
+                // 3.1.2 problem. Verify with
+                // `select iso2, credits_per_min, covered_by_allowance from
+                //  public.voice_rates where enabled;` before touching it.
+                BenefitRow(icon: RIcon.phone,
+                           label: "Call the US and Canada — 100 minutes included, plus 50 more countries at low per-minute rates",
+                           dense: true)
+                RowRule(inset: 54)
                 // The honest line, and the remedy priced live. NO client
                 // default for the figure — `app_config.line_swap_credits`
                 // changes without a release, so when it is unknown the
@@ -281,14 +308,48 @@ struct LineStoreScreen: View {
         }
     }
 
-    // MARK: - The numbers, on the same screen
+    // MARK: - The numbers, one tap away
 
     /// Where the stock on screen is from, in the reader's own words: the city
     /// when the search picked one, the country otherwise. Never an ISO code —
     /// "CA" is not a place to a reader.
     private var placeLabel: String? { cityLabel ?? countryLabel }
 
-    private var numbers: some View {
+    /// The one call to action on the store.
+    ///
+    /// 🔴 **NO PRICE ON THIS SCREEN (owner decision 2026-09-09).** This
+    /// reverses the 2026-08-23 decision to name the monthly charge before any
+    /// choice is invested in, which itself reversed 2026-08-06. The reasoning
+    /// for the middle position was real — every early subscriber cancelled
+    /// auto-renew at a median 3.9 minutes — but the store is now the app's
+    /// FIRST screen on every launch, and a subscription price is not what an
+    /// arriving user should read first. The figure is stated in full on
+    /// `LineCheckoutScreen`, one tap away and immediately before the purchase
+    /// sheet, which is the surface App Store 3.1.2(a) is actually about.
+    ///
+    /// ⚠️ If cancellations inside the first minutes climb again, this is the
+    /// first thing to re-examine — `priceNote` is kept below, referenced by
+    /// nothing, so restoring it is one line.
+    private var chooseNumber: some View {
+        PrimaryButton(label: "Choose your number") { openPicker() }
+    }
+
+    /// Opens the picker and runs the search that fills it.
+    ///
+    /// The search lives HERE and not in the screen's `.task` so that
+    /// `line_numbers_shown` keeps describing a reader who actually asked to
+    /// see numbers. Re-searching on every open is deliberate: stock moves, and
+    /// a stale list is what produces `number_taken` at the far end.
+    private func openPicker() {
+        Analytics.shared.track("line_choose_number_tapped")
+        sheetPage = .numbers
+        showsPicker = true
+        if !ScreenshotMode.isActive {
+            Task { await reloadNumbers() }
+        }
+    }
+
+    private var numbersPage: some View {
         VStack(alignment: .leading, spacing: 10) {
             countryChips
 
@@ -299,22 +360,14 @@ struct LineStoreScreen: View {
                     MicroLabel("Available now")
                 }
                 Spacer(minLength: 0)
-                // The CITY. The country is chosen on the screen itself (the
-                // chips above), so the sheet opens straight on the cities of
-                // the country already selected — never on the country list,
-                // which would ask the same question twice.
+                // The CITY. The country is chosen on the page itself (the
+                // chips above), so this moves straight to the cities of the
+                // country already selected — never to the country list, which
+                // would ask the same question twice.
                 GhostButton(label: "Change", fillsWidth: false) {
-                    sheetShowsCountries = false
-                    showsPlaceSheet = true
+                    sheetPage = .cities
                 }
             }
-
-            // The price sits ABOVE the list, not under it: below three 70pt
-            // rows it landed under the floating tab bar on a 6.3" screen, i.e.
-            // the one figure this redesign exists to put in front of the
-            // reader was the one thing they had to scroll for (verified from a
-            // simulator screenshot, 2026-09-03).
-            priceNote
 
             if isVoiceOnly { voiceOnlyNotice }
 
@@ -390,7 +443,14 @@ struct LineStoreScreen: View {
                 "country": .string(offer.countryCode ?? state.lineCountry ?? "unknown")])
             state.lineOffer = offer
             state.intent = .line
-            state.flow = .lineCheckout
+            // 🔴 DISMISS THE SHEET FIRST. `flow` drives a `fullScreenCover` on
+            // `ContentView`, i.e. a presentation on the SAME view this sheet is
+            // attached to — SwiftUI refuses the second presentation while the
+            // first is up, so setting `flow` with the picker still open lands
+            // the reader nowhere and the tap reads as dead. The cover is
+            // presented after the dismissal has been committed.
+            showsPicker = false
+            DispatchQueue.main.async { state.flow = .lineCheckout }
         }
     }
 
@@ -459,10 +519,9 @@ struct LineStoreScreen: View {
                         ? String(localized: "Try another country")
                         : String(localized: "Try another city"),
                         action: {
-                            sheetShowsCountries =
-                                state.lineUnavailableReason == .countryNotSellable
-                                && showsCountryStep
-                            showsPlaceSheet = true
+                            sheetPage =
+                                (state.lineUnavailableReason == .countryNotSellable
+                                 && showsCountryStep) ? .countries : .cities
                         }))
         .padding(.top, 12)
     }
@@ -483,24 +542,29 @@ struct LineStoreScreen: View {
 
     private var placeSheet: some View {
         VStack(spacing: 0) {
-            SheetHeader(title: sheetShowsCountries
-                        ? String(localized: "Where should it be?")
-                        : String(localized: "Which city?"))
+            SheetHeader(title: sheetTitle)
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
-                    if sheetShowsCountries {
+                    switch sheetPage {
+                    case .countries:
                         countryList
-                    } else if state.lineCities.isEmpty {
+                    case .cities:
                         // A country with no curated localities sells
                         // country-wide, and an empty list mid-load must not
                         // render as "nowhere".
-                        if state.isLoadingLineNumbers {
-                            rowSkeleton
+                        if state.lineCities.isEmpty {
+                            if state.isLoadingLineNumbers {
+                                rowSkeleton
+                            } else {
+                                countryWide
+                            }
                         } else {
-                            countryWide
+                            cityList
                         }
-                    } else {
-                        cityList
+                    // `.numbers` and — unreachable, since the sheet is
+                    // presented BY setting this — nil.
+                    default:
+                        numbersPage
                     }
                 }
                 .padding(.horizontal, 20)
@@ -509,6 +573,14 @@ struct LineStoreScreen: View {
             .scrollIndicators(.hidden)
         }
         .background(theme.bg)
+    }
+
+    private var sheetTitle: String {
+        switch sheetPage {
+        case .countries: String(localized: "Where should it be?")
+        case .cities:    String(localized: "Which city?")
+        default:         String(localized: "Choose your number")
+        }
     }
 
     /// See `Array<LineCountry>.sellable` — one sellable country means the
@@ -540,7 +612,7 @@ struct LineStoreScreen: View {
     /// the two steps had, without taking the store screen away from someone
     /// who only wanted to look.
     private func select(_ country: LineCountry) {
-        sheetShowsCountries = false
+        sheetPage = .cities
         selectCountry(country)
     }
 
@@ -565,11 +637,13 @@ struct LineStoreScreen: View {
             VStack(spacing: 0) {
                 ForEach(Array(state.lineCities.enumerated()), id: \.element.id) { i, city in
                     LineCityRow(city: city) {
-                        // Dismiss on the tap. The store behind the sheet already
-                        // holds the skeleton and fills in — leaving the sheet up
-                        // until the search returned would make the choice feel
-                        // unacknowledged.
-                        showsPlaceSheet = false
+                        // Back to the numbers, NOT out of the sheet. Since
+                        // 2026-09-09 the numbers live in this sheet too, so
+                        // dismissing here would drop the reader back on the
+                        // pitch having answered a question and been shown
+                        // nothing for it. The numbers page holds the skeleton
+                        // while the search runs.
+                        sheetPage = .numbers
                         changePlace(city: city.id)
                     }
                     if i < state.lineCities.count - 1 { RowRule(inset: 16) }
@@ -581,7 +655,7 @@ struct LineStoreScreen: View {
     /// Some countries have no curated cities — the server sells country-wide.
     private var countryWide: some View {
         LineCountryWideRow(countryLabel: countryLabel) {
-            showsPlaceSheet = false
+            sheetPage = .numbers
             changePlace()
         }
     }
@@ -711,7 +785,12 @@ struct LineStoreScreen: View {
             // and the broader one would be the next refund. Calling OUT is
             // genuinely worldwide. See providers.md "US NUMBERS ARE
             // DOMESTIC-ONLY FOR SMS".
-            Text("Receives texts from US and Canadian numbers and services. Call out to Canada, the US and 50 countries.")
+            // The calling reach moved into the pitch as a benefit row on
+            // 2026-09-09 (with its allowance stated honestly), so it is NOT
+            // repeated here — this line is now only the inbound-SMS limit,
+            // which is the one thing on this screen a reader can be wrong
+            // about in a way that costs them money.
+            Text("Receives texts from US and Canadian numbers and services.")
                 .font(RFont.text(12))
                 .foregroundStyle(theme.text2)
                 .lineSpacing(2)

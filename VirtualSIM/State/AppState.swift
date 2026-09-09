@@ -172,12 +172,22 @@ enum PrefKey {
 
 @Observable
 final class AppState {
-    /// Temp SMS is the launch tab (owner decision 2026-08-08). The rented line
-    /// led for one release on the reasoning that it is the premium product —
-    /// but it is a $9.99/mo subscription, while temp SMS is what the store
-    /// listing, the keywords and essentially all acquisition are actually
-    /// about, and it is the line every arriving user can afford today.
-    var tab: AppTab = .home
+    /// The rented second number is the launch tab (owner decision 2026-09-09).
+    ///
+    /// ⚠️ THIS HAS BEEN SWAPPED BOTH WAYS AND ONE DIRECTION HAS A MEASURED
+    /// COST. The line led for one release in 2.0 (Aug 15–19) and `create-order`
+    /// calls fell from ~30/day to 1, with zero first-day orders from 45
+    /// signups — temp SMS was what the listing, the keywords and all
+    /// acquisition were about, so leading with a $9.99/mo subscription put a
+    /// paywall in front of everyone. It was reverted on 2026-08-08.
+    ///
+    /// What changed: the store name now leads with the second number, and the
+    /// two live ASA campaigns bid on "us number" / second-number intent rather
+    /// than temp-SMS intent — so arriving traffic is asking for this tab. That
+    /// premise is the whole case for the swap, and it fails the moment those
+    /// campaigns are paused. If SMS order volume collapses again, this line is
+    /// the first thing to re-examine.
+    var tab: AppTab = .line
     var balance: Int = 0
     var services: [Service] = SeedData.services
     var countries: [Country] = SeedData.countries
