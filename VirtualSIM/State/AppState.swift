@@ -27,6 +27,39 @@ import SwiftUI
 /// resolves for a product line that may come back.
 enum AppTab: String, Hashable, CaseIterable {
     case line, home, orders, account
+
+    /// The tab bar's order, owner-switchable from Telegram (`/tabs`).
+    ///
+    /// 🔴 **ONE DEFINITION, read by BOTH `TabBar` and the landing tab.** The
+    /// first element is the tab the app opens on, so the bar and the landing
+    /// tab cannot drift apart — a bar led by Number that opens on Temp is the
+    /// bug this shape exists to make impossible.
+    ///
+    /// `orders` is absent on purpose: it stopped being a tab on 2026-08-06 and
+    /// is reached as a cover from Home.
+    static func launchOrder(for raw: String?) -> [AppTab]? {
+        switch raw {
+        case "line": [.line, .home, .account]
+        case "temp": [.home, .line, .account]
+        // Includes nil. An unknown value must never produce an empty or
+        // partial bar — the caller falls back to the compiled default.
+        default:     nil
+        }
+    }
+
+    /// What the build ships with, and what an absent or unreadable
+    /// `app_config.launch_tab` falls back to. Owner decision 2026-09-09.
+    static let defaultOrder: [AppTab] = [.line, .home, .account]
+
+    /// The order this launch will use: the owner's stored choice when it is
+    /// one we recognise, otherwise the compiled default.
+    ///
+    /// ⚠️ Read from UserDefaults, NOT from `AppState.appStatus` — the server
+    /// value arrives after the reveal. See `PrefKey.launchTab`.
+    static var currentOrder: [AppTab] {
+        launchOrder(for: UserDefaults.standard.string(forKey: PrefKey.launchTab))
+            ?? defaultOrder
+    }
 }
 
 enum FlowStage: String, Hashable, Identifiable {
@@ -168,6 +201,20 @@ enum PrefKey {
     /// launch would be a round-trip that can only ever overwrite a row with
     /// itself.
     static let attributionSubmitted = "attribution.submitted"
+
+    /// The owner's `/tabs` switch, as last seen from the server.
+    ///
+    /// 🔴 **PERSISTED RATHER THAN READ LIVE, AND THAT IS THE WHOLE DESIGN.**
+    /// `refreshAppStatus` runs AFTER `bootPhase = .ready` in `coldStart` —
+    /// deliberately, because a banner is additive and must not hold the reveal
+    /// — so at the moment the tab bar first draws there is no server value to
+    /// read. Reading it live would reorder the tabs under the user's thumb a
+    /// beat after launch, or worse, move them to a different tab than the one
+    /// they are already looking at.
+    ///
+    /// So: the fetch STORES it, and the next launch READS it. The cost is that
+    /// a flip lands on the user's second cold launch, and `/tabs` says so.
+    static let launchTab = "tabs.launchTab"
 }
 
 @Observable
@@ -187,7 +234,13 @@ final class AppState {
     /// premise is the whole case for the swap, and it fails the moment those
     /// campaigns are paused. If SMS order volume collapses again, this line is
     /// the first thing to re-examine.
-    var tab: AppTab = .line
+    ///
+    /// ✅ **AND IT NO LONGER NEEDS A RELEASE TO RE-EXAMINE.** Since 2026-09-09
+    /// the order is `AppTab.currentOrder`, which the owner flips from Telegram
+    /// with `/tabs number|temp` — the same argument that gave `/lines` and
+    /// `/esim` their kill switches. `.first` rather than a literal, so the
+    /// landing tab and the bar can never disagree.
+    var tab: AppTab = AppTab.currentOrder.first ?? .line
     var balance: Int = 0
     var services: [Service] = SeedData.services
     var countries: [Country] = SeedData.countries
@@ -307,7 +360,19 @@ final class AppState {
     /// previous value staying put is better than blanking a live notice
     /// because one request timed out.
     func refreshAppStatus(using api: AppStatusAPI) async {
-        if let s = try? await api.fetch() { appStatus = s }
+        if let s = try? await api.fetch() {
+            appStatus = s
+            // Store the launch tab for the NEXT launch; nothing reads it this
+            // session. See `PrefKey.launchTab` for why it cannot be applied live.
+            // An absent or unrecognised value CLEARS the stored copy, so
+            // deleting the row returns every app to its compiled order rather
+            // than pinning it forever to the last thing the owner typed.
+            if let t = s.launchTab, AppTab.launchOrder(for: t) != nil {
+                UserDefaults.standard.set(t, forKey: PrefKey.launchTab)
+            } else {
+                UserDefaults.standard.removeObject(forKey: PrefKey.launchTab)
+            }
+        }
     }
 
     /// Clearing the checkout draft here is load-bearing — see

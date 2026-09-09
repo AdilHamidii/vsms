@@ -238,6 +238,17 @@ export const COMMANDS: CommandSpec[] = [
     group: "Controls",
   },
   {
+    name: "tabs",
+    mutates: true,
+    args: "number|temp",
+    summary: "Which tab the app opens on",
+    help: "<code>/tabs number</code> puts the rented number first and makes it the " +
+      "landing tab · <code>/tabs temp</code> gives that place back to temp SMS and " +
+      "temp e-mail · <code>/tabs</code> alone reports the state. Takes effect on a " +
+      "user's SECOND cold launch, and only on builds that ship with the reader.",
+    group: "Controls",
+  },
+  {
     name: "help",
     summary: "Every command, grouped",
     group: "Other",

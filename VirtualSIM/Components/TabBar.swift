@@ -15,10 +15,11 @@ struct TabBar: View {
         let label: String
         let icon: String
     }
-    /// Order encodes the business: the rented second number first (it is the
-    /// launch tab and what acquisition now points at), then the temp SMS and
-    /// temp e-mail lines, then the utility tab. Swapped 2026-09-09 — see
-    /// `AppState.tab` for what this ordering has cost before.
+    /// Order encodes the business, and since 2026-09-09 the OWNER encodes it:
+    /// `AppTab.currentOrder` is the single definition, flipped from Telegram
+    /// with `/tabs number|temp`. See `AppState.tab` for what this ordering has
+    /// cost before, and `PrefKey.launchTab` for why it is read from UserDefaults
+    /// rather than from the live `appStatus`.
     ///
     /// `.home` keeps its enum name while its label reads "Temp": it hosts BOTH
     /// temp SMS and temp e-mail (`AppState.emailMode` switches between them),
@@ -27,11 +28,23 @@ struct TabBar: View {
     /// The eSIM tab was removed 2026-09-08: the line has been paused since
     /// 2026-07-31 with no active plans, so it was a permanently empty store
     /// occupying a quarter of the bar.
-    private let items: [Item] = [
-        .init(id: .line,    label: "Number",  icon: RIcon.phone),
-        .init(id: .home,    label: "Temp",    icon: RIcon.home),
-        .init(id: .account, label: "Account", icon: RIcon.user),
-    ]
+    ///
+    /// ⚠️ Resolved ONCE, into a stored property, not computed per body
+    /// evaluation: `AppState` is `@Observable` and this view redraws on every
+    /// tab change, so a computed order would hit UserDefaults on each redraw —
+    /// and, worse, could change mid-session if anything ever wrote the key
+    /// while the app was open.
+    private let items: [Item] = AppTab.currentOrder.compactMap { tab in
+        switch tab {
+        case .line:    Item(id: .line,    label: "Number",  icon: RIcon.phone)
+        case .home:    Item(id: .home,    label: "Temp",    icon: RIcon.home)
+        case .account: Item(id: .account, label: "Account", icon: RIcon.user)
+        // Orders has not been a tab since 2026-08-06; `currentOrder` never
+        // yields it, and dropping it here means adding a case is the only way
+        // to put it back.
+        case .orders:  nil
+        }
+    }
 
     var body: some View {
         HStack(spacing: 4) {

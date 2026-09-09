@@ -63,6 +63,28 @@ the second number and both live ASA campaigns bid on "us number" intent) — so
 **if those campaigns are paused, re-examine this first.** The temp SMS + temp
 e-mail tab is second and is labelled **"Temp"**; it keeps the enum name `.home`
 because it hosts both lines and neither name fits it alone.
+
+✅ **AND THE ORDER IS NOW AN OWNER SWITCH, NOT A RELEASE.** `/tabs number|temp`
+in the ops bot writes `app_config.launch_tab` (`'line'` | `'temp'`), published
+through the RLS whitelist. `AppTab.currentOrder` is the ONE definition, read by
+both `TabBar` and the landing tab, so a bar led by Number that opens on Temp is
+impossible by construction. Three properties that are not derivable:
+- 🔴 **It is read from UserDefaults at LAUNCH, never live.** `refreshAppStatus`
+  runs AFTER `bootPhase = .ready` in `coldStart` (a banner is additive and must
+  not hold the reveal), so there is no server value at the moment the bar first
+  draws. A live read would reorder the tabs under the user's thumb a beat after
+  launch. The fetch STORES it; the next launch READS it.
+- **So a flip lands on the user's SECOND cold launch**, and `/tabs` says so in
+  its own reply. Do not "fix" this by moving the fetch before the reveal
+  without measuring what it costs the boot chain.
+- **Fails to the compiled default.** An absent or unrecognised value clears the
+  stored copy and the build uses `AppTab.defaultOrder` (Number first), so
+  deleting the row returns every app to its shipped order rather than pinning
+  it to the last thing anyone typed. Client-side, so 2.11 and older ignore it.
+
+Verified on the simulator through the argument domain, all three cases:
+`temp` → [Temp][Number][Account], `line` → [Number][Temp][Account], garbage →
+[Number][Temp][Account].
 **Six numbers rented, five subscriptions, and all five cancelled auto-renew —
 median 3.9 minutes after paying.**
 
@@ -591,6 +613,12 @@ and real rent; `on|off` unchanged), `/support` (threads waiting, oldest first),
 (read-only: grant, e-mail caps, pause switches, swap price), `/announce`,
 `/esim`, `/metrics`, `/help`.
 
+**`/tabs number|temp` (2026-09-09) decides which tab the app OPENS ON** —
+`app_config.launch_tab`, read at launch from UserDefaults, effective on the
+user's second cold launch. Full account under the line-tab note at the top of
+this file; it is the kill switch for the 2026-09-09 decision to lead with the
+rented number, which has a measured cost in the other direction.
+
 **`/metrics on|off` (2026-09-03) hides the ONLY delivery figure users see** —
 the vendor network rate rendered as High/Medium/Low — by writing
 `app_config.delivery_metrics_hidden` (published through the RLS whitelist,
@@ -672,7 +700,8 @@ cannot tell you:
 (same `x-cron-secret` gate, trigger via `net.http_post` + `private_cron_secret()`)
 returns the rendered HTML WITHOUT sending it — this is how every command is
 verified without the owner's phone. Commands whose registry entry carries
-`mutates` (`/announce`, `/esim`, `/lines`) are REFUSED in preview with
+`mutates` (`/announce`, `/esim`, `/lines`, `/metrics`, `/tabs`) are REFUSED in
+preview with
 `preview_refused_mutating` — without that, the cron secret alone could post a
 banner to every user, where from the chat it takes the bot token AND the owner
 chat id. `/lines` with no argument is read-only and is refused anyway; the
@@ -980,12 +1009,13 @@ policy is now:
 app_config_read: SELECT to authenticated
   using (key = any (array['maintenance','announcement','esim_paused',
                           'lines_paused','line_swap_credits',
-                          'delivery_metrics_hidden']))
+                          'delivery_metrics_hidden','email_sub_daily_cap',
+                          'launch_tab']))
 ```
 
-⚠️ **SIX keys as of 2026-09-03, not three** — `lines_paused`,
-`line_swap_credits` and `delivery_metrics_hidden` were added later and this
-block claimed three for weeks.
+⚠️ **EIGHT keys as of 2026-09-09, and this block has claimed three, then six.**
+`lines_paused`, `line_swap_credits`, `delivery_metrics_hidden`,
+`email_sub_daily_cap` and `launch_tab` were all added later.
 Re-read the live policy (`select qual from pg_policies where
 tablename='app_config'`) rather than quoting this list. Widening it by one
 named key is the ONLY safe way to publish a value; `line_swap_credits` is

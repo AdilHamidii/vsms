@@ -528,6 +528,48 @@ export const handlers: Record<string, Handler> = {
         `${hiding ? "gone" : "back"}.</i>`;
   },
 
+  tabs: async ({ sb, arg }) => {
+    // Which tab the app opens on. Same shape as `/metrics`: one `app_config`
+    // row written directly, no RPC — there is no side effect to coordinate,
+    // unlike the two pause switches, which also move catalog rows.
+    //
+    // 🔴 THE VALUE IS A STRING, 'line' or 'temp', and the client treats
+    // anything else as absent and keeps the order it was compiled with. Do not
+    // "simplify" it to a boolean: a flag cannot say WHICH tab wins, only which
+    // way someone remembered to point it.
+    const LABEL: Record<string, string> = {
+      line: "the rented Number tab",
+      temp: "the Temp tab (temp SMS + temp e-mail)",
+    };
+    // The reply's own caveat, kept in one place because both branches need it
+    // and because it is the whole reason a flip can look like it did nothing.
+    const CAVEAT =
+      `\n\n<i>Takes effect on a user's SECOND cold launch — the first one ` +
+      `fetches and stores it, so the tab bar can never reorder itself while ` +
+      `someone is looking at it. Only builds shipping with the reader respond; ` +
+      `2.11 and older keep the order they were built with.</i>`;
+
+    if (arg !== "number" && arg !== "temp") {
+      const { data: p, error } = await sb
+        .from("app_config").select("value").eq("key", "launch_tab").maybeSingle();
+      if (error) {
+        console.error("launch_tab read failed:", error.message);
+        return readFail("the launch tab");
+      }
+      const cur = p?.value === "temp" ? "temp" : "line";
+      return `📱 The app opens on <b>${LABEL[cur]}</b>.\n\n` +
+        `<code>/tabs number</code> · <code>/tabs temp</code>`;
+    }
+    // "number" is what the owner types (it is the tab's label); "line" is what
+    // the schema and every other line surface call it.
+    const want = arg === "number" ? "line" : "temp";
+    const { error } = await sb.from("app_config")
+      .upsert({ key: "launch_tab", value: want }, { onConflict: "key" });
+    return error
+      ? `⚠️ Couldn't change it: ${esc(error.message)}`
+      : `📱 The app now opens on <b>${LABEL[want]}</b>.` + CAVEAT;
+  },
+
   help: () => Promise.resolve(helpText()),
 };
 

@@ -28,11 +28,13 @@ struct Announcement: Codable, Hashable {
 /// Public, deliberately-published slice of `app_config`.
 ///
 /// The table also holds provider balances and the watchdog verdict, so it is
-/// RLS-restricted to an explicit key whitelist (`maintenance`, `announcement`,
-/// `esim_paused`, `lines_paused`, `line_swap_credits`,
-/// `delivery_metrics_hidden`, `email_sub_daily_cap`). Never widen that policy
-/// to `using (true)` — the same table holds provider balances, the watchdog
-/// verdict and every sync cursor.
+/// RLS-restricted to an explicit key whitelist — EIGHT keys as of 2026-09-09
+/// (`maintenance`, `announcement`, `esim_paused`, `lines_paused`,
+/// `line_swap_credits`, `delivery_metrics_hidden`, `email_sub_daily_cap`,
+/// `launch_tab`). Never widen that policy to `using (true)` — the same table
+/// holds provider balances, the watchdog verdict and every sync cursor.
+/// Re-read the live policy rather than trusting this list:
+/// `select qual from pg_policies where tablename='app_config';`
 struct AppStatus: Equatable {
     var announcement: Announcement?
     var esimPaused: Bool
@@ -56,6 +58,18 @@ struct AppStatus: Equatable {
     /// divergence is a paid promise we would not be keeping. Callers drop the
     /// figure rather than guessing; the client must never carry a default.
     var mailDailyCap: Int?
+    /// Which tab the app opens on, from `app_config.launch_tab` — the owner's
+    /// `/tabs` switch.
+    ///
+    /// NIL when absent or unrecognised, and callers keep the order the build
+    /// was compiled with. Same discipline as `lineSwapCredits`: the client
+    /// carries no default for a value the server owns.
+    ///
+    /// ⚠️ Nothing reads this LIVE. `AppState` persists it and reads the stored
+    /// copy at launch — see `PrefKey.launchTab`. `refreshAppStatus` runs after
+    /// the reveal in `coldStart`, so a live read would reorder the tab bar a
+    /// beat after it had already drawn.
+    var launchTab: String?
 
     static let unknown = AppStatus(announcement: nil, esimPaused: false,
                                    lineSwapCredits: nil)
@@ -73,6 +87,7 @@ struct AppStatusAPI {
         let announcement: Announcement?
         let flag: Bool?
         let number: Int?
+        let text: String?
 
         enum CodingKeys: String, CodingKey { case key, value }
 
@@ -82,6 +97,7 @@ struct AppStatusAPI {
             announcement = try? c.decode(Announcement.self, forKey: .value)
             flag = try? c.decode(Bool.self, forKey: .value)
             number = try? c.decode(Int.self, forKey: .value)
+            text = try? c.decode(String.self, forKey: .value)
         }
     }
 
@@ -90,7 +106,7 @@ struct AppStatusAPI {
             .get, path: "rest/v1/app_config",
             query: [
                 URLQueryItem(name: "key",
-                             value: "in.(announcement,esim_paused,line_swap_credits,delivery_metrics_hidden,email_sub_daily_cap)"),
+                             value: "in.(announcement,esim_paused,line_swap_credits,delivery_metrics_hidden,email_sub_daily_cap,launch_tab)"),
                 URLQueryItem(name: "select", value: "key,value"),
             ]
         )
@@ -103,7 +119,8 @@ struct AppStatusAPI {
             deliveryMetricsHidden: rows.first(where: { $0.key == "delivery_metrics_hidden" })?.flag ?? false,
             // No `?? 25`. An absent cap drops the figure from the paywall copy
             // rather than promising a number the server has not confirmed.
-            mailDailyCap: rows.first(where: { $0.key == "email_sub_daily_cap" })?.number
+            mailDailyCap: rows.first(where: { $0.key == "email_sub_daily_cap" })?.number,
+            launchTab: rows.first(where: { $0.key == "launch_tab" })?.text
         )
     }
 }
