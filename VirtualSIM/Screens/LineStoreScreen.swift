@@ -242,7 +242,26 @@ struct LineStoreScreen: View {
                 .padding(.top, 16)
                 .padding(.bottom, 6)
 
-                Text("A real American or Canadian number that receives your verification codes.")
+                // 🔴 "A real American or Canadian number" is the fixed half and
+                // stays exact. "American" not "US" is an owner decision
+                // (2026-09-06 — "US or Canadian" read as leading with Canada),
+                // and the pair is a CAPABILITY statement, not marketing: the
+                // catalogue sells US, CA and PR only, and `sellableCountry()`
+                // fails closed.
+                //
+                // The second half broadened from "receives your verification
+                // codes" on 2026-09-09, matching the headline: the screen sells
+                // the whole product, not one use of it. ⚠️ "Texts" here is
+                // deliberately unqualified and is only honest because the limit
+                // is stated TWICE below — the `usSoon` note ("Receives texts
+                // from US and Canadian numbers and services") and checkout's
+                // own ledger. A number does NOT receive texts from outside
+                // NANP: `international_inbound` is false on every number we
+                // own and Telnyx silently ignores the PATCH to change it, so a
+                // European phone texting it produces nothing at all. If either
+                // of those two statements is ever removed, this line has to
+                // name the limit itself.
+                Text("A real American or Canadian number for your calls, texts and codes.")
                     .font(RFont.display(17, weight: .semibold))
                     .tracking(-0.3)
                     .foregroundStyle(theme.text)
