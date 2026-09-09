@@ -83,7 +83,8 @@ struct LineStoreScreen: View {
         GeometryReader { proxy in
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
-                    header(kicker: "Second number", title: "A number for all your apps")
+                    header(kicker: "Second number",
+                           title: "A US or Canadian number that lives in this app")
 
                     Spacer(minLength: 16)
 

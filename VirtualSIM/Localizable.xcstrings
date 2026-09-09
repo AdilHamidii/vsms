@@ -42355,47 +42355,6 @@
         }
       }
     },
-    "A number for all your apps": {
-      "extractionState": "manual",
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Eine Nummer für alle deine Apps"
-          }
-        },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Un número para todas tus apps"
-          }
-        },
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Un numéro pour toutes vos applis"
-          }
-        },
-        "it": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Un numero per tutte le tue app"
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "すべてのアプリに使える番号"
-          }
-        },
-        "pt-BR": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Um número para todos os seus apps"
-          }
-        }
-      }
-    },
     "Call over 50 countries, straight from the app": {
       "extractionState": "manual",
       "localizations": {
@@ -42597,6 +42556,47 @@
           "stringUnit": {
             "state": "translated",
             "value": "Um número americano ou canadense de verdade para suas ligações, mensagens e códigos."
+          }
+        }
+      }
+    },
+    "A US or Canadian number that lives in this app": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Eine US- oder kanadische Nummer, die in dieser App lebt"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Un número de EE. UU. o Canadá que vive en esta app"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Un numéro américain ou canadien qui vit dans cette appli"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Un numero statunitense o canadese che vive in questa app"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "このアプリの中に持てる、米国・カナダの電話番号"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Um número dos EUA ou do Canadá que vive neste app"
           }
         }
       }
