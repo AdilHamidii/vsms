@@ -1035,7 +1035,7 @@ route pin, because the buyer paid for *that* real-SIM pool and must never be
 silently downgraded. Rotation is wrapped in try/catch: it is an optimization,
 never a reason to fail an order.
 
-**The recovery card's country offer (client, 2.13) resolves in this order:**
+**The recovery card's country offer (client, 2.12 build 61) resolves in this order:**
 our own measured record ≥ 40% → the best **High-band pool** by the vendor's
 hourly `pool_rate_pct` (> 60, `bestPoolRatedCountry`, never the failed
 country, never a route our record says delivers nothing, affordable on the
@@ -1694,15 +1694,17 @@ Each has been wrong within a day of being written at least once.
 
 **Verified 2026-09-09:**
 
-- **iOS**: `MARKETING_VERSION 2.12`, `CURRENT_PROJECT_VERSION 60`. **2.12 (build
-  60) is `WAITING_FOR_REVIEW`** (submitted 2026-09-09 20:03Z, version
-  `614dfb01-…`, submission `96c701c1-…`). Build 59 was submitted 18:28Z the same
-  day and **cancelled and replaced** to carry the no-pre-selection change — the
-  cancel took the version through `DEVELOPER_REJECTED` and back, the documented
-  recovery path, and the 13 localizations survived untouched. **2.11 and every
-  earlier version are `READY_FOR_SALE`**. 2.12 carries the tab repositioning,
-  the product-first line store, the `OtpScreen` upsell, `/tabs`, and the
-  first-run "Not selected" pair.
+- **iOS**: `MARKETING_VERSION 2.12`, `CURRENT_PROJECT_VERSION 61`. **2.12 (build
+  61) is `WAITING_FOR_REVIEW`** (submitted 2026-09-10 08:57Z, version
+  `614dfb01-…`, submission `19946a38-…`). Two earlier submissions of 2.12 were
+  **cancelled and replaced** before review picked either up: build 59 (09-09
+  18:28Z, replaced to carry the no-pre-selection change) and build 60 (09-09
+  20:03Z, replaced to carry the recovery-card pool-rate steer). Each cancel
+  took the version through `DEVELOPER_REJECTED` and back, the documented
+  recovery path, with the 13 localizations untouched. **2.11 and every earlier
+  version are `READY_FOR_SALE`**. 2.12 carries the tab repositioning, the
+  product-first line store, the `OtpScreen` upsell, `/tabs`, the first-run
+  "Not selected" pair, and the recovery card's High-band pool offer.
   ⚠️ **Read ASC, never this line** — `python3 scripts/asc-release.py status
   2.12`. It has been wrong about the review state five versions running, and
   that is a decision error, not a typo: "still in review" is the argument for
@@ -1800,7 +1802,7 @@ Genuinely open items only. Resolved history is in `docs/decisions-archive.md`.
   does not own. That is a change to the "one provider per route" rule in a
   money path — **owner decision, not done.** The 4 premium orders ever placed
   delivered 3; that is the whole evidence base.
-- ⚠️ **2.13's recovery-card pool-rate steer is build-verified only** — no
+- ⚠️ **2.12 build 61's recovery-card pool-rate steer is build-verified only** — no
   device walk, same caveat as 2.12's picker and upsell card.
 - 🔴 **`AppState.routes` is now genuinely dead** — written once
   (`AppState.swift:1795`), read nowhere. ⚠️ This file previously carried a
