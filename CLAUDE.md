@@ -1878,7 +1878,18 @@ Each has been wrong within a day of being written at least once.
 
 **Verified 2026-09-09:**
 
-- **iOS**: `MARKETING_VERSION 2.12`, `CURRENT_PROJECT_VERSION 61`. **2.12 is
+- **iOS**: `MARKETING_VERSION 2.13`, `CURRENT_PROJECT_VERSION 62`.
+  🔴 **2.13 is staged in ASC at `PREPARE_FOR_SUBMISSION` with build 62
+  attached and release notes in all 13 locales — NOT submitted.** The owner
+  submits it by hand after adding screenshots (owner instruction 2026-09-10).
+  Do not run `asc-release.py submit 2.13` without being asked.
+  ⚠️ **2.12 was never released**: Apple refuses a second editable version
+  (`ENTITY_ERROR.RELATIONSHIP.INVALID`, "You cannot create a new version of
+  the App in the current state"), so the 2.12 row was RENAMED to 2.13 rather
+  than a new one created — same version id `614dfb01-…`, its 13
+  localizations intact. There is no separate 2.12 on ASC any more.
+  Historical 2.12 detail follows.
+- **iOS (2.12, superseded)**: `CURRENT_PROJECT_VERSION 61`. **2.12 is
   `DEVELOPER_REJECTED` with build 61 still attached and NO open submission**
   (owner asked for the cancel on 2026-09-10 ~11:30Z; submission `19946a38-…`
   reads `COMPLETE`, version `614dfb01-…`). It is the THIRD cancel of 2.12:
