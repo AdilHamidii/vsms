@@ -1772,8 +1772,12 @@ final class AppState {
     ///
     /// 40 chars is the cap: it is a greeting, and a longer one wraps the Home
     /// header rather than saying anything more.
+    ///
+    /// `source` splits the `display_name_set` series: `home` = the user typed
+    /// it, `apple` = the name Apple gave us at sign-in, flushed at cold launch.
     @discardableResult
-    func setDisplayName(_ raw: String, userId: String, using api: ProfileAPI) async -> Bool {
+    func setDisplayName(_ raw: String, userId: String, using api: ProfileAPI,
+                        source: String = "home") async -> Bool {
         let name = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !name.isEmpty, name.count <= 40 else { return false }
         do {
@@ -1786,7 +1790,7 @@ final class AppState {
                               createdAt: p.createdAt, referralCode: p.referralCode,
                               referredBy: p.referredBy)
         }
-        Analytics.shared.track("display_name_set", ["source": .string("home")])
+        Analytics.shared.track("display_name_set", ["source": .string(source)])
         return true
     }
 
@@ -1837,7 +1841,7 @@ final class AppState {
             defaults.removeObject(forKey: PrefKey.pendingDisplayName)
             return
         }
-        if await setDisplayName(pending, userId: userId, using: api) {
+        if await setDisplayName(pending, userId: userId, using: api, source: "apple") {
             defaults.removeObject(forKey: PrefKey.pendingDisplayName)
         }
     }
