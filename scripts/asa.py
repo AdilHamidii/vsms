@@ -38,6 +38,9 @@ Usage:
     ./scripts/asa.py adgroups <campaign-id>
     ./scripts/asa.py keywords <campaign-id> <adgroup-id>
     ./scripts/asa.py report [days]     # campaign performance, default 30d
+    ./scripts/asa.py searchterms <campaign> [days]
+                                       # the ACTUAL queries Apple matched —
+                                       # the only place they are ever shown
 
 Write commands — these SPEND MONEY and all require an explicit --yes:
 
@@ -46,8 +49,18 @@ Write commands — these SPEND MONEY and all require an explicit --yes:
     ./scripts/asa.py budget <id> <eur> --yes
     ./scripts/asa.py add-keywords <campaign> <adgroup> <bid> "kw1,kw2,..." --yes
                                          # EXACT, skips duplicates, reads back
+    ./scripts/asa.py create-eu --yes     # the three European campaigns
 
 Without --yes each prints exactly what it would send and changes nothing.
+
+    🔴 THERE IS NO LIFETIME BUDGET ANY MORE. Apple removed lifetime budgets in
+    June 2026 and PAUSED every campaign that carried one; `budgetAmount` reads
+    None on all 22 campaigns in this org, web-UI ones included.
+    `dailyBudgetAmount` is the ONLY cap that exists, so total exposure is
+    daily x days-until-a-human-pauses-it — there is nothing on the platform
+    that will stop a campaign on a date. `cmd_create_us` still SENDS
+    `budgetAmount` and `cmd_campaigns` still prints a `total` column; both are
+    inert. Never build a spend bound on either.
 
     WHY THE BIDS LOOK LOW. Measured from this app's own receipts: $232.59 net
     over 14 buyers, 6.9% of signups buy, so an install is worth $1.15 and
@@ -1096,6 +1109,283 @@ def cmd_add_keywords(campaign, adgroup, bid, keywords):
           f"Check delivery tomorrow: ./scripts/asa.py report 1")
 
 
+# ---------------------------------------------------------------------------
+# The European campaigns (2026-09-10)
+#
+# 🔴 WHY THESE CARRY A BROAD AD GROUP, when every other campaign here is
+# all-EXACT. On 2026-09-06 the deleted `vSMS WhatsApp EU` (2144617614) ran
+# 47 EXACT keywords at a €1.30 bid across DE/FR/ES/IT/NL/GB and took **16
+# impressions in its entire life**. Six of its ZERO-impression keywords
+# (`virtuelle nummer`, `numéro virtuel`, `recibir sms`, `ricevere sms`,
+# `numéro jetable`, `número temporal`) had full support in the live keyword
+# field at the time, so "the listing lacks the token" — the explanation
+# §9 of docs/asa-second-number-plan.md gives for the US cluster — does NOT
+# explain the European result. On the SAME DAY, in the SAME 14 European
+# storefronts, a vRoam campaign took **1,263 impressions**. The one
+# structural difference is that vRoam runs BROAD ad groups.
+#
+# So EU delivery has exactly two live hypotheses — low absolute query volume
+# on long-tail EXACT terms, versus something suppressing us specifically —
+# and a broad group beside an exact group on the same terms is the only
+# thing that separates them. Do not "simplify" these campaigns back to
+# all-EXACT without reading `searchterms` first.
+#
+# ⚠️ NOT Search Match (`automatedKeywordsOptIn`). It is the only construct in
+# this org that reliably spends its cap — `vRoam EN Discovery` took 1,146 and
+# 1,170 impressions on 09-06/07 — at the worst CPI in the account (**€3.86**),
+# and ASA budgets are CAMPAIGN-level with no per-ad-group cap, so it would
+# swallow the whole daily budget beside exact groups drawing ~2/day. BROAD
+# buys the same discovery and can be steered with negatives.
+#
+# 🔴 THERE IS NO LIFETIME BUDGET. Apple removed lifetime budgets in June 2026
+# and PAUSED every campaign that carried one; `budgetAmount` is None on all 22
+# campaigns in this org, including web-UI ones. `dailyBudgetAmount` is the only
+# cap that exists, so the spend bound is daily × days-until-someone-pauses-it.
+# €12/day total ≈ €168 over the 14-day read. Stopping is a HUMAN step.
+EU_DAILY = os.environ.get("ASA_EU_DAILY", "4")     # per campaign, 3 campaigns
+
+# (name, bid, matchType, [keywords])
+EU_CAMPAIGNS = [
+    {
+        "name": "vSMS EU Verification",
+        "countries": ["DE", "AT", "CH", "FR", "BE", "ES", "IT"],
+        "adgroups": [
+            ("DE — exact", "1.30", "EXACT", [
+                "virtuelle nummer", "virtuelle telefonnummer",
+                "temporäre nummer", "sms verifizierung"]),
+            ("FR — exact", "1.30", "EXACT", [
+                "numéro virtuel", "recevoir sms", "numéro temporaire",
+                "sms temporaire", "numéro jetable", "vérification sms"]),
+            ("ES — exact", "1.20", "EXACT", [
+                "recibir sms", "número virtual", "número temporal",
+                "sms temporal", "verificación sms"]),
+            ("IT — exact", "1.20", "EXACT", [
+                "numero virtuale", "ricevere sms", "numero temporaneo",
+                "sms temporaneo", "verifica sms"]),
+            # The match-type test. Same intent, broad.
+            ("EU — broad", "0.80", "BROAD", [
+                "virtuelle nummer", "numéro virtuel", "número virtual",
+                "numero virtuale", "recevoir sms", "recibir sms",
+                "ricevere sms", "temporäre nummer", "numéro temporaire",
+                "número temporal", "numero temporaneo"]),
+        ],
+    },
+    {
+        # Owner asked for second-number ads in the EU by name (2026-09-10),
+        # after being shown that all 20 line subscriptions ever sold are USA
+        # storefront. Its own campaign so its budget cannot be eaten by the
+        # verification terms and its readout stays clean.
+        "name": "vSMS EU Second Number",
+        "countries": ["DE", "AT", "CH", "FR", "BE", "ES", "IT"],
+        "adgroups": [
+            ("Second number — exact", "1.30", "EXACT", [
+                "zweite telefonnummer", "zweite nummer", "zweite handynummer",
+                "second numéro", "deuxième numéro",
+                "deuxième numéro de téléphone", "segundo número",
+                "secondo numero"]),
+            # `usa` forms only. The adjective forms are dead volume:
+            # `amerikanische nummer` popularity 0 (zero results),
+            # `numéro américain` 1, `número americano` 7, `numero americano` 14.
+            ("US number — exact", "1.30", "EXACT", [
+                "usa nummer", "us nummer", "us telefonnummer", "numéro usa",
+                "numéro us", "número usa", "numero usa"]),
+            ("Second number — broad", "0.80", "BROAD", [
+                "zweite telefonnummer", "second numéro", "deuxième numéro",
+                "segundo número", "secondo numero", "usa nummer",
+                "numéro usa", "numero usa"]),
+        ],
+    },
+    {
+        # ⚠️ Fallback language is the app's PRIMARY locale, en-US — not en-GB.
+        # GB and IE map to en-GB; NL/SE/DK/NO/FI/PL have no listing locale and
+        # fall back to en-US. The two keyword fields differ in exactly the
+        # token that matters: `receive` is in en-US and NOT in en-GB.
+        "name": "vSMS EU English",
+        "countries": ["GB", "IE", "NL", "SE", "DK", "NO", "FI", "PL"],
+        "adgroups": [
+            ("Temp SMS — exact", "1.30", "EXACT", [
+                "receive sms", "temp number", "sms verification", "temp sms",
+                "temporary sms", "otp number", "virtual number"]),
+            ("Second number — exact", "1.20", "EXACT", [
+                "second phone number", "second number", "2nd phone number"]),
+            ("US number — exact", "1.20", "EXACT", [
+                "us number", "usa number", "american number", "us phone number"]),
+            ("English — broad", "0.80", "BROAD", [
+                "receive sms", "second phone number", "virtual number",
+                "temp number", "us number", "sms verification"]),
+        ],
+    },
+]
+
+# `burner number` / `burner phone` are deliberately ABSENT: the owner paused
+# them on 2026-09-07 after they delivered 8 of 18 installs on two-way-texting
+# intent this product does not serve (outbound SMS outside NANP is blocked).
+
+
+def _create_eu_campaign(tok, org, spec):
+    """Create one EU campaign, its ad groups and keywords, reading each back."""
+    body = {
+        "name": spec["name"],
+        "adamId": ADAM_ID,
+        "countriesOrRegions": spec["countries"],
+        "dailyBudgetAmount": _eur(EU_DAILY),
+        "billingEvent": "TAPS",
+        "supplySources": ["APPSTORE_SEARCH_RESULTS"],
+        "adChannelType": "SEARCH",
+        "status": "ENABLED",
+    }
+    code, res = call("POST", "/campaigns", tok, org, body=body)
+    if code not in (200, 201):
+        die(f"campaign '{spec['name']}' create failed HTTP {code}: {json.dumps(res)[:500]}")
+    cid = res["data"]["id"]
+    print(f"campaign {cid} '{spec['name']}' "
+          f"({','.join(spec['countries'])}, {EU_DAILY} {CURRENCY}/day)")
+
+    # Negatives are LOAD-BEARING here, unlike on an all-EXACT campaign: the
+    # broad groups can match `esim` / `data plan` queries that belong to the
+    # owner's other app, whose EU campaign targets a superset of these
+    # countries at €30/day.
+    code, _ = call("POST", f"/campaigns/{cid}/negativekeywords/bulk", tok, org,
+                   body=[{"text": t, "matchType": "BROAD"} for t in NUMBER_NEGATIVES_BROAD]
+                      + [{"text": t, "matchType": "EXACT"} for t in NUMBER_NEGATIVES_EXACT])
+    print(f"  negatives -> HTTP {code}")
+
+    start = time.strftime("%Y-%m-%dT00:00:00.000")
+    groups = []
+    for name, bid, match, kws in spec["adgroups"]:
+        gbody = {"name": name, "startTime": start,
+                 "defaultBidAmount": _eur(bid),
+                 "automatedKeywordsOptIn": False,
+                 "pricingModel": "CPC", "status": "ENABLED"}
+        code, res = call("POST", f"/campaigns/{cid}/adgroups", tok, org, body=gbody)
+        if code not in (200, 201):
+            print(f"  adgroup '{name}' FAILED HTTP {code}: {json.dumps(res)[:300]}")
+            continue
+        gid = res["data"]["id"]
+        code, _ = call(
+            "POST", f"/campaigns/{cid}/adgroups/{gid}/targetingkeywords/bulk", tok, org,
+            body=[{"text": t, "matchType": match, "bidAmount": _eur(bid),
+                   "status": "ACTIVE"} for t in kws])
+        # READ BACK — this API returns HTTP 200 for writes it ignores.
+        rc, live = call("GET", f"/campaigns/{cid}/adgroups/{gid}/targetingkeywords?limit=1000",
+                        tok, org)
+        live_n = len(live.get("data") or []) if rc == 200 else -1
+        # 🔴 endTime must be null. An ad group that reached its end date is
+        # what silently killed the previous EU campaign — it read ENABLED.
+        gc, gdata = call("GET", f"/campaigns/{cid}/adgroups/{gid}", tok, org)
+        end = (gdata.get("data") or {}).get("endTime") if gc == 200 else "?"
+        print(f"  adgroup {gid} '{name}' {match} bid {bid}: "
+              f"{len(kws)} sent (HTTP {code}), {live_n} live, endTime={end}")
+        groups.append((gid, name, len(kws), live_n, end))
+    return cid, groups
+
+
+def cmd_create_eu():
+    """Stand up the three European campaigns. Dry-run unless --yes."""
+    total = sum(len(k) for s in EU_CAMPAIGNS for _, _, _, k in s["adgroups"])
+    for s in EU_CAMPAIGNS:
+        print(f"{s['name']}: {','.join(s['countries'])} · {EU_DAILY} {CURRENCY}/day")
+        for name, bid, match, kws in s["adgroups"]:
+            print(f"    {name:<26} {match:<5} bid {bid}  {len(kws):>2} kw  e.g. \"{kws[0]}\"")
+    n_days = 14
+    cap = float(EU_DAILY) * len(EU_CAMPAIGNS) * n_days
+    print(f"\nnegatives: {len(NUMBER_NEGATIVES_BROAD)} broad + "
+          f"{len(NUMBER_NEGATIVES_EXACT)} exact, per campaign")
+    print(f"⚠️  NO lifetime cap exists on this platform (Apple removed lifetime")
+    print(f"    budgets in June 2026). Exposure is {EU_DAILY}x{len(EU_CAMPAIGNS)} = "
+          f"{float(EU_DAILY)*len(EU_CAMPAIGNS):.0f} {CURRENCY}/day until a HUMAN pauses it")
+    print(f"    — ≈{cap:.0f} {CURRENCY} over a {n_days}-day read.")
+    if not _confirm(f"would create {len(EU_CAMPAIGNS)} campaigns, "
+                    f"{sum(len(s['adgroups']) for s in EU_CAMPAIGNS)} ad groups, "
+                    f"{total} keywords"):
+        return
+
+    tok = access_token()
+    org = org_id(tok)
+    code, existing = call("GET", "/campaigns?limit=1000", tok, org)
+    names = {c.get("name") for c in (existing.get("data") or [])} if code == 200 else set()
+    for s in EU_CAMPAIGNS:
+        if s["name"] in names:
+            die(f"campaign '{s['name']}' already exists — edit it, do not duplicate it")
+
+    results = [_create_eu_campaign(tok, org, s) for s in EU_CAMPAIGNS]
+
+    print("\nread-back:")
+    code, data = call("GET", "/campaigns?limit=1000", tok, org)
+    by_id = {str(c["id"]): c for c in (data.get("data") or [])} if code == 200 else {}
+    bad = []
+    for cid, groups in results:
+        c = by_id.get(str(cid), {})
+        print(f"  {cid} {c.get('name')}: status {c.get('status')} · "
+              f"serving {c.get('servingStatus')} {c.get('servingStateReasons') or ''} · "
+              f"daily {money(c.get('dailyBudgetAmount'))}")
+        for gid, name, wanted, live, end in groups:
+            if wanted != live:
+                bad.append(f"{cid}/{gid} '{name}': sent {wanted}, {live} live")
+            if end not in (None, "null"):
+                bad.append(f"{cid}/{gid} '{name}': endTime is {end}, must be null")
+    if bad:
+        print(f"  ✗ {len(bad)} discrepancy(ies):")
+        for b in bad:
+            print(f"      {b}")
+        sys.exit(1)
+    print("  ✓ every keyword read back, every endTime null.")
+    print("  Day 1 is always ~nothing in this account; read day 2:")
+    print("    ./scripts/asa.py report 2 && ./scripts/asa.py searchterms <cid> 2")
+
+
+def cmd_searchterms(campaign, days="7"):
+    """The actual queries Apple matched — the one thing App Analytics never shows.
+
+    ⚠️ Two ways to get a false "no rows" out of this endpoint, both hit while
+    building it:
+      * `/api/v4` is DEAD — it answers HTTP 410 INVALID_API_VERSION. BASE is v5.
+      * sending `granularity` alongside `returnRowTotals` is HTTP 400
+        ("searchTerms level reports supports only returnRowTotals or
+        granularity data, not both"). Send returnRowTotals ONLY.
+    EXACT keywords DO return rows here — Apple reports the real query, and its
+    close-variant matching means the query often differs from the keyword
+    (`2nd phone number` -> "second phone number"). It is broad/discovery that
+    surfaces queries we hold no keyword for at all.
+    """
+    tok = access_token()
+    end = date.today()
+    start = end - timedelta(days=int(days))
+    code, data = call("POST", f"/reports/campaigns/{campaign}/searchterms", tok, org_id(tok),
+                      body={
+                          "startTime": start.isoformat(), "endTime": end.isoformat(),
+                          "returnRowTotals": True,
+                          "returnRecordsWithNoMetrics": False,
+                          "selector": {
+                              "conditions": [{"field": "deleted", "operator": "IN",
+                                              "values": ["true", "false"]}],
+                              "orderBy": [{"field": "impressions",
+                                           "sortOrder": "DESCENDING"}],
+                              "pagination": {"offset": 0, "limit": 1000},
+                          },
+                      })
+    if code != 200:
+        die(f"HTTP {code}: {json.dumps(data)[:400]}")
+    rows = (data.get("data", {}).get("reportingDataResponse", {}).get("row") or [])
+    out = []
+    for r in rows:
+        m = r.get("metadata", {})
+        t = r.get("total", {})
+        out.append({
+            "query": m.get("searchTermText") or "(none reported)",
+            "keyword": m.get("keyword") or "(search match)",
+            "match": m.get("matchType") or "",
+            "impr": t.get("impressions"), "taps": t.get("taps"),
+            "inst": t.get("totalInstalls"),
+            "spend": money(t.get("localSpend")),
+        })
+    show(out, ["query", "keyword", "match", "impr", "taps", "inst", "spend"])
+    print(f"\n{len(out)} search term(s), {start} .. {end}, campaign {campaign}.")
+    if not out:
+        print("No rows. That is NOT proof the report is broken — check the")
+        print("campaign actually took impressions first (`asa.py report`).")
+
+
 COMMANDS = {
     "doctor": cmd_doctor, "acls": cmd_acls, "campaigns": cmd_campaigns,
     "adgroups": cmd_adgroups, "keywords": cmd_keywords, "report": cmd_report,
@@ -1104,6 +1394,7 @@ COMMANDS = {
     "rewrite-keywords": cmd_rewrite_keywords,
     "create-number-campaigns": cmd_create_number_campaigns,
     "add-keywords": cmd_add_keywords,
+    "create-eu": cmd_create_eu, "searchterms": cmd_searchterms,
 }
 
 

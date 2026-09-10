@@ -1688,7 +1688,32 @@ SUBSCRIPTION it bought.
 Delivery once went to exactly zero for two days with `endTime`, budgets, bids
 and serving state all reading healthy. Apple exposes **no billing endpoint**, so
 the campaign layer keeps reading fine forever. Check ads.apple.com → Settings →
-Billing. Plan, keyword scores and kill rules: `docs/asa-second-number-plan.md`.
+Billing. Plan, keyword scores and kill rules: `docs/asa-second-number-plan.md` (US, and
+the 09-05→07 run the owner paused); **`docs/asa-eu-campaigns.md` (Europe,
+2026-09-10)**.
+
+🔴 **EU delivery is a MATCH-TYPE problem, not a relevance problem, and
+`asa-second-number-plan.md` §9 says otherwise.** That section blames the
+09-06 zero-impression result on the listing carrying no `usa` token — true of
+the US cluster, false as a general explanation: six EU keywords whose tokens
+WERE in the live keyword field also drew zero at a €1.30 bid, while a sibling
+campaign with BROAD ad groups took **1,263 impressions to vSMS's 15 on the
+same day in the same storefronts**. Re-confirmed inside one campaign on
+09-10 — broad keywords 49–85 impressions, exact 1–5. **Never build an
+all-EXACT campaign for a European storefront without a broad group beside it.**
+
+🔴 **There is NO lifetime budget any more — Apple removed them June 2026** and
+paused every campaign that used one. `budgetAmount` reads None on all 22
+campaigns in the org. `dailyBudgetAmount` is the only cap, so exposure is
+daily × days-until-a-human-pauses-it; nothing on the platform stops a campaign
+on a date. `asa.py`'s `cmd_create_us` still sends `budgetAmount` and
+`cmd_campaigns` still prints a `total` column — both inert.
+
+`scripts/asa.py searchterms <campaign> [days]` is the ONLY way to see the
+queries Apple actually matched. Two traps, both hit while writing it: `/api/v4`
+answers **HTTP 410 INVALID_API_VERSION** (BASE is already v5), and sending
+`granularity` alongside `returnRowTotals` is **HTTP 400**. EXACT keywords DO
+return rows.
 
 ⚠️ **`APPSTORE_SEARCH_RESULTS` campaigns take NO ad objects.** An empty
 `/adgroups/{id}/ads` is normal, not the reason for zero impressions. Diagnose
@@ -1928,15 +1953,17 @@ Each has been wrong within a day of being written at least once.
   paused, daily credit **disabled**.
 - **Balances** — re-query, these move hourly:
   `select key, value->>'balance_usd' from app_config where key like '%_health';`
-  5sim $8.63, HeroSMS $14.92, Telnyx **$4.20**, eSIM Access $88.31.
+  5sim $8.29, HeroSMS $14.90, Telnyx $12.42, eSIM Access $86.69
+  (re-read 2026-09-10 19:40Z).
 
-🔴 **TWO WATCHDOG CHECKS ARE FIRING RIGHT NOW:**
-- **`telnyx-float` — $4.20 against a $10.00 floor.** This is the urgent one: it
-  is not merely a blocked sale, it means an existing subscriber's number cannot
-  be renewed, and a new subscriber can pay $5.99 and get **no number**
-  (`20100 Insufficient Funds`). **Owner action: fund Telnyx.**
-- **`5sim-float` — $8.63 covers ~3.0 days of reservations** (the runway check,
-  not the floor).
+🔴 **ONE WATCHDOG CHECK IS FIRING:**
+- **`5sim-float` — $8.29 covers ~3.4 days of reservations** ($2.45/day gross;
+  the runway check, not the $5 floor). 5sim is the PRIMARY SMS provider, so an
+  empty float fails every temp-SMS order as `provider_unreachable`.
+  **Owner action: fund 5sim.**
+- ✅ **`telnyx-float` cleared** — $12.42 against the $10 floor, `alert_tier` 0.
+  It read $4.20 earlier on 2026-09-10 and was funded; the old text calling it
+  "the urgent one" is gone because it is no longer true.
 
 ### Territories and store
 
@@ -1951,8 +1978,10 @@ Genuinely open items only. Resolved history is in `docs/decisions-archive.md`.
 
 **Money / owner action**
 
-- 🔴 **Fund Telnyx.** $4.20 against the $10 floor — see above. Everything else
-  on this list is cheaper than this one.
+- 🔴 **Fund 5sim.** $8.29, ~3.4 days of runway, and it is the only watchdog
+  check currently failing. Everything else on this list is cheaper than this
+  one. (Telnyx was the urgent one earlier on 2026-09-10 and is now funded at
+  $12.42 — re-query both, never quote either.)
 - ⚠️ **`/revenue` and `/profit` understate by every subscription dollar.** They
   read `iap_receipts` only; neither `line_subscriptions` nor
   `email_subscriptions` is included.
@@ -2103,9 +2132,21 @@ the same commit.**
 Moved to the `aso-listing` skill. **Search is the app's ENTIRE acquisition
 channel** — invoke it before touching the listing, keywords or screenshots.
 
-The live name is `vSMS: Second Number & Temp SMS` / subtitle `2nd Phone Line &
-Verification`, in all 13 locales. **Promotional text is EMPTY on every
-version** — the one lever that needs no review.
+The live name is `vSMS: Second Number & Temp SMS` / subtitle **`USA Phone Line
+& Verification`**, in all 13 locales — localized, so de-DE is `USA-Nummer &
+SMS-Code`, fr-FR `Ligne USA & SMS temporaire`, it `Linea USA e SMS temporanei`.
+The USA token shipped with **2.10 (2026-09-06)** and is the app's ONLY
+US-intent metadata: ⚠️ **the 100-char keyword field still carries no `usa` in
+any locale** (checked 2026-09-10 on live 2.11 and on 2.13 in review; the `it`
+field's `usaegetta` is Italian for *usa e getta*, "disposable", and is one
+token). **Promotional text is EMPTY on every version** — the one lever that
+needs no review.
+
+⚠️ **The fallback language is the app's PRIMARY locale, `en-US`, not en-GB**
+(`GET /v1/apps/6774768570` → `primaryLocale`). GB and IE resolve to `en-GB`;
+every storefront with no listing locale — NL, SE, DK, NO, FI, PL — resolves to
+`en-US`. The two keyword fields differ in load-bearing tokens: `receive` is in
+en-US and **not** in en-GB. There is no `nl` locale at all.
 
 **Rebrand trigger:** a non-SMS line exceeds **40% of monthly net for two
 consecutive months** (read from `/profit` once it includes subscriptions — it
