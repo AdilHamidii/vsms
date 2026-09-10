@@ -551,7 +551,7 @@
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "%@ tu primer mes"
+            "value": "%@ por tu primer mes"
           }
         },
         "fr": {
@@ -3797,7 +3797,7 @@
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Eine Nummer, die Ihnen gehört"
+            "value": "Eine Nummer, die dir gehört"
           }
         },
         "es": {
@@ -18189,7 +18189,7 @@
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Funktioniert nicht bei jedem Dienst – kommt kein Code an, wechseln Sie für %lld Credits zu einer neuen Nummer"
+            "value": "Funktioniert möglicherweise nicht bei jedem Dienst – kommt kein Code an, wechseln Sie für %lld Credits zu einer neuen Nummer"
           }
         },
         "es": {
@@ -18229,7 +18229,7 @@
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Funktioniert nicht bei jedem Dienst – kommt kein Code an, wechseln Sie für ein paar Credits zu einer neuen Nummer"
+            "value": "Funktioniert möglicherweise nicht bei jedem Dienst – kommt kein Code an, wechseln Sie für ein paar Credits zu einer neuen Nummer"
           }
         },
         "es": {
