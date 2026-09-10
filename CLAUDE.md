@@ -127,6 +127,15 @@ A monthly free trial is the obvious lever and the owner declined it on
 note also that `SubscriptionStore.trialLabel` reads `yearlyProduct` ONLY, so a
 monthly offer would exist in ASC and render nowhere without a client change.
 
+**The yearly line plan carried a 3-day free trial from 2026-08-15 to at least
+08-24, and it is GONE from ASC** (`GET /v1/subscriptions/6798759539/
+introductoryOffers` → empty, 2026-09-10; `tmp/introoffers.py` in the job dir
+lists every offer). Its record: 9 takers, 1 call between them, 0 conversions,
+a $1 number each — decoded from `latest_signed_transaction.offerDiscountType
+= FREE_TRIAL` on `line_subscriptions`. `trialLabel` therefore renders nothing
+today. `mail.yearly` DOES still carry a 3-day trial in every territory. Do not
+re-add a line trial without the owner.
+
 ### What the line can and cannot do
 
 Every ✅ below is proven by a real transaction, not inferred. The ❌ is what the
@@ -315,7 +324,7 @@ relay-poll-active-orders  * * * * *     relay-telegram-notify   * * * * *
 watchdog                  */10 * * * *  relay-sync-prices       17 * * * *
 relay-sync-5sim           7 * * * *     (PRIMARY pricing sync, ~71s/run)
 relay-sync-herosms        37 * * * *    (offset from sync-prices on purpose)
-relay-sync-esim-plans     0 2 * * *     relay-winback           0 15 * * *
+relay-sync-esim-plans     0 2 * * *     relay-winback           0 15 * * *  (4 nudge cohorts, below)
 expire-esim-orders        */15 * * * *  expire-email-orders     */5 * * * *
 purge-job-run-details     7 3 * * *     telegram-events-prune   30 4 * * *
 app-events-prune          50 3 * * *
@@ -1026,6 +1035,18 @@ route pin, because the buyer paid for *that* real-SIM pool and must never be
 silently downgraded. Rotation is wrapped in try/catch: it is an optimization,
 never a reason to fail an order.
 
+**The recovery card's country offer (client, 2.13) resolves in this order:**
+our own measured record ≥ 40% → the best **High-band pool** by the vendor's
+hourly `pool_rate_pct` (> 60, `bestPoolRatedCountry`, never the failed
+country, never a route our record says delivers nothing, affordable on the
+refunded balance) → the weekly vendor top-10 (`bestRankedCountry`) → "Try
+again" on the same route with a fresh number. The pool step was added because
+paying users' orders delivered 34% (Sept 23%) and, with our own record
+covering a handful of routes and the top-10 scrape going stale between
+manual runs, the card's realistic fallback was the pool that had just failed.
+It renders the band WORD via `NetworkRateMeter`, hides the meter under
+`delivery_metrics_hidden`, and says in one sentence that it is not our record.
+
 ### Measured arrival timing
 
 `services.eta_seconds` is seed data (22–35s) and the app used to render it as
@@ -1319,6 +1340,18 @@ deletes it at Telnyx within ~30 min. Every lapsed subscriber in the product's
 history had auto-renew OFF at expiry, so the 7-day "fix your card" window
 protected a recovery that never once happened.
 
+✅ **Subscribers with auto-renew OFF are warned before the number is deleted
+(2026-09-10).** `winback` cohort 4 pushes `line_expiry` 3 days and 1 day
+before `expires_at` for `state='active', auto_renew=false` lines
+(`line_expiry_nudge_candidates()`, daily at 15:00 UTC, so the 3d push lands
+3–4 days out and the 1d push 12–36 h out). Dedupe is
+`line_subscriptions.expiry_nudged_{3d,1d}_for` = the `expires_at` it was sent
+FOR, so a renewal re-arms both without a flag reset. Why it exists: 6 of the 8
+active monthly lines had auto-renew off while averaging 27 calls in 8 days,
+and the only line push in the product was the post-renewal "your new number".
+The copy says where to turn auto-renew back on and that the number cannot be
+recovered; it never states a time, because we do not know the user's zone.
+
 🔴 **`reclaim_lapsed_lines()` sweeps `active`, `grace` AND `past_due`.** It swept
 only `active` until 2026-08-30 and the other two leaked $1/month per number
 forever — the ONLY exit from them was an Apple `EXPIRED` notification, and **the
@@ -1385,6 +1418,35 @@ that could never move — pinning the watchdog red for three days, burying a
 genuine float page, and structurally suppressing a winback cohort. **When you
 retire a subsystem, write its flag in the SAME migration that unschedules its
 jobs, and after writing any guard that reads a key, `select` the key.**
+
+### Nudges (`winback`, daily 15:00 UTC)
+
+Four cohorts, each with its own candidate function and dedupe column;
+`winback/index.ts` is the only sender. Re-derive sends from the function's
+own JSON response (`select content from net._http_response where …`) or the
+`*_sent_at` / `*_nudged_*_for` columns — never from `wallet_transactions`,
+which records only the retired `winback_bonus` grant.
+
+| cohort | candidates | dedupe | gate |
+|---|---|---|---|
+| never-ordered | `winback_candidates()` | `profiles.winback_sent_at`, ≤3 sends 14d apart | none |
+| stranded (last order failed, balance > 0) | `stranded_credit_candidates()` | `profiles.stranded_nudge_sent_at`, once | **primary provider float ≥ $7.50 + no failing watchdog check other than `*-float` + fresh verdict** |
+| reorder (a code came through 3–90 days ago) | `reorder_candidates()` | `profiles.reorder_nudge_sent_at`, ≤3 | none |
+| line expiry (auto-renew off, ≤ 4 days) | `line_expiry_nudge_candidates()` | `line_subscriptions.expiry_nudged_{3d,1d}_for` | none |
+
+🔴 **The stranded gate must never again require `failing` to be EMPTY, and
+must read the PRIMARY provider's `<provider>_health`.** Both were wrong on
+2026-09-10 and had been for a month: `5sim-float` is a runway WARNING, not an
+outage, yet it silenced every send from 2026-08-09; and the key read was
+`herosms_health`, the provider that was primary when the line was written —
+the same drift that once pointed it at SMSPVA. A `*-float` check is ignored
+because the balance is gated directly; `telnyx-float` is not even this
+product. First run after the fix: 100 stranded + 30 reorder sends. **After
+any provider switch, re-point this read (checklist step 6).**
+
+The stranded cohort is NOT "buyers only" — it is anyone with a balance whose
+last order failed, so ~95% of it holds the free grant. The copy is honest for
+both ("N credits in your wallet; a number that fails is refunded").
 
 ### Telegram ops bot
 
@@ -1645,7 +1707,7 @@ Each has been wrong within a day of being written at least once.
   2.12`. It has been wrong about the review state five versions running, and
   that is a decision error, not a typo: "still in review" is the argument for
   cutting another release.
-- **Backend**: 49 edge function dirs besides `_shared`, 227 migration files, 26
+- **Backend**: 49 edge function dirs besides `_shared`, 229 migration files, 26
   files in `_shared`, 136 Swift sources, 23 active cron jobs.
 - **Catalog**: 9,364 active routes (5sim 8,074 / HeroSMS 1,290), 468 services,
   0 active eSIM plans (line parked). `active_sms_provider()` = `5sim`.
@@ -1723,25 +1785,23 @@ Genuinely open items only. Resolved history is in `docs/decisions-archive.md`.
 
 **Correctness / hygiene**
 
-- 🔴 **`winback`'s stranded-credits cohort has sent nothing since 2026-08-09.**
-  Its `claimSafe` gate requires `watchdog.failing` to be EMPTY, and a float
-  warning (`5sim-float` / `telnyx-float`) has been in that array almost
-  continuously since — so a runway *warning* silences a nudge whose whole
-  audience (30 buyers idle 14d+ holding 488 paid credits, 25 with a push
-  token, 4 ever nudged — 2026-09-10) is people who already paid. It also reads
-  `herosms_health`, the provider serving ~14% of routes, not `5sim_health`.
-  Gate it on the PRIMARY provider's balance and on the checks that mean
-  "orders fail", not on any check at all. Measured effect of the 53 sends it
-  did make: 5 ordered, 2 codes, 1 purchase — small, but it is their own money.
-- ⚠️ **No pre-expiry push exists for the rented line.** The only line push is
-  the post-renewal "your new number" one (`apple-notifications`). With no hold,
-  a lapsed number is gone within ~30 min, and 6 of the 8 active monthly
-  subscribers have auto-renew OFF while averaging 27 calls in 8 days
-  (2026-09-10). Nobody tells them the number they are using will be deleted.
-- ⚠️ **The yearly line trial has converted 0 of 9**, and those 9 lines made 1
-  call between them — the trial attracts people who never use the product and
-  costs a $1 number each. Re-derive: `select state, auto_renew, count(*) from
-  line_subscriptions where product_id like '%yearly' group by 1,2`.
+- ⚠️ **The Real SIM tier does not exist on ANY 5sim-owned route** — 0 of 8,065
+  carry `premium_credits` (2026-09-10; `select provider, count(*) filter (where
+  premium_credits is not null) from routes where status='active' group by 1`),
+  and every US Meta/dating route paying users fail on (whatsapp/us 1 of 8,
+  instagram/us 0 of 3, badoo/us 0 of 4, tinder/us 1 of 4) is 5sim-owned.
+  `create-order` resolves `premiumPin` only for `smspva`/`herosms` owners, so
+  a premium request there is a 409 by omission. HeroSMS holds real-carrier
+  pins (`herosms_real_operators`) on 2,595 of those rows, at a fraction of
+  5sim's cost (instagram/us 7¢ vs 175¢). Enabling premium there means a
+  TIER-SCOPED second owner: `premiumPin` from `herosms_real_operators` when
+  `provider='5sim'`, the reservation sent to HeroSMS, the margin gate reading
+  `herosms_cost_cents`, and `sync-herosms` writing `premium_credits` on rows it
+  does not own. That is a change to the "one provider per route" rule in a
+  money path — **owner decision, not done.** The 4 premium orders ever placed
+  delivered 3; that is the whole evidence base.
+- ⚠️ **2.13's recovery-card pool-rate steer is build-verified only** — no
+  device walk, same caveat as 2.12's picker and upsell card.
 - 🔴 **`AppState.routes` is now genuinely dead** — written once
   (`AppState.swift:1795`), read nowhere. ⚠️ This file previously carried a
   *refutation* saying it was read in `CreditsSheet.swift`; that was true when
