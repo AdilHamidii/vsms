@@ -38,9 +38,10 @@ struct TempScreen: View {
     @Environment(AppState.self) private var state
     @Environment(APIClient.self) private var api
     @Environment(Session.self) private var session
-    // Home renders the e-mail price, so it needs the same entitlement input the
-    // domain sheet uses. Without it Home said "Free" to a user whose one free
-    // address was already spent, and the tap was refused into a paywall.
+    // This screen renders the e-mail price, so it needs the same entitlement
+    // input the domain sheet uses. Without it TempScreen said "Free" to a user
+    // whose one free address was already spent, and the tap was refused into a
+    // paywall.
     @Environment(MailSubscriptionStore.self) private var mailStore
 
     var openServices: () -> Void = {}
@@ -55,7 +56,7 @@ struct TempScreen: View {
     @State private var appeared = false
     /// Presented from HERE, not through `state.showMailPaywall`. The root
     /// sheet is unreachable from any screen under a `fullScreenCover`, and
-    /// this keeps Home on the same pattern as `EmailCodeScreen`.
+    /// this keeps TempScreen on the same pattern as `EmailCodeScreen`.
     @State private var showMailPaywall = false
 
     var body: some View {
@@ -742,8 +743,9 @@ struct TempScreen: View {
     }
 
     /// What a free domain costs THIS account, from the one shared definition
-    /// the domain sheet also reads. Home used to hardcode "Free" for every
-    /// `isFree` domain and so contradicted the sheet the user had just left.
+    /// the domain sheet also reads. This screen used to hardcode "Free" for
+    /// every `isFree` domain and so contradicted the sheet the user had just
+    /// left.
     private var freeEmailAccess: FreeEmailAccess {
         FreeEmailAccess.resolve(isEntitled: mailStore.isEntitled,
                                 hasUsedFree: state.hasUsedFreeEmail)
@@ -885,10 +887,10 @@ struct TempScreen: View {
         }
     }
 
-    /// "Have any questions?" → WhatsApp. The last card on Home, and since the
-    /// eSIM teaser was removed with its tab (2026-09-08) the only one, so
-    /// it reads as one more thing the app offers rather than an alert. The
-    /// prefilled message carries the build and a short account id
+    /// "Have any questions?" → WhatsApp. The last card on this screen, and
+    /// since the eSIM teaser was removed with its tab (2026-09-08) the only
+    /// one, so it reads as one more thing the app offers rather than an alert.
+    /// The prefilled message carries the build and a short account id
     /// (`LegalLinks.supportWhatsApp`), so the owner never has to ask.
     private var supportRow: some View {
         Button {

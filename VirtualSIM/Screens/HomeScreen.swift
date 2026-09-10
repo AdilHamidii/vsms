@@ -47,6 +47,14 @@ struct HomeScreen: View {
     /// redraw and make the one number this event answers meaningless.
     @State private var tracked = false
 
+    /// The card order, resolved ONCE into a stored property rather than
+    /// computed per body evaluation — the same rule, and the same reason, as
+    /// `TabBar.items`: `AppState` is `@Observable` and this screen redraws on
+    /// every collection it reads, so a computed order would hit UserDefaults on
+    /// each redraw and could change mid-session if anything ever wrote the key
+    /// while the app was open.
+    private let productOrder = AppTab.productOrder
+
     /// The user holds a rented number RIGHT NOW.
     ///
     /// `linesLoaded` is part of the predicate on purpose: before the fetch
@@ -79,7 +87,7 @@ struct HomeScreen: View {
                     .riseIn(appeared, index: 2)
 
                 VStack(spacing: 10) {
-                    ForEach(AppTab.productOrder, id: \.self) { tab in
+                    ForEach(productOrder, id: \.self) { tab in
                         switch tab {
                         case .temp:
                             smsCard
@@ -109,14 +117,13 @@ struct HomeScreen: View {
         }
         .task {
             withAnimation(RMotion.content) { appeared = true }
-            // Cheap and idempotent (`loadProduct` returns immediately once the
-            // product is in hand). It prices the number card — and until it
-            // answers that card simply carries no price line rather than a
-            // literal one.
-            await subs.loadProduct()
-            // The missed-call count reads 0 until this lands, which is the
-            // honest direction to be wrong in: it undercounts for a moment
-            // rather than claiming a call that was not missed.
+            // ⚠️ THE CALL LOAD GOES FIRST, and the order is the whole point:
+            // these two awaits used to run in sequence behind `loadProduct`,
+            // so a subscriber's missed-call count waited on a StoreKit round
+            // trip that prices a card they are not even shown. The count reads
+            // 0 until this lands — the honest direction to be wrong in, since
+            // it undercounts for a moment rather than claiming a call that was
+            // not missed — so the shorter that moment is, the better.
             //
             // 🔴 `loadLine` and `loadLineThreads` are deliberately NOT called
             // here — `coldStart` answers both before the reveal, and a second
@@ -124,6 +131,11 @@ struct HomeScreen: View {
             if state.line?.status.isLive == true {
                 await state.loadLineCalls(using: LineAPI(client: api))
             }
+            // Cheap and idempotent (`loadProduct` returns immediately once the
+            // product is in hand). It prices the number card — and until it
+            // answers that card simply carries no price line rather than a
+            // literal one.
+            await subs.loadProduct()
         }
     }
 
@@ -338,8 +350,11 @@ struct HomeScreen: View {
                 .contentShape(.rect)
             }
         }
+        // No `.accessibilityElement(children: .combine)`: a Button already
+        // exposes ONE element built from its label, and combining on top of it
+        // can drop the `.isButton` trait — announcing the row as static text.
+        // The whole row stays the tap target through `.contentShape` above.
         .buttonStyle(PressScaleStyle(scale: 0.99))
-        .accessibilityElement(children: .combine)
     }
 
     /// One event, one prop, one vocabulary:
