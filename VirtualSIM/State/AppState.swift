@@ -1341,6 +1341,35 @@ final class AppState {
             .map { (country: $0.country, rank: $0.rank, price: $0.price) }
     }
 
+    /// Best country for a RETRY by the vendor's published POOL rate — the
+    /// hourly figure on `routes.pool_rate_pct` — when we have measured nothing
+    /// ourselves. Only a HIGH-band pool qualifies (> 60, the threshold
+    /// `NetworkRateMeter` paints green): offering a Medium pool as the fix for
+    /// a failure is cheapest-first wearing a nicer name. Bookable, affordable
+    /// on the current balance, never the country that just failed, and never
+    /// a route our own record says delivers nothing. Highest rate wins; ties
+    /// go to the cheaper.
+    ///
+    /// Sits between our own record and the weekly vendor ranking in the
+    /// recovery card. The ranking is a hand-collected top-10 per service that
+    /// goes stale between scrapes; the pool rate is republished every hour for
+    /// every 5sim route, which is most of the catalog. Measured 2026-09-10:
+    /// orders placed by PAYING users delivered 34% (23% in September), and the
+    /// card's only fallback for them was "Try again" on the pool that had just
+    /// failed.
+    func bestPoolRatedCountry(for service: Service,
+                              excluding failed: Country?) -> (country: Country, rate: Int, price: Int)? {
+        countries.compactMap { c -> (country: Country, rate: Int, price: Int)? in
+            guard c.id != failed?.id,
+                  let rate = poolRate(for: service, country: c), rate > 60,
+                  let price = cost(for: service, country: c), price <= balance
+            else { return nil }
+            if let own = rateInfo(for: service, country: c), own.isMeasured, own.rate == 0 { return nil }
+            return (c, rate, price)
+        }
+        .max { a, b in (a.rate, -a.price) < (b.rate, -b.price) }
+    }
+
     /// A service's ranked countries, best first, restricted to ones we can
     /// actually sell. A row the user cannot buy is worse than no row — it
     /// advertises inventory and then dead-ends.

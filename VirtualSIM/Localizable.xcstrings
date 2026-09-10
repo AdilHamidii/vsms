@@ -32108,6 +32108,47 @@
         }
       }
     },
+    "The best network-wide delivery rate for this service right now. Not our own record — we haven't tested it ourselves.": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Die derzeit beste netzweite Zustellrate für diesen Dienst. Nicht unsere eigene Bilanz – wir haben es selbst noch nicht getestet."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "La mejor tasa de entrega de la red para este servicio ahora mismo. No es nuestro propio historial: aún no lo hemos probado."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Le meilleur taux de réception du réseau pour ce service en ce moment. Ce n'est pas notre propre bilan : nous ne l'avons pas encore testé."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Il miglior tasso di consegna della rete per questo servizio al momento. Non è il nostro storico: non l'abbiamo ancora testato."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "このサービスで現在ネットワーク全体の到達率が最も高い国です。当社自身の実績ではなく、まだ検証していません。"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "A melhor taxa de entrega da rede para este serviço agora. Não é o nosso próprio histórico: ainda não testamos."
+          }
+        }
+      }
+    },
     "The call dropped.": {
       "localizations": {
         "de": {

@@ -24,15 +24,32 @@ struct RecoveryScreen: View {
     // delivery record, removed 2026-08-22; see the header of
     // `SuccessBadge.swift`.
 
-    /// Fallback when we have measured nothing for this service — which is the
-    /// common case, since route-level evidence covers a handful of routes.
-    /// Only consulted when `suggestion` is nil: our own delivery always wins
-    /// over a third party's, because it describes orders we actually placed.
+    /// First fallback when we have measured nothing for this service — which
+    /// is the common case, since route-level evidence covers a handful of
+    /// routes: the best HIGH-band pool by the vendor's hourly published rate.
+    /// Consulted before the weekly ranking because it is fresher and covers
+    /// nearly the whole catalog. Never offers the country that just failed.
+    private var poolSuggestion: (country: Country, rate: Int, price: Int)? {
+        guard suggestion == nil else { return nil }
+        return state.bestPoolRatedCountry(for: context.service, excluding: context.failedCountry)
+    }
+
+    /// Second fallback: the vendor's ranked top-10 for the service. Only
+    /// consulted when both `suggestion` and `poolSuggestion` are nil: our own
+    /// delivery always wins over a third party's, because it describes orders
+    /// we actually placed.
     ///
     /// Never offers the country that just failed.
     private var rankedSuggestion: (country: Country, rank: CountryRank, price: Int)? {
-        guard suggestion == nil else { return nil }
+        guard suggestion == nil, poolSuggestion == nil else { return nil }
         return state.bestRankedCountry(for: context.service, excluding: context.failedCountry)
+    }
+
+    /// The country the primary button names, when it names one. nil on the
+    /// measured branch on purpose — `retryFromRecovery` resolves that one
+    /// itself, keeping that path byte-identical.
+    private var offeredCountry: Country? {
+        poolSuggestion?.country ?? rankedSuggestion?.country
     }
 
     private var headline: String {
@@ -122,7 +139,7 @@ struct RecoveryScreen: View {
                 // now includes the measured-suggestion case, since that chip
                 // was removed with the rest of the record surfaces. The user
                 // still gets a reason to press the button.
-                if rankedSuggestion == nil {
+                if poolSuggestion == nil && rankedSuggestion == nil {
                     HStack(alignment: .top, spacing: 8) {
                         Image(systemName: RIcon.refresh)
                             .font(.system(size: 13, weight: .semibold))
@@ -149,6 +166,37 @@ struct RecoveryScreen: View {
                 // in CountrySheet.providerTopCountries. The distinguishing work
                 // is done by the closing sentence, which says plainly that we
                 // have not tested it.
+                // The pool-rate steer. Same rules as every other render of the
+                // network figure: a colour-banded WORD via `NetworkRateMeter`
+                // (never the percentage), hidden entirely while the owner has
+                // the metric off, and a sentence that says plainly it is not
+                // our own record. The country name is a proper noun, not a
+                // claim, so it renders even when the meter does not.
+                if let pool = poolSuggestion {
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack(spacing: 8) {
+                            FlagCircle(country: pool.country, size: 24)
+                            Text(pool.country.name)
+                                .font(RFont.text(13, weight: .semibold))
+                                .foregroundStyle(theme.text)
+                            Spacer(minLength: 8)
+                            if state.showsDeliveryMetrics {
+                                NetworkRateMeter(pct: pool.rate)
+                            }
+                        }
+                        Text("The best network-wide delivery rate for this service right now. Not our own record — we haven't tested it ourselves.")
+                            .font(RFont.text(13, weight: .medium))
+                            .foregroundStyle(theme.text)
+                            .multilineTextAlignment(.leading)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 12)
+                    .background(theme.chipBg, in: .rect(cornerRadius: RRadius.sm))
+                    .padding(.top, 18)
+                    .padding(.horizontal, 20)
+                }
+
                 if let ranked = rankedSuggestion {
                     HStack(spacing: 8) {
                         FlagCircle(country: ranked.country, size: 24)
@@ -166,10 +214,12 @@ struct RecoveryScreen: View {
 
                 PrimaryButton(
                     label: suggestion.map { String(localized: "Try \($0.country.name)") }
+                        ?? poolSuggestion.map { String(localized: "Try \($0.country.name)") }
                         ?? rankedSuggestion.map { String(localized: "Try \($0.country.name)") }
                         ?? String(localized: "Try again"),
                     sub: suggestion.flatMap { state.cost(for: context.service, country: $0.country) }
                         .map { "\($0) cr" }
+                        ?? poolSuggestion.map { "\($0.price) cr" }
                         ?? rankedSuggestion.map { "\($0.price) cr" }
                         ?? String(localized: "Fresh number"),
                     icon: RIcon.refresh
@@ -188,7 +238,7 @@ struct RecoveryScreen: View {
                     //
                     // nil on the measured branch keeps that path byte-identical:
                     // the function resolves the measured country itself.
-                    state.retryFromRecovery(country: rankedSuggestion?.country)
+                    state.retryFromRecovery(country: offeredCountry)
                 }
                 .padding(.top, 22)
                 .padding(.horizontal, 20)
