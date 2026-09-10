@@ -91,6 +91,19 @@ enum ScreenshotMode {
 #if DEBUG
 extension ScreenshotMode {
 
+    /// The account behind the Home frames: a first name for the greeting and
+    /// a referral code for the invite card.
+    ///
+    /// ⚠️ `displayName` must be a REAL first name, not an e-mail handle.
+    /// `AppState.greetingName(email:)` refuses anything that looks like the
+    /// address `handle_new_user()` seeds, so a handle here renders the nameless
+    /// greeting and the frame silently stops showing the feature it exists for.
+    /// The code is obviously synthetic, like every other fixture in this file.
+    static var sampleProfile: Profile {
+        Profile(userId: "sample-user", displayName: "Adil",
+                createdAt: .now, referralCode: "ADIL-7K2Q", referredBy: nil)
+    }
+
     /// A line that looks lived-in. Deliberately part-used: a full 200/200
     /// allowance is the least informative state a meter can be in, and an
     /// untouched inbox does not show what the product is for.

@@ -77,7 +77,11 @@ struct ContentView: View {
             Group {
                 switch state.tab {
                 case .home:
-                    HomeScreen(openCredits: { sheet = .credits })
+                    // `openServices` is the SAME closure `TempScreen` gets, so
+                    // Home's More tile and the Temp tab's picker raise one
+                    // sheet rather than two that could drift apart.
+                    HomeScreen(openCredits: { sheet = .credits },
+                               openServices: { sheet = .services })
                 case .line:
                     LineScreen(onOpenSms: { state.tab = .temp })
                 case .temp:
@@ -804,10 +808,22 @@ extension ContentView {
             state.openThreadId = "t1"
             state.flow = .thread
 
-        // The Home TAB, with no line: the three need-cards.
+        // The Home TAB, with no line: the three need-cards, the service grid,
+        // How it works, and the invite card.
         case .homeRouter:
             state.tab = .home
             state.lines = []
+            // Names the greeting and fills the invite card. Both halves are
+            // needed: `HomeScreen.inviteCard` renders only when
+            // `inviteMessage` AND `referralCode` are non-nil, and
+            // `greetingName` refuses a name that is merely the e-mail handle,
+            // so a profile without a real `displayName` shows the nameless
+            // greeting instead.
+            state.profile = ScreenshotMode.sampleProfile
+            // `orders` stays EMPTY on purpose: this frame is the first-run
+            // state, and it is the How-it-works branch that belongs in it.
+            state.orders = []
+            state.emailOrders = []
             // The number card prints the monthly price from StoreKit, and
             // `simctl` never applies the scheme's StoreKit configuration —
             // same shim, same reason, as the store and paywall frames.
@@ -825,6 +841,29 @@ extension ContentView {
             // had no number — the router state under the subscriber's name.
             // The other line frames do not need it; they read `lines` directly.
             state.linesLoaded = true
+            state.profile = ScreenshotMode.sampleProfile
+            // Recent, with one delivered code and one order still running —
+            // the two states the trailing edge of that row can be in.
+            //
+            // 🔴 `resolve` binds the Service and Country ONCE, from whatever
+            // catalog is loaded at THIS instant — and the cold-start chain is
+            // skipped above, so that is `SeedData`. The live catalog arriving a
+            // second later via the scenePhase refresh does not re-resolve these
+            // rows. Every id here must therefore exist in BOTH, or the row
+            // renders the fallback pair: a grey "Service" tile under a globe.
+            //
+            // ⚠️ `uk`, not `gb`. `gb` is the ISO code, and
+            // `Country.flagImageCode` maps `uk` onto it for the flag PNG — but
+            // the catalog's country ID is `uk` in `SeedData` AND in production
+            // (queried 2026-09-10: `gb` returns no row).
+            state.orders = [
+                state.resolve(ScreenshotMode.sampleOrder(
+                    status: .received, otp: "482913", id: "sample-1",
+                    serviceId: "whatsapp", countryId: "us", ageSeconds: 7_200)),
+                state.resolve(ScreenshotMode.sampleOrder(
+                    status: .waiting, otp: nil, id: "sample-2",
+                    serviceId: "google", countryId: "uk", ageSeconds: 40)),
+            ]
             subs.screenshotPricing = .init()
 
         // ⚠️ NOT the Home tab. `.home` is the temp-SMS store's frame and its
