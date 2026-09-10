@@ -1723,6 +1723,25 @@ Genuinely open items only. Resolved history is in `docs/decisions-archive.md`.
 
 **Correctness / hygiene**
 
+- 🔴 **`winback`'s stranded-credits cohort has sent nothing since 2026-08-09.**
+  Its `claimSafe` gate requires `watchdog.failing` to be EMPTY, and a float
+  warning (`5sim-float` / `telnyx-float`) has been in that array almost
+  continuously since — so a runway *warning* silences a nudge whose whole
+  audience (30 buyers idle 14d+ holding 488 paid credits, 25 with a push
+  token, 4 ever nudged — 2026-09-10) is people who already paid. It also reads
+  `herosms_health`, the provider serving ~14% of routes, not `5sim_health`.
+  Gate it on the PRIMARY provider's balance and on the checks that mean
+  "orders fail", not on any check at all. Measured effect of the 53 sends it
+  did make: 5 ordered, 2 codes, 1 purchase — small, but it is their own money.
+- ⚠️ **No pre-expiry push exists for the rented line.** The only line push is
+  the post-renewal "your new number" one (`apple-notifications`). With no hold,
+  a lapsed number is gone within ~30 min, and 6 of the 8 active monthly
+  subscribers have auto-renew OFF while averaging 27 calls in 8 days
+  (2026-09-10). Nobody tells them the number they are using will be deleted.
+- ⚠️ **The yearly line trial has converted 0 of 9**, and those 9 lines made 1
+  call between them — the trial attracts people who never use the product and
+  costs a $1 number each. Re-derive: `select state, auto_renew, count(*) from
+  line_subscriptions where product_id like '%yearly' group by 1,2`.
 - 🔴 **`AppState.routes` is now genuinely dead** — written once
   (`AppState.swift:1795`), read nowhere. ⚠️ This file previously carried a
   *refutation* saying it was read in `CreditsSheet.swift`; that was true when
