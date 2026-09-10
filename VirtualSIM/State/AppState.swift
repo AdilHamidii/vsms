@@ -1761,6 +1761,20 @@ final class AppState {
 
     // ─────────── Display name ───────────
 
+    /// The trimmed name, or nil when it is not one we will write.
+    ///
+    /// ONE definition, called by both `setDisplayName` and the pre-flight in
+    /// `applyPendingDisplayName`: two copies drift, and the copy that drifts
+    /// low silently drops names the writer would have accepted.
+    ///
+    /// 40 chars is the cap: it is a greeting, and a longer one wraps the Home
+    /// header rather than saying anything more.
+    static func acceptableDisplayName(_ raw: String) -> String? {
+        let name = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !name.isEmpty, name.count <= 40 else { return nil }
+        return name
+    }
+
     /// Rename the user, and adopt the new name locally only if the write
     /// landed. Returns whether it did.
     ///
@@ -1770,16 +1784,19 @@ final class AppState {
     /// name that exists on this device and nowhere else is how a rename looks
     /// like it worked until the next launch.
     ///
-    /// 40 chars is the cap: it is a greeting, and a longer one wraps the Home
-    /// header rather than saying anything more.
+    /// 🔴 **Any landed write clears the parked Apple name**, whatever its
+    /// source: a name the user CHOSE outranks the one Apple handed us, and
+    /// the parked key is otherwise cleared by nothing. Without this, a boot
+    /// flush that failed once (offline, a 401 mid-refresh) stays armed, and
+    /// the next cold launch after the user renames themselves overwrites
+    /// their choice with Apple's given name and no signal.
     ///
     /// `source` splits the `display_name_set` series: `home` = the user typed
     /// it, `apple` = the name Apple gave us at sign-in, flushed at cold launch.
     @discardableResult
     func setDisplayName(_ raw: String, userId: String, using api: ProfileAPI,
                         source: String = "home") async -> Bool {
-        let name = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !name.isEmpty, name.count <= 40 else { return false }
+        guard let name = Self.acceptableDisplayName(raw) else { return false }
         do {
             try await api.updateDisplayName(name, userId: userId)
         } catch {
@@ -1790,6 +1807,7 @@ final class AppState {
                               createdAt: p.createdAt, referralCode: p.referralCode,
                               referredBy: p.referredBy)
         }
+        UserDefaults.standard.removeObject(forKey: PrefKey.pendingDisplayName)
         Analytics.shared.track("display_name_set", ["source": .string(source)])
         return true
     }
@@ -1822,11 +1840,11 @@ final class AppState {
     /// Flush the name Apple gave us at sign-in onto `profiles`, if one is
     /// waiting.
     ///
-    /// The key is cleared ONLY on a successful write, so a launch with no
-    /// network retries on the next one. That asymmetry is the whole point:
-    /// Apple hands over `fullName` on the FIRST authorization for an Apple ID
-    /// and never again, so a name dropped here is a name that cannot be
-    /// re-fetched from anywhere.
+    /// The key survives a FAILED WRITE, so a launch with no network retries on
+    /// the next one. That asymmetry is the whole point: Apple hands over
+    /// `fullName` on the FIRST authorization for an Apple ID and never again,
+    /// so a name dropped here is a name that cannot be re-fetched from
+    /// anywhere. Any landed write clears it — see `setDisplayName`.
     ///
     /// Runs BEHIND the reveal in `coldStart` — a greeting is additive, and no
     /// round-trip that only improves a label may hold the first screen.
@@ -1836,14 +1854,11 @@ final class AppState {
         // A value `setDisplayName` can never accept is dropped rather than
         // kept: retrying it costs a PATCH on every cold launch forever and
         // cannot ever succeed. Only a FAILED WRITE earns a retry.
-        let trimmed = pending.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty, trimmed.count <= 40 else {
+        guard Self.acceptableDisplayName(pending) != nil else {
             defaults.removeObject(forKey: PrefKey.pendingDisplayName)
             return
         }
-        if await setDisplayName(pending, userId: userId, using: api, source: "apple") {
-            defaults.removeObject(forKey: PrefKey.pendingDisplayName)
-        }
+        await setDisplayName(pending, userId: userId, using: api, source: "apple")
     }
 
     func refreshMaintenance(using api: MaintenanceAPI) async {
