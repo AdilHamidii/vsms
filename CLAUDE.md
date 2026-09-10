@@ -78,8 +78,64 @@ tab is `Screens/TempScreen.swift` (enum case `.temp`, label "Temp", hosts temp
 SMS + temp e-mail via `emailMode`). ⚠️ `TempScreen`'s analytics still fire
 `source: "home"` (`support_whatsapp_open`, `MailPaywallScreen`) — kept for
 series continuity; there, "home" means the TEMP tab, never the Home tab.
-Home's own events are `home_view` (`has_line`) and `home_card_tapped`
-(`card` ∈ sms · email · line · line_messages · line_call · credits).
+
+**What Home holds, top to bottom.** A greeting by daypart and name; the
+headline ("What do you need?" / "Your number"); the need-cards in
+`AppTab.productOrder` (the Number card carries a Calls · Texts · App codes
+chip row and a price only StoreKit ever supplies); a **static seven-service
+logo grid** plus a More tile; **How it works** until the user has any order,
+then **Recent**; and an invite card. Three properties that reading the screen
+does not give you:
+
+- 🔴 **A grid tap is the USER'S pick, not a pre-selection.** It goes through
+  `AppState.commitServicePick` — the same path `ServiceSheet.onPick` uses — so
+  `needsServiceChoice` clears, the order is not `from_default`, and **the
+  country stays unchosen**: the tap lands on Temp with the Country row still
+  reading "Not selected". That is what keeps "Nothing is pre-selected on first
+  run" true with seven logos on the opening screen. The More tile opens the
+  real picker.
+- **Recent is a signpost, not a second Orders screen.** At most three rows,
+  both products merged newest-first, each opening through `AppState.openOrder`
+  / `openEmailOrder` — the same openers the Orders tab uses, never a second
+  copy of that routing.
+- **The invite card renders `AccountScreen.invite`'s sentence verbatim** so
+  both surfaces resolve ONE catalog key and the two credit amounts stay
+  derived in one place. Never retype it with the numerals in it.
+
+🔴 **The greeting name is NOT the `display_name` column.** `handle_new_user()`
+seeds `display_name` from the e-mail's local part, so on 2026-09-10 **1,641 of
+1,643** profiles carried exactly that handle (2 blank, 0 containing an `@`) —
+greeting from the column unfiltered means saying "Good morning, adil.hamidii123"
+to almost everybody. `AppState.greetingName(email:)` therefore refuses a value
+that is empty, contains `@`, or equals the address's local part
+case-insensitively, and nil means the NAMELESS greeting, never the handle.
+`NameSheet` mirrors the same three rules on the string being typed, because
+`greetingName` judges the STORED profile and the sheet has to judge one that
+has not been written yet — keep them in step, or the sheet offers a save that
+changes nothing on screen. Re-derive rather than quoting the figure:
+`select count(*) filter (where display_name ~ '^[a-z0-9._-]+$') from profiles;`
+
+**Apple hands over a given name exactly ONCE.** `AuthWelcomeScreen` parks it in
+`pref.pendingDisplayName` at the FIRST authorization for an Apple ID and never
+sees it again, and `applyPendingDisplayName` flushes it onto `profiles` BEHIND
+the reveal in `coldStart` — a greeting is a label, and no round-trip that only
+improves a label may hold the first screen. The key survives a FAILED write so
+the next cold launch retries it; any landed write clears it, so a name the user
+typed in `NameSheet` is never overwritten by Apple's on a later boot.
+
+Home's own events are `home_view` (`has_line`, `has_orders`) and
+`home_card_tapped` (`card` ∈ sms · email · line · line_messages · line_call ·
+credits · more_services · recent_sms · recent_email · invite). A grid tap fires
+`service_selected` with `source: "home"` instead — the picker sends `sheet` or
+`search` — and `display_name_set` carries `source` `home` (the user typed it)
+or `apple` (the parked name, flushed at launch).
+
+⚠️ **`home_view` under-reports `has_orders` for an e-mail-only user.** It fires
+in `onAppear`; `loadOrders` runs BEFORE the reveal and `loadEmailOrders` after
+it, so a user whose only history is e-mail is logged `has_orders: false` and
+then watches the section swap How-it-works → Recent a beat later. Read the prop
+as "had SMS history at the first frame", not as "had no history". Deliberate —
+history does not earn a place on the boot critical path.
 
 **Why a router.** Measured on the first session of the 241 users who signed
 up 2026-09-04 → 09-10 (live build 2.11 landed on Temp): 70 stayed on Temp
@@ -487,7 +543,7 @@ picker and the order-state reconcile invariant live in
 
 **iOS minimum is 18.0.** Anything guarded by `if #available(iOS 26, *)` must
 keep a working 18.0 path. The project has **3** SwiftPM dependencies (TelnyxRTC
-4.1.2, WebRTC 139.0.0, Starscream 4.0.8) and **136** Swift sources — re-count
+4.1.2, WebRTC 139.0.0, Starscream 4.0.8) and **138** Swift sources — re-count
 with `find VirtualSIM -name '*.swift' | wc -l`; this said 116 for a month.
 
 ## Money and safety invariants
@@ -1780,7 +1836,8 @@ Each has been wrong within a day of being written at least once.
   that is a decision error, not a typo: "still in review" is the argument for
   cutting another release.
 - **Backend**: 49 edge function dirs besides `_shared`, 229 migration files, 26
-  files in `_shared`, 137 Swift sources, 23 active cron jobs.
+  files in `_shared`, 138 Swift sources (re-counted 2026-09-10), 23 active
+  cron jobs.
 - **Catalog**: 9,364 active routes (5sim 8,074 / HeroSMS 1,290), 468 services,
   0 active eSIM plans (line parked). `active_sms_provider()` = `5sim`.
   Evidence: 53 routes `measured`, 23 `seeded`.
@@ -1846,9 +1903,10 @@ Genuinely open items only. Resolved history is in `docs/decisions-archive.md`.
 - ⚠️ **2.12's number picker and OTP upsell card were never walked on a device** —
   tap automation was unavailable, so both are build-and-screenshot verified only.
 - ⚠️ **2.13's Home tab was never walked on a device** — the three card taps, the
-  `emailMode` switch and the Call-button gate are build-and-screenshot verified
-  only (both states, iPhone 17 Pro and SE), same caveat as 2.12's picker and
-  OTP card.
+  seven-service grid and its More tile, the Recent rows' openers, the `NameSheet`
+  write, the `emailMode` switch and the Call-button gate are build-and-screenshot
+  verified only (both states, iPhone 17 Pro and SE), same caveat as 2.12's picker
+  and OTP card.
 - ⚠️ **The $3.99 first-month intro (2026-09-10) has no reading yet.** Judge it
   on `line_purchase_result` `props.intro = true` sheet→paid at ~30 sheets,
   against 3 of 30 before. The client display ships in 2.13; until then only

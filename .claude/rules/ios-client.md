@@ -40,8 +40,12 @@ VirtualSIM/
                                  (service, country) — steering input, never a
                                  badge; see the steering section)
   Screens/                       HomeScreen (the Home tab: router for new users,
-                                 light dashboard for a subscriber — see CLAUDE.md
-                                 "Home leads the app"), TempScreen (the Temp tab:
+                                 light dashboard for a subscriber — greeting,
+                                 need-cards in `AppTab.productOrder`, the static
+                                 seven-service grid + More tile, How it works
+                                 until the first order then Recent, invite card;
+                                 see CLAUDE.md "Home leads the app"),
+                                 TempScreen (the Temp tab:
                                  temp SMS + temp e-mail, `emailMode`),
                                  Checkout, Waiting (+ WaitingAnimations),
                                  OTP (fires native review prompt on code
@@ -69,7 +73,11 @@ VirtualSIM/
                                  country shows where it IS bookable, never a bare
                                  "Unavailable" — see the picker note below),
                                  CountrySheet (sort + per-route price),
-                                 CreditsSheet (StoreKit 2)
+                                 CreditsSheet (StoreKit 2), NameSheet (the name
+                                 Home greets by — raised from the greeting, the
+                                 only place that name is shown; mirrors
+                                 `AppState.greetingName`'s rejections and stays
+                                 OPEN on a failed write)
   Components/                    Theme primitives + ServiceLogo / FlagImage /
                                  FlagCircle — bundle-first via BundledImageStore,
                                  network cascade (DuckDuckGo/FaviconV2, flagcdn) as
