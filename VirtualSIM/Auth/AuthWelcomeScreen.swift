@@ -227,10 +227,19 @@ struct AuthWelcomeScreen: View {
                     // (`AppState.applyPendingDisplayName`). Writing it here
                     // instead would put a PATCH on the sign-in path, where a
                     // slow network delays the app for a label.
+                    //
+                    // 🔴 The name is parked WITH the user id it belongs to,
+                    // and both are written together (2026-09-10). UserDefaults
+                    // is device-global and outlives sign-out, so an unflushed
+                    // name with no owner recorded lands on whichever account
+                    // next cold-launches here — see
+                    // `PrefKey.pendingDisplayNameUserId`.
                     if let given = credential.fullName?.givenName?
                         .trimmingCharacters(in: .whitespacesAndNewlines),
                        !given.isEmpty {
                         UserDefaults.standard.set(given, forKey: PrefKey.pendingDisplayName)
+                        UserDefaults.standard.set(supaSession.user.id,
+                                                  forKey: PrefKey.pendingDisplayNameUserId)
                     }
                 } catch {
                     RHaptic.warn()

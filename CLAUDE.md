@@ -117,7 +117,12 @@ greet by. Either way, greeting from the column unfiltered means saying
 `AppState.greetingName(email:)` therefore refuses a value that is empty,
 contains `@`, or equals the address's local part case-insensitively — equality
 against *this* user's own address, which is the test a catalog-wide count cannot
-stand in for — and nil means the NAMELESS greeting, never the handle.
+stand in for — and nil means the NAMELESS greeting, never the handle. 🔴 **With
+no e-mail to compare against it FAILS CLOSED** (nil, 2026-09-10): `Session.email`
+is nil for a session restored from an install predating the Keychain e-mail key
+and for a refresh payload carrying no user e-mail, and skipping the comparison
+there greets almost the whole table by its handle — the exact outcome the
+function exists to prevent.
 `NameSheet` mirrors the same three rules on the string being typed, because
 `greetingName` judges the STORED profile and the sheet has to judge one that
 has not been written yet — keep them in step, or the sheet offers a save that
@@ -134,8 +139,23 @@ from profiles;
 sees it again, and `applyPendingDisplayName` flushes it onto `profiles` BEHIND
 the reveal in `coldStart` — a greeting is a label, and no round-trip that only
 improves a label may hold the first screen. The key survives a FAILED write so
-the next cold launch retries it; any landed write clears it, so a name the user
-typed in `NameSheet` is never overwritten by Apple's on a later boot.
+the next cold launch retries it; a write that lands ON THE PARKING ACCOUNT
+clears it, so a name the user typed in `NameSheet` is never overwritten by
+Apple's on a later boot.
+
+🔴 **The park is bound to the account it came from, in `pref.pendingDisplayNameUserId`
+(2026-09-10), and that binding is the only thing making the flush safe.**
+`UserDefaults.standard` is DEVICE-global and survives sign-out — `Session.signOut`
+clears the Keychain, not this — so an unflushed name parked by user A was
+otherwise PATCHed onto user B's `profiles` row the first time B cold-launched on
+the same device, and B was greeted by A's name. `display_name` is the only column
+the client can write, so that is the whole blast radius, but it is still one
+user's data on another user's row. Both keys are written together, read as a
+pair and dropped as a pair. A parked name whose owner is a DIFFERENT signed-in
+user is kept and skipped (that account can sign back in; holding it costs a
+UserDefaults read, never a PATCH); one with NO owner — parked by a build before
+the key existed — is dropped, because it can never be matched to anybody and
+retrying it would re-ask an unanswerable question on every launch forever.
 
 Home's own events are `home_view` (`has_line`, `has_orders`) and
 `home_card_tapped` (`card` ∈ sms · email · line · line_messages · line_call ·
@@ -923,6 +943,12 @@ and a CTA that walks them: *Choose a service* → *Choose a country* → *Get
 number*. `AppState.needsServiceChoice` and `needsCountryChoice` clear only when
 the user picks in `ServiceSheet`/`CountrySheet`, and **`confirmGetNumber`
 refuses outright while either is set** — that guard is the backstop, not the UI.
+
+⚠️ **Home's seven-logo grid is not an exception to this.** A tile tap goes
+through `AppState.commitServicePick`, the same path `ServiceSheet.onPick` uses,
+so it is the user's own pick: it clears `needsServiceChoice` and leaves
+`needsCountryChoice` SET, which is why the Country row still reads "Not
+selected" and `confirmGetNumber` still refuses. See "Home leads the app" above.
 
 **Why, measured over the 45 days to 2026-09-09:**
 

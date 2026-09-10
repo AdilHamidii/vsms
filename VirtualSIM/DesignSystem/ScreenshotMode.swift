@@ -104,6 +104,18 @@ extension ScreenshotMode {
                 createdAt: .now, referralCode: "ADIL-7K2Q", referredBy: nil)
     }
 
+    /// 🔴 **The greeting needs an e-mail as much as it needs a name**
+    /// (2026-09-10). `AppState.greetingName(email:)` FAILS CLOSED with no
+    /// address to compare the stored `display_name` against — it cannot tell
+    /// a real first name from the handle `handle_new_user()` seeds — and the
+    /// screenshot gate mints a session with a userId and nothing else, so
+    /// without this the Home frames render the NAMELESS greeting and silently
+    /// stop showing the feature. The local part must differ from
+    /// `sampleProfile.displayName`, or the same rule refuses it as a handle.
+    /// `example.com` is RFC 2606 reserved, so this can never be anybody's
+    /// real address.
+    static var sampleEmail: String { "sample.user@example.com" }
+
     /// A line that looks lived-in. Deliberately part-used: a full 200/200
     /// allowance is the least informative state a meter can be in, and an
     /// untouched inbox does not show what the product is for.

@@ -20361,46 +20361,6 @@
         }
       }
     },
-    "No code, no charge.": {
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Kein Code, keine Kosten."
-          }
-        },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Sin código, sin cargo."
-          }
-        },
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Pas de code, pas de frais."
-          }
-        },
-        "it": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Nessun codice, nessun addebito."
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "コードが届かなければ料金はかかりません。"
-          }
-        },
-        "pt-BR": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Sem código, sem cobrança."
-          }
-        }
-      }
-    },
     "No code, no charge. Your credits come straight back": {
       "extractionState": "stale",
       "localizations": {
@@ -26058,7 +26018,6 @@
       }
     },
     "Received": {
-      "extractionState": "stale",
       "localizations": {
         "de": {
           "stringUnit": {

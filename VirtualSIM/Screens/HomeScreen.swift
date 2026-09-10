@@ -640,9 +640,17 @@ struct HomeScreen: View {
                 HowStep(number: 2,
                         title: Text("Paste the number into that app."),
                         sub: Text("Yours for the whole wait."))
+                // 🔴 Verbatim from the Onboarding promises card so both
+                // surfaces resolve the SAME catalog key. It says the credits
+                // COME BACK, never that nothing is charged: credits are
+                // deducted at order time and returned on every terminal path,
+                // and this is the only line on Home that states a money
+                // outcome. `TempScreen.refundPromise` says the same thing with
+                // the window in it; a How-it-works sub-line has no room for a
+                // number, and a number here would be a second copy to drift.
                 HowStep(number: 3,
                         title: Text("The code lands here."),
-                        sub: Text("No code, no charge."))
+                        sub: Text("Credits come back when no code arrives"))
             }
             .padding(.horizontal, 4)
         }
@@ -711,7 +719,7 @@ struct HomeScreen: View {
         RecentRow(
             subtitle: order.status == .waiting
                 ? Text("Waiting for the code")
-                : Text(verbatim: Self.age(order.createdAt)),
+                : Text("\(Self.age(order.createdAt)) · \(Self.smsStatusWord(order))"),
             isLast: isLast,
             action: {
                 track("recent_sms")
@@ -794,6 +802,28 @@ struct HomeScreen: View {
             return Text(verbatim: word)
         }
         return Text("\(age(created)) · \(word)")
+    }
+
+    /// Exactly `StatusBadge`'s vocabulary — the words `OrderRow` already shows
+    /// for the same order on the Orders tab — so the two surfaces cannot come
+    /// to describe one order differently. The e-mail half of this card does
+    /// the same against `EmailOrderRow`; a settled row that named its age and
+    /// nothing else was the odd one out, and "2 hours ago" beside a
+    /// "Get another" button never said what actually happened.
+    ///
+    /// A code that EXISTS beats the status, the same rule as the trailing edge
+    /// and as `emailStatusWord`: a late-code rescue writes `otp` onto a
+    /// CANCELED row, and calling that row "Canceled" while the code sits next
+    /// to it is the same lie one column over.
+    private static func smsStatusWord(_ order: Order) -> String {
+        if order.otp != nil { return String(localized: "Received") }
+        switch order.status {
+        case .waiting:  return String(localized: "Waiting")
+        case .received: return String(localized: "Received")
+        case .expired:  return String(localized: "Expired")
+        case .refunded: return String(localized: "Refunded")
+        case .canceled: return String(localized: "Canceled")
+        }
     }
 
     /// Exactly `EmailOrderRow.statusPill`'s vocabulary. `hasCode` decides,

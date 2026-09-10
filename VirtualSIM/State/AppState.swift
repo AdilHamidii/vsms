@@ -236,6 +236,22 @@ enum PrefKey {
     /// `AppState.applyPendingDisplayName`.
     static let pendingDisplayName = "pref.pendingDisplayName"
 
+    /// 🔴 **The account the parked name belongs to, and the ONLY thing that
+    /// makes flushing it safe (2026-09-10).** `UserDefaults.standard` is
+    /// device-global and survives sign-out — `Session.signOut` clears the
+    /// Keychain, not this — so a name parked by user A and not yet flushed
+    /// (offline, or a 401 mid-refresh: the key deliberately survives a failed
+    /// write) would otherwise be PATCHed onto user B's `profiles` row the
+    /// first time B cold-launches on the same device, and B would be greeted
+    /// by A's name. `display_name` is the only column the client can write, so
+    /// this is the whole surface — but it is one user's data on another user's
+    /// row. **Written together with `pendingDisplayName`, read as a pair,
+    /// dropped as a pair.** A parked name whose owner does not match the
+    /// signed-in user is never written; a parked name with NO owner (parked by
+    /// a build before this key existed) can never be matched to anyone and is
+    /// dropped rather than retried on every launch forever.
+    static let pendingDisplayNameUserId = "pref.pendingDisplayNameUserId"
+
     /// Set once the AdServices attribution token has been accepted by
     /// `record-attribution`. The token is per INSTALL, so one successful
     /// submission is all there ever is to send — and re-sending on every cold
@@ -1775,21 +1791,33 @@ final class AppState {
         return name
     }
 
-    /// Rename the user, and adopt the new name locally only if the write
-    /// landed. Returns whether it did.
+    /// Rename the user, and adopt the new name locally only if the PATCH came
+    /// back without an error. Returns whether it did.
     ///
     /// The local copy is rebuilt rather than mutated because `Profile` is a
-    /// struct of `let`s — and rebuilt only AFTER the PATCH, so a failed write
-    /// leaves the app showing the name the server actually holds. Showing a
-    /// name that exists on this device and nowhere else is how a rename looks
-    /// like it worked until the next launch.
+    /// struct of `let`s — and rebuilt only AFTER the PATCH returns, so a
+    /// transport failure or a non-2xx leaves the app showing the name the
+    /// server actually holds. Showing a name that exists on this device and
+    /// nowhere else is how a rename looks like it worked until the next launch.
     ///
-    /// 🔴 **Any landed write clears the parked Apple name**, whatever its
-    /// source: a name the user CHOSE outranks the one Apple handed us, and
-    /// the parked key is otherwise cleared by nothing. Without this, a boot
-    /// flush that failed once (offline, a 401 mid-refresh) stays armed, and
-    /// the next cold launch after the user renames themselves overwrites
-    /// their choice with Apple's given name and no signal.
+    /// ⚠️ **What that does NOT cover: a PATCH that matched zero rows.**
+    /// PostgREST answers 204 whether or not the filter selected anything, and
+    /// `updateDisplayName` asks for no representation, so "the write landed"
+    /// is really "the request succeeded". The gap is only reachable with no
+    /// `profiles` row for this user at all (`handle_new_user()` inserts one at
+    /// signup), it is self-correcting on the next cold launch — `refreshProfile`
+    /// reads the row back — and closing it properly costs a
+    /// `Prefer: return=representation` round-trip on a label. Left open
+    /// deliberately; do not restate it as a guarantee.
+    ///
+    /// 🔴 **A landed write clears the parked Apple name — but only when it
+    /// lands on the account that PARKED it** (2026-09-10, see
+    /// `PrefKey.pendingDisplayNameUserId`). A name the user CHOSE outranks the
+    /// one Apple handed us, and nothing else clears the park: without this, a
+    /// boot flush that failed once (offline, a 401 mid-refresh) stays armed and
+    /// the next cold launch after a rename overwrites their choice with Apple's
+    /// given name and no signal. Scoping it to the owner is what stops user B's
+    /// rename from throwing away user A's still-unflushed name.
     ///
     /// `source` splits the `display_name_set` series: `home` = the user typed
     /// it, `apple` = the name Apple gave us at sign-in, flushed at cold launch.
@@ -1807,9 +1835,20 @@ final class AppState {
                               createdAt: p.createdAt, referralCode: p.referralCode,
                               referredBy: p.referredBy)
         }
-        UserDefaults.standard.removeObject(forKey: PrefKey.pendingDisplayName)
+        if UserDefaults.standard.string(forKey: PrefKey.pendingDisplayNameUserId) == userId {
+            Self.dropPendingDisplayName()
+        }
         Analytics.shared.track("display_name_set", ["source": .string(source)])
         return true
+    }
+
+    /// The parked Apple name and the account it belongs to are only ever
+    /// meaningful as a pair, so they are dropped as a pair. Leaving the owner
+    /// behind would make the next park's owner check read a stale id.
+    private static func dropPendingDisplayName() {
+        let defaults = UserDefaults.standard
+        defaults.removeObject(forKey: PrefKey.pendingDisplayName)
+        defaults.removeObject(forKey: PrefKey.pendingDisplayNameUserId)
     }
 
     /// The name to greet this user by, or nil when we do not actually know one.
@@ -1831,12 +1870,26 @@ final class AppState {
     /// (a whole address landing in the column is the same seed one step
     /// worse), and different from the e-mail's local part case-insensitively.
     /// nil means the caller must fall back to a nameless greeting.
+    ///
+    /// 🔴 **With no e-mail to compare against this FAILS CLOSED and returns
+    /// nil** (2026-09-10). `email` is nil for a session restored by
+    /// `Session.bootstrap` from an install that predates the Keychain e-mail
+    /// key, and for a refresh payload that carries no user e-mail. Skipping
+    /// the comparison in that state would greet 1,641 of 1,643 users by the
+    /// handle the seed put in the column — precisely the outcome this
+    /// function exists to prevent, and it would appear exactly where it is
+    /// hardest to notice. The cost is the opposite error: a user who really
+    /// did choose a name gets a nameless greeting until their e-mail is known
+    /// again. A missing greeting is invisible; the app reading a database row
+    /// back at someone is not.
     func greetingName(email: String?) -> String? {
         guard let raw = profile?.displayName else { return nil }
         let name = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !name.isEmpty, !name.contains("@") else { return nil }
-        if let email, let localPart = email.split(separator: "@", maxSplits: 1).first,
-           name.compare(String(localPart), options: .caseInsensitive) == .orderedSame {
+        guard let email,
+              let localPart = email.split(separator: "@", maxSplits: 1).first
+        else { return nil }
+        if name.compare(String(localPart), options: .caseInsensitive) == .orderedSame {
             return nil
         }
         return name
@@ -1849,18 +1902,39 @@ final class AppState {
     /// the next one. That asymmetry is the whole point: Apple hands over
     /// `fullName` on the FIRST authorization for an Apple ID and never again,
     /// so a name dropped here is a name that cannot be re-fetched from
-    /// anywhere. Any landed write clears it — see `setDisplayName`.
+    /// anywhere. A write that lands on the parking account clears it — see
+    /// `setDisplayName`.
+    ///
+    /// 🔴 **A parked name is flushed ONLY onto the account that parked it**
+    /// (2026-09-10). The park is `UserDefaults.standard`, which is device-
+    /// global and survives sign-out and delete-account, so without the owner
+    /// check this writes one user's given name onto the next user's
+    /// `profiles` row and greets them by it. See
+    /// `PrefKey.pendingDisplayNameUserId`.
     ///
     /// Runs BEHIND the reveal in `coldStart` — a greeting is additive, and no
     /// round-trip that only improves a label may hold the first screen.
     func applyPendingDisplayName(userId: String, using api: ProfileAPI) async {
         let defaults = UserDefaults.standard
         guard let pending = defaults.string(forKey: PrefKey.pendingDisplayName) else { return }
+        guard let owner = defaults.string(forKey: PrefKey.pendingDisplayNameUserId) else {
+            // No owner recorded — parked by a build before that key existed,
+            // so it cannot be proved to belong to anyone. Dropped rather than
+            // guessed at: the guess is exactly the bug this check exists for,
+            // and keeping it would re-ask the same unanswerable question on
+            // every launch forever.
+            Self.dropPendingDisplayName()
+            return
+        }
+        // A different owner is KEPT, not dropped: that account may sign back in
+        // on this device, and holding the pair costs a UserDefaults read, never
+        // a PATCH. What it must never do is land here.
+        guard owner == userId else { return }
         // A value `setDisplayName` can never accept is dropped rather than
         // kept: retrying it costs a PATCH on every cold launch forever and
         // cannot ever succeed. Only a FAILED WRITE earns a retry.
         guard Self.acceptableDisplayName(pending) != nil else {
-            defaults.removeObject(forKey: PrefKey.pendingDisplayName)
+            Self.dropPendingDisplayName()
             return
         }
         await setDisplayName(pending, userId: userId, using: api, source: "apple")

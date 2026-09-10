@@ -181,6 +181,10 @@ struct AuthGate: View {
                     session.status = .signedOut
                 } else {
                     session.status = .signedIn(userId: "screenshot")
+                    // A real signed-in session always carries one, and the
+                    // Home greeting is refused without it — see
+                    // `ScreenshotMode.sampleEmail`.
+                    session.email = ScreenshotMode.sampleEmail
                 }
                 return
             }

@@ -51,6 +51,16 @@ struct NameSheet: View {
     /// been written yet. Keep the two in step: if `greetingName` gains a
     /// rejection, add it here in the same commit, or this sheet starts
     /// offering saves that show nothing again.
+    ///
+    /// ⚠️ **One rejection is deliberately NOT mirrored: the nil-e-mail case.**
+    /// Since 2026-09-10 `greetingName` fails CLOSED with no address to compare
+    /// against, because greeting from an unverifiable `display_name` means
+    /// greeting almost everybody by their handle. Mirroring that here would
+    /// refuse EVERY name whenever `session.email` is unknown — a sheet whose
+    /// Save can never light up. So in that state a save really does land and
+    /// really does show nothing until the e-mail is known again; that is the
+    /// lesser of the two, and it is rare (an install predating the Keychain
+    /// e-mail key, or a refresh payload with no user e-mail).
     private var acceptable: String? {
         guard let trimmed = AppState.acceptableDisplayName(name),
               !trimmed.contains("@") else { return nil }
