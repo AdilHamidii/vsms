@@ -740,6 +740,38 @@ could not pay.
 first-run service/country pair at all — see "Nothing is pre-selected" below —
 so a demotion cannot rescue it and does not have to.
 
+### 🔴 The signup grant does not create pack buyers — do not raise it "so they can try it"
+
+Measured 2026-09-10 over every Production pack buyer (46). **Of the 34 who
+ever placed a numbered order, 31 bought BEFORE their first order**, and for 28
+of those the route they then ordered cost more than their grant (mean first
+order 10 credits: whatsapp, instagram, tiktok, google, tinder, steam…). The
+paywall that fires when *balance < price* is where pack revenue comes from.
+Users who spent the grant first — with or without a code arriving — bought
+packs at **3 of 267 (1.1%)**; the 76 who got a free code bought 5 credits
+between them and placed 2.8 free orders each. The one 5-credit window (Aug
+20–22, 98 signups) produced 1 pack buyer against 10 from the 2-credit cohort
+of the prior eleven days.
+
+**So a larger grant removes the only moment that converts and creates a
+~1% buyer instead.** Wholesale cost of free orders is not the issue (~$4/month
+delivered); displacement is. The owner made this call from instinct and the
+data agreed. Re-derive (`kind = bought_first` is the number that matters):
+
+```sql
+-- first purchase vs first numbered order, per Production pack buyer
+with paid as (select user_id, min(created_at) fp from iap_receipts
+              where environment='Production' and granted_credits>0 group by 1),
+fo as (select user_id, min(created_at) fo from orders where smspva_number is not null group by 1)
+select case when fo is null then 'never_ordered' when fo < fp then 'tried_free_first'
+       else 'bought_first' end kind, count(*) from paid left join fo using(user_id) group by 1;
+```
+
+⚠️ "First-order-delivered users buy at 26%" (cited 2026-09-09) was the same
+confound: it counted users who bought first and then ordered on paid routes.
+**Condition on orders placed BEFORE the first purchase** or the grant looks like
+a conversion tool.
+
 ### 🔴 Nothing is pre-selected on first run (2.12 build 60)
 
 `applyStartupSelection` computes no starter pair. A brand-new user sees **"Not
