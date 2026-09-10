@@ -67,6 +67,11 @@ final class SubscriptionStore {
         /// fixture must mirror ASC or the screenshot advertises an offer
         /// that does not exist.
         var trial: String? = nil
+        /// The monthly plan's first-month price since 2026-09-10 — a
+        /// PAY_AS_YOU_GO intro at $3.99 in ASC, then the regular $5.99.
+        /// Mirrors `Products.storekit`. Set to nil the day the offer is
+        /// removed, for the same reason `trial` is nil.
+        var monthlyIntro: String? = "$3.99"
     }
 
     /// Non-nil ONLY under `ScreenshotMode`. Every read of it is behind
@@ -99,11 +104,55 @@ final class SubscriptionStore {
 
     /// The MONTHLY plan. Every existing call site means this one.
     private(set) var product: Product?
-    /// The YEARLY plan — $59.99 since the 2026-09-01 reprice, no trial on
-    /// either plan since 2026-08-23. Same subscription group. Held separately
-    /// rather than in a list so the existing monthly call sites keep their
-    /// meaning; the paywall reads both.
+    /// The YEARLY plan — $59.99 since the 2026-09-01 reprice, no trial since
+    /// 2026-08-23. Same subscription group. Held separately rather than in a
+    /// list so the existing monthly call sites keep their meaning; the paywall
+    /// reads both.
     private(set) var yearlyProduct: Product?
+
+    /// The monthly plan's introductory offer — the FIRST month at $3.99, then
+    /// the regular price (owner decision 2026-09-10, every territory) — and
+    /// ONLY once StoreKit has confirmed THIS Apple ID is eligible. nil
+    /// otherwise, and nil is not an error.
+    ///
+    /// 🔴 `Product.SubscriptionInfo.introductoryOffer` is the offer AS
+    /// CONFIGURED: StoreKit returns it for every user whether or not they
+    /// qualify. Eligibility is the separate, async `isEligibleForIntroOffer`,
+    /// and Apple grants ONE introductory offer per subscription GROUP per
+    /// Apple ID — so every current and lapsed subscriber, including the
+    /// 2026-08 yearly-trial takers, is ineligible and is charged the regular
+    /// price at the sheet. Showing them "$3.99 first month" would be the
+    /// "promised an offer, charged full price" shape that ends in a refund and
+    /// a 3.1.2 rejection. Hence this is written in `loadProducts` only after
+    /// the eligibility read returns true, and never derived from the offer's
+    /// mere presence. Cleared on a successful purchase, when eligibility ends.
+    private(set) var monthlyIntroOffer: Product.SubscriptionOffer?
+
+    /// "$3.99" — the first month's price, localized by StoreKit — or nil when
+    /// there is no intro to promise. Narrow on purpose: only a PAY_AS_YOU_GO
+    /// offer covering exactly ONE monthly period earns the "first month, then"
+    /// sentence the paywall renders. Any other shape in ASC (a free trial, a
+    /// pay-up-front, several periods) renders nothing rather than a sentence
+    /// that misdescribes it — the copy fails closed.
+    var monthlyIntroPriceDisplay: String? {
+        #if DEBUG
+        if let s = screenshotPricing { return s.monthlyIntro }
+        #endif
+        guard let offer = monthlyIntroOffer,
+              offer.paymentMode == .payAsYouGo,
+              offer.periodCount == 1,
+              offer.period.unit == .month, offer.period.value == 1
+        else { return nil }
+        return offer.displayPrice
+    }
+
+    /// The intro price for the plan the CTA will actually buy — the monthly's
+    /// when Monthly is selected, nil for Yearly (which carries no offer).
+    /// Follows `selectedPlan` for the same reason `displayPrice` does: a
+    /// first-month figure beside a yearly charge would misstate the period.
+    var selectedIntroPriceDisplay: String? {
+        selectedPlan == .monthly ? monthlyIntroPriceDisplay : nil
+    }
 
     /// The trial, straight from StoreKit rather than hardcoded. `nil` when the
     /// product has no introductory offer, or when this Apple ID is no longer
@@ -202,6 +251,15 @@ final class SubscriptionStore {
             let fetched = try await Product.products(for: LineProduct.allIds)
             product = fetched.first { $0.id == LineProduct.monthlyId }
             yearlyProduct = fetched.first { $0.id == LineProduct.yearlyId }
+            // Eligibility is a separate async read, and it is the gate — see
+            // `monthlyIntroOffer`. An ineligible user gets nil here and is
+            // shown the regular price, which is what Apple will charge them.
+            if let sub = product?.subscription, let offer = sub.introductoryOffer,
+               await sub.isEligibleForIntroOffer {
+                monthlyIntroOffer = offer
+            } else {
+                monthlyIntroOffer = nil
+            }
             if product == nil {
                 lastError = String(localized: "Second numbers are temporarily unavailable. Please try again in a moment.")
             }
@@ -332,9 +390,15 @@ final class SubscriptionStore {
         // verification all return false, and telling them apart is the whole
         // reason the event exists. Same shape as `IAPStore.purchase`.
         let plan = selectedPlan.rawValue
+        // `intro`: whether the first-month price was on screen for this
+        // attempt. It is the split the 2026-09-10 offer is judged on —
+        // sheet→paid with the intro against the 3-of-30 that preceded it —
+        // and it cannot be recovered afterwards, because a successful buy
+        // ends the user's eligibility.
+        let intro = selectedIntroPriceDisplay != nil
         func note(_ outcome: String) {
             Analytics.shared.track("line_purchase_result", [
-                "outcome": .string(outcome), "plan": .string(plan)])
+                "outcome": .string(outcome), "plan": .string(plan), "intro": .bool(intro)])
         }
         guard let product = selectedProduct else {
             note("failed")
@@ -351,6 +415,10 @@ final class SubscriptionStore {
             switch result {
             case .success(let verification):
                 let accepted = await handle(verification)
+                // Apple has now consumed this Apple ID's one intro offer for
+                // the group, whether or not our server accepted the receipt —
+                // a paywall shown again this session must not promise it.
+                monthlyIntroOffer = nil
                 note(accepted ? "success" : "failed")
                 return accepted
             case .userCancelled:

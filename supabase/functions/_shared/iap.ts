@@ -512,19 +512,34 @@ export function mailPlanLabel(tx: AppleTransactionPayload): string {
  * existing lapse state machine already handles.
  */
 export function isFreeTrial(tx: AppleTransactionPayload): boolean {
-  return tx.offerType === 1 || tx.offerDiscountType === "FREE_TRIAL";
+  if (tx.offerDiscountType) return tx.offerDiscountType === "FREE_TRIAL";
+  // Older payloads carry only `offerType` (1 = introductory), which since
+  // 2026-09-10 also covers the PAID $3.99 first month on line.monthly — so
+  // "introductory" alone no longer means "free". Price is the tiebreak.
+  return tx.offerType === 1 && (tx.price ?? 0) === 0;
+}
+
+/** True for ANY introductory-offer period, free or paid — the $3.99 first
+ *  month on line.monthly (PAY_AS_YOU_GO, since 2026-09-10) included. Display
+ *  only, same rule as `isFreeTrial`. */
+export function isIntroOffer(tx: AppleTransactionPayload): boolean {
+  return tx.offerType === 1 ||
+    ["FREE_TRIAL", "PAY_AS_YOU_GO", "PAY_UP_FRONT"].includes(tx.offerDiscountType ?? "");
 }
 
 /** Ops label for a line subscription transaction: "monthly" / "yearly" from
  *  the product id suffix (falls back to the raw id so an unexpected product is
- *  visible rather than blank), plus a free-trial marker. Display only —
- *  nothing may gate on it, per the isFreeTrial note above. */
+ *  visible rather than blank), plus an offer marker — "free trial" or "intro
+ *  price" — so a $3.99 first period is never read as a $5.99 renewal in the
+ *  channel. Display only — nothing may gate on it, per the isFreeTrial note. */
 export function linePlanLabel(tx: AppleTransactionPayload): string {
   const id = tx.productId ?? "";
   const plan = id.endsWith(".line.monthly") ? "monthly"
     : id.endsWith(".line.yearly") ? "yearly"
     : id;
-  return isFreeTrial(tx) ? `${plan} · free trial` : plan;
+  if (isFreeTrial(tx)) return `${plan} · free trial`;
+  if (isIntroOffer(tx)) return `${plan} · intro price`;
+  return plan;
 }
 
 /** `iap-verify` must call this BEFORE `creditsForProduct`. Its unmapped-product

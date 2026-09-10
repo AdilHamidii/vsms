@@ -113,12 +113,17 @@ struct LineCheckoutScreen: View {
             // and "left at Apple's sheet". The plan is carried because the
             // paywall opens on monthly and the choice is the thing we are
             // asking about.
-            Analytics.shared.track("line_checkout_view", [
-                "plan": .string(subs.selectedPlan.rawValue)])
-            withAnimation(RMotion.content) { appeared = true }
             // Loads the localized price. Cheap and idempotent, and without it
-            // the CTA falls back to a label with no price at all.
+            // the CTA falls back to a label with no price at all. Awaited
+            // BEFORE the view event so `intro` below is the answer StoreKit
+            // gave, not the pre-load nil.
             await subs.loadProduct()
+            Analytics.shared.track("line_checkout_view", [
+                "plan": .string(subs.selectedPlan.rawValue),
+                // Whether the $3.99 first month was on this screen — the
+                // denominator for reading the 2026-09-10 intro offer.
+                "intro": .bool(subs.monthlyIntroPriceDisplay != nil)])
+            withAnimation(RMotion.content) { appeared = true }
         }
         // ⚠️ Ticks ONLY while there is a countdown to tick.
         //
@@ -610,9 +615,14 @@ struct LineCheckoutScreen: View {
             VStack(spacing: 8) {
                 planRow(.monthly,
                         title: String(localized: "Monthly"),
+                        // The RECURRING price stays in the price column —
+                        // 3.1.2(a) wants the renewal figure visible, and the
+                        // intro is the exception, not the price. The note
+                        // carries the first month, and vanishes for an Apple
+                        // ID that is not eligible (see `monthlyIntroOffer`).
                         price: subs.monthlyPriceDisplay,
                         badge: nil,
-                        note: nil)
+                        note: subs.monthlyIntroPriceDisplay.map { String(localized: "\($0) for your first month") })
                 planRow(.yearly,
                         title: String(localized: "Yearly"),
                         price: subs.yearlyPriceDisplay,
@@ -710,7 +720,18 @@ struct LineCheckoutScreen: View {
              fill: theme.inkSoft.opacity(0.5), border: theme.ink.opacity(0.28)) {
             VStack(alignment: .leading, spacing: 4) {
                 HStack(alignment: .firstTextBaseline, spacing: 6) {
-                    if let price = subs.displayPrice {
+                    if let intro = subs.selectedIntroPriceDisplay {
+                        // The figure the sheet will actually charge today.
+                        // The regular price and period follow in the renewal
+                        // sentence below, which 3.1.2(a) requires whenever an
+                        // introductory price applies.
+                        Text(intro)
+                            .displayType(30)
+                            .foregroundStyle(theme.text)
+                        Text("first month")
+                            .font(RFont.text(15))
+                            .foregroundStyle(theme.text2)
+                    } else if let price = subs.displayPrice {
                         Text(price)
                             .displayType(30)
                             .foregroundStyle(theme.text)
@@ -741,6 +762,10 @@ struct LineCheckoutScreen: View {
                         } else {
                             Text("Renews every year until you cancel. Cancel any time in your Apple ID settings.")
                         }
+                    } else if subs.selectedIntroPriceDisplay != nil {
+                        // The intro is stated in the figure above; what the
+                        // reader needs here is what comes AFTER it.
+                        Text("Then \(subs.displayPrice ?? "") every month until you cancel. Cancel any time in your Apple ID settings.")
                     } else {
                         Text("Renews every month until you cancel. Cancel any time in your Apple ID settings.")
                     }
@@ -819,9 +844,7 @@ struct LineCheckoutScreen: View {
             // the CTA silently contradicted it 200pt below.
             PrimaryButton(
                 label: ctaLabel,
-                sub: busy ? nil : subs.displayPrice.map {
-                    "\($0)\(subs.selectedPlan == .yearly ? "/yr" : "/mo")"
-                },
+                sub: busy ? nil : ctaPriceSub,
                 disabled: busy || state.lineOffer == nil || !subs.hasMonthly,
                 action: buy
             )
@@ -851,6 +874,20 @@ struct LineCheckoutScreen: View {
         if subs.isLoadingProduct { return String(localized: "Loading…") }
         if unavailable { return String(localized: "Temporarily unavailable") }
         return String(localized: "Subscribe")
+    }
+
+    /// "$3.99 first month" when the intro applies to the selected plan,
+    /// otherwise "$5.99/mo" / "$59.99/yr". The period follows the plan for
+    /// the reason documented at the call site; the intro follows it too, via
+    /// `selectedIntroPriceDisplay`, so a Yearly pick can never wear the
+    /// monthly's first-month figure.
+    private var ctaPriceSub: String? {
+        if let intro = subs.selectedIntroPriceDisplay {
+            return String(localized: "\(intro) first month")
+        }
+        return subs.displayPrice.map {
+            "\($0)\(subs.selectedPlan == .yearly ? "/yr" : "/mo")"
+        }
     }
 
     /// Reserve → pay → provision, in that order.

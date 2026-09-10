@@ -116,7 +116,11 @@ cannot tell you:
   `scripts/asc-mail-yearly-trial.py` (dry-run by default; idempotent).
   Verified: line 6798759539 offers = empty; mail 6803258736 offers = 175.
   So a `price_milli = 0` row on `mail.yearly` is a real trial; on any LINE
-  product it means an offer came back or something is wrong. The paywalls
+  product it means an offer came back or something is wrong. **`line.monthly`
+  (6798378879) carries a PAID $3.99 first-month intro in 175 territories
+  since 2026-09-10** (`scripts/asc-line-monthly-intro-offer.py`, same shape):
+  its first period rows read `price_milli = 3990`, never 0, and
+  `linePlanLabel` marks them "· intro price". The paywalls
   need no release — trial copy reads the live intro offer and appears or
   disappears on its own.
 - **"Today" is since midnight Paris**, not UTC — `ops_now` does

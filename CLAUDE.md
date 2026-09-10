@@ -122,19 +122,51 @@ really are disjoint and the answer is to STOP cross-selling, not to shout louder
 ⚠️ **The funnel bottleneck is the payment moment, not traffic** (14d to
 09-09): 266 users saw the store → 133 saw numbers → 72 reached checkout → **19
 opened Apple's sheet → 3 paid**. **Adding traffic to this funnel does nothing.**
-A monthly free trial is the obvious lever and the owner declined it on
-2026-09-09 (numbers cost $1 each upfront, and 17 of 20 cancel at the sheet);
-note also that `SubscriptionStore.trialLabel` reads `yearlyProduct` ONLY, so a
-monthly offer would exist in ASC and render nowhere without a client change.
+A monthly free trial was the obvious lever and the owner declined it on
+2026-09-09 (numbers cost $1 each upfront, and 17 of 20 cancel at the sheet).
+
+✅ **`line.monthly` carries a $3.99 FIRST-MONTH intro offer since 2026-09-10**
+(owner: "genuinely the best I can do" — treat $3.99 as the floor). It is a
+PAY_AS_YOU_GO offer, `ONE_MONTH × 1`, then the regular $5.99, in all **175**
+territories — same numeral where the tier exists (136, incl. USD/EUR/GBP/CAD),
+Apple's equalization elsewhere (¥600, ₹399, R$24.9). Created and READ BACK by
+`scripts/asc-line-monthly-intro-offer.py` (dry-run by default, idempotent).
+A paid intro answers the free-trial objection: the $3.39 net covers the $1
+number. It applies at Apple's sheet with no client change; the client renders
+it on `LineCheckoutScreen` (plan row, price block, CTA, 3.1.2 sentence) from
+2.13 via `SubscriptionStore.monthlyIntroPriceDisplay`. **2.12 (in review)
+does not display it and does not need to.** Read it on `line_checkout_view`
+/ `line_purchase_result` `props.intro` (true = the first-month price was on
+screen) against the pre-09-10 sheet→paid of 3 of 30.
+
+🔴 **`Product.SubscriptionInfo.introductoryOffer` is the offer AS CONFIGURED,
+not eligibility.** StoreKit returns it to every user; eligibility is the
+separate async `isEligibleForIntroOffer`, and Apple grants ONE intro per
+subscription GROUP per Apple ID — so every current and lapsed line subscriber
+(including the 2026-08 yearly-trial takers) is ineligible and pays $5.99 at
+the sheet. `monthlyIntroOffer` is therefore set in `loadProducts` only after
+the eligibility read returns true, and cleared on a successful purchase.
+⚠️ **`trialLabel` and `MailSubscriptionStore.yearlyTrialLabel` still read the
+offer's mere presence** — inert for the line (no trial exists) but LIVE for
+mail: a user who already used the mail trial is shown "3 days free" and then
+charged the year. Same fix as `monthlyIntroOffer`; not done, listed under
+Known-open.
 
 **The yearly line plan carried a 3-day free trial from 2026-08-15 to at least
 08-24, and it is GONE from ASC** (`GET /v1/subscriptions/6798759539/
-introductoryOffers` → empty, 2026-09-10; `tmp/introoffers.py` in the job dir
-lists every offer). Its record: 9 takers, 1 call between them, 0 conversions,
-a $1 number each — decoded from `latest_signed_transaction.offerDiscountType
-= FREE_TRIAL` on `line_subscriptions`. `trialLabel` therefore renders nothing
-today. `mail.yearly` DOES still carry a 3-day trial in every territory. Do not
+introductoryOffers` → empty, 2026-09-10). Its record: 9 takers, 1 call between
+them, 0 conversions, a $1 number each — decoded from
+`latest_signed_transaction.offerDiscountType = FREE_TRIAL` on
+`line_subscriptions`. `trialLabel` (yearly ONLY) therefore renders nothing.
+`mail.yearly` DOES still carry a 3-day trial in every territory. Do not
 re-add a line trial without the owner.
+
+⚠️ **`isFreeTrial` in `_shared/iap.ts` no longer treats `offerType === 1` as
+"free"**: since the paid intro, an introductory period can carry a price, so
+a legacy payload with no `offerDiscountType` is a trial only at `price 0`.
+`linePlanLabel` renders "· intro price" for the $3.99 period so ops never
+reads it as a $5.99 renewal. `telegram-notify`'s trial test is `price_milli
+= 0` and stays correct on its own.
 
 ### What the line can and cannot do
 
@@ -1774,6 +1806,15 @@ Genuinely open items only. Resolved history is in `docs/decisions-archive.md`.
   order IS the probe**.
 - ⚠️ **2.12's number picker and OTP upsell card were never walked on a device** —
   tap automation was unavailable, so both are build-and-screenshot verified only.
+- ⚠️ **The $3.99 first-month intro (2026-09-10) has no reading yet.** Judge it
+  on `line_purchase_result` `props.intro = true` sheet→paid at ~30 sheets,
+  against 3 of 30 before. The client display ships in 2.13; until then only
+  Apple's sheet shows it.
+- ⚠️ **`MailSubscriptionStore.yearlyTrialLabel` promises "3 days free" to
+  Apple IDs that are NOT eligible** (it reads the offer's presence, not
+  `isEligibleForIntroOffer`), so a repeat mail subscriber is shown a trial and
+  charged the year. The line's `monthlyIntroOffer` has the correct gate; copy
+  it. Unfixed as of 2026-09-10.
 
 **Product / listing**
 

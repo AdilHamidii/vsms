@@ -115,10 +115,16 @@
           "familyShareable": false,
           "groupNumber": 1,
           "internalID": "6798378879",
-          "introductoryOffer": null,
+          "introductoryOffer": {
+            "displayPrice": "3.99",
+            "internalID": "intro-first-month-399",
+            "numberOfPeriods": 1,
+            "paymentMode": "payAsYouGo",
+            "subscriptionPeriod": "P1M"
+          },
           "localizations": [
             {
-              "description": "Your own number for verification codes.",
+              "description": "Your own number for verification codes. $3.99 for your first month.",
               "displayName": "Second Number",
               "locale": "en_US"
             }
