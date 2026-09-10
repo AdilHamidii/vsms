@@ -1,14 +1,18 @@
-// Winback nudges — cron-driven (relay-winback, daily). Two one-shot cohorts:
+// Nudges — cron-driven (relay-winback, daily 15:00 UTC). Four cohorts:
 //
 //  1. Never-ordered: signed up, never placed an order — "use your free
 //     credit". Eligibility + dedupe: winback_candidates() /
 //     profiles.winback_sent_at.
 //  2. Stranded credits: last order failed, wallet still loaded, walked away —
-//     "your credits are still here, delivery improved". Eligibility + dedupe:
-//     stranded_credit_candidates() / profiles.stranded_nudge_sent_at. That
-//     candidates fn returns NOTHING until the active provider's measured
-//     48h delivery rate clears 40% — we do not tell burned users delivery
-//     improved until the data says it did.
+//     "your credits are still here". Eligibility + dedupe:
+//     stranded_credit_candidates() / profiles.stranded_nudge_sent_at. Gated
+//     on the PRIMARY provider's float and on watchdog checks that mean orders
+//     fail — NOT on balance warnings (see the gate for the month that cost).
+//  3. Reorder: a code came through 3–14 days ago and credits remain.
+//  4. Line expiry: a rented number whose subscriber turned auto-renew off,
+//     3 days and 1 day before it is deleted. Not a winback — a paying
+//     customer using the product. line_expiry_nudge_candidates() /
+//     line_subscriptions.expiry_nudged_{3d,1d}_for.
 //
 // Guarded by the cron secret (deployed --no-verify-jwt: the pg_cron relay
 // sends only x-cron-secret, no Authorization header — with verify_jwt on,
@@ -131,18 +135,27 @@ Deno.serve(async (req) => {
   // The fix is to stop making the unprovable claim (see copy below) rather than
   // to keep a metric that can't open. What remains is a LIVENESS check: only
   // invite someone back if we can actually serve them.
-  // Gate on the provider that actually serves the cohort. This read
-  // smspva_health, but since the 2026-07-30 cutover SMSPVA carries only the 118
-  // services HeroSMS has no code for — a funded SMSPVA would have waved the
-  // cohort through while the provider serving 99.4% of volume sat empty, which
-  // is the exact outage this gate exists to prevent.
+  // Gate on the provider that serves the cohort's NEXT order. This read
+  // smspva_health until the 2026-07-30 HeroSMS cutover, then herosms_health
+  // until 2026-09-10 — a month after 5sim became primary (it owns ~86% of
+  // active routes: `select provider, count(*) from routes where
+  // status='active' group by 1`). Same drift both times: the key names
+  // whichever provider was primary when the line was written. Re-check it
+  // after any provider switch (checklist step 6).
   const { data: health } = await sb
-    .from("app_config").select("value").eq("key", "herosms_health").maybeSingle();
+    .from("app_config").select("value").eq("key", "5sim_health").maybeSingle();
   const balUsd = Number((health?.value as { balance_usd?: number } | null)?.balance_usd ?? 0);
   const { data: wd } = await sb
     .from("app_config").select("value").eq("key", "watchdog").maybeSingle();
-  const wdVal = wd?.value as { failing?: unknown[]; checked_at?: string } | null;
-  const failing = (wdVal?.failing ?? []).length;
+  const wdVal = wd?.value as { failing?: { check?: string }[]; checked_at?: string } | null;
+  // Only checks that mean "an order would fail" hold the cohort back. The
+  // `*-float` checks are balance/runway WARNINGS — the balance is gated
+  // directly above, and `telnyx-float` is a different product entirely — yet
+  // `failing === 0` let any of them silence this: a 5sim runway warning kept
+  // the cohort dark from 2026-08-09 to 2026-09-10 while 30 buyers sat idle on
+  // 488 paid credits. A warning is not an outage.
+  const failing = (wdVal?.failing ?? [])
+    .filter((f) => !/-float$/.test(String(f?.check ?? ""))).length;
   // A dead watchdog reports `failing: []` forever, so an un-aged verdict would
   // wave the cohort through during an outage — the very thing this gate exists
   // to prevent. telegram-notify and /balance both age it; so must this.
@@ -247,6 +260,64 @@ Deno.serve(async (req) => {
     if (anyOk) { await sb.rpc("bump_reorder_nudge", { p_user: c.user_id }); reorderMarked++; }
   }
 
+  // ── Cohort 4: LINE EXPIRY — auto-renew off, number about to be deleted ───
+  //
+  // Not a winback. These are paying customers using the product: on
+  // 2026-09-10, 6 of the 8 active monthly lines had auto-renew OFF while
+  // averaging 27 calls in 8 days. There is NO HOLD on lapse —
+  // reclaim_lapsed_lines suspends and release-lines deletes the number at
+  // Telnyx within ~30 min — and until this cohort nothing told them. Two
+  // stages per billing period, deduped on the expires_at they were sent for,
+  // so a renewal re-arms both: "3d" (4 days → 36 h out) and "1d" (≤ 36 h).
+  // On the daily cadence the 3d push lands 3–4 days out, the 1d push 12–36 h
+  // out. No gate: the claim is about their own subscription, true regardless.
+  //
+  // `kind: "line_expiry"` — PushManager checks `kind` first and an
+  // unrecognised one opens the app with no navigation (it launches on the
+  // Number tab anyway). It must carry no `orderId`.
+  let lineExpirySent = 0, lineExpiryMarked = 0;
+  const { data: expiring, error: lErr } = await sb.rpc("line_expiry_nudge_candidates", { p_limit: 100 });
+  if (lErr) console.error("line_expiry_nudge_candidates failed:", lErr.message);
+
+  for (const c of (expiring ?? []) as {
+    user_id: string; original_transaction_id: string; e164: string;
+    expires_at: string; stage: "3d" | "1d";
+  }[]) {
+    const { data: devices } = await sb
+      .from("push_devices").select("token, environment").eq("user_id", c.user_id);
+    const when = c.stage === "1d" ? "tomorrow" : "in 3 days";
+    let anyOk = false;
+    for (const d of devices ?? []) {
+      try {
+        const r = await sendPush(d.token, {
+          alertTitle: `Your number expires ${when}`,
+          alertBody: `${c.e164} will be released and can't be recovered — auto-renew ` +
+            `is off. Turn it back on under Subscriptions in your Apple Account ` +
+            `settings to keep it.`,
+          customData: { kind: "line_expiry" },
+        }, d.environment as "sandbox" | "production");
+        if (r.ok) { anyOk = true; lineExpirySent++; }
+        else {
+          failed++; console.error("APNs status", r.status, r.body);
+          await pruneIfDead(d.token, r.status, r.body);
+        }
+      } catch (e) {
+        failed++; console.error("APNs send failed:", e);
+      }
+    }
+    // Mark only on an accepted send so a transient APNs failure retries on the
+    // next run. The candidate fn requires a device, and pruneIfDead removes a
+    // dead one, so a user with no live token drops out rather than looping.
+    if (anyOk) {
+      const { error: mErr } = await sb.rpc("mark_line_expiry_nudged", {
+        p_original_transaction_id: c.original_transaction_id,
+        p_stage: c.stage, p_expires_at: c.expires_at,
+      });
+      if (mErr) console.error("mark_line_expiry_nudged failed:", mErr.message);
+      else lineExpiryMarked++;
+    }
+  }
+
   // Heartbeat for the SQL watchdog (run_watchdog checks this key's
   // updated_at; the app_config touch trigger maintains it). Written on every
   // completed run — a silent 401 like the 9-day one now pages within a day.
@@ -259,6 +330,8 @@ Deno.serve(async (req) => {
     candidates: candidates?.length ?? 0, sent, marked,
     strandedCandidates: stranded?.length ?? 0, strandedSent, strandedMarked,
     reorderCandidates: reorder?.length ?? 0, reorderSent, reorderMarked,
+    lineExpiryCandidates: expiring?.length ?? 0, lineExpirySent, lineExpiryMarked,
+    strandedGate: { balUsd, failing, wdFresh, claimSafe },
     failed,
   });
 });
