@@ -529,7 +529,9 @@ export const handlers: Record<string, Handler> = {
   },
 
   tabs: async ({ sb, arg }) => {
-    // Which tab the app opens on. Same shape as `/metrics`: one `app_config`
+    // Which of the two product tabs sits FIRST BEHIND Home — the app always
+    // opens on Home from 2.13 — and, from the same value, the order of the
+    // need-cards on Home. Same shape as `/metrics`: one `app_config`
     // row written directly, no RPC — there is no side effect to coordinate,
     // unlike the two pause switches, which also move catalog rows.
     //
@@ -538,16 +540,17 @@ export const handlers: Record<string, Handler> = {
     // "simplify" it to a boolean: a flag cannot say WHICH tab wins, only which
     // way someone remembered to point it.
     const LABEL: Record<string, string> = {
-      line: "the rented Number tab",
-      temp: "the Temp tab (temp SMS + temp e-mail)",
+      line: "Number, first behind Home",
+      temp: "Temp (SMS + e-mail), first behind Home",
     };
     // The reply's own caveat, kept in one place because both branches need it
     // and because it is the whole reason a flip can look like it did nothing.
     const CAVEAT =
       `\n\n<i>Takes effect on a user's SECOND cold launch — the first one ` +
       `fetches and stores it, so the tab bar can never reorder itself while ` +
-      `someone is looking at it. Only builds shipping with the reader respond; ` +
-      `2.11 and older keep the order they were built with.</i>`;
+      `someone is looking at it. It also orders the two cards on Home. ` +
+      `Only builds with the Home tab (2.13+) respond; older builds keep the ` +
+      `order they were built with.</i>`;
 
     if (arg !== "number" && arg !== "temp") {
       const { data: p, error } = await sb
@@ -557,7 +560,7 @@ export const handlers: Record<string, Handler> = {
         return readFail("the launch tab");
       }
       const cur = p?.value === "temp" ? "temp" : "line";
-      return `📱 The app opens on <b>${LABEL[cur]}</b>.\n\n` +
+      return `📱 Home always opens first. Behind it, <b>${LABEL[cur]}</b>.\n\n` +
         `<code>/tabs number</code> · <code>/tabs temp</code>`;
     }
     // "number" is what the owner types (it is the tab's label); "line" is what
@@ -567,7 +570,7 @@ export const handlers: Record<string, Handler> = {
       .upsert({ key: "launch_tab", value: want }, { onConflict: "key" });
     return error
       ? `⚠️ Couldn't change it: ${esc(error.message)}`
-      : `📱 The app now opens on <b>${LABEL[want]}</b>.` + CAVEAT;
+      : `📱 Home still opens first. Behind it: <b>${LABEL[want]}</b>.` + CAVEAT;
   },
 
   help: () => Promise.resolve(helpText()),

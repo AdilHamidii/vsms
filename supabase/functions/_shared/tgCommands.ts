@@ -241,11 +241,11 @@ export const COMMANDS: CommandSpec[] = [
     name: "tabs",
     mutates: true,
     args: "number|temp",
-    summary: "Which tab the app opens on",
-    help: "<code>/tabs number</code> puts the rented number first and makes it the " +
-      "landing tab · <code>/tabs temp</code> gives that place back to temp SMS and " +
-      "temp e-mail · <code>/tabs</code> alone reports the state. Takes effect on a " +
-      "user's SECOND cold launch, and only on builds that ship with the reader.",
+    summary: "Order of Number and Temp behind Home",
+    help: "<code>/tabs number</code> puts Number ahead of Temp behind Home, and first " +
+      "among Home's cards · <code>/tabs temp</code> gives that place to temp SMS + " +
+      "e-mail · <code>/tabs</code> alone reports it. Home always opens first. Takes " +
+      "effect on a user's SECOND cold launch, on builds with the Home tab (2.13+).",
     group: "Controls",
   },
   {
