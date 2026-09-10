@@ -33,7 +33,7 @@ import SwiftUI
 /// see it were ones who had already paid. Its slot now holds the three-step
 /// explainer, shown to first-run users who are SHORT — which is the state
 /// almost everyone who never orders is actually in.
-struct HomeScreen: View {
+struct TempScreen: View {
     @Environment(\.theme) private var theme
     @Environment(AppState.self) private var state
     @Environment(APIClient.self) private var api

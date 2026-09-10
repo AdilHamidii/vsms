@@ -2,7 +2,7 @@ import SwiftUI
 
 /// What a FREE e-mail domain actually costs THIS account right now.
 ///
-/// 🔴 ONE definition, read by both surfaces that render it. `HomeScreen` and
+/// 🔴 ONE definition, read by both surfaces that render it. `TempScreen` and
 /// `EmailDomainSheet` used to resolve it independently — and Home simply did
 /// not resolve it at all: it printed "Free" whenever `domain.isFree`, ignoring
 /// both the subscription entitlement and the fact that the free address is one

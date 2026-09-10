@@ -21,9 +21,9 @@ struct TabBar: View {
     /// cost before, and `PrefKey.launchTab` for why it is read from UserDefaults
     /// rather than from the live `appStatus`.
     ///
-    /// `.home` keeps its enum name while its label reads "Temp": it hosts BOTH
-    /// temp SMS and temp e-mail (`AppState.emailMode` switches between them),
-    /// so neither product's name fits the tab on its own.
+    /// The case is `.temp` and its label reads "Temp": it hosts BOTH temp SMS
+    /// and temp e-mail (`AppState.emailMode` switches between them), so neither
+    /// product's name fits the tab on its own.
     ///
     /// The eSIM tab was removed 2026-09-08: the line has been paused since
     /// 2026-07-31 with no active plans, so it was a permanently empty store
@@ -37,7 +37,7 @@ struct TabBar: View {
     private let items: [Item] = AppTab.currentOrder.compactMap { tab in
         switch tab {
         case .line:    Item(id: .line,    label: "Number",  icon: RIcon.phone)
-        case .home:    Item(id: .home,    label: "Temp",    icon: RIcon.home)
+        case .temp:    Item(id: .temp,    label: "Temp",    icon: RIcon.home)
         case .account: Item(id: .account, label: "Account", icon: RIcon.user)
         // Orders has not been a tab since 2026-08-06; `currentOrder` never
         // yields it, and dropping it here means adding a case is the only way

@@ -77,9 +77,9 @@ struct ContentView: View {
             Group {
                 switch state.tab {
                 case .line:
-                    LineScreen(onOpenSms: { state.tab = .home })
-                case .home:
-                    HomeScreen(
+                    LineScreen(onOpenSms: { state.tab = .temp })
+                case .temp:
+                    TempScreen(
                         openServices: { sheet = .services },
                         openCountries: { sheet = .country },
                         openEmailDomains: { sheet = .emailDomain },
@@ -549,7 +549,7 @@ struct ContentView: View {
             // The same store, presented as a cover so it inherits EnvBundle —
             // covers do NOT reliably inherit @Observable env objects, which is
             // the trap this app wraps every cover for.
-            LineStoreScreen(onOpenSms: { state.flow = nil; state.tab = .home },
+            LineStoreScreen(onOpenSms: { state.flow = nil; state.tab = .temp },
                             onClose: { state.flow = nil })
         case .lineCheckout:
             LineCheckoutScreen()
@@ -799,10 +799,10 @@ extension ContentView {
 
         case .mailPaywall, .mailPaywallYearly:
             // The e-mail line, not the number line, so the tab behind the
-            // sheet is Home in e-mail mode — the surface this paywall is
+            // sheet is Temp in e-mail mode — the surface this paywall is
             // actually raised from (`confirmGetEmail` refusing a second free
             // address with `subscription_required`).
-            state.tab = .home
+            state.tab = .temp
             state.emailMode = true
             // Presented as a plain `.sheet(isPresented:)` rather than through
             // `ActiveSheet`, because that is how the real screen is raised —
@@ -835,7 +835,7 @@ extension ContentView {
             state.flow = .thread
 
         case .home:
-            state.tab = .home
+            state.tab = .temp
             // Pin a pair that PUBLISHES a network rate, so the frame shows the
             // delivery figure the whole picker is built around. The default
             // pair may publish nothing, and a store screenshot with a blank
@@ -877,24 +877,24 @@ extension ContentView {
         // that had never once shown what their names claim. Caught by checksum,
         // not by eye: the files looked plausible.
         case .waiting:
-            state.tab = .home
+            state.tab = .temp
             state.activeOrder = state.resolve(
                 ScreenshotMode.sampleOrder(status: .waiting, otp: nil))
             state.flow = .waiting
 
         case .code:
-            state.tab = .home
+            state.tab = .temp
             state.activeOrder = state.resolve(
                 ScreenshotMode.sampleOrder(status: .received, otp: "123456"))
             state.flow = .otp
 
         case .orders:
-            state.tab = .home
+            state.tab = .temp
             state.orders = ScreenshotMode.sampleOrderRows.map(state.resolve)
             state.flow = .orders
 
         case .credits:
-            state.tab = .home
+            state.tab = .temp
             // A modest balance, so the sheet leads with the balance card rather
             // than a shortfall context that would tie the frame to one route's
             // price. `creditsShortfall` is 0 here — the seeded catalog has no
@@ -920,7 +920,7 @@ extension ContentView {
             sheet = .credits
 
         case .email:
-            state.tab = .home
+            state.tab = .temp
             state.emailMode = true
             state.activeEmailOrder = ScreenshotMode.sampleEmailOrder
             // The real flow inserts the order into `emailOrders` before it
@@ -939,7 +939,7 @@ extension ContentView {
             // code frame is nearly identical to the SMS one — same big digits,
             // same Done button — so on its own it does not show that a second
             // product exists at all.
-            state.tab = .home
+            state.tab = .temp
             state.emailMode = true
             state.emailDomains = ScreenshotMode.sampleEmailDomains
             state.emailDomain = ScreenshotMode.sampleEmailDomains.first

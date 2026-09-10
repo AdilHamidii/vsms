@@ -37,7 +37,7 @@ struct LineStoreScreen: View {
 
     /// Jump to the temp-SMS product. Passed in rather than reaching for
     /// `state.tab` directly so the caller owns navigation, matching
-    /// `HomeScreen(onOpenEsim:)`.
+    /// `TempScreen(onOpenEsim:)`.
     var onOpenSms: () -> Void
 
     /// Present only when the store is a COVER (`flow == .lineStoreMore`,

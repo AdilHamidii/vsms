@@ -7,7 +7,7 @@ import SwiftUI
 // ⚠️ THE ORDER ENCODES THE BUSINESS, AND THIS FILE HAD IT BACKWARDS UNTIL
 // 2026-08-18. It led with the rented second number, which was correct for the
 // three days after 2026-08-05 and was reverted on 08-08: `AppState.tab` is
-// `.home` and `TabBar` reads Home · Number · eSIM · Account. So the first
+// `.temp` and `TabBar` reads Home · Number · eSIM · Account. So the first
 // screen of the app was selling the SECOND product — a $9.99 subscription —
 // while the store listing, the keywords and essentially all acquisition are
 // about temp SMS. Order now: temp SMS → temp e-mail → second number → what you

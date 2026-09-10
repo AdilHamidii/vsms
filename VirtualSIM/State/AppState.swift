@@ -1,20 +1,23 @@
 import AdServices
 import SwiftUI
 
-/// ⚠️ THIS COMMENT DESCRIBED THE 2026-08-05 ORDER FOR TEN DAYS AFTER IT WAS
-/// REVERTED. It said "rented numbers first … `line` therefore leads and is the
-/// launch tab", while `tab` below defaults to `.home` and `TabBar` renders
-/// Home · Number · eSIM · Account. The bet was taken on 08-05 and unwound on
-/// 08-08: temp SMS is what the store listing, the keywords and essentially all
-/// acquisition are about, and the rented line is a $9.99/month subscription
-/// shown to people who arrived for one throwaway code.
+/// The app's tab identities. `.temp` is the tab labelled "Temp": it hosts BOTH
+/// temp SMS and temp e-mail (`AppState.emailMode` switches between them), so
+/// neither product's name fits it on its own.
 ///
-/// Note the enum's CASE ORDER is not the tab-bar order — `TabBar` owns its own
-/// `items` array, and reading this declaration as the bar's layout is exactly
-/// how the stale claim survived. Read `TabBar.items` and `tab`'s default.
+/// ⚠️ The enum's CASE ORDER is NOT the tab-bar order, and nothing in this
+/// declaration says which tab the app opens on. `currentOrder` below is the ONE
+/// definition of both — reading the case list as the bar's layout is exactly
+/// how a stale claim about the ordering survived here for ten days after it had
+/// been reverted. Read `currentOrder` and `TabBar.items`.
+///
+/// (History: the rented line led the bar from 2026-08-05 and was unwound on
+/// 08-08, then led again from 2026-09-09 under the owner switch. What that
+/// ordering has cost is in CLAUDE.md.)
 ///
 /// `tab` is not persisted, so growing this enum and moving its default carry no
 /// decode risk — unlike `OrderStatus`, which ships to every phone.
+///
 /// ⚠️ `esim` was REMOVED on 2026-09-08 (owner decision). The eSIM business
 /// moved to a separate app; the line had been paused since 2026-07-31 with 0
 /// active plans, so the tab rendered an empty store on every launch. The 10
@@ -26,7 +29,7 @@ import SwiftUI
 /// deleting a `PurchaseIntent` case would change how `creditsShortfall`
 /// resolves for a product line that may come back.
 enum AppTab: String, Hashable, CaseIterable {
-    case line, home, orders, account
+    case line, temp, orders, account
 
     /// The tab bar's order, owner-switchable from Telegram (`/tabs`).
     ///
@@ -39,8 +42,8 @@ enum AppTab: String, Hashable, CaseIterable {
     /// is reached as a cover from Home.
     static func launchOrder(for raw: String?) -> [AppTab]? {
         switch raw {
-        case "line": [.line, .home, .account]
-        case "temp": [.home, .line, .account]
+        case "line": [.line, .temp, .account]
+        case "temp": [.temp, .line, .account]
         // Includes nil. An unknown value must never produce an empty or
         // partial bar — the caller falls back to the compiled default.
         default:     nil
@@ -49,7 +52,7 @@ enum AppTab: String, Hashable, CaseIterable {
 
     /// What the build ships with, and what an absent or unreadable
     /// `app_config.launch_tab` falls back to. Owner decision 2026-09-09.
-    static let defaultOrder: [AppTab] = [.line, .home, .account]
+    static let defaultOrder: [AppTab] = [.line, .temp, .account]
 
     /// The order this launch will use: the owner's stored choice when it is
     /// one we recognise, otherwise the compiled default.
@@ -1740,7 +1743,7 @@ final class AppState {
     /// **Stored, not computed.** It was a computed property that walked all
     /// **1,081** plans and rebuilt a dictionary — and because `AppState` is
     /// `@Observable`, that ran on every body evaluation of any view touching it:
-    /// twice per `HomeScreen` redraw and once per `EsimStoreScreen` redraw, i.e.
+    /// twice per `TempScreen` redraw and once per `EsimStoreScreen` redraw, i.e.
     /// constantly while the map is being dragged. It also handed `EsimMapView` a
     /// freshly-allocated array each time, so SwiftUI saw new input and rebuilt
     /// every annotation. The catalog only changes when it is fetched, so it is
