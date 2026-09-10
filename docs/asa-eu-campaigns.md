@@ -138,10 +138,31 @@ and must NOT be pulled from review for it.
 
 ## 5. The campaigns
 
-`scripts/asa.py create-eu --yes`. Three campaigns, €4/day each. Every write is
-read back, and **`endTime` is asserted null on every ad group** — an ad group
-that reached its end date is what silently killed the previous EU campaign
-while it read ENABLED.
+✅ **CREATED AND LIVE 2026-09-10** (`scripts/asa.py create-eu --yes`, owner:
+"launch them"). All three read back `ENABLED / RUNNING`, no
+`servingStateReasons`, **every keyword live and every ad-group `endTime`
+null**. Budgets were then raised the same evening (owner: *"budget 50 euro
+each. verification and second number"*), read back: **Verification €50/day ·
+Second Number €50/day · English €4/day**.
+
+🔴 **That is €104/day of exposure and there is no lifetime cap** (§2). At the
+account's recent ~1% budget utilisation it will spend a fraction of that — but
+the whole point of the broad groups is that delivery may not stay at 1%, and
+if they work, €100/day can actually spend. **Check `report 1` tomorrow, not in
+a week.**
+
+| campaign | id | ad groups | keywords |
+|---|---|---|---|
+| `vSMS EU Verification` | **2144644286** | `2150982635` DE · `2150984229` FR · `2150983531` ES · `2150983489` IT · **`2150984126` EU broad** | 31 |
+| `vSMS EU Second Number` | **2144642484** | `2150982486` Second number · `2150982133` US number · **`2150984276` Second number broad** | 23 |
+| `vSMS EU English` | **2144642935** | `2150982082` Temp SMS · `2150983231` Second number · `2150981538` US number · **`2150981685` English broad** | 20 |
+
+74 keywords total, 20 broad + 6 exact negatives per campaign. ⚠️ **Read ASA,
+never this table** — `scripts/asa.py campaigns`.
+
+Every write is read back, and **`endTime` is asserted null on every ad group**
+— an ad group that reached its end date is what silently killed the previous
+EU campaign while it read ENABLED.
 
 ### A · `vSMS EU Verification` — DE, AT, CH, FR, BE, ES, IT — €4/day
 
@@ -223,9 +244,38 @@ day 2, not day 1.
 | day 2 | 🔴 **BROAD vs EXACT impressions, per campaign.** This is the whole experiment. If broad delivers and exact does not, EU exact terms are simply low-volume and the answer is broad + negatives, not higher bids. If NEITHER delivers, the fault is account-level and no keyword list fixes it. |
 | day 2 | `searchterms <cid> 2` returns rows. Verified working before launch against `vRoam MENA Intent`, so an empty result means no impressions, not a broken report. |
 | day 2 | every ad group's `endTime` still null |
+| day 2 | 🔴 **CPI against the owner's stated bar of €1.00** (2026-09-10: *"id be happy with downloads under 1 euro"*). See the arithmetic below — the max bids already cap it, but only the broad groups land under €1. |
 | day 7 | any ad group with ≥ 200 impressions and 0 taps → pause it |
 | day 14 | **cost per Production credit-pack purchase.** At ~3% install→pack (82 buyers / 1,653 users, ~61% of installs sign in), 0 packs from 60 installs has P ≈ 16% — resolvable. **0 packs from ≥ 60 installs → stop.** |
 | — | **no per-keyword subscription rule.** Europe has never produced a subscription; it cannot resolve. |
+
+### The €1.00 CPI bar, and why bids are not the way to hit it
+
+The owner's bar is **under €1.00 per download**. A max bid is a CPT ceiling, so
+at the EU's measured 67% tap→install each group's worst case is:
+
+| group | max bid | worst-case CPI |
+|---|---|---|
+| broad (all three campaigns) | €0.80 | **€1.19** |
+| exact ES / IT / second-number-EN / US-number-EN | €1.20 | €1.79 |
+| exact DE / FR / temp-SMS-EN / second-number / US-number | €1.30 | €1.94 |
+
+Second-price auctions mean the clearing price is usually well below the max —
+the US groups at a €1.50 bid cleared €0.99–1.45 on 09-06 — so €1.00 is
+reachable, but only the broad groups have a ceiling near it.
+
+🔴 **Do not chase the bar by cutting bids pre-emptively.** Bidding low is what
+the account already tried: €0.40–0.90 on 09-05 won six auctions in a day, and
+§1's whole finding is that thin delivery is the failure mode here. The way to
+€1.00 is to **let it run 48 hours, then prune** — kill any keyword whose
+realised CPT exceeds €0.65 in `searchterms`, which is €1.00 CPI at 67%. That
+prunes on measured cost rather than on a guess about the auction.
+
+⚠️ **`cpaGoal` is deliberately NOT set.** It is available on this account
+(vRoam runs €2.00 alongside `MANUAL_CPT`), and setting it to €1.00 would state
+the owner's bar directly — but it also suppresses delivery, which is the exact
+variable §1's experiment is trying to measure. Revisit it once broad-vs-exact
+has an answer.
 
 ⚠️ **The `US number` group has no revenue metric here**, and that is stated
 rather than hidden: a US-number searcher's product is the $5.99 subscription,
