@@ -1879,10 +1879,12 @@ Each has been wrong within a day of being written at least once.
 **Verified 2026-09-09:**
 
 - **iOS**: `MARKETING_VERSION 2.13`, `CURRENT_PROJECT_VERSION 62`.
-  🔴 **2.13 is staged in ASC at `PREPARE_FOR_SUBMISSION` with build 62
-  attached and release notes in all 13 locales — NOT submitted.** The owner
-  submits it by hand after adding screenshots (owner instruction 2026-09-10).
-  Do not run `asc-release.py submit 2.13` without being asked.
+  **2.13 (build 62) SUBMITTED 2026-09-10 17:39Z by the owner** — submission
+  `42c648b1-…`, version `WAITING_FOR_REVIEW`, release notes in all 13
+  locales, screenshots added by the owner in the ASC web UI. It carries the
+  Home tab, the $3.99 first-month intro display, and the signup grant at 0.
+  ⚠️ **Read ASC, never this line** — `python3 scripts/asc-release.py status
+  2.13`.
   ⚠️ **2.12 was never released**: Apple refuses a second editable version
   (`ENTITY_ERROR.RELATIONSHIP.INVALID`, "You cannot create a new version of
   the App in the current state"), so the 2.12 row was RENAMED to 2.13 rather
