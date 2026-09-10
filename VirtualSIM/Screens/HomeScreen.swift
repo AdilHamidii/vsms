@@ -47,12 +47,13 @@ struct HomeScreen: View {
     /// redraw and make the one number this event answers meaningless.
     @State private var tracked = false
 
-    /// The card order, resolved ONCE into a stored property rather than
-    /// computed per body evaluation — the same rule, and the same reason, as
-    /// `TabBar.items`: `AppState` is `@Observable` and this screen redraws on
-    /// every collection it reads, so a computed order would hit UserDefaults on
-    /// each redraw and could change mid-session if anything ever wrote the key
-    /// while the app was open.
+    /// The card order, resolved into a stored property when the view is
+    /// initialised — once per `HomeScreen` init, not per body evaluation —
+    /// the same rule, and the same reason, as `TabBar.items`: `AppState` is
+    /// `@Observable` and this screen redraws on every collection it reads, so
+    /// a computed order would hit UserDefaults on each redraw. The UserDefaults
+    /// key is only ever written by `refreshAppStatus`, which runs after the
+    /// reveal, so the order cannot change under the user within one appearance.
     private let productOrder = AppTab.productOrder
 
     /// The user holds a rented number RIGHT NOW.
@@ -307,8 +308,9 @@ struct HomeScreen: View {
 
     /// One row: what you might need, in the user's words, and where it goes.
     ///
-    /// The whole row is the target and the label is combined for VoiceOver —
-    /// a chevron announced on its own says nothing.
+    /// The whole row is the target, and nothing is combined: the row is a
+    /// plain `Button`, so VoiceOver already reads it as ONE element carrying
+    /// the button trait. See the note on the modifier list below.
     private func needCard<Price: View>(
         icon: String,
         title: Text,

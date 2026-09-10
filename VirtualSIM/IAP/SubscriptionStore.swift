@@ -123,7 +123,7 @@ final class SubscriptionStore {
     /// 2026-08 yearly-trial takers, is ineligible and is charged the regular
     /// price at the sheet. Showing them "$3.99 first month" would be the
     /// "promised an offer, charged full price" shape that ends in a refund and
-    /// a 3.1.2 rejection. Hence this is written in `loadProducts` only after
+    /// a 3.1.2 rejection. Hence this is written in `loadProduct()` only after
     /// the eligibility read returns true, and never derived from the offer's
     /// mere presence. Cleared on a successful purchase, when eligibility ends.
     private(set) var monthlyIntroOffer: Product.SubscriptionOffer?

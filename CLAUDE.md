@@ -46,7 +46,7 @@ iOS app selling four things:
 
 | line | billing | state |
 |---|---|---|
-| **rented second numbers** — a US/CA number the user keeps, with SMS and calling | **StoreKit subscription** ($5.99/mo, $59.99/yr) | live; the first card on Home |
+| **rented second numbers** — a US/CA number the user keeps, with SMS and calling | **StoreKit subscription** ($5.99/mo, $59.99/yr) | live; a need-card on Home for anyone without a line (first while `launch_tab = line`) |
 | **temporary phone numbers** for SMS verification codes | credits | live, the original product |
 | **temporary e-mail addresses** | credits + a $2.99/mo subscription | live |
 | **eSIM data plans** | credits | 🔴 **PERMANENTLY PARKED** — see below |
@@ -176,7 +176,7 @@ not eligibility.** StoreKit returns it to every user; eligibility is the
 separate async `isEligibleForIntroOffer`, and Apple grants ONE intro per
 subscription GROUP per Apple ID — so every current and lapsed line subscriber
 (including the 2026-08 yearly-trial takers) is ineligible and pays $5.99 at
-the sheet. `monthlyIntroOffer` is therefore set in `loadProducts` only after
+the sheet. `monthlyIntroOffer` is therefore set in `loadProduct()` only after
 the eligibility read returns true, and cleared on a successful purchase.
 ⚠️ **`trialLabel` and `MailSubscriptionStore.yearlyTrialLabel` still read the
 offer's mere presence** — inert for the line (no trial exists) but LIVE for
@@ -1672,7 +1672,8 @@ is the missing piece.
 - 🔴 **Which PRODUCT the user is buying is declared, never inferred** —
   `AppState.PurchaseIntent`, set at each entry point and cleared centrally in
   `flow`'s `didSet`. This bug class has appeared **three** times: a checkout
-  draft read outside its flow priced Home for the last-checked-out service; a
+  draft read outside its flow priced the Temp screen (then named
+  `HomeScreen`) for the last-checked-out service; a
   never-cleared eSIM plan made every "how many credits do you need?" answer for
   that plan for the rest of the session; and turning e-mail mode off was a
   no-op. **The general rule: when a write path branches on `flow` but the
@@ -1779,7 +1780,7 @@ Each has been wrong within a day of being written at least once.
   that is a decision error, not a typo: "still in review" is the argument for
   cutting another release.
 - **Backend**: 49 edge function dirs besides `_shared`, 229 migration files, 26
-  files in `_shared`, 136 Swift sources, 23 active cron jobs.
+  files in `_shared`, 137 Swift sources, 23 active cron jobs.
 - **Catalog**: 9,364 active routes (5sim 8,074 / HeroSMS 1,290), 468 services,
   0 active eSIM plans (line parked). `active_sms_provider()` = `5sim`.
   Evidence: 53 routes `measured`, 23 `seeded`.
@@ -1844,6 +1845,10 @@ Genuinely open items only. Resolved history is in `docs/decisions-archive.md`.
   order IS the probe**.
 - ⚠️ **2.12's number picker and OTP upsell card were never walked on a device** —
   tap automation was unavailable, so both are build-and-screenshot verified only.
+- ⚠️ **2.13's Home tab was never walked on a device** — the three card taps, the
+  `emailMode` switch and the Call-button gate are build-and-screenshot verified
+  only (both states, iPhone 17 Pro and SE), same caveat as 2.12's picker and
+  OTP card.
 - ⚠️ **The $3.99 first-month intro (2026-09-10) has no reading yet.** Judge it
   on `line_purchase_result` `props.intro = true` sheet→paid at ~30 sheets,
   against 3 of 30 before. The client display ships in 2.13; until then only
@@ -1856,9 +1861,11 @@ Genuinely open items only. Resolved history is in `docs/decisions-archive.md`.
 
 **Product / listing**
 
-- ⚠️ **The ASC screenshots still show the OLD line store** (numbers and price on
-  the first screen), which no longer exists. Re-take from the `-screenshot
-  lineStore` frame before the next submission.
+- ⚠️ **The ASC screenshots on the live listing predate the Home tab.** A
+  six-slide set (Home router, line store, inbox, thread, temp SMS, temp e-mail;
+  no prices in captions per 2.3.7) was composed on 2026-09-10 from the current
+  build into `~/Desktop/vSMS-Screenshots/` by `scripts/screenshots/make-set.py`;
+  upload it with the 2.13 submission.
 - ⚠️ **The App Privacy label for 2.6's analytics is owner-reported, not
   verified** — the API cannot read or write it. Check for an unpublished draft.
 - ⚠️ **The Telegram bot cannot close a support thread**, so answered threads
