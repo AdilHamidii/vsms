@@ -540,8 +540,8 @@ export const handlers: Record<string, Handler> = {
     // "simplify" it to a boolean: a flag cannot say WHICH tab wins, only which
     // way someone remembered to point it.
     const LABEL: Record<string, string> = {
-      line: "Number, first behind Home",
-      temp: "Temp (SMS + e-mail), first behind Home",
+      line: "Number",
+      temp: "Temp (SMS + e-mail)",
     };
     // The reply's own caveat, kept in one place because both branches need it
     // and because it is the whole reason a flip can look like it did nothing.
