@@ -894,16 +894,39 @@ this n. Settling it needs a two-arm test the owner declined.
 **`AppState.minDefaultCredits = 3`** demotes every route under 3 credits in the
 picks the app still makes FOR the user (auto-landed country, post-failure
 retry) — a demotion, never a filter, so the hero can never go "Unavailable";
-the user's own country list is untouched. 🔴 **The floor must never exceed the
-signup grant — change the two together.** They are currently EQUAL at 3; moving
-either alone re-opens the bug where every first pick was a price the new user
-could not pay.
+the user's own country list is untouched.
+
+🔴 **The floor and the signup grant were coupled, and they are NOT any more.**
+The rule was "never let the floor exceed the grant, change the two together",
+because a first pick priced above a new user's balance stranded them. Since
+2026-09-10 the **grant is 0** and the floor is still **3**, deliberately: the
+bug that rule prevented needs the app to pre-select a pair, and since 2.12
+build 60 it pre-selects nothing (below). At a grant of 0 every route is
+unaffordable until the user buys a pack, so the floor is no longer an
+affordability gate at all — it is purely a QUALITY demotion, keeping the
+picks the app still makes (auto-landed country, post-failure retry) off
+inventory that delivers 12.1% at ≤5¢. **Do not "resync" it to 0**; that would
+point failed-order retries at the worst inventory in the catalog.
 
 ⚠️ **The STARTER is no longer one of those picks (2.12 build 60).** There is no
 first-run service/country pair at all — see "Nothing is pre-selected" below —
 so a demotion cannot rescue it and does not have to.
 
 ### 🔴 The signup grant does not create pack buyers — do not raise it "so they can try it"
+
+✅ **The grant is 0 as of 2026-09-10** (owner decision, acting on the
+measurement below). `grant_signup_bonus` reads
+`app_config.signup_bonus_credits`, and at 0 it returns BEFORE writing a
+tombstone or a ledger row — so nothing is burned and raising it later still
+pays a first-time address. Re-read it with
+`select value from app_config where key='signup_bonus_credits';`, never from
+this line. Two consequences that are not derivable from the code: a new user
+now reaches the paywall on their FIRST order rather than after spending the
+grant, and `wallet_transactions` gets no `signup_bonus` row at all, so
+"did this user get a bonus?" is answered by `signup_grants` alone. The ops
+signup alert already handles it, printing "no signup credit (grant is 0)"
+rather than asserting a grant that never happened — the absence-of-evidence
+bug is fixed, not merely documented.
 
 Measured 2026-09-10 over every Production pack buyer (46). **Of the 34 who
 ever placed a numbered order, 31 bought BEFORE their first order**, and for 28
@@ -1884,7 +1907,9 @@ Each has been wrong within a day of being written at least once.
 - **Lines**: 10 unreleased `phone_lines`; 19 line subscriptions all-time (8
   active, 1 grace, 9 expired, 1 revoked); 13 e-mail subscriptions (4 active, 3
   grace, 4 billing_retry, 2 expired).
-- **Config**: signup grant **3**, free e-mail cap **1**/user/day, swap **8**
+- **Config**: signup grant **0** (owner decision 2026-09-10 — see the grant
+  section above; `app_config.signup_bonus_credits`), free e-mail cap
+  **1**/user/day, swap **8**
   credits, `launch_tab` = `line` (order behind Home; Home always first from
   2.13), mail subscription **enforced**, eSIM **paused**, lines **not**
   paused, daily credit **disabled**.
@@ -2002,8 +2027,6 @@ Genuinely open items only. Resolved history is in `docs/decisions-archive.md`.
 - ⚠️ **`countries.observed_*` is NOT provider-scoped** and still counts orders
   from retired providers. Third element of the steering key, so the blast radius
   is small — but it will recur wherever that column is read.
-- ⚠️ **Migration `20260803070000` hardcodes a 0 signup grant** while live config
-  says 3, so a from-scratch replay silently disables the grant.
 - ⚠️ **Migration drift: a fresh deploy would NOT reproduce production.** Dozens
   of recorded versions have no local file and vice versa; `db push` remains
   broken. Recover by writing each missing version out of
