@@ -59,6 +59,8 @@ enum ScreenshotMode {
         case mailPaywallYearly
         case lineInbox       // an owned number, with conversations
         case home            // the temp-SMS store
+        case homeRouter      // the Home tab, no line: three need-cards
+        case homeLine        // the Home tab for a subscriber: line card on top
         case waiting         // waiting for a code
         case code            // the code arrived
         case orders

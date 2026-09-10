@@ -1,9 +1,10 @@
 import AdServices
 import SwiftUI
 
-/// The app's tab identities. `.temp` is the tab labelled "Temp": it hosts BOTH
-/// temp SMS and temp e-mail (`AppState.emailMode` switches between them), so
-/// neither product's name fits it on its own.
+/// The app's tab identities. `.home` is the router/dashboard the app opens on
+/// (owner decision 2026-09-10); `.temp` is the tab labelled "Temp": it hosts
+/// BOTH temp SMS and temp e-mail (`AppState.emailMode` switches between them),
+/// so neither product's name fits it on its own.
 ///
 /// ⚠️ The enum's CASE ORDER is NOT the tab-bar order, and nothing in this
 /// declaration says which tab the app opens on. `currentOrder` below is the ONE
@@ -29,7 +30,7 @@ import SwiftUI
 /// deleting a `PurchaseIntent` case would change how `creditsShortfall`
 /// resolves for a product line that may come back.
 enum AppTab: String, Hashable, CaseIterable {
-    case line, temp, orders, account
+    case home, line, temp, orders, account
 
     /// The tab bar's order, owner-switchable from Telegram (`/tabs`).
     ///
@@ -38,12 +39,16 @@ enum AppTab: String, Hashable, CaseIterable {
     /// tab cannot drift apart — a bar led by Number that opens on Temp is the
     /// bug this shape exists to make impossible.
     ///
+    /// Since 2026-09-10 `.home` leads every variant, so what `/tabs` decides is
+    /// the order of the two PRODUCT tabs behind it — and, through
+    /// `productOrder`, the order of Home's own need-cards.
+    ///
     /// `orders` is absent on purpose: it stopped being a tab on 2026-08-06 and
-    /// is reached as a cover from Home.
+    /// is reached as a cover from the Temp tab.
     static func launchOrder(for raw: String?) -> [AppTab]? {
         switch raw {
-        case "line": [.line, .temp, .account]
-        case "temp": [.temp, .line, .account]
+        case "line": [.home, .line, .temp, .account]
+        case "temp": [.home, .temp, .line, .account]
         // Includes nil. An unknown value must never produce an empty or
         // partial bar — the caller falls back to the compiled default.
         default:     nil
@@ -51,8 +56,14 @@ enum AppTab: String, Hashable, CaseIterable {
     }
 
     /// What the build ships with, and what an absent or unreadable
-    /// `app_config.launch_tab` falls back to. Owner decision 2026-09-09.
-    static let defaultOrder: [AppTab] = [.line, .temp, .account]
+    /// `app_config.launch_tab` falls back to. Owner decision 2026-09-10: Home
+    /// leads on every launch; `/tabs` orders what sits behind it.
+    static let defaultOrder: [AppTab] = [.home, .line, .temp, .account]
+
+    /// The product tabs in the owner's order — what `/tabs` decides now that
+    /// Home is always first. The ONE definition Home's need-cards read, so the
+    /// bar and the cards can never disagree.
+    static var productOrder: [AppTab] { currentOrder.filter { $0 == .line || $0 == .temp } }
 
     /// The order this launch will use: the owner's stored choice when it is
     /// one we recognise, otherwise the compiled default.
@@ -222,7 +233,16 @@ enum PrefKey {
 
 @Observable
 final class AppState {
-    /// The rented second number is the launch tab (owner decision 2026-09-09).
+    /// Home is the launch tab (owner decision 2026-09-10), and it is element 0
+    /// of every `AppTab.currentOrder` variant BY CONSTRUCTION — so this is
+    /// `.home` whatever `/tabs` says. Users were landing on one of two product
+    /// tabs and bouncing between them without a sentence anywhere naming which
+    /// need each one serves; Home names the three needs and routes.
+    ///
+    /// ⚠️ THE HISTORY BELOW NOW APPLIES TO THE ORDER *BEHIND* HOME — which
+    /// product tab comes second in the bar, and therefore which need-card comes
+    /// first on Home (`AppTab.productOrder`). It is still a measured cost, just
+    /// one rung down: nobody lands directly on a paywall any more.
     ///
     /// ⚠️ THIS HAS BEEN SWAPPED BOTH WAYS AND ONE DIRECTION HAS A MEASURED
     /// COST. The line led for one release in 2.0 (Aug 15–19) and `create-order`
@@ -243,7 +263,7 @@ final class AppState {
     /// with `/tabs number|temp` — the same argument that gave `/lines` and
     /// `/esim` their kill switches. `.first` rather than a literal, so the
     /// landing tab and the bar can never disagree.
-    var tab: AppTab = AppTab.currentOrder.first ?? .line
+    var tab: AppTab = AppTab.currentOrder.first ?? .home
     var balance: Int = 0
     var services: [Service] = SeedData.services
     var countries: [Country] = SeedData.countries

@@ -58,6 +58,13 @@ user's second cold launch. Full account under the line-tab note at the top of
 this file; it is the kill switch for the 2026-09-09 decision to lead with the
 rented number, which has a measured cost in the other direction.
 
+⚠️ **The Home router tab (unreleased branch `worktree-line-lapse-backstop`)
+demotes this to an ORDERING switch**: Home leads every variant, so `/tabs`
+decides which product tab sits second and therefore which need-card comes first
+on Home. The command's `summary`, `help`, `LABEL` and reply sentence all still
+say "opens on", and must be corrected **with** the release that carries Home —
+changing `summary` also means re-running `telegram-setup`.
+
 **`/metrics on|off` (2026-09-03) hides the ONLY delivery figure users see** —
 the vendor network rate rendered as High/Medium/Low — by writing
 `app_config.delivery_metrics_hidden` (published through the RLS whitelist,

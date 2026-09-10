@@ -18,9 +18,10 @@ file is open.
 VirtualSIM/
   VirtualSIMApp.swift            App entry; resizes URLCache (32MB mem / 64MB disk
                                  for brand logos + flag PNGs); installs AppDelegate
-  ContentView.swift              4-tab routing (home/esim/orders/account) +
-                                 fullScreenCover for Checkout/Waiting/OTP + eSIM
-                                 flow (esimCheckout/esimDetail); EnvBundle
+  ContentView.swift              tab routing (home/line/temp/account; `.home` is
+                                 the router tab, `.temp` the temp SMS + e-mail
+                                 one) + fullScreenCover for Checkout/Waiting/OTP
+                                 + the parked eSIM flow; EnvBundle
                                  ViewModifier re-injects every @Observable env
                                  object into sheet/cover content (covers don't
                                  inherit reliably)

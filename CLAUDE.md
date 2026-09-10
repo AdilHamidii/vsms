@@ -46,7 +46,7 @@ iOS app selling four things:
 
 | line | billing | state |
 |---|---|---|
-| **rented second numbers** — a US/CA number the user keeps, with SMS and calling | **StoreKit subscription** ($5.99/mo, $59.99/yr) | live, and the app's launch tab |
+| **rented second numbers** — a US/CA number the user keeps, with SMS and calling | **StoreKit subscription** ($5.99/mo, $59.99/yr) | live; the launch tab in every shipped build |
 | **temporary phone numbers** for SMS verification codes | credits | live, the original product |
 | **temporary e-mail addresses** | credits + a $2.99/mo subscription | live |
 | **eSIM data plans** | credits | 🔴 **PERMANENTLY PARKED** — see below |
@@ -61,13 +61,38 @@ the top-up, do not build on it here. The infrastructure stays as-is on purpose �
 kill switches hold it off, the nightly sync is harmless, and `check-esim-usage`
 still serves the 12 legacy eSIMs sold before the provider switch.
 
-### The rented number leads the app (2026-09-09)
+### Home leads the app; `/tabs` orders the two product tabs behind it (2026-09-10)
 
-`AppTab` order is `line · home · account` and the app opens on `.line`. The
-temp SMS + temp e-mail tab is second and labelled **"Temp"**; it keeps the enum
-name `.home` because it hosts both lines and neither name fits it alone.
+⚠️ **UNRELEASED as of 2026-09-10** — it lives on branch
+`worktree-line-lapse-backstop` and is not in 2.12 or anything on sale. Shipped
+builds still open on a PRODUCT tab (see the paragraph below this one).
 
-**This ordering has a measured cost and has been reverted once.** It led in 2.0
+`AppTab` is `home · line · temp · account`, the app opens on `.home`, and
+`.home` is element 0 of every `launchOrder` variant BY CONSTRUCTION, so
+`AppTab.currentOrder.first` is `.home` whatever `/tabs` says. `HomeScreen` is a
+**router** with no live line and a light dashboard with one: three need-cards
+("a code for an app" / "a throwaway email" / "a number that's yours"), each
+jumping to a screen that already exists. It renders from local state on the
+first frame — `coldStart` has already answered `lines` and `lineThreads` — and
+deliberately holds no inbox, order list or waiting-order card, because
+`ResumeBar` already floats over every tab.
+
+**`AppTab.productOrder` is the ONE definition of the card order**, filtered out
+of `currentOrder`, so a bar led by Number and a Home screen led by the temp card
+is impossible by construction — the same shape `currentOrder` uses one layer up.
+
+The temp SMS + temp e-mail tab is labelled **"Temp"** and its enum case is
+`.temp` (renamed off `.home` on 2026-09-10 so the new tab could not silently
+inherit it); it hosts both lines, so neither product's name fits it alone. It
+carries `RIcon.clock`; the house went back to the tab called Home.
+
+⚠️ **The ops bot's `/tabs` copy still says it sets the LANDING tab** — true for
+every shipped build, false once this ships, where it orders only what sits
+behind Home. `tgCommands.ts` (`summary` + `help`) and `tgHandlers.ts` (`LABEL`
+and the reply sentence) must be corrected and redeployed **with** the release
+that carries Home, and changing `summary` means re-running `telegram-setup`.
+
+**The ordering below has a measured cost and has been reverted once.** It led in 2.0
 (Aug 15–19) and took `create-order` from ~30 calls/day to 1, with zero
 first-day orders from 45 signups. The premise that makes it right this time is
 that acquisition now points here — the store name leads with the second number
@@ -78,7 +103,9 @@ paused, re-examine this first.**
 ops bot writes `app_config.launch_tab`, published through the RLS whitelist.
 `AppTab.currentOrder` is the ONE definition, read by both `TabBar` and the
 landing tab, so a bar led by Number that opens on Temp is impossible by
-construction. Three properties that are not derivable from the code:
+construction. (With Home in front it decides the order of the two product tabs,
+and through `productOrder` the order of Home's need-cards.) Three properties
+that are not derivable from the code:
 
 - 🔴 **It is read from UserDefaults at LAUNCH, never live.** `refreshAppStatus`
   runs AFTER `bootPhase = .ready` in `coldStart` (a banner is additive and must
@@ -89,7 +116,8 @@ construction. Three properties that are not derivable from the code:
   its own reply. Do not "fix" this by moving the fetch before the reveal
   without measuring what it costs the boot chain.
 - **Fails to the compiled default.** An absent or unrecognised value clears the
-  stored copy and the build uses `AppTab.defaultOrder` (Number first), so
+  stored copy and the build uses `AppTab.defaultOrder` (`home · line · temp ·
+  account` on the branch; Number first in every shipped build), so
   deleting the row returns every app to its shipped order rather than pinning
   it to the last thing anyone typed. Client-side, so 2.11 and older ignore it.
 

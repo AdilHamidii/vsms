@@ -76,6 +76,8 @@ struct ContentView: View {
 
             Group {
                 switch state.tab {
+                case .home:
+                    HomeScreen(openCredits: { sheet = .credits })
                 case .line:
                     LineScreen(onOpenSms: { state.tab = .temp })
                 case .temp:
@@ -834,6 +836,32 @@ extension ContentView {
             state.openThreadId = "t1"
             state.flow = .thread
 
+        // The Home TAB, with no line: the three need-cards.
+        case .homeRouter:
+            state.tab = .home
+            state.lines = []
+            // The number card prints the monthly price from StoreKit, and
+            // `simctl` never applies the scheme's StoreKit configuration —
+            // same shim, same reason, as the store and paywall frames.
+            subs.screenshotPricing = .init()
+
+        // The Home TAB for a subscriber: the line card on top, then the two
+        // temp cards. The number card is absent by construction.
+        case .homeLine:
+            state.tab = .home
+            state.lines = [ScreenshotMode.sampleLine]
+            state.lineThreads = ScreenshotMode.sampleThreads
+            // 🔴 Required, and its absence is INVISIBLE rather than empty:
+            // `HomeScreen.hasLine` is gated on `linesLoaded` (the anti-flash
+            // rule), so seeding `lines` alone renders the frame as if the user
+            // had no number — the router state under the subscriber's name.
+            // The other line frames do not need it; they read `lines` directly.
+            state.linesLoaded = true
+            subs.screenshotPricing = .init()
+
+        // ⚠️ NOT the Home tab. `.home` is the temp-SMS store's frame and its
+        // raw value is a FILENAME that `scripts/screenshots/make-set.py`
+        // filters on, so it keeps the name and keeps pointing at `.temp`.
         case .home:
             state.tab = .temp
             // Pin a pair that PUBLISHES a network rate, so the frame shows the
@@ -987,11 +1015,11 @@ private struct EnvBundle: ViewModifier {
     }
 }
 
-#Preview("Home — Light") {
+#Preview("Temp — Light") {
     ContentView()
 }
 
-#Preview("Home — Dark") {
+#Preview("Temp — Dark") {
     ContentView()
         .preferredColorScheme(.dark)
 }
