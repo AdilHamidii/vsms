@@ -549,7 +549,8 @@ export const handlers: Record<string, Handler> = {
       `\n\n<i>Takes effect on a user's SECOND cold launch — the first one ` +
       `fetches and stores it, so the tab bar can never reorder itself while ` +
       `someone is looking at it. It also orders the two cards on Home. ` +
-      `Only builds with the Home tab (2.13+) respond; older builds keep the ` +
+      `Builds with the Home tab (2.13+) reorder what sits behind Home; 2.12 ` +
+      `reorders its Number/Temp bar the same way; 2.11 and older keep the ` +
       `order they were built with.</i>`;
 
     if (arg !== "number" && arg !== "temp") {
