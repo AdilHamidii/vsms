@@ -33,10 +33,33 @@ struct NameSheet: View {
     @State private var failed = false
     @FocusState private var focused: Bool
 
-    /// The one trim-and-length rule, shared with `setDisplayName` so the button
-    /// cannot offer a save the write would refuse.
+    /// A name the WRITE would take AND the GREETING would then show.
+    ///
+    /// 🔴 Both halves are needed, and the second is the one that bit.
+    /// `acceptableDisplayName` only trims and length-caps, but
+    /// `AppState.greetingName(email:)` additionally refuses a value containing
+    /// `@` or equal to the e-mail's local part — because
+    /// `handle_new_user()` seeds `display_name` from the address and greeting
+    /// somebody by their own handle reads as the app quoting a database row
+    /// back at them. Gate on the first rule alone and typing your own handle
+    /// SAVES: the PATCH lands, the sheet dismisses, and the eyebrow is
+    /// unchanged — a rename that silently did nothing, which is the worst of
+    /// the three possible outcomes because it looks like the app is broken.
+    ///
+    /// ⚠️ The rule is mirrored here rather than shared because `greetingName`
+    /// reads the STORED profile, and this has to judge a string that has not
+    /// been written yet. Keep the two in step: if `greetingName` gains a
+    /// rejection, add it here in the same commit, or this sheet starts
+    /// offering saves that show nothing again.
     private var acceptable: String? {
-        AppState.acceptableDisplayName(name)
+        guard let trimmed = AppState.acceptableDisplayName(name),
+              !trimmed.contains("@") else { return nil }
+        if let email = session.email,
+           let localPart = email.split(separator: "@", maxSplits: 1).first,
+           trimmed.compare(String(localPart), options: .caseInsensitive) == .orderedSame {
+            return nil
+        }
+        return trimmed
     }
 
     var body: some View {

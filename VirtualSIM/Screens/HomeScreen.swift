@@ -228,6 +228,10 @@ struct HomeScreen: View {
                 greeting
                 Image(systemName: "pencil")
                     .font(.system(size: 10, weight: .semibold))
+                    // The hint below already says what the pencil means, so
+                    // leaving it visible to VoiceOver only adds a symbol name
+                    // in front of the greeting.
+                    .accessibilityHidden(true)
             }
             .font(RFont.text(11, weight: .heavy))
             .textCase(.uppercase)
@@ -239,7 +243,13 @@ struct HomeScreen: View {
             .contentShape(.rect)
         }
         .buttonStyle(PressScaleStyle(scale: 0.97))
-        .accessibilityLabel(Text("Set your name"))
+        // 🔴 A HINT, not the label. `.accessibilityLabel` REPLACES what the
+        // button's own label would read, so putting the affordance there
+        // traded the greeting for it — a VoiceOver user heard "Set your name,
+        // button" and never heard the greeting the sighted user sees. The
+        // greeting stays the label (it is the content); the hint says what
+        // happens on a tap, which is exactly what hints are for.
+        .accessibilityHint(Text("Set your name"))
     }
 
     /// Six complete sentences, never a daypart word interpolated into one.
@@ -534,7 +544,7 @@ struct HomeScreen: View {
                                      count: 4),
                       spacing: 8) {
                 ForEach(featuredServices) { service in
-                    GridTile(label: Text(verbatim: service.name)) {
+                    GridTile(label: Text(verbatim: Self.tileLabel(service))) {
                         RHaptic.select()
                         Analytics.shared.track("service_selected", [
                             "service": .string(service.id),
@@ -585,6 +595,26 @@ struct HomeScreen: View {
     private static let featuredServiceIds = [
         "whatsapp", "telegram", "instagram", "google", "tiktok", "discord", "tinder",
     ]
+
+    /// The ONE product word for a tile, not the catalog's full name.
+    ///
+    /// Several catalog names list every product behind one route — `google` is
+    /// published as **"Google / YouTube / Gmail"** — because the picker rows,
+    /// which are full-width and searchable, want all of them. A 4-up tile is
+    /// ~80pt wide and cannot show that: it shrank to the `minimumScaleFactor`
+    /// floor and truncated anyway, so the tile read "Google / YouTub…" while
+    /// its six neighbours read one clean word.
+    ///
+    /// Taking the first segment is a DISPLAY choice local to this grid. It
+    /// never touches the tap — that still commits the whole `Service` — and it
+    /// is not localized (`Text(verbatim:)`) because these are brand names.
+    /// `lineLimit(1)` stays on the tile as the backstop for a first segment
+    /// that is itself long.
+    private static func tileLabel(_ service: Service) -> String {
+        let head = service.name.split(separator: "/", maxSplits: 1).first
+            .map { $0.trimmingCharacters(in: .whitespaces) } ?? ""
+        return head.isEmpty ? service.name : head
+    }
 
     // MARK: - Recent, or how it works
 
@@ -643,8 +673,28 @@ struct HomeScreen: View {
     /// screen: three rows is enough to answer "did my code arrive?" without
     /// this tab growing a history surface that then has to stay in step with
     /// the real one.
+    ///
+    /// 🔴 **Each list is trimmed BEFORE the merge, not after.** `OrdersAPI`
+    /// sends no `limit`, so `state.orders` is the user's ENTIRE history, and
+    /// this screen is `@Observable`-driven — it re-evaluates on every
+    /// collection it reads. Merging first meant allocating two full arrays of
+    /// wrappers, sorting all of them, and ISO-parsing every e-mail row's
+    /// `created_at` on each redraw, to keep three. Both endpoints already
+    /// return `created_at.desc`, so the newest three of each list necessarily
+    /// contain the newest three of the union — the merge only has to decide
+    /// how those six interleave. Same reason `featuredServices` walks the
+    /// catalog once instead of seven times.
+    ///
+    /// ⚠️ **That rests on both lists being newest-first, which is an
+    /// invariant of `AppState`, not of this file.** Verified 2026-09-10:
+    /// `OrdersAPI.list` and `EmailAPI.list` both send
+    /// `order=created_at.desc`, and every local mutation is an
+    /// `insert(_, at: 0)` — never an append. If a list ever gains a row at the
+    /// end, this trim silently drops the newest orders instead of the oldest.
     private var recentItems: [RecentItem] {
-        (state.orders.map(RecentItem.sms) + state.emailOrders.map(RecentItem.email))
+        let sms = state.orders.prefix(3).map(RecentItem.sms)
+        let mail = state.emailOrders.prefix(3).map(RecentItem.email)
+        return (sms + mail)
             .sorted { $0.sortDate > $1.sortDate }
             .prefix(3)
             .map { $0 }
@@ -908,12 +958,12 @@ private struct GridTile<Icon: View>: View {
                 label
                     .font(RFont.text(12, weight: .semibold))
                     .foregroundStyle(theme.text2)
+                    // Backstop only. The caller is expected to hand over one
+                    // product word (`HomeScreen.tileLabel`); this keeps a long
+                    // one on a single line, and the inset keeps the ellipsis
+                    // off the tile's hairline rather than running into it.
                     .lineLimit(1)
                     .minimumScaleFactor(0.75)
-                    // Catalog names are not all short — `google` is published
-                    // as "Google / YouTube / Gmail" — so a long one truncates.
-                    // The inset keeps the ellipsis off the tile's hairline
-                    // rather than letting the text run into the border.
                     .padding(.horizontal, 6)
             }
             .frame(maxWidth: .infinity)
