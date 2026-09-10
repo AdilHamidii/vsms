@@ -1861,11 +1861,14 @@ Genuinely open items only. Resolved history is in `docs/decisions-archive.md`.
 
 **Product / listing**
 
-- ⚠️ **The ASC screenshots on the live listing predate the Home tab.** A
-  six-slide set (Home router, line store, inbox, thread, temp SMS, temp e-mail;
-  no prices in captions per 2.3.7) was composed on 2026-09-10 from the current
-  build into `~/Desktop/vSMS-Screenshots/` by `scripts/screenshots/make-set.py`;
-  upload it with the 2.13 submission.
+- ⚠️ **The ASC screenshots on the live listing predate the Home tab.** Six
+  RAW frames (Home router, line store, inbox, thread, temp SMS, temp e-mail;
+  iPhone 17 Pro Max, 1320×2868, untouched `simctl io screenshot` PNGs) were
+  captured on 2026-09-10 into `~/Desktop/vSMS-Screenshots/raw/` for the owner
+  to edit and upload with 2.13. 🔴 **The owner composes screenshots
+  THEMSELVES — deliver raw captures, never captioned slides.** The composed
+  pipeline (`scripts/screenshots/make-set.py`, `compose-slide.py`) still runs
+  and writes a `set/` tree, but nothing the owner uploads comes from it.
 - ⚠️ **The App Privacy label for 2.6's analytics is owner-reported, not
   verified** — the API cannot read or write it. Check for an unpublished draft.
 - ⚠️ **The Telegram bot cannot close a support thread**, so answered threads

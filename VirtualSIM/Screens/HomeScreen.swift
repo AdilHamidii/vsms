@@ -51,9 +51,14 @@ struct HomeScreen: View {
     /// initialised — once per `HomeScreen` init, not per body evaluation —
     /// the same rule, and the same reason, as `TabBar.items`: `AppState` is
     /// `@Observable` and this screen redraws on every collection it reads, so
-    /// a computed order would hit UserDefaults on each redraw. The UserDefaults
-    /// key is only ever written by `refreshAppStatus`, which runs after the
-    /// reveal, so the order cannot change under the user within one appearance.
+    /// a computed order would hit UserDefaults on each redraw. Not once per
+    /// SESSION, though: `ContentView` re-inits this struct on any change it
+    /// observes (opening and closing the credits sheet, say), and the key is
+    /// written by `refreshAppStatus` AFTER the reveal — so on the one launch
+    /// that carries a `/tabs` flip, a re-init can pick the new order up before
+    /// the next cold launch. Two cards swapping places once, on that launch
+    /// only; `TabBar.items` has the same property. Harmless, and cheaper than
+    /// a static cache that would then disagree with the bar.
     private let productOrder = AppTab.productOrder
 
     /// The user holds a rented number RIGHT NOW.
