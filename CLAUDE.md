@@ -1726,17 +1726,21 @@ Each has been wrong within a day of being written at least once.
 
 **Verified 2026-09-09:**
 
-- **iOS**: `MARKETING_VERSION 2.12`, `CURRENT_PROJECT_VERSION 61`. **2.12 (build
-  61) is `WAITING_FOR_REVIEW`** (submitted 2026-09-10 08:57Z, version
-  `614dfb01-…`, submission `19946a38-…`). Two earlier submissions of 2.12 were
-  **cancelled and replaced** before review picked either up: build 59 (09-09
-  18:28Z, replaced to carry the no-pre-selection change) and build 60 (09-09
-  20:03Z, replaced to carry the recovery-card pool-rate steer). Each cancel
-  took the version through `DEVELOPER_REJECTED` and back, the documented
-  recovery path, with the 13 localizations untouched. **2.11 and every earlier
-  version are `READY_FOR_SALE`**. 2.12 carries the tab repositioning, the
-  product-first line store, the `OtpScreen` upsell, `/tabs`, the first-run
-  "Not selected" pair, and the recovery card's High-band pool offer.
+- **iOS**: `MARKETING_VERSION 2.12`, `CURRENT_PROJECT_VERSION 61`. **2.12 is
+  `DEVELOPER_REJECTED` with build 61 still attached and NO open submission**
+  (owner asked for the cancel on 2026-09-10 ~11:30Z; submission `19946a38-…`
+  reads `COMPLETE`, version `614dfb01-…`). It is the THIRD cancel of 2.12:
+  build 59 (09-09 18:28Z, replaced to carry the no-pre-selection change),
+  build 60 (09-09 20:03Z, replaced to carry the recovery-card pool-rate
+  steer), build 61 (09-10 08:57Z, cancelled unsubmitted-for-review; the
+  $3.99 intro display on the worktree branch is a candidate for the next
+  build). Each cancel takes the version through `DEVELOPER_REJECTED`, the
+  documented recovery path, with the 13 localizations untouched. Recover with
+  `scripts/asc-release.py build 2.12 <n> --apply` then `submit 2.12 --apply`.
+  **2.11 and every earlier version are `READY_FOR_SALE`**. 2.12 carries the
+  tab repositioning, the product-first line store, the `OtpScreen` upsell,
+  `/tabs`, the first-run "Not selected" pair, and the recovery card's
+  High-band pool offer.
   ⚠️ **Read ASC, never this line** — `python3 scripts/asc-release.py status
   2.12`. It has been wrong about the review state five versions running, and
   that is a decision error, not a typo: "still in review" is the argument for
