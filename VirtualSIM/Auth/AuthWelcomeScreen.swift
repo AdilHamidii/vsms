@@ -218,6 +218,20 @@ struct AuthWelcomeScreen: View {
                     // the only confirmation the tap ever gets.
                     RHaptic.success()
                     session.adopt(supaSession)
+                    // 🔴 Apple returns `fullName` ONLY on the FIRST
+                    // authorization for this Apple ID — never on any later
+                    // sign-in, and there is no API to ask again. So it is
+                    // parked in UserDefaults synchronously, before anything
+                    // that can fail, and flushed onto `profiles` behind the
+                    // reveal on the next cold launch
+                    // (`AppState.applyPendingDisplayName`). Writing it here
+                    // instead would put a PATCH on the sign-in path, where a
+                    // slow network delays the app for a label.
+                    if let given = credential.fullName?.givenName?
+                        .trimmingCharacters(in: .whitespacesAndNewlines),
+                       !given.isEmpty {
+                        UserDefaults.standard.set(given, forKey: PrefKey.pendingDisplayName)
+                    }
                 } catch {
                     RHaptic.warn()
                     self.error = (error as? APIError)?.userMessage

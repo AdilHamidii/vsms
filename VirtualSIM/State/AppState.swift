@@ -170,6 +170,25 @@ struct RecoveryContext {
 /// cannot render truthfully without — see `AppState.coldStart`.
 enum BootPhase: Equatable { case loading, ready, failed }
 
+/// Which half of the day it is, for Home's greeting.
+///
+/// Derived from the DEVICE's calendar, never from a server timestamp: the
+/// server knows when it is in UTC and nothing about the user's zone, and a
+/// greeting that says "Good morning" at the user's dinner time is worse than
+/// no greeting at all. Injectable date/calendar so the boundaries can be
+/// reasoned about without waiting for a clock.
+enum Daypart {
+    case morning, afternoon, evening
+
+    static func current(_ date: Date = .now, calendar: Calendar = .current) -> Daypart {
+        switch calendar.component(.hour, from: date) {
+        case 5..<12:  return .morning
+        case 12..<18: return .afternoon
+        default:      return .evening
+        }
+    }
+}
+
 /// Internal, not private: `AuthGate` reads `isDark`/`accent` through
 /// `@AppStorage` so the splash it shows during session bootstrap is already
 /// themed the way `ContentView` will theme the app a moment later. Sharing the
@@ -208,6 +227,14 @@ enum PrefKey {
 
     /// eSIM order ids whose install flow has been opened at least once.
     static let esimInstallsStarted = "esim.installsStarted"
+
+    /// The given name Apple handed us at sign-in, parked here until a cold
+    /// launch can PATCH it onto `profiles`. Apple sends the name ONLY on the
+    /// FIRST authorization for an Apple ID — never again, not even after a
+    /// delete-and-resignin — so it is written before the network is involved
+    /// and cleared only once the write has actually landed. See
+    /// `AppState.applyPendingDisplayName`.
+    static let pendingDisplayName = "pref.pendingDisplayName"
 
     /// Set once the AdServices attribution token has been accepted by
     /// `record-attribution`. The token is per INSTALL, so one successful
@@ -1053,6 +1080,13 @@ final class AppState {
         // trade `coldStart` exists to avoid. Runs BEFORE the eSIM loads because
         // `esimPaused` decides what the eSIM tab says when the catalog is empty.
         await refreshAppStatus(using: AppStatusAPI(client: api))
+        // Also behind the reveal, and for the same reason: a greeting is a
+        // label. The user id comes from the profile fetched above rather than
+        // from `Session`, which `AppState` does not hold — no profile means no
+        // row to PATCH anyway, so there is nothing to do.
+        if let userId = profile?.userId {
+            await applyPendingDisplayName(userId: userId, using: ProfileAPI(client: api))
+        }
         await loadEsimCatalog(using: EsimPlansAPI(client: api))
         await loadEsimOrders(using: EsimOrdersAPI(client: api))
         // Behind the reveal like the eSIM loads: history is not needed to render
@@ -1516,6 +1550,47 @@ final class AppState {
         return (c, credits)
     }
 
+    /// Adopt a service the user PICKED, from wherever the picker was opened.
+    ///
+    /// Lives here rather than in the sheet's `onPick` closure because more
+    /// than one surface now opens `ServiceSheet` (Home's service grid joins
+    /// ContentView's sheet), and two copies of this body would be two places
+    /// for the checkout/premium reset below to drift apart.
+    func commitServicePick(_ picked: Service) {
+        // Show + steer: land the freshly-picked service on a country
+        // we've SEEN deliver. Without evidence, bestCountry keeps the
+        // current selection — the sheet priced every row for it, and a
+        // silent swap made the buy button contradict the tapped row.
+        // Via pickDestination, NOT bestCountry directly: the row the
+        // user just tapped printed its answer ("5 cr in Romania"), and
+        // the two must be the same call or the promise breaks.
+        let best = pickDestination(for: picked)?.country
+        if flow == .checkout {
+            checkoutService = picked
+            if let best { checkoutCountry = best }
+            // Real SIM is a per-ROUTE choice, so it is RECOMPUTED for
+            // the new route, never carried over. Left set across a
+            // route change it stranded checkout: the tier chips vanish
+            // when the new route has no premium price, the Cost row
+            // silently shows the STANDARD price, the receipt still
+            // claims "Real carrier", and Get number then fails with
+            // "Real-SIM numbers just sold out here. Try Standard" —
+            // with no Standard chip on screen to tap. The only escape
+            // was backing out of checkout entirely.
+            // `defaultPremium` returns false whenever the new route has
+            // no premium price, so that invariant still holds.
+            checkoutPremium = defaultPremium(
+                for: picked, country: best ?? configuringCountry)
+        } else {
+            lastService = picked
+            if let best { lastCountry = best }
+        }
+        // The user has now CHOSEN. Everything before this was a
+        // suggestion, and the Home hero refuses to sell a suggestion —
+        // see `AppState.needsServiceChoice`.
+        needsServiceChoice = false
+    }
+
     /// Country picker shows every country in the catalog. A specific
     /// (service, country) pair may still be rejected at order time if
     /// SMSPVA is out of numbers — handled by create-order.
@@ -1682,6 +1757,89 @@ final class AppState {
 
     func refreshProfile(using api: ProfileAPI) async {
         profile = try? await api.currentProfile()
+    }
+
+    // ─────────── Display name ───────────
+
+    /// Rename the user, and adopt the new name locally only if the write
+    /// landed. Returns whether it did.
+    ///
+    /// The local copy is rebuilt rather than mutated because `Profile` is a
+    /// struct of `let`s — and rebuilt only AFTER the PATCH, so a failed write
+    /// leaves the app showing the name the server actually holds. Showing a
+    /// name that exists on this device and nowhere else is how a rename looks
+    /// like it worked until the next launch.
+    ///
+    /// 40 chars is the cap: it is a greeting, and a longer one wraps the Home
+    /// header rather than saying anything more.
+    @discardableResult
+    func setDisplayName(_ raw: String, userId: String, using api: ProfileAPI) async -> Bool {
+        let name = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !name.isEmpty, name.count <= 40 else { return false }
+        do {
+            try await api.updateDisplayName(name, userId: userId)
+        } catch {
+            return false
+        }
+        if let p = profile {
+            profile = Profile(userId: p.userId, displayName: name,
+                              createdAt: p.createdAt, referralCode: p.referralCode,
+                              referredBy: p.referredBy)
+        }
+        Analytics.shared.track("display_name_set", ["source": .string("home")])
+        return true
+    }
+
+    /// The name to greet this user by, or nil when we do not actually know one.
+    ///
+    /// 🔴 **A non-empty `display_name` is NOT evidence that anyone chose it.**
+    /// `handle_new_user()` seeds the column from the e-mail's local part, so
+    /// on 2026-09-10 **1,633 of 1,635** profiles carried a `display_name` that
+    /// is exactly the address in front of the `@` (2 blank, 0 containing an
+    /// `@`). Greeting from that column unfiltered means saying "Good morning,
+    /// adil.hamidii123" to almost everybody — which reads as the app quoting a
+    /// database row back at them, not as a greeting.
+    ///
+    /// So a name counts only when it is not the seed: non-empty, free of `@`
+    /// (a whole address landing in the column is the same seed one step
+    /// worse), and different from the e-mail's local part case-insensitively.
+    /// nil means the caller must fall back to a nameless greeting.
+    func greetingName(email: String?) -> String? {
+        guard let raw = profile?.displayName else { return nil }
+        let name = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !name.isEmpty, !name.contains("@") else { return nil }
+        if let email, let localPart = email.split(separator: "@", maxSplits: 1).first,
+           name.compare(String(localPart), options: .caseInsensitive) == .orderedSame {
+            return nil
+        }
+        return name
+    }
+
+    /// Flush the name Apple gave us at sign-in onto `profiles`, if one is
+    /// waiting.
+    ///
+    /// The key is cleared ONLY on a successful write, so a launch with no
+    /// network retries on the next one. That asymmetry is the whole point:
+    /// Apple hands over `fullName` on the FIRST authorization for an Apple ID
+    /// and never again, so a name dropped here is a name that cannot be
+    /// re-fetched from anywhere.
+    ///
+    /// Runs BEHIND the reveal in `coldStart` — a greeting is additive, and no
+    /// round-trip that only improves a label may hold the first screen.
+    func applyPendingDisplayName(userId: String, using api: ProfileAPI) async {
+        let defaults = UserDefaults.standard
+        guard let pending = defaults.string(forKey: PrefKey.pendingDisplayName) else { return }
+        // A value `setDisplayName` can never accept is dropped rather than
+        // kept: retrying it costs a PATCH on every cold launch forever and
+        // cannot ever succeed. Only a FAILED WRITE earns a retry.
+        let trimmed = pending.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, trimmed.count <= 40 else {
+            defaults.removeObject(forKey: PrefKey.pendingDisplayName)
+            return
+        }
+        if await setDisplayName(pending, userId: userId, using: api) {
+            defaults.removeObject(forKey: PrefKey.pendingDisplayName)
+        }
     }
 
     func refreshMaintenance(using api: MaintenanceAPI) async {
@@ -2898,6 +3056,57 @@ final class AppState {
 
     func buyAgain(_ order: Order) {
         startCheckout(service: order.service, country: order.country)
+    }
+
+    // ─────────── Opening an existing order ───────────
+    //
+    // Moved out of `OrdersScreen` (2026-09-10) because Home's Recent list
+    // opens the same rows: two copies of "where does this row lead" would be
+    // two places for the code-beats-status rule below to drift.
+
+    func openOrder(_ order: Order) {
+        if order.status == .waiting {
+            activeOrder = order
+            flow = .waiting
+        } else if order.otp != nil {
+            // A code exists — show it. Covers rescued codes, which land on a
+            // CANCELED row; without this the only copy the user ever had was a
+            // notification, and tapping the row offered to sell them another
+            // number instead.
+            activeOrder = order
+            flow = .otp
+        } else {
+            buyAgain(order)
+        }
+    }
+
+    /// Where an email row leads, or **nil when it leads nowhere**.
+    ///
+    /// Returning nil is the whole point: `OrdersScreen` used to hand every
+    /// email row an `onTap`, so `EmailOrderRow` wrapped every one in a Button
+    /// — including terminal codeless rows, whose handler fell through all its
+    /// branches and did nothing. The row looked tappable, pressed like a
+    /// button, and produced no navigation and no feedback.
+    ///
+    /// Same rule as `openOrder`: a code that EXISTS wins over the status, so a
+    /// code delivered onto a closed row is still reachable.
+    func emailDestination(for mail: ServerEmailOrder) -> FlowStage? {
+        if mail.hasCode { return .emailCode }
+        if mail.status == .waiting { return .emailWaiting }
+        // Terminal and codeless: nothing to reopen. Deliberately no "buy again"
+        // here — the domain may be out of stock and the price is chosen in the
+        // picker, so silently starting a purchase would be guessing.
+        return nil
+    }
+
+    func openEmailOrder(_ mail: ServerEmailOrder, _ destination: FlowStage) {
+        // intent/activeEmailOrder are written ONLY when a flow actually opens.
+        // Writing them unconditionally leaked `.email` intent from a tap on a
+        // dead row — no flow opened, so flow.didSet (the only clearer) never
+        // ran, and the credits sheet then sized for a 1-credit email.
+        activeEmailOrder = mail
+        intent = .email
+        flow = destination
     }
 
     // ─────────── Fallbacks ───────────

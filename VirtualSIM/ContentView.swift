@@ -637,45 +637,13 @@ struct ContentView: View {
         @Bindable var s = state
         switch which {
         case .services:
-            ServiceSheet(onPick: { picked in
-                // Show + steer: land the freshly-picked service on a country
-                // we've SEEN deliver. Without evidence, bestCountry keeps the
-                // current selection — the sheet priced every row for it, and a
-                // silent swap made the buy button contradict the tapped row.
-                // Via pickDestination, NOT bestCountry directly: the row the
-                // user just tapped printed its answer ("5 cr in Romania"), and
-                // the two must be the same call or the promise breaks.
-                let best = state.pickDestination(for: picked)?.country
-                if state.flow == .checkout {
-                    state.checkoutService = picked
-                    if let best { state.checkoutCountry = best }
-                    // Real SIM is a per-ROUTE choice, so it is RECOMPUTED for
-                    // the new route, never carried over. Left set across a
-                    // route change it stranded checkout: the tier chips vanish
-                    // when the new route has no premium price, the Cost row
-                    // silently shows the STANDARD price, the receipt still
-                    // claims "Real carrier", and Get number then fails with
-                    // "Real-SIM numbers just sold out here. Try Standard" —
-                    // with no Standard chip on screen to tap. The only escape
-                    // was backing out of checkout entirely.
-                    // `defaultPremium` returns false whenever the new route has
-                    // no premium price, so that invariant still holds.
-                    state.checkoutPremium = state.defaultPremium(
-                        for: picked, country: best ?? state.configuringCountry)
-                } else {
-                    state.lastService = picked
-                    if let best { state.lastCountry = best }
-                }
-                // The user has now CHOSEN. Everything before this was a
-                // suggestion, and the Home hero refuses to sell a suggestion —
-                // see `AppState.needsServiceChoice`.
-                state.needsServiceChoice = false
-            })
+            ServiceSheet(onPick: { picked in state.commitServicePick(picked) })
         case .country:
             CountrySheet(onPick: { picked in
                 if state.flow == .checkout {
                     state.checkoutCountry = picked
-                    // Recomputed for the new route — see note above.
+                    // Recomputed for the new route — see the note in
+                    // `AppState.commitServicePick`.
                     state.checkoutPremium = state.defaultPremium(
                         for: state.configuringService, country: picked)
                 } else { state.lastCountry = picked }

@@ -119,7 +119,7 @@ struct OrdersScreen: View {
                                     case .sms(let order):
                                         OrderRow(order: order,
                                                  isLast: idx == list.count - 1,
-                                                 onTap: { tap(order) })
+                                                 onTap: { state.openOrder(order) })
                                     case .email(let mail):
                                         // `onTap` is nil for a row that leads
                                         // nowhere, so EmailOrderRow renders
@@ -269,52 +269,7 @@ struct OrdersScreen: View {
     }
 
     private func emailTap(_ mail: ServerEmailOrder) -> (() -> Void)? {
-        guard let destination = emailDestination(mail) else { return nil }
-        return { open(mail, destination) }
-    }
-
-    /// Where an email row leads, or **nil when it leads nowhere**.
-    ///
-    /// Returning nil is the whole point: `OrdersScreen` used to hand every
-    /// email row an `onTap`, so `EmailOrderRow` wrapped every one in a Button
-    /// — including terminal codeless rows, whose handler fell through all its
-    /// branches and did nothing. The row looked tappable, pressed like a
-    /// button, and produced no navigation and no feedback.
-    ///
-    /// Same rule as `tap`: a code that EXISTS wins over the status, so a code
-    /// delivered onto a closed row is still reachable.
-    private func emailDestination(_ mail: ServerEmailOrder) -> FlowStage? {
-        if mail.hasCode { return .emailCode }
-        if mail.status == .waiting { return .emailWaiting }
-        // Terminal and codeless: nothing to reopen. Deliberately no "buy again"
-        // here — the domain may be out of stock and the price is chosen in the
-        // picker, so silently starting a purchase would be guessing.
-        return nil
-    }
-
-    private func open(_ mail: ServerEmailOrder, _ destination: FlowStage) {
-        // intent/activeEmailOrder are written ONLY when a flow actually opens.
-        // Writing them unconditionally leaked `.email` intent from a tap on a
-        // dead row — no flow opened, so flow.didSet (the only clearer) never
-        // ran, and the credits sheet then sized for a 1-credit email.
-        state.activeEmailOrder = mail
-        state.intent = .email
-        state.flow = destination
-    }
-
-    private func tap(_ order: Order) {
-        if order.status == .waiting {
-            state.activeOrder = order
-            state.flow = .waiting
-        } else if order.otp != nil {
-            // A code exists — show it. Covers rescued codes, which land on a
-            // CANCELED row; without this the only copy the user ever had was a
-            // notification, and tapping the row offered to sell them another
-            // number instead.
-            state.activeOrder = order
-            state.flow = .otp
-        } else {
-            state.buyAgain(order)
-        }
+        guard let destination = state.emailDestination(for: mail) else { return nil }
+        return { state.openEmailOrder(mail, destination) }
     }
 }
