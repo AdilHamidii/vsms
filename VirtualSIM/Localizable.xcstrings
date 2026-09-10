@@ -168,6 +168,46 @@
         }
       }
     },
+    "%@ a month": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ pro Monat"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ al mes"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ par mois"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ al mese"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "月額%@"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ por mês"
+          }
+        }
+      }
+    },
     "%@ a month · cancel any time": {
       "extractionState": "stale",
       "localizations": {
@@ -456,6 +496,86 @@
           "stringUnit": {
             "state": "translated",
             "value": "%@ funciona melhor agora em %@: %lld%% medido."
+          }
+        }
+      }
+    },
+    "%@ first month": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ im ersten Monat"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ el primer mes"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ le premier mois"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ il primo mese"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "初月%@"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ no primeiro mês"
+          }
+        }
+      }
+    },
+    "%@ for your first month": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ für Ihren ersten Monat"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ tu primer mes"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ pour votre premier mois"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ per il tuo primo mese"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "初月は%@"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ no seu primeiro mês"
           }
         }
       }
@@ -1498,6 +1618,46 @@
         }
       }
     },
+    "%lld missed calls": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld verpasste Anrufe"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld llamadas perdidas"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld appels manqués"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld chiamate perse"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "不在着信%lld件"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld chamadas perdidas"
+          }
+        }
+      }
+    },
     "%lld months": {
       "localizations": {
         "de": {
@@ -1574,6 +1734,132 @@
           "stringUnit": {
             "state": "translated",
             "value": "Faltam %lld"
+          }
+        }
+      }
+    },
+    "%lld new messages": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld neue Nachrichten"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld mensajes nuevos"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld nouveaux messages"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld nuovi messaggi"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "新着メッセージ%lld件"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld novas mensagens"
+          }
+        }
+      }
+    },
+    "%lld new messages · %lld missed calls": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$lld neue Nachrichten · %2$lld verpasste Anrufe"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "new",
+            "value": "%1$lld new messages · %2$lld missed calls"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$lld mensajes nuevos · %2$lld llamadas perdidas"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$lld nouveaux messages · %2$lld appels manqués"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$lld nuovi messaggi · %2$lld chiamate perse"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "新着メッセージ%1$lld件 · 不在着信%2$lld件"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$lld novas mensagens · %2$lld chamadas perdidas"
+          }
+        }
+      }
+    },
+    "%lld new messages · 1 missed call": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld neue Nachrichten · 1 verpasster Anruf"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld mensajes nuevos · 1 llamada perdida"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld nouveaux messages · 1 appel manqué"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld nuovi messaggi · 1 chiamata persa"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "新着メッセージ%lld件 · 不在着信1件"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld novas mensagens · 1 chamada perdida"
           }
         }
       }
@@ -2621,6 +2907,46 @@
         }
       }
     },
+    "1 missed call": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "1 verpasster Anruf"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "1 llamada perdida"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "1 appel manqué"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "1 chiamata persa"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "不在着信1件"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "1 chamada perdida"
+          }
+        }
+      }
+    },
     "1 month": {
       "localizations": {
         "de": {
@@ -2697,6 +3023,126 @@
           "stringUnit": {
             "state": "translated",
             "value": "Falta 1"
+          }
+        }
+      }
+    },
+    "1 new message": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "1 neue Nachricht"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "1 mensaje nuevo"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "1 nouveau message"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "1 nuovo messaggio"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "新着メッセージ1件"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "1 nova mensagem"
+          }
+        }
+      }
+    },
+    "1 new message · %lld missed calls": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "1 neue Nachricht · %lld verpasste Anrufe"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "1 mensaje nuevo · %lld llamadas perdidas"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "1 nouveau message · %lld appels manqués"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "1 nuovo messaggio · %lld chiamate perse"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "新着メッセージ1件 · 不在着信%lld件"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "1 nova mensagem · %lld chamadas perdidas"
+          }
+        }
+      }
+    },
+    "1 new message · 1 missed call": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "1 neue Nachricht · 1 verpasster Anruf"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "1 mensaje nuevo · 1 llamada perdida"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "1 nouveau message · 1 appel manqué"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "1 nuovo messaggio · 1 chiamata persa"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "新着メッセージ1件 · 不在着信1件"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "1 nova mensagem · 1 chamada perdida"
           }
         }
       }
@@ -3145,7 +3591,86 @@
         }
       }
     },
-    "A fresh address whenever you need one.": {},
+    "A code for an app": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ein Code für eine App"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Un código para una app"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Un code pour une app"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Un codice per un'app"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "アプリの認証コード"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Um código para um app"
+          }
+        }
+      }
+    },
+    "A fresh address whenever you need one.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Eine neue Adresse, wann immer Sie eine brauchen."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Una dirección nueva siempre que la necesites."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Une nouvelle adresse dès que vous en avez besoin."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Un indirizzo nuovo ogni volta che ti serve."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "必要なときに、いつでも新しいアドレスを。"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Um endereço novo sempre que você precisar."
+          }
+        }
+      }
+    },
     "A monthly subscription, cancel anytime": {
       "localizations": {
         "de": {
@@ -3263,6 +3788,46 @@
           "stringUnit": {
             "state": "translated",
             "value": "Um número seu continua recebendo códigos e mensagens de remetentes dos EUA e do Canadá enquanto você o mantiver."
+          }
+        }
+      }
+    },
+    "A number that's yours": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Eine Nummer, die Ihnen gehört"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Un número que es tuyo"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Un numéro qui vous appartient"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Un numero tutto tuo"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "自分だけの番号"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Um número que é seu"
           }
         }
       }
@@ -3468,6 +4033,86 @@
           "stringUnit": {
             "state": "translated",
             "value": "Uma pessoa real lê isto. Se estivermos dormindo, responderemos assim que acordarmos, e você será notificado."
+          }
+        }
+      }
+    },
+    "A temporary number that receives one code.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Eine temporäre Nummer, die einen Code empfängt."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Un número temporal que recibe un código."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Un numéro temporaire qui reçoit un code."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Un numero temporaneo che riceve un codice."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "コードを1件だけ受け取る一時的な番号。"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Um número temporário que recebe um código."
+          }
+        }
+      }
+    },
+    "A throwaway email": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Eine Wegwerf-E-Mail"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Un correo desechable"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Un e-mail jetable"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Un'email usa e getta"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "使い捨てのメールアドレス"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Um e-mail descartável"
           }
         }
       }
@@ -3915,7 +4560,46 @@
         }
       }
     },
-    "After that, more addresses come with the vSMS Mail plan for %@/mo.": {},
+    "After that, more addresses come with the vSMS Mail plan for %@/mo.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Danach gibt es weitere Adressen mit dem vSMS Mail-Abo für %@/Monat."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Después, más direcciones vienen con el plan vSMS Mail por %@/mes."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ensuite, d'autres adresses sont incluses avec l'offre vSMS Mail à %@/mois."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Poi altri indirizzi arrivano con il piano vSMS Mail a %@/mese."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "それ以降のアドレスは月額%@のvSMS Mailプランでご利用いただけます。"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Depois disso, mais endereços vêm com o plano vSMS Mail por %@/mês."
+          }
+        }
+      }
+    },
     "After that, more addresses come with the vSMS Mail plan.": {
       "localizations": {
         "de": {
@@ -4320,6 +5004,46 @@
           "stringUnit": {
             "state": "translated",
             "value": "Um número americano ou canadense que troca mensagens com telefones dos EUA e do Canadá, nos dois sentidos"
+          }
+        }
+      }
+    },
+    "An Outlook or Hotmail address you use once.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Eine Outlook- oder Hotmail-Adresse für den einmaligen Gebrauch."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Una dirección de Outlook o Hotmail que usas una sola vez."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Une adresse Outlook ou Hotmail que vous utilisez une seule fois."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Un indirizzo Outlook o Hotmail che usi una volta sola."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "一度だけ使うOutlookまたはHotmailのアドレス。"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Um endereço Outlook ou Hotmail que você usa uma vez só."
           }
         }
       }
@@ -5786,6 +6510,47 @@
           "stringUnit": {
             "state": "translated",
             "value": "CÓDIGO RECEBIDO"
+          }
+        }
+      }
+    },
+    "Call": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Anrufen"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Llamar"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Appeler"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Chiama"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "発信"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ligar"
           }
         }
       }
@@ -17419,6 +18184,86 @@
         }
       }
     },
+    "Might not work on every service — if a code doesn't arrive, switch to a new number for %lld credits": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Funktioniert nicht bei jedem Dienst – kommt kein Code an, wechseln Sie für %lld Credits zu einer neuen Nummer"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Puede que no funcione en todos los servicios: si no llega el código, cambia a un número nuevo por %lld créditos"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Peut ne pas fonctionner sur tous les services — si le code n'arrive pas, passez à un nouveau numéro pour %lld crédits"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Potrebbe non funzionare con tutti i servizi: se il codice non arriva, passa a un nuovo numero per %lld crediti"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "すべてのサービスで使えるとは限りません。コードが届かない場合は、%lldクレジットで新しい番号に切り替えられます"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pode não funcionar em todos os serviços — se o código não chegar, troque para um novo número por %lld créditos"
+          }
+        }
+      }
+    },
+    "Might not work on every service — if a code doesn't arrive, switch to a new number for a few credits": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Funktioniert nicht bei jedem Dienst – kommt kein Code an, wechseln Sie für ein paar Credits zu einer neuen Nummer"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Puede que no funcione en todos los servicios: si no llega el código, cambia a un número nuevo por unos créditos"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Peut ne pas fonctionner sur tous les services — si le code n'arrive pas, passez à un nouveau numéro pour quelques crédits"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Potrebbe non funzionare con tutti i servizi: se il codice non arriva, passa a un nuovo numero per pochi crediti"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "すべてのサービスで使えるとは限りません。コードが届かない場合は、数クレジットで新しい番号に切り替えられます"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pode não funcionar em todos os serviços — se o código não chegar, troque para um novo número por alguns créditos"
+          }
+        }
+      }
+    },
     "Minutes left": {
       "extractionState": "stale",
       "localizations": {
@@ -17944,6 +18789,46 @@
           "stringUnit": {
             "state": "translated",
             "value": "Precisa de outro código?"
+          }
+        }
+      }
+    },
+    "Need something else?": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Brauchen Sie noch etwas?"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "¿Necesitas algo más?"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Besoin d'autre chose ?"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ti serve altro?"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ほかに必要なものは？"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Precisa de mais alguma coisa?"
           }
         }
       }
@@ -19436,6 +20321,46 @@
           "stringUnit": {
             "state": "translated",
             "value": "Nenhum pedido concluído"
+          }
+        }
+      }
+    },
+    "No new messages": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Keine neuen Nachrichten"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sin mensajes nuevos"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aucun nouveau message"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nessun nuovo messaggio"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "新着メッセージはありません"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nenhuma mensagem nova"
           }
         }
       }
@@ -23021,6 +23946,46 @@
           "stringUnit": {
             "state": "translated",
             "value": "Escolha outro serviço"
+          }
+        }
+      }
+    },
+    "Pick one": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Eines wählen"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Elige uno"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Choisissez-en un"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Scegline uno"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "1つ選択"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Escolha um"
           }
         }
       }
@@ -32469,6 +33434,46 @@
         }
       }
     },
+    "Then %@ every month until you cancel. Cancel any time in your Apple ID settings.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Danach %@ pro Monat, bis Sie kündigen. Jederzeit in Ihren Apple-ID-Einstellungen kündbar."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Después, %@ cada mes hasta que canceles. Cancela cuando quieras en los ajustes de tu Apple ID."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ensuite %@ par mois jusqu'à annulation. Annulez à tout moment dans les réglages de votre identifiant Apple."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Poi %@ al mese finché non disdici. Disdici quando vuoi nelle impostazioni del tuo ID Apple."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "その後は解約するまで毎月%@です。Apple IDの設定からいつでもキャンセルできます。"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Depois, %@ por mês até você cancelar. Cancele quando quiser nos ajustes do seu ID Apple."
+          }
+        }
+      }
+    },
     "There's a problem with your payment. Update it to keep your number. Everything still works for now.": {
       "localizations": {
         "de": {
@@ -37322,6 +38327,46 @@
         }
       }
     },
+    "What do you need?": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Was brauchen Sie?"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "¿Qué necesitas?"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "De quoi avez-vous besoin ?"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Di cosa hai bisogno?"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "何が必要ですか？"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Do que você precisa?"
+          }
+        }
+      }
+    },
     "What signing in means": {
       "localizations": {
         "de": {
@@ -40390,6 +41435,46 @@
         }
       }
     },
+    "Your numbers and codes, in one place": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ihre Nummern und Codes an einem Ort"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tus números y códigos, en un solo lugar"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vos numéros et vos codes, au même endroit"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "I tuoi numeri e codici, in un unico posto"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "番号もコードも、ひとつの場所に"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Seus números e códigos, em um só lugar"
+          }
+        }
+      }
+    },
     "Your orders are all still running. They move here as soon as they finish.": {
       "localizations": {
         "de": {
@@ -41736,6 +42821,46 @@
         }
       }
     },
+    "first month": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "im ersten Monat"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "el primer mes"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "le premier mois"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "il primo mese"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "初月"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "no primeiro mês"
+          }
+        }
+      }
+    },
     "from": {
       "localizations": {
         "de": {
@@ -42588,7 +43713,46 @@
         }
       }
     },
-    "vSMS Mail": {},
+    "vSMS Mail": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "vSMS Mail"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "vSMS Mail"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "vSMS Mail"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "vSMS Mail"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "vSMS Mail"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "vSMS Mail"
+          }
+        }
+      }
+    },
     "vSMS Mail · up to %lld addresses a day": {
       "localizations": {
         "de": {
