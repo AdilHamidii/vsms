@@ -46,7 +46,7 @@ iOS app selling four things:
 
 | line | billing | state |
 |---|---|---|
-| **rented second numbers** — a US/CA number the user keeps, with SMS and calling | **StoreKit subscription** ($5.99/mo, $59.99/yr) | live; the launch tab in every shipped build |
+| **rented second numbers** — a US/CA number the user keeps, with SMS and calling | **StoreKit subscription** ($5.99/mo, $59.99/yr) | live; the first card on Home |
 | **temporary phone numbers** for SMS verification codes | credits | live, the original product |
 | **temporary e-mail addresses** | credits + a $2.99/mo subscription | live |
 | **eSIM data plans** | credits | 🔴 **PERMANENTLY PARKED** — see below |
@@ -61,50 +61,48 @@ the top-up, do not build on it here. The infrastructure stays as-is on purpose �
 kill switches hold it off, the nightly sync is harmless, and `check-esim-usage`
 still serves the 12 legacy eSIMs sold before the provider switch.
 
-### Home leads the app; `/tabs` orders the two product tabs behind it (2026-09-10)
+### Home leads the app (2026-09-10)
 
-⚠️ **UNRELEASED as of 2026-09-10** — it lives on branch
-`worktree-line-lapse-backstop` and is not in 2.12 or anything on sale. Shipped
-builds still open on a PRODUCT tab (see the paragraph below this one).
-
-`AppTab` is `home · line · temp · account`, the app opens on `.home`, and
+`AppTab` order is `home · line · temp · account` and the app opens on
+**Home** on EVERY cold launch, new or returning (owner decision 2026-09-10) —
 `.home` is element 0 of every `launchOrder` variant BY CONSTRUCTION, so
-`AppTab.currentOrder.first` is `.home` whatever `/tabs` says. `HomeScreen` is a
-**router** with no live line and a light dashboard with one: three need-cards
-("a code for an app" / "a throwaway email" / "a number that's yours"), each
-jumping to a screen that already exists. It renders from local state on the
-first frame — `coldStart` has already answered `lines` and `lineThreads` — and
-deliberately holds no inbox, order list or waiting-order card, because
-`ResumeBar` already floats over every tab.
+`AppTab.currentOrder.first` is `.home` whatever `/tabs` says. Home is
+`Screens/HomeScreen.swift`: a **router** for a user with no live line —
+"What do you need?" and three equal cards named by NEED (a code for an app →
+Temp SMS; a throwaway email → Temp e-mail; a number that's yours → the Number
+store, priced only from StoreKit) — and a **light dashboard** once a live line
+exists (the number, unread and missed counts, Messages / Call). Every card
+jumps to the EXISTING screen; nothing is rebuilt inside Home. No waiting-order
+card either: `ResumeBar` already floats above the bar on every tab. The Temp
+tab is `Screens/TempScreen.swift` (enum case `.temp`, label "Temp", hosts temp
+SMS + temp e-mail via `emailMode`). ⚠️ `TempScreen`'s analytics still fire
+`source: "home"` (`support_whatsapp_open`, `MailPaywallScreen`) — kept for
+series continuity; there, "home" means the TEMP tab, never the Home tab.
+Home's own events are `home_view` (`has_line`) and `home_card_tapped`
+(`card` ∈ sms · email · line · line_messages · line_call · credits).
 
-**`AppTab.productOrder` is the ONE definition of the card order**, filtered out
-of `currentOrder`, so a bar led by Number and a Home screen led by the temp card
-is impossible by construction — the same shape `currentOrder` uses one layer up.
+**Why a router.** Measured on the first session of the 241 users who signed
+up 2026-09-04 → 09-10 (live build 2.11 landed on Temp): 70 stayed on Temp
+(2 opened support), **68 bounced Temp → Number (11 opened support)**, 61
+stayed on Number (7 did nothing), 27 touched neither (20 did nothing), 15
+went Number → Temp. A quarter of new users bounced, and that cohort produced
+11 of 15 support taps. Onboarding already described three products over four
+pages and did not prevent it. Re-derive with the first-session path query in
+`docs/decisions-archive.md` (Home tab, 2026-09-10) rather than quoting this.
 
-The temp SMS + temp e-mail tab is labelled **"Temp"** and its enum case is
-`.temp` (renamed off `.home` on 2026-09-10 so the new tab could not silently
-inherit it); it hosts both lines, so neither product's name fits it alone. It
-carries `RIcon.clock`; the house went back to the tab called Home.
+**The history still binds.** Leading with the line in 2.0 (Aug 15–19) took
+`create-order` from ~30 calls/day to 1, and the two audiences have never
+overlapped. Home is the first landing that does not pick a product FOR the
+user. Read `home_card_tapped` by `card` and the first-session bounce table
+after 2.13 is adopted; if Temp-first users stop reaching Temp, that is the
+2.0 shape again and the card order is the first lever.
 
-⚠️ **The ops bot's `/tabs` copy still says it sets the LANDING tab** — true for
-every shipped build, false once this ships, where it orders only what sits
-behind Home. `tgCommands.ts` (`summary` + `help`) and `tgHandlers.ts` (`LABEL`
-and the reply sentence) must be corrected and redeployed **with** the release
-that carries Home, and changing `summary` means re-running `telegram-setup`.
-
-**The ordering below has a measured cost and has been reverted once.** It led in 2.0
-(Aug 15–19) and took `create-order` from ~30 calls/day to 1, with zero
-first-day orders from 45 signups. The premise that makes it right this time is
-that acquisition now points here — the store name leads with the second number
-and the live ASA campaigns bid on "us number" intent. **If those campaigns are
-paused, re-examine this first.**
-
-✅ **The order is an owner switch, not a release.** `/tabs number|temp` in the
-ops bot writes `app_config.launch_tab`, published through the RLS whitelist.
-`AppTab.currentOrder` is the ONE definition, read by both `TabBar` and the
-landing tab, so a bar led by Number that opens on Temp is impossible by
-construction. (With Home in front it decides the order of the two product tabs,
-and through `productOrder` the order of Home's need-cards.) Three properties
+✅ **`/tabs number|temp` survives and means "what sits BEHIND Home".** It
+writes `app_config.launch_tab` (RLS whitelist) and the client's ONE
+definition, `AppTab.currentOrder`, yields `[.home, .line, .temp, .account]`
+or `[.home, .temp, .line, .account]`; `AppTab.productOrder` is that list
+filtered to the two product tabs and is what Home's cards render in (the
+e-mail card always follows the SMS card, both live on Temp). Three properties
 that are not derivable from the code:
 
 - 🔴 **It is read from UserDefaults at LAUNCH, never live.** `refreshAppStatus`
@@ -116,10 +114,16 @@ that are not derivable from the code:
   its own reply. Do not "fix" this by moving the fetch before the reveal
   without measuring what it costs the boot chain.
 - **Fails to the compiled default.** An absent or unrecognised value clears the
-  stored copy and the build uses `AppTab.defaultOrder` (`home · line · temp ·
-  account` on the branch; Number first in every shipped build), so
-  deleting the row returns every app to its shipped order rather than pinning
-  it to the last thing anyone typed. Client-side, so 2.11 and older ignore it.
+  stored copy and the build uses `AppTab.defaultOrder` (Home · Number · Temp
+  · Account). Client-side: 2.12 and older ignore the Home tab entirely (2.12
+  reads the key for a Number/Temp bar; 2.11 and older keep their compiled
+  order).
+
+🔴 **`AppTab.home` WAS the Temp tab until 2026-09-10** (label "Temp", house
+icon). It was renamed to `.temp` in its own commit BEFORE the new `.home`
+existed, so the compiler listed every `state.tab = .home` site; a single
+commit doing both would have let a missed site compile and route to the wrong
+tab. Any doc or comment that still says ".home hosts Temp" is stale — fix it.
 
 ### 🔴 The two product lines have never once overlapped
 
@@ -162,8 +166,8 @@ Apple's equalization elsewhere (¥600, ₹399, R$24.9). Created and READ BACK by
 A paid intro answers the free-trial objection: the $3.39 net covers the $1
 number. It applies at Apple's sheet with no client change; the client renders
 it on `LineCheckoutScreen` (plan row, price block, CTA, 3.1.2 sentence) from
-2.13 via `SubscriptionStore.monthlyIntroPriceDisplay`. **2.12 (in review)
-does not display it and does not need to.** Read it on `line_checkout_view`
+2.13 via `SubscriptionStore.monthlyIntroPriceDisplay`. **2.12 and older do
+not display it; 2.13 does.** Read it on `line_checkout_view`
 / `line_purchase_result` `props.intro` (true = the first-month price was on
 screen) against the pre-09-10 sheet→paid of 3 of 30.
 
@@ -1762,8 +1766,9 @@ Each has been wrong within a day of being written at least once.
   build 60 (09-09 20:03Z, replaced to carry the recovery-card pool-rate
   steer), build 61 (09-10 08:57Z, cancelled unsubmitted-for-review; the
   $3.99 intro display on the worktree branch is a candidate for the next
-  build). Each cancel takes the version through `DEVELOPER_REJECTED`, the
-  documented recovery path, with the 13 localizations untouched. Recover with
+  build, together with the Home tab (2.13)). Each cancel takes the version
+  through `DEVELOPER_REJECTED`, the documented recovery path, with the 13
+  localizations untouched. Recover with
   `scripts/asc-release.py build 2.12 <n> --apply` then `submit 2.12 --apply`.
   **2.11 and every earlier version are `READY_FOR_SALE`**. 2.12 carries the
   tab repositioning, the product-first line store, the `OtpScreen` upsell,
@@ -1782,8 +1787,9 @@ Each has been wrong within a day of being written at least once.
   active, 1 grace, 9 expired, 1 revoked); 13 e-mail subscriptions (4 active, 3
   grace, 4 billing_retry, 2 expired).
 - **Config**: signup grant **3**, free e-mail cap **1**/user/day, swap **8**
-  credits, `launch_tab` = `line`, mail subscription **enforced**, eSIM **paused**,
-  lines **not** paused, daily credit **disabled**.
+  credits, `launch_tab` = `line` (order behind Home; Home always first from
+  2.13), mail subscription **enforced**, eSIM **paused**, lines **not**
+  paused, daily credit **disabled**.
 - **Balances** — re-query, these move hourly:
   `select key, value->>'balance_usd' from app_config where key like '%_health';`
   5sim $8.63, HeroSMS $14.92, Telnyx **$4.20**, eSIM Access $88.31.

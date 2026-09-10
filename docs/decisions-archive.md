@@ -26,6 +26,43 @@ If you need something carried into neither this archive nor a
 `.claude/rules/*` file, the pre-split root file is in version control: `git show 726acf5:CLAUDE.md`.
 
 
+## Home tab — first-session paths (2026-09-10)
+
+The measurement behind the Home tab (CLAUDE.md, "Home leads the app"). Over the
+first session of the 241 users who signed up 2026-09-04 → 09-10, on live build
+2.11, which landed every new user on the Temp tab: 70 stayed on Temp (2 opened
+support), 68 bounced Temp → Number (11 opened support), 61 stayed on Number (7
+did nothing), 27 touched neither (20 did nothing), 15 went Number → Temp. A
+quarter bounced between the two product tabs, and that cohort produced 11 of
+the 15 support taps.
+
+Re-derive rather than quoting those counts — the query below is what produced
+them, and the same query read after 2.13 is adopted is how the Home tab is
+judged (alongside `home_card_tapped` by `card`):
+
+```sql
+-- FIRST session = the session in which onboarding_done fired.
+with u as (select id as user_id from auth.users where created_at >= '2026-09-04'),
+fs as (select distinct on (e.user_id) e.user_id, e.session_id
+       from app_events e join u using(user_id) where e.name='onboarding_done'
+       order by e.user_id, e.created_at),
+ev as (select f.user_id, e.name, e.created_at from fs f
+       join app_events e on e.user_id=f.user_id and e.session_id=f.session_id),
+firsts as (select user_id,
+    min(created_at) filter (where name='line_store_view') t_line,
+    min(created_at) filter (where name in ('service_selected','country_selected','checkout_view')) t_sms,
+    bool_or(name='order_submitted') sms_order, bool_or(name='line_purchase_result') line_sheet,
+    bool_or(name='email_order_submitted') email_order, bool_or(name='support_whatsapp_open') support
+  from ev group by 1)
+select case when t_line is null and t_sms is null then 'neither'
+            when t_line is null then 'sms only' when t_sms is null then 'line only'
+            when t_line < t_sms then 'line then sms' else 'sms then line' end path,
+       count(*) users, count(*) filter (where sms_order) sms_orders,
+       count(*) filter (where email_order) email_orders,
+       count(*) filter (where line_sheet) line_sheets, count(*) filter (where support) support
+from firsts group by 1 order by 2 desc;
+```
+
 ## Changelog
 
 

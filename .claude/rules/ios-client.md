@@ -18,9 +18,9 @@ file is open.
 VirtualSIM/
   VirtualSIMApp.swift            App entry; resizes URLCache (32MB mem / 64MB disk
                                  for brand logos + flag PNGs); installs AppDelegate
-  ContentView.swift              tab routing (home/line/temp/account; `.home` is
-                                 the router tab, `.temp` the temp SMS + e-mail
-                                 one) + fullScreenCover for Checkout/Waiting/OTP
+  ContentView.swift              4-tab routing (home/line/temp/account —
+                                 `AppTab.currentOrder`; Home always first)
+                                 + fullScreenCover for Checkout/Waiting/OTP
                                  + the parked eSIM flow; EnvBundle
                                  ViewModifier re-injects every @Observable env
                                  object into sheet/cover content (covers don't
@@ -39,9 +39,14 @@ VirtualSIM/
                                  CountryRank = the PROVIDER's success rate for a
                                  (service, country) — steering input, never a
                                  badge; see the steering section)
-  Screens/                       Home, Checkout, Waiting (+ WaitingAnimations),
+  Screens/                       HomeScreen (the Home tab: router for new users,
+                                 light dashboard for a subscriber — see CLAUDE.md
+                                 "Home leads the app"), TempScreen (the Temp tab:
+                                 temp SMS + temp e-mail, `emailMode`),
+                                 Checkout, Waiting (+ WaitingAnimations),
                                  OTP (fires native review prompt on code
-                                 delivery), Orders, Account, + eSIM flow
+                                 delivery), Orders, Account, + the eSIM flow,
+                                 reached from no tab since 2026-09-08
                                  (EsimStore = Store/My eSIMs/Activity segments,
                                  EsimMapView = clustered MapKit country picker,
                                  EsimCountryPlans = duration→size chooser,
@@ -56,8 +61,8 @@ VirtualSIM/
                                  SupportChatScreen (live chat) was DELETED
                                  2026-09-05 — support is a `wa.me` link to
                                  the owner's WhatsApp Business
-                                 (`LegalLinks.supportWhatsApp`), from Home and
-                                 Account
+                                 (`LegalLinks.supportWhatsApp`), from the Temp
+                                 tab and Account
   Sheets/                        EmailDomainSheet (4 domains, live stock,
                                  Free/1cr), ServiceSheet (search + categories + per-route
                                  price; a service with no route in the SELECTED
@@ -93,8 +98,9 @@ VirtualSIM/
 
 `AppState` starts from `SeedData` with `routes = []`, so `cost(for:country:)`
 returns nil for **every** pair. Before `SplashScreen` existed the launch was:
-blank system launch screen → a bare `ProgressView` → a Home screen whose primary
-CTA read **"Unavailable · Pick another country"** for the whole fetch. The seed
+blank system launch screen → a bare `ProgressView` → a buy-a-code screen
+(`TempScreen`, named `HomeScreen` until 2026-09-10) whose primary CTA read
+**"Unavailable · Pick another country"** for the whole fetch. The seed
 default pair is WhatsApp/United States, which is in `blocked_routes` and never
 bookable, so it stayed wrong until `applyStartupSelection()` ran at the END of
 the chain. A first-run user met a screen saying the product was unavailable —
@@ -105,11 +111,11 @@ expensive here specifically, because activation is a single-session event
   `bootProgress` from steps that actually completed. **Never fill that bar on a
   timer** — a synthetic bar is the same class of claim as a seeded success rate.
 - **Readiness is NOT "the chain finished".** The two eSIM fetches are read only
-  by the eSIM tab, so they run *after* `bootPhase = .ready`, behind the revealed
-  UI, instead of holding a correct Home screen behind them.
+  by the eSIM screens, so they run *after* `bootPhase = .ready`, behind the
+  revealed UI, instead of holding a correct first screen behind them.
 - **`loadCatalog` returns `Bool`.** It used to be `-> Void` with a bare
   `catch { /* keep current state */ }`, so an offline launch silently kept the
-  30-service seed stub and rendered a full Home screen on which every service
+  30-service seed stub and rendered a full Temp screen on which every service
   read "Unavailable" — indistinguishable from "this product is broken". The
   splash now offers **Try again** / **Continue anyway**. It still keeps existing
   data when a *foreground* refresh fails; only the cold path treats it as failure.
@@ -166,7 +172,7 @@ does not deliver. A row promising Romania while the tap lands in Colombia would
 be a worse lie than the one it replaced. "Unavailable" now survives only for
 bookable-nowhere — the one case where it is true — and that case is `disabled`,
 because the tap would otherwise set the service without moving the country and
-strand the user on a Home screen whose only button is a disabled "Unavailable".
+strand the user on a Temp screen whose only button is a disabled "Unavailable".
 The badge is scored against the DESTINATION route, and the Affordable filter
 judges by the price the row shows (it used to test `cost(for:country:)` alone and
 silently drop every service without a route here).
@@ -283,7 +289,8 @@ live camera, throttle it the same way.
 **Derived catalog data must be STORED, not computed.** `AppState` is
 `@Observable`, so a computed property is re-evaluated on every body evaluation
 of every view that reads it. `esimCountries` walked all **1,081** plans and
-rebuilt a dictionary — twice per `HomeScreen` redraw, once per `EsimStoreScreen`
+rebuilt a dictionary — twice per `TempScreen` redraw (`HomeScreen` at the
+time), once per `EsimStoreScreen`
 redraw, continuously while the map was being dragged — and returned a
 freshly-allocated array each time, so SwiftUI saw new `ForEach` data and rebuilt
 every annotation. Same for `esimPlans(forCountry:)`, a filter+sort over 1,081

@@ -52,25 +52,19 @@ and real rent; `on|off` unchanged), `/support` (threads waiting, oldest first),
 (read-only: grant, e-mail caps, pause switches, swap price), `/announce`,
 `/esim`, `/metrics`, `/help`.
 
-**`/tabs number|temp` (2026-09-09) decides which tab the app OPENS ON** —
-`app_config.launch_tab`, read at launch from UserDefaults, effective on the
-user's second cold launch. Full account under the line-tab note at the top of
-this file; it is the kill switch for the 2026-09-09 decision to lead with the
-rented number, which has a measured cost in the other direction.
-
-⚠️ **The Home router tab (unreleased branch `worktree-line-lapse-backstop`)
-demotes this to an ORDERING switch**: Home leads every variant, so `/tabs`
-decides which product tab sits second and therefore which need-card comes first
-on Home. The command's `summary`, `help`, `LABEL` and reply sentence all still
-say "opens on", and must be corrected **with** the release that carries Home —
-changing `summary` also means re-running `telegram-setup`.
+**`/tabs number|temp` decides the order of Number and Temp BEHIND Home** (Home
+always opens first since 2.13 — owner decision 2026-09-10; before that, from
+2026-09-09, it chose the landing tab). It writes `app_config.launch_tab`,
+read at launch from UserDefaults, effective on the user's SECOND cold launch;
+the same value orders the need-cards on Home. Full account in CLAUDE.md
+"Home leads the app".
 
 **`/metrics on|off` (2026-09-03) hides the ONLY delivery figure users see** —
 the vendor network rate rendered as High/Medium/Low — by writing
 `app_config.delivery_metrics_hidden` (published through the RLS whitelist,
 read in the same fetch as `esim_paused`). **Display-only by design:**
-`AppState.displayedPoolRate` is what every render site reads (Home hero,
-Checkout, ServiceSheet, CountrySheet rows), while steering
+`AppState.displayedPoolRate` is what every render site reads (the Temp
+tab's hero, Checkout, ServiceSheet, CountrySheet rows), while steering
 (`rankedUntestedKey`, `bestCountry`, the retry picker) and the country sort
 keep reading `poolRate` — the owner is hiding a number, not the knowledge.
 When hidden, the "Network rate" sort chip is labelled "Recommended" and
@@ -426,7 +420,8 @@ untouched. **NOT changed, and worth knowing it exists:** `winback/index.ts`'s
 
 ### Announcement banner + `/announce`, `/esim` (2026-07-31)
 
-A small owner-written banner on **Home**, posted from Telegram. Ships in 1.6.
+A small owner-written banner at the top of the **Temp tab**, posted from
+Telegram. Ships in 1.6.
 
 ```
 /announce Your message          → live, info (accent)
