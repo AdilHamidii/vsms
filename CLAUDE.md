@@ -71,8 +71,9 @@ still serves the 12 legacy eSIMs sold before the provider switch.
 "What do you need?" and three equal cards named by NEED (a code for an app →
 Temp SMS; a throwaway email → Temp e-mail; a number that's yours → the Number
 store, priced only from StoreKit) — and a **light dashboard** once a live line
-exists (the number, unread and missed counts, Messages / Call). Every card
-jumps to the EXISTING screen; nothing is rebuilt inside Home. No waiting-order
+exists (the number, unread and missed counts, Messages / Call), plus the
+sections listed below. Every card jumps to the EXISTING screen; nothing is
+rebuilt inside Home. No waiting-order
 card either: `ResumeBar` already floats above the bar on every tab. The Temp
 tab is `Screens/TempScreen.swift` (enum case `.temp`, label "Temp", hosts temp
 SMS + temp e-mail via `emailMode`). ⚠️ `TempScreen`'s analytics still fire
@@ -89,11 +90,14 @@ does not give you:
 
 - 🔴 **A grid tap is the USER'S pick, not a pre-selection.** It goes through
   `AppState.commitServicePick` — the same path `ServiceSheet.onPick` uses — so
-  `needsServiceChoice` clears, the order is not `from_default`, and **the
-  country stays unchosen**: the tap lands on Temp with the Country row still
-  reading "Not selected". That is what keeps "Nothing is pre-selected on first
-  run" true with seven logos on the opening screen. The More tile opens the
-  real picker.
+  `needsServiceChoice` clears and the order is not `from_default`. ⚠️ It DOES
+  write `lastCountry` when `pickDestination` resolves one (that is the steer the
+  tapped row printed), but it **never clears `needsCountryChoice`** — and that
+  flag is what `TempScreen` renders "Not selected" from and what
+  `confirmGetNumber` refuses on. So the tap lands on Temp with the Country row
+  still unanswered, which is what keeps "Nothing is pre-selected on first run"
+  true with seven logos on the opening screen. The More tile opens the real
+  picker.
 - **Recent is a signpost, not a second Orders screen.** At most three rows,
   both products merged newest-first, each opening through `AppState.openOrder`
   / `openEmailOrder` — the same openers the Orders tab uses, never a second
@@ -103,17 +107,27 @@ does not give you:
   derived in one place. Never retype it with the numerals in it.
 
 🔴 **The greeting name is NOT the `display_name` column.** `handle_new_user()`
-seeds `display_name` from the e-mail's local part, so on 2026-09-10 **1,641 of
-1,643** profiles carried exactly that handle (2 blank, 0 containing an `@`) —
-greeting from the column unfiltered means saying "Good morning, adil.hamidii123"
-to almost everybody. `AppState.greetingName(email:)` therefore refuses a value
-that is empty, contains `@`, or equals the address's local part
-case-insensitively, and nil means the NAMELESS greeting, never the handle.
+seeds it `coalesce(raw_user_meta_data->>'full_name', split_part(email,'@',1))`,
+so on 2026-09-10 **1,641 of 1,643** profiles carried a handle-SHAPED value —
+lowercase letters, digits, `. _ -` and nothing else — against 2 blank. Read that
+as shape, not as proof of equality: the same regex also matches an Apple sign-in
+whose `full_name` is a real lowercase first name, which is a value we SHOULD
+greet by. Either way, greeting from the column unfiltered means saying
+"Good morning, adil.hamidii123" to almost everybody.
+`AppState.greetingName(email:)` therefore refuses a value that is empty,
+contains `@`, or equals the address's local part case-insensitively — equality
+against *this* user's own address, which is the test a catalog-wide count cannot
+stand in for — and nil means the NAMELESS greeting, never the handle.
 `NameSheet` mirrors the same three rules on the string being typed, because
 `greetingName` judges the STORED profile and the sheet has to judge one that
 has not been written yet — keep them in step, or the sheet offers a save that
-changes nothing on screen. Re-derive rather than quoting the figure:
-`select count(*) filter (where display_name ~ '^[a-z0-9._-]+$') from profiles;`
+changes nothing on screen. Re-derive all three numbers rather than quoting them:
+```sql
+select count(*) total,
+       count(*) filter (where display_name ~ '^[a-z0-9._-]+$') handle_shaped,
+       count(*) filter (where coalesce(trim(display_name),'') = '') blank
+from profiles;
+```
 
 **Apple hands over a given name exactly ONCE.** `AuthWelcomeScreen` parks it in
 `pref.pendingDisplayName` at the FIRST authorization for an Apple ID and never

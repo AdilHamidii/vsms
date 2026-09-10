@@ -278,6 +278,19 @@ Two more rules, both learned here:
   *omit* a later argument (Italian and Japanese do exactly that for the English
   plural-`s` fragment in "You're %lld credit%@ short…").
 
+🔴 **The committed `Localizable.xcstrings` is NOT in Xcode's JSON dialect, and
+re-normalising it is part of any extraction.** On disk it is Python-normalized —
+`json.dumps(catalog, indent=2, ensure_ascii=False)` plus a trailing newline, keys
+in plain `sorted()` order. Xcode writes `"key" : value` (space before the colon)
+in its own key order, so **`xcodebuild -exportLocalizations`, or any Xcode build
+that extracts, rewrites all ~44,000 lines** — the keys it adds are correct and the
+rest is a no-op reformat. Re-emit the file in the committed style before
+committing (round-trip `HEAD`'s copy first to confirm the recipe still matches
+byte-for-byte). The reason this is a rule and not a preference: the same edit is
+either 802 reviewable lines or a 29,539-line diff, and a junk diff that size makes
+the next real catalog change unreviewable — nobody will find a changed translation
+inside it.
+
 ## The map's camera callback fires EVERY FRAME
 
 `.onMapCameraChange(frequency: .continuous)` fires per frame of a pan or pinch.

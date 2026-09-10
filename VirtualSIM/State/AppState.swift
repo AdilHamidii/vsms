@@ -1815,12 +1815,17 @@ final class AppState {
     /// The name to greet this user by, or nil when we do not actually know one.
     ///
     /// 🔴 **A non-empty `display_name` is NOT evidence that anyone chose it.**
-    /// `handle_new_user()` seeds the column from the e-mail's local part, so
-    /// on 2026-09-10 **1,633 of 1,635** profiles carried a `display_name` that
-    /// is exactly the address in front of the `@` (2 blank, 0 containing an
-    /// `@`). Greeting from that column unfiltered means saying "Good morning,
+    /// `handle_new_user()` seeds it
+    /// `coalesce(raw_user_meta_data->>'full_name', split_part(email,'@',1))`,
+    /// so on 2026-09-10 **1,641 of 1,643** profiles carried a handle-SHAPED
+    /// `display_name` — lowercase letters, digits, `. _ -` and nothing else —
+    /// against 2 blank. That is shape, not proof of equality: the same test
+    /// also matches an Apple sign-in whose `full_name` is a real lowercase
+    /// first name, which is exactly a value we SHOULD greet by. Either way,
+    /// greeting from the column unfiltered means saying "Good morning,
     /// adil.hamidii123" to almost everybody — which reads as the app quoting a
-    /// database row back at them, not as a greeting.
+    /// database row back at them, not as a greeting. See CLAUDE.md's "Home
+    /// leads the app" for the query that re-derives all three numbers.
     ///
     /// So a name counts only when it is not the seed: non-empty, free of `@`
     /// (a whole address landing in the column is the same seed one step
