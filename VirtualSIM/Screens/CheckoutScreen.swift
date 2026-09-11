@@ -33,6 +33,11 @@ struct CheckoutScreen: View {
     var openCredits: () -> Void
 
     @State private var appeared = false
+    /// One `checkout_steer_shown` per presentation of this screen, not one per
+    /// layout pass. Without it the card's `onAppear` re-fires every time the
+    /// receipt above it re-measures, and the shown/taken ratio the constant is
+    /// meant to be read against becomes meaningless.
+    @State private var steerLogged = false
 
     // Identical to the draft here (this screen only exists inside `.checkout`),
     // but routed through the one accessor so the raw `?? last…` shape — the one
@@ -51,6 +56,94 @@ struct CheckoutScreen: View {
     /// is the only delivery figure checkout has.
     private var poolRate: Int? {
         state.displayedPoolRate(for: service, country: country)
+    }
+
+    /// A country whose published network rate is MATERIALLY better than the one
+    /// the user picked — the same steer `RecoveryScreen` makes after a failure,
+    /// moved to before the money moves.
+    ///
+    /// 🔴 **This is an OFFER, never a swap.** Routes the user names themselves
+    /// delivered 35.1% against 2.5% for routes the app named (45 days to
+    /// 2026-09-09), so nothing here may override the choice: the receipt above
+    /// keeps reading the user's own country until they tap, and the card says
+    /// so. What justifies it is that 211 of 411 numbered orders in the 30 days
+    /// to 2026-09-11 expired with no code, and the ONLY steer in the product
+    /// fired after that had already happened — this is the identical
+    /// information one screen earlier, where it can still prevent the failure
+    /// instead of apologising for it.
+    ///
+    /// Silent when: the owner has the metric off (`poolRate` is nil then, so
+    /// both the pref and the server flag are covered), the chosen route
+    /// publishes no rate at all (nothing to compare against — an unbacked nudge
+    /// is worse than silence, and "no information" must not read as "bad"), or
+    /// no HIGH-band alternative clears `checkoutSteerMinGain`.
+    /// `bestPoolRatedCountry` additionally refuses anything unbookable,
+    /// unaffordable on the current balance, or that our own record says
+    /// delivers nothing.
+    private var betterCountry: (country: Country, rate: Int, price: Int)? {
+        guard state.showMetrics,
+              let current = poolRate,
+              let alt = state.bestPoolRatedCountry(for: service, excluding: country),
+              alt.rate >= current + AppState.checkoutSteerMinGain
+        else { return nil }
+        return alt
+    }
+
+    /// The better-odds offer. Same rules as every other render of the network
+    /// figure: a colour-banded WORD via `NetworkRateMeter` and never the
+    /// percentage, and a sentence saying plainly that it is not our own record.
+    @ViewBuilder
+    private var betterOddsCard: some View {
+        if let alt = betterCountry {
+            Button {
+                RHaptic.select()
+                Analytics.shared.track("checkout_steer_taken", steerProps(alt))
+                state.commitCountryPick(alt.country)
+            } label: {
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack(spacing: 8) {
+                        FlagCircle(country: alt.country, size: 24)
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text("Try \(alt.country.name) instead")
+                                .font(RFont.text(13, weight: .semibold))
+                                .foregroundStyle(theme.text)
+                            Text("\(alt.price) cr")
+                                .font(RFont.text(11))
+                                .foregroundStyle(theme.text2)
+                        }
+                        Spacer(minLength: 8)
+                        NetworkRateMeter(pct: alt.rate)
+                        Image(systemName: RIcon.chev)
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(theme.text3)
+                    }
+                    Text("A better network-wide rate for \(service.name) right now. Not our own record — staying with \(country.name) is fine.")
+                        .font(RFont.text(13, weight: .medium))
+                        .foregroundStyle(theme.text)
+                        .multilineTextAlignment(.leading)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 12)
+                .background(theme.chipBg, in: .rect(cornerRadius: RRadius.sm))
+            }
+            .buttonStyle(.plain)
+            .padding(.top, 14)
+            .onAppear {
+                guard !steerLogged else { return }
+                steerLogged = true
+                Analytics.shared.track("checkout_steer_shown", steerProps(alt))
+            }
+        }
+    }
+
+    private func steerProps(_ alt: (country: Country, rate: Int, price: Int)) -> [String: AnalyticsValue] {
+        ["service": .string(service.id),
+         "from": .string(country.id),
+         "to": .string(alt.country.id),
+         "from_rate": .int(poolRate ?? -1),
+         "to_rate": .int(alt.rate)]
     }
 
     // `tierAdvice` lived here: a sentence recommending Real SIM off our own
@@ -84,14 +177,16 @@ struct CheckoutScreen: View {
                         receiptCard
                             .padding(.top, 20)
                             .riseIn(appeared, index: 1)
+                        betterOddsCard
+                            .riseIn(appeared, index: 2)
                         if premiumCost != nil {
                             tierSection
                                 .padding(.top, 26)
-                                .riseIn(appeared, index: 2)
+                                .riseIn(appeared, index: 3)
                         }
                         DeliveryNotice(density: .full)
                             .padding(.top, 22)
-                            .riseIn(appeared, index: 3)
+                            .riseIn(appeared, index: 4)
                     }
                     .padding(.horizontal, 16)
                     .padding(.top, 4)

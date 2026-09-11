@@ -742,19 +742,11 @@ struct ContentView: View {
         case .services:
             ServiceSheet(onPick: { picked in state.commitServicePick(picked) })
         case .country:
-            CountrySheet(onPick: { picked in
-                if state.flow == .checkout {
-                    state.checkoutCountry = picked
-                    // Recomputed for the new route — see the note in
-                    // `AppState.commitServicePick`.
-                    state.checkoutPremium = state.defaultPremium(
-                        for: state.configuringService, country: picked)
-                } else { state.lastCountry = picked }
-                // The user has now CHOSEN a country. Until this fires the
-                // Home row reads "Not selected" and `placeOrder` refuses —
-                // see `AppState.needsCountryChoice`.
-                state.needsCountryChoice = false
-            })
+            // Body moved to `AppState.commitCountryPick` when checkout's
+            // better-odds steer became a second surface that commits a
+            // country — one definition, so the premium reset and the
+            // `needsCountryChoice` clear cannot drift between them.
+            CountrySheet(onPick: { picked in state.commitCountryPick(picked) })
         case .credits:
             CreditsSheet(balance: state.balance, needed: state.creditsShortfall, onPurchased: {
                 // Awaited before the sheet dismisses, so the balance the user

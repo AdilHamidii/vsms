@@ -3509,6 +3509,52 @@
         }
       }
     },
+    "A better network-wide rate for %@ right now. Not our own record — staying with %@ is fine.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aktuell eine bessere netzweite Rate für %1$@. Nicht unsere eigene Statistik — bei %2$@ zu bleiben ist auch in Ordnung."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "new",
+            "value": "A better network-wide rate for %1$@ right now. Not our own record — staying with %2$@ is fine."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ahora mismo tiene una tasa mejor en toda la red para %1$@. No es nuestro propio registro — quedarte con %2$@ también está bien."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Un meilleur taux à l'échelle du réseau pour %1$@ en ce moment. Ce n'est pas notre propre historique — rester sur %2$@ convient aussi."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Al momento ha un tasso migliore a livello di rete per %1$@. Non è il nostro dato — restare su %2$@ va benissimo."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "現在、%1$@ のネットワーク全体の成功率がより高い国です。当社独自の実績ではありません。%2$@ のままでも問題ありません。"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tem uma taxa melhor em toda a rede para %1$@ agora. Não é o nosso próprio registro — ficar com %2$@ também serve."
+          }
+        }
+      }
+    },
     "A Canadian number that receives texts from US and Canadian phones": {
       "extractionState": "stale",
       "localizations": {
@@ -36219,6 +36265,46 @@
           "stringUnit": {
             "state": "translated",
             "value": "Tentar %@"
+          }
+        }
+      }
+    },
+    "Try %@ instead": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Stattdessen %@ versuchen"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Prueba %@ en su lugar"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Essayer %@ à la place"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Prova %@ invece"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "代わりに%@を試す"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tente %@ em vez disso"
           }
         }
       }

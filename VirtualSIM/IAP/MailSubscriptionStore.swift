@@ -172,6 +172,26 @@ final class MailSubscriptionStore {
         return max(1, Int((pct as NSDecimalNumber).doubleValue.rounded()))
     }
 
+    /// The yearly plan's introductory offer, and ONLY once StoreKit has
+    /// confirmed THIS Apple ID is eligible for it. nil otherwise, and nil is
+    /// not an error.
+    ///
+    /// 🔴 **`yearlyTrialLabel` used to read `introductoryOffer` directly, and
+    /// that was a live consumer-harm bug, not a latent one.** `mail.yearly`
+    /// carries a 3-day free trial in every territory, StoreKit hands the offer
+    /// AS CONFIGURED to every user regardless of eligibility, and Apple grants
+    /// one introductory offer per subscription GROUP per Apple ID. So a repeat
+    /// mail subscriber — anyone who had previously trialled or subscribed —
+    /// was shown "3 days free" on the paywall and then charged for the whole
+    /// year at Apple's sheet. That is a refund request, a one-star review and
+    /// an App Store 3.1.2 problem, and the line store's `monthlyIntroOffer`
+    /// already had the correct shape to copy.
+    ///
+    /// Written in `load()` behind the async `isEligibleForIntroOffer` read and
+    /// cleared the moment a purchase succeeds, because Apple has consumed the
+    /// group's one offer by then whether or not our server recorded it.
+    private(set) var yearlyIntroOffer: Product.SubscriptionOffer?
+
     /// "3 days" — or nil when there is no trial to promise.
     ///
     /// 🔴 nil is the important case and it is NOT an error. Apple grants one
@@ -184,7 +204,7 @@ final class MailSubscriptionStore {
         #if DEBUG
         if let s = screenshotPricing { return s.trial }
         #endif
-        guard let offer = product(for: .yearly)?.subscription?.introductoryOffer,
+        guard let offer = yearlyIntroOffer,
               offer.paymentMode == .freeTrial else { return nil }
         let n = offer.period.value
         switch offer.period.unit {
@@ -205,6 +225,17 @@ final class MailSubscriptionStore {
         #endif
         do {
             products = try await Product.products(for: MailProduct.allIds)
+            // Eligibility is a SEPARATE async read and it is the gate — see
+            // `yearlyIntroOffer`. An ineligible Apple ID gets nil here and the
+            // paywall renders no trial claim at all, which is what Apple will
+            // actually charge them.
+            if let sub = product(for: .yearly)?.subscription,
+               let offer = sub.introductoryOffer,
+               await sub.isEligibleForIntroOffer {
+                yearlyIntroOffer = offer
+            } else {
+                yearlyIntroOffer = nil
+            }
         } catch {
             // A load failure is not "you are not subscribed" — leave the hint
             // untouched and let the paywall say the store is unreachable.
@@ -242,6 +273,10 @@ final class MailSubscriptionStore {
             switch try await product.purchase(
                 options: PurchaseOptions.forUser(session?.userId)) {
             case .success(let verification):
+                // Apple has now consumed this Apple ID's one intro offer for
+                // the group, whether or not `submit` records it — a paywall
+                // shown again this session must not promise it.
+                yearlyIntroOffer = nil
                 return await submit(verification)
             case .userCancelled:
                 return false

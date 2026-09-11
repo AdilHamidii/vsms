@@ -1694,6 +1694,42 @@ final class AppState {
         needsServiceChoice = false
     }
 
+    /// How many points better a country's published pool rate must be before
+    /// checkout offers it in place of the one the user chose.
+    ///
+    /// ⚠️ **A judgement call, not a measurement.** `bestPoolRatedCountry`
+    /// already requires the alternative to be in the HIGH band (> 60, the
+    /// threshold `NetworkRateMeter` paints green), so this only stops the card
+    /// firing on a crossing that carries no information — a 59 against a 61 is
+    /// two samples of the same thing wearing different colours. Read
+    /// `checkout_steer_shown` against `checkout_steer_taken` before moving it.
+    static let checkoutSteerMinGain = 15
+
+    /// Adopt a country the user PICKED, from wherever the picker was opened.
+    ///
+    /// Mirrors `commitServicePick`, and exists for the same reason: `CountrySheet`
+    /// is no longer the only surface that commits a country — checkout's
+    /// better-odds steer commits one too — and two copies of this body would be
+    /// two places for the premium reset and the `needsCountryChoice` clear to
+    /// drift apart. That drift is the `PurchaseIntent` bug class this file
+    /// records three instances of: a write path that branches on `flow` while
+    /// the matching path does not.
+    func commitCountryPick(_ picked: Country) {
+        if flow == .checkout {
+            checkoutCountry = picked
+            // Real SIM is a per-ROUTE choice, RECOMPUTED for the new route and
+            // never carried over — see `commitServicePick` for what a stale
+            // premium flag does to this screen.
+            checkoutPremium = defaultPremium(for: configuringService, country: picked)
+        } else {
+            lastCountry = picked
+        }
+        // The user has now CHOSEN a country. Until this fires the Temp row
+        // reads "Not selected" and `confirmGetNumber` refuses outright — see
+        // `needsCountryChoice`.
+        needsCountryChoice = false
+    }
+
     /// Country picker shows every country in the catalog. A specific
     /// (service, country) pair may still be rejected at order time if
     /// SMSPVA is out of numbers — handled by create-order.

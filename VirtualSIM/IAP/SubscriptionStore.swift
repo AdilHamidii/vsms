@@ -154,15 +154,21 @@ final class SubscriptionStore {
         selectedPlan == .monthly ? monthlyIntroPriceDisplay : nil
     }
 
-    /// The trial, straight from StoreKit rather than hardcoded. `nil` when the
-    /// product has no introductory offer, or when this Apple ID is no longer
-    /// eligible — Apple allows ONE introductory offer per subscription GROUP
-    /// per Apple ID, so a user who trialled the monthly cannot trial the
-    /// yearly. Reading it live is what stops the paywall promising a free trial
-    /// to someone who will be charged immediately.
-    var yearlyIntroOffer: Product.SubscriptionOffer? {
-        yearlyProduct?.subscription?.introductoryOffer
-    }
+    /// The yearly plan's introductory offer, and ONLY once StoreKit has
+    /// confirmed THIS Apple ID is eligible for it. nil otherwise, and nil is
+    /// not an error.
+    ///
+    /// 🔴 **This was a COMPUTED property reading `introductoryOffer` directly,
+    /// and its own comment claimed the eligibility gate it did not have.**
+    /// StoreKit returns the offer AS CONFIGURED to every user; eligibility is
+    /// the separate async `isEligibleForIntroOffer`, and Apple grants one
+    /// introductory offer per subscription GROUP per Apple ID. Inert on this
+    /// product today only because the yearly line trial was withdrawn from ASC
+    /// (see `trialLabel`) — the moment any yearly offer exists again, the old
+    /// shape promises a trial to every lapsed subscriber and then charges them
+    /// the full year. Written in `loadProduct()` behind the eligibility read,
+    /// exactly like `monthlyIntroOffer`, and cleared on a successful purchase.
+    private(set) var yearlyIntroOffer: Product.SubscriptionOffer?
 
     /// "3 days" — or nil when there is no trial to promise.
     ///
@@ -259,6 +265,16 @@ final class SubscriptionStore {
                 monthlyIntroOffer = offer
             } else {
                 monthlyIntroOffer = nil
+            }
+            // Same gate for the yearly. Eligibility is per subscription GROUP,
+            // so this is a second read rather than a reuse of the monthly's
+            // answer: the products are in one group today, but that is an ASC
+            // fact this file must not assume.
+            if let sub = yearlyProduct?.subscription, let offer = sub.introductoryOffer,
+               await sub.isEligibleForIntroOffer {
+                yearlyIntroOffer = offer
+            } else {
+                yearlyIntroOffer = nil
             }
             if product == nil {
                 lastError = String(localized: "Second numbers are temporarily unavailable. Please try again in a moment.")
@@ -419,6 +435,7 @@ final class SubscriptionStore {
                 // the group, whether or not our server accepted the receipt —
                 // a paywall shown again this session must not promise it.
                 monthlyIntroOffer = nil
+                yearlyIntroOffer = nil
                 note(accepted ? "success" : "failed")
                 return accepted
             case .userCancelled:
