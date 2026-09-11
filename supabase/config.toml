@@ -175,3 +175,6 @@ verify_jwt = false
 
 [functions.probe-5sim]
 verify_jwt = false
+
+[functions.rc-sync]
+verify_jwt = false
