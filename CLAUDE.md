@@ -2200,8 +2200,30 @@ The USA token shipped with **2.10 (2026-09-06)** and is the app's ONLY
 US-intent metadata: ⚠️ **the 100-char keyword field still carries no `usa` in
 any locale** (checked 2026-09-10 on live 2.11 and on 2.13 in review; the `it`
 field's `usaegetta` is Italian for *usa e getta*, "disposable", and is one
-token). **Promotional text is EMPTY on every version** — the one lever that
-needs no review.
+token).
+
+✅ **Promotional text is SET in all 13 locales on BOTH the live version and the
+editable one (2026-09-11)** — "One app, three jobs: a real US number you keep
+for calls and texts, temp numbers for sign-up codes, and temp email addresses.
+No SIM, no contract.", localized to each locale's subtitle tone. Written and
+read back by `scripts/asc-promotional-text.py` (dry-run by default, `--apply`
+to write). Three properties that are not derivable from the code:
+
+- 🔴 **It is the ONLY listing field that changes WITHOUT review**, because it
+  is editable on the `READY_FOR_SALE` version and lands on the live product
+  page in minutes.
+- 🔴 **So writing it ONLY on the in-review version means nobody sees it** until
+  that version ships — which is exactly what happened here before the fix.
+  **Write BOTH**: the live one to be visible now, the editable one because a
+  new version does NOT inherit it once its localizations already exist.
+- ⚠️ **It is NOT indexed by Apple Search.** Name, subtitle and the 100-char
+  keyword field are; this is not. It is a CONVERSION lever on the product page
+  (tap→install, currently 68.4%), never a ranking lever — **do not spend
+  keywords here.**
+- ⚠️ Accents ARE written in this field, unlike the keyword field which strips
+  them for indexing. It is display copy. And **no price claim may appear in
+  `en-US`**: it is the fallback locale for NL/SE/DK/NO/FI/PL, so a "$3.99"
+  there renders in Sweden.
 
 ⚠️ **The fallback language is the app's PRIMARY locale, `en-US`, not en-GB**
 (`GET /v1/apps/6774768570` → `primaryLocale`). GB and IE resolve to `en-GB`;
