@@ -58,9 +58,36 @@ const TOPUP_LOOKBACK_HOURS = 6;
  *  in the wallet, never that they are compensation for something specific. */
 const TOPUP_REASONS = ["adjustment", "signup_bonus"];
 
-/** A broadcast is not a loop that should ever run away. Well above the ~200
- *  devices on file, low enough to be a real backstop. */
-const MAX_DEVICES = 2000;
+/** A broadcast is not a loop that should ever run away. Low enough to be a real
+ *  backstop, high enough for the install base. ⚠️ Raise this only together with
+ *  CONCURRENCY below — the cap and the runtime are the same constraint. */
+const MAX_DEVICES = 4000;
+
+/** 🔴 SENDS MUST BE CONCURRENT, OR A FULL BROADCAST CANNOT FINISH.
+ *
+ *  This function sent one push at a time until 2026-09-11, when a broadcast to
+ *  1,746 devices died on the edge runtime's **150s idle timeout** (HTTP 504
+ *  `IDLE_TIMEOUT`) partway through the list. An unknown subset was notified and
+ *  the rest were not — and because only FAILURES are logged, there was no way
+ *  afterwards to tell which. The function was written when ~200 devices were on
+ *  file and silently outgrew its own runtime as the install base grew.
+ *
+ *  25 in flight turns ~1,750 sequential round-trips into ~70 batches, seconds
+ *  rather than minutes. Kept modest deliberately: APNs will throttle a single
+ *  connection that floods it, and a broadcast has no deadline worth risking
+ *  that for. */
+const CONCURRENCY = 25;
+
+/** VoIP tokens CANNOT receive an ordinary alert push. They are PushKit tokens
+ *  on the `.voip` topic, and APNs answers `400 DeviceTokenNotForTopic` for
+ *  every one — 77 of them in the 2026-09-11 broadcast before it timed out, out
+ *  of 225 on file (~13% of every broadcast, wasted).
+ *
+ *  `push_devices` holds BOTH kinds keyed on the same users, because the line
+ *  product registers a PushKit token for incoming calls alongside the ordinary
+ *  alert token. Selecting the table without this filter is always wrong for a
+ *  user-visible message. */
+const ALERT_BUNDLE_ID = "com.anthersystems.VirtualSIM";
 
 Deno.serve(async (req) => {
   const pre = handleCors(req);
@@ -140,7 +167,8 @@ Deno.serve(async (req) => {
 
   const { data: devices, error: devErr } = await sb
     .from("push_devices")
-    .select("user_id, token, environment");
+    .select("user_id, token, environment")
+    .eq("bundle_id", ALERT_BUNDLE_ID);   // never the .voip PushKit tokens
   if (devErr) {
     console.error("broadcast-push: device read failed:", devErr.message);
     return json({ error: "device_read_failed", detail: devErr.message }, { status: 500 });
@@ -170,22 +198,40 @@ Deno.serve(async (req) => {
     });
   }
 
-  let pushed = 0, failed = 0;
-  for (const d of targets) {
-    try {
-      const r = await sendPush(
-        d.token as string,
-        { alertTitle: title, alertBody, customData: { broadcast: segment } },
-        d.environment as "sandbox" | "production",
-      );
-      if (r.ok) pushed++;
-      else { failed++; console.error("broadcast-push APNs", r.status, r.body); }
-    } catch (e) {
-      failed++;
-      console.error("broadcast-push APNs threw:", e);
-    }
+  // CONCURRENCY at a time. See the constant: sequentially this cannot finish
+  // inside the 150s idle timeout at the current device count, and a broadcast
+  // killed halfway is unrecoverable — a resend double-notifies everyone who
+  // already got it, and nothing records who that was.
+  let pushed = 0, failed = 0, unregistered = 0;
+  const started = Date.now();
+
+  for (let i = 0; i < targets.length; i += CONCURRENCY) {
+    await Promise.all(targets.slice(i, i + CONCURRENCY).map(async (d) => {
+      try {
+        const r = await sendPush(
+          d.token as string,
+          { alertTitle: title, alertBody, customData: { broadcast: segment } },
+          d.environment as "sandbox" | "production",
+        );
+        if (r.ok) { pushed++; return; }
+        failed++;
+        // 410 Unregistered is APNs stating the app is GONE from that device.
+        // Counted separately so a broadcast's failure number is readable:
+        // dead installs are not a delivery problem to go chasing.
+        if (r.status === 410) unregistered++;
+        else console.error("broadcast-push APNs", r.status, r.body);
+      } catch (e) {
+        failed++;
+        console.error("broadcast-push APNs threw:", e);
+      }
+    }));
   }
 
-  console.log(`broadcast-push: segment=${segment} pushed=${pushed}/${targets.length} failed=${failed}`);
-  return json({ segment, devices: targets.length, pushed, failed });
+  const elapsedMs = Date.now() - started;
+  console.log(`broadcast-push: segment=${segment} pushed=${pushed}/${targets.length} `
+    + `failed=${failed} unregistered=${unregistered} elapsed_ms=${elapsedMs}`);
+  return json({
+    segment, devices: targets.length, pushed, failed, unregistered,
+    elapsed_ms: elapsedMs,
+  });
 });
