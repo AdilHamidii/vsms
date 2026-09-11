@@ -45,8 +45,25 @@ const MAX_ORPHANS = 5;
 
 /** A number Telnyx created less than this long ago is never judged an orphan:
  *  a rental or swap in flight has ordered it and not yet written the e164 onto
- *  its row. Rent is monthly, so waiting a day costs nothing. */
-const ORPHAN_MIN_AGE_MS = 24 * 3_600_000;
+ *  its row.
+ *
+ *  🔴 **This was 24 HOURS on the reasoning that "rent is monthly, so waiting a
+ *  day costs nothing". That reasoning rested on a billing model that is wrong.**
+ *  Telnyx charges **$2.00 at the moment of order** — $1.00 upfront AND the
+ *  first month together, measured 2026-09-11 from Telnyx's own refusal
+ *  (`app_config.telnyx_test_number_probe`: *"Credit available: 0.51 Total cost
+ *  of Order: 2.0"*). Rent is not a separate later event we can be relaxed
+ *  about, and an unassigned number is money already spent that nobody is
+ *  paying us for. Owner rule (2026-09-11): **never hold a number no subscriber
+ *  is assigned to.**
+ *
+ *  One hour is still 4x the widest in-flight window that actually exists:
+ *  `reclaim_lapsed_lines` marks a stuck `provisioning` row `failed` after 15
+ *  minutes, and the edge runtime dies at ~150s, so no order can legitimately
+ *  be in flight longer than that. `young_unmatched` in the heartbeat is what
+ *  to watch — it should normally read 0, and a persistent non-zero means an
+ *  order path is leaving numbers unwritten, not that this bound is too low. */
+const ORPHAN_MIN_AGE_MS = 3_600_000;
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 

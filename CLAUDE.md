@@ -1550,9 +1550,37 @@ notification uuid** — Apple delivers up to five times, `begin_line_rental` is 
 mutex, and a `failed` attempt sits OUTSIDE the partial index so a retry can still
 succeed. A uuid tombstone would have locked out the recovery this exists for.
 
-⚠️ **Telnyx bills number rent on the 1st of the month, not on each number's
-anniversary** (inferred from a balance step, not read from their ledger). When
-reasoning about a lapse near month-end, count to the 1st.
+🔴 **A Telnyx number costs $2.00 AT THE MOMENT OF ORDER — the $1.00 upfront
+fee and the first month TOGETHER.** Measured 2026-09-11 from Telnyx's own
+refusal, not inferred: `app_config.telnyx_test_number_probe` holds
+*"Insufficient Funds … Credit available: 0.51 Total cost of Order: 2.0"* for a
+single US local number. Re-read it rather than quoting this.
+
+⚠️ **This REPLACES the previous claim that "Telnyx bills number rent on the 1st
+of the month".** That was explicitly marked *inferred from a balance step, not
+read from their ledger*, and it was wrong — a balance step on the 1st is not
+evidence that rent is the thing stepping. Two decisions were reasoned from it
+and both came out wrong: that a number sitting unassigned for a day "costs
+nothing", and that recycling a number could only ever recover $1. **The month
+is prepaid at order, so an unassigned number is money already spent.**
+⚠️ The RENEWAL date is still not measured — the anniversary is the assumption,
+and it is only an assumption. Do not build anything that must be right about
+it without reading Telnyx's ledger first.
+
+🔴 **Owner rule (2026-09-11): never pay rent on a number no subscriber is
+assigned to** — *"I'll only pay the next month $1 if that user is still
+subscribed."* Two mechanisms enforce it, and both have to stay:
+- **`reclaim_lapsed_lines` branch (d) gives `auto_renew = false` NO 6-hour
+  lag** (migration `20260911090000`). The 6h exists so a late `DID_RENEW`
+  cannot kill a paying subscriber's number; when Apple has already said the
+  subscription will not renew there is no such notification coming, and those
+  six hours straddle exactly when the number's own renewal falls due. On
+  2026-09-11 that was 6 of 11 active Apple lines. Branches (d2) `grace` and
+  (d3) `past_due` KEEP the 6h deliberately — both mean Apple is still trying
+  to bill. ⚠️ **Never release EARLIER than `current_period_end`**: the
+  subscriber paid through that instant.
+- **`ORPHAN_MIN_AGE_MS` is 1 HOUR**, not the 24 it was. See the orphan sweep
+  below.
 
 ### 🔴 The orphan sweep releases any number no live line holds
 
@@ -1563,6 +1591,21 @@ Telnyx dashboard read 13 active numbers against 6 paying lines. Reconcile any
 time with `probe-telnyx-connection {"probe":"numbers"}` (read-only). **Run it
 whenever the dashboard count and the paying-line count disagree — the heartbeat
 cannot tell you.**
+
+🔴 **`ORPHAN_MIN_AGE_MS` is 1 HOUR (2026-09-11), down from 24.** The 24 rested
+on "rent is monthly, so waiting a day costs nothing" — false once the month is
+known to be prepaid at order. One hour is still 4× the widest in-flight window
+that exists: `reclaim_lapsed_lines` fails a stuck `provisioning` row at 15
+minutes and the edge runtime dies at ~150s, so no order can legitimately be
+unwritten for longer. **Watch `young_unmatched` in `line_release_heartbeat`** —
+it should normally read 0, and a persistent non-zero means an order path is
+leaving numbers unwritten, NOT that this bound is too low.
+
+⚠️ **A swap that times out deliberately does not release its number** — the
+order "may still land after we stop looking", so `swap-line-number` refunds and
+leaves it to this sweep. That is the path that produced the unassigned
+`+16042390805` on 2026-09-11. It is the orphan sweep's job by design, which is
+why the sweep's latency is the thing that had to change.
 
 ## Ops, monitoring and analytics
 
@@ -1953,19 +1996,19 @@ Each has been wrong within a day of being written at least once.
   paused, daily credit **disabled**.
 - **Balances** — re-query, these move hourly:
   `select key, value->>'balance_usd' from app_config where key like '%_health';`
-  5sim $8.29, HeroSMS $14.85, Telnyx $2.87, eSIM Access $86.69
-  (re-read 2026-09-11 07:42Z).
+  5sim $8.29, HeroSMS $14.85, Telnyx $12.87, eSIM Access $86.69
+  (re-read 2026-09-11 08:14Z).
 
-🔴 **TWO WATCHDOG CHECKS ARE FIRING:**
-- 🔴 **`telnyx-float` — $2.87, under the $10 floor** (`alert_tier` 1). It read
-  $12.42 at 2026-09-10 19:40Z, so **$9.55 went in twelve hours**, and a US/CA
-  number costs **$2.00 to buy** ($1.00 upfront + $1.00 first month, measured
-  2026-08-05, `_shared/telnyx.ts`). At $2.87 the NEXT rental or swap is one
-  purchase from `line_float_exhausted`. **Owner action: fund Telnyx.**
+🔴 **ONE WATCHDOG CHECK IS FIRING:**
 - **`5sim-float` — $8.29 covers ~3.5 days of reservations** ($2.38/day gross;
   the runway check, not the $5 floor). 5sim is the PRIMARY SMS provider, so an
   empty float fails every temp-SMS order as `provider_unreachable`.
   **Owner action: fund 5sim.**
+- ✅ **`telnyx-float` cleared** — $12.87 against the $10 floor, `alert_tier` 0.
+  It fell to $2.87 on the morning of 2026-09-11 (from $12.42 twelve hours
+  earlier) and the owner funded it. **The drain was number purchases at $2.00
+  each, 63% of them swaps — not calls, which cost $2.00 across 14 days.** See
+  the Known-open entry and "The lapse machine".
 
 ### Territories and store
 
@@ -1980,10 +2023,9 @@ Genuinely open items only. Resolved history is in `docs/decisions-archive.md`.
 
 **Money / owner action**
 
-- 🔴 **Fund Telnyx, then 5sim.** Both float checks are failing (Telnyx $2.87
-  under the $10 floor; 5sim $8.29, ~3.5 days of runway). Telnyx is first
-  because a number purchase is $2.00 and the balance no longer covers two.
-  Re-query both, never quote either.
+- 🔴 **Fund 5sim.** $8.29, ~3.5 days of runway, and the only watchdog check
+  currently failing. (Telnyx fell to $2.87 on the morning of 2026-09-11 and
+  the owner funded it to $12.87. Re-query both, never quote either.)
 - ⚠️ **Telnyx float is drained by NUMBER PURCHASES, and most of them are
   SWAPS — not by calls.** Measured 2026-09-11 over the prior 7 days: **24
   numbers bought, 15 of them swaps** (from **4** users; one line swapped 7
