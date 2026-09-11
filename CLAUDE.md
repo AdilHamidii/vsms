@@ -1784,6 +1784,20 @@ is the missing piece.
 - **Edge functions die at ~150s wall clock**, and `EdgeRuntime.waitUntil`
   background tasks are killed at the same mark. Any job longer than ~2 minutes
   must be cursor-chunked across invocations.
+  🔴 **`broadcast-push` hit exactly this on 2026-09-11** and it is the worst
+  shape of the bug: a broadcast to 1,746 devices sent one push at a time, died
+  on the timeout partway through, and **only FAILURES are logged — so which
+  users were notified is unrecoverable, and a resend double-notifies everyone
+  who already got it.** Fixed by sending `CONCURRENCY = 25` in flight. The
+  lesson generalises: **a loop over a growing table is a time bomb with no
+  alarm** — it was written for ~200 devices and silently outgrew its runtime.
+- 🔴 **`push_devices` holds PushKit `.voip` tokens ALONGSIDE ordinary alert
+  tokens** (`bundle_id` `com.anthersystems.VirtualSIM.voip`, 225 of them on
+  2026-09-11, registered by the line product for incoming calls). **An alert
+  push to one returns `400 DeviceTokenNotForTopic` and is never delivered.**
+  Any user-visible send MUST filter `bundle_id = 'com.anthersystems.VirtualSIM'`;
+  `broadcast-push` did not, and wasted ~13% of every broadcast. A `410
+  Unregistered` is different and benign — APNs saying the app is gone.
 - **A positional cursor must walk a SORTED list.** A query with no `order by`
   can return rows in a different order on any run, so the cursor skips some
   permanently — those routes never got probed and were sold as VoIP-only
