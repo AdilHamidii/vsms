@@ -2210,11 +2210,49 @@ channel** — invoke it before touching the listing, keywords or screenshots.
 The live name is `vSMS: Second Number & Temp SMS` / subtitle **`USA Phone Line
 & Verification`**, in all 13 locales — localized, so de-DE is `USA-Nummer &
 SMS-Code`, fr-FR `Ligne USA & SMS temporaire`, it `Linea USA e SMS temporanei`.
-The USA token shipped with **2.10 (2026-09-06)** and is the app's ONLY
-US-intent metadata: ⚠️ **the 100-char keyword field still carries no `usa` in
-any locale** (checked 2026-09-10 on live 2.11 and on 2.13 in review; the `it`
-field's `usaegetta` is Italian for *usa e getta*, "disposable", and is one
-token).
+The USA token shipped with **2.10 (2026-09-06)**.
+
+🔴 **APPLY THIS KEYWORD FIELD TO THE NEXT VERSION** (owner-approved
+2026-09-11). Keywords ship only with a release, and 2.13 was already
+`WAITING_FOR_REVIEW` when this was decided, so it could not be applied then.
+**The moment a `PREPARE_FOR_SUBMISSION` version exists, run
+`python3 scripts/asc-keywords.py --apply`** (dry-run by default; it REFUSES to
+write to a version in review, and reads back). en-US, 95/100:
+
+```
+email,virtual,disposable,temporary,online,otp,code,burner,mail,verify,receive,text,call,2nd,get
+```
+
+⚠️ **`usa` is NOT in it, deliberately — and this file used to call its absence
+the app's big ASO gap. That was wrong.** Apple indexes **name + subtitle +
+keyword field as ONE pool**, and the subtitle has carried `USA Phone Line &
+Verification` since 2.10 — so `usa`, `phone`, `line` and `verification` are
+already indexed, and repeating any of them here wastes characters. Same for
+`second` and `number`: they are in the NAME, the highest-weight field. (The
+`it` field's `usaegetta` is Italian for *usa e getta*, "disposable", and is one
+token — a false positive for any `usa` grep.)
+
+Three facts behind the list, none derivable from the code:
+- 🔴 **Apple does not substring-match.** `email` does not answer a search for
+  "mail"; `verification` does not answer "verify". Each is a separate purchase.
+  **`mail` was the missing token**: "temp mail" is popularity **82** — higher
+  than "second number" (72) — and was UNFORMABLE despite `Temp` being in the
+  app name.
+- 🔴 **The app has ~5 ratings, and ratings cap position.** So the
+  second-number cluster is not bought here at any price: "second phone number"
+  is popularity 92 but its top results are TextNow (**919k** ratings), Text
+  Free (602k) and Text Me (672k). The verification cluster is winnable — its
+  leaders have 10, 46, 153 and 2,800 ratings. Scored via `aso-connect`, us
+  storefront, 2026-09-11.
+- ⚠️ **`burner` is in at the owner's explicit instruction, against the
+  scoring** (pop 61 / difficulty 67, Burner.app at 93k ratings), displacing
+  `inbox`. Note the owner separately PAUSED `burner` as an ASA keyword on
+  2026-09-07 for drawing two-way-texting intent the product cannot serve. Paid
+  and organic are different calculus — do not "fix" one to match the other.
+
+⚠️ **fr-FR, de-DE, es-ES and it have NOT been reworked** — they still carry
+`generator,throwaway,inbox` padding copied from the English field, and each
+needs its own scoring pass (`score_keywords_batch` is one country per call).
 
 ✅ **Promotional text is SET in all 13 locales on BOTH the live version and the
 editable one (2026-09-11)** — "One app, three jobs: a real US number you keep
