@@ -37,7 +37,7 @@ import { sendPush } from "../_shared/apns.ts";
 
 /** Segments are computed here, not passed in as a user list, so a caller
  *  cannot accidentally target one person with a broadcast message. */
-type Segment = "topped_up" | "not_topped_up" | "all";
+type Segment = "topped_up" | "not_topped_up" | "all" | "no_line_ever";
 
 /** How far back a wallet credit counts as "the top-up we just did".
  *  Deliberately short: this function must not resurrect an older make-good. */
@@ -84,7 +84,7 @@ Deno.serve(async (req) => {
   }
 
   const segment = body.segment ?? "all";
-  if (!["topped_up", "not_topped_up", "all"].includes(segment)) {
+  if (!["topped_up", "not_topped_up", "all", "no_line_ever"].includes(segment)) {
     return json({ error: "bad_segment" }, { status: 400 });
   }
   const title = (body.title ?? "").trim();
@@ -109,6 +109,35 @@ Deno.serve(async (req) => {
   }
   const toppedUp = new Set((adj ?? []).map((r) => r.user_id as string));
 
+  // Who has EVER held a line subscription, in any state — active, expired,
+  // revoked, trial. Used by `no_line_ever`, whose whole purpose is the intro
+  // offer: 🔴 **Apple grants ONE introductory offer per subscription GROUP per
+  // Apple ID**, so anyone who has ever subscribed is INELIGIBLE and would be
+  // charged the full price after being told otherwise. `state` is deliberately
+  // not filtered — a lapsed subscriber has still consumed their one intro.
+  //
+  // Same fail-loud rule as the read above, and here it is worse: a discarded
+  // error empties this set, `no_line_ever` becomes EVERYONE, and the people
+  // told to buy a number at an intro price they cannot get are precisely the
+  // paying subscribers who already have one.
+  //
+  // ⚠️ Residual, stated plainly: eligibility lives at the APPLE ID, this table
+  // is keyed on our user_id. Someone who deleted their account and signed up
+  // again reads as "never subscribed" here while Apple still refuses the offer.
+  // `line_subscriptions` has no FK to `auth.users` so the old row survives, but
+  // the new signup carries a new user_id and cannot be matched to it. 22 users
+  // have ever subscribed, so the blast radius is small — but it is not zero.
+  const { data: everLine, error: lineErr } = await sb
+    .from("line_subscriptions")
+    .select("user_id");
+  if (lineErr) {
+    console.error("broadcast-push: line_subscriptions read failed:", lineErr.message);
+    return json({ error: "segment_read_failed", detail: lineErr.message }, { status: 500 });
+  }
+  const hasHadLine = new Set(
+    (everLine ?? []).map((r) => r.user_id as string).filter(Boolean),
+  );
+
   const { data: devices, error: devErr } = await sb
     .from("push_devices")
     .select("user_id, token, environment");
@@ -119,6 +148,7 @@ Deno.serve(async (req) => {
 
   const targets = (devices ?? []).filter((d) => {
     if (segment === "all") return true;
+    if (segment === "no_line_ever") return !hasHadLine.has(d.user_id as string);
     const hit = toppedUp.has(d.user_id as string);
     return segment === "topped_up" ? hit : !hit;
   });
@@ -134,6 +164,7 @@ Deno.serve(async (req) => {
       devices: targets.length,
       users: new Set(targets.map((t) => t.user_id)).size,
       topped_up_users_in_window: toppedUp.size,
+      ever_subscribed_users_excluded: hasHadLine.size,
       title,
       body: alertBody,
     });
