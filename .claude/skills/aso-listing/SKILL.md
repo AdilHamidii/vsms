@@ -55,45 +55,68 @@ and India's default is English (U.K.), not Hindi.
 analytics rows), so keyword attribution is before/after inference only. Change
 one layer at a time and allow 7–14 days.
 
-**Ratings cap position; keywords only buy eligibility.** That is why
-`shouldRequestReview` fires on the **first** delivered code.
+**Ratings cap position; keywords only buy eligibility.** This is the ASO
+ceiling, and the app has **8 ratings** across every storefront (2026-09-11,
+`https://itunes.apple.com/lookup?id=6774768570&country=<cc>` →
+`userRatingCount`; `customerReviews` in the ASC API shows only the WRITTEN
+ones and cannot see a silent star).
 
-**Live review state, read from ASC 2026-08-05 — there are FIVE, not three, and
-the US still has zero:**
+🔴 **SIX OF THE SEVEN WRITTEN REVIEWS ARE THE OWNER'S FRIENDS (owner,
+2026-09-11). The app has ONE organic review in its entire history — the DEU
+1★ — and that user never received a code, so the prompt never fired for
+them.** Reason from this and nothing else:
 
 | date | rating | store | |
 |---|---|---|---|
-| 08-02 | 5★ | ESP | "Best app ever !!!! Really useful" |
-| 08-02 | **1★** | DEU | "Scam" — turkey number unavailable, **"after one day price increased"**, UK not working |
-| 07-10 | 5★ | FRA | |
-| 07-09 | 5★ | POL | |
-| 06-22 | 5★ | POL | |
+| 08-08 | 5★ | FRA | friend |
+| 08-08 | 5★ | USA | friend — so the US storefront has **zero** organic ratings |
+| 08-02 | 5★ | ESP | friend |
+| 08-02 | **1★** | DEU | **the only organic one** — turkey number unavailable, **"after one day price increased"**, UK not working |
+| 07-10 | 5★ | FRA | friend |
+| 07-09 | 5★ | POL | friend |
+| 06-22 | 5★ | POL | friend |
 
-Two landed on 08-02, two days after the threshold dropped to one code (and
-after 1.6/1.7 shipped, which re-arms the per-version gate). **Apple gives no
-attribution**, so that is timing, not proof — and note one of the two was the
-1★. The DEU complaint about the price rising overnight is the **cost ratchet**
-working as designed (rises apply immediately, falls are smoothed); it is
-correct and it reads as bait-and-switch.
+Ratings by storefront: fr 3, pl 2, us 1, de 1, es 1. Seven of those eight are
+the table above, so **exactly ONE silent rating exists** (the third French
+one) — and the owner's friends are the likeliest source of that too. The DEU
+complaint about the price rising overnight is the **cost ratchet** working as
+designed (rises apply immediately, falls are smoothed); it is correct and it
+reads as bait-and-switch.
 
-**Why there are no US reviews: the eligible pool is ~5.** Only 26 users have
-ever received a code; by storefront (buyers only — the other 16 coded users
-never bought, so their storefront is unknowable) that is USA 5, FRA 2, ESP 2,
-SWE 1. At the ~10% prompt→review rate the rest of the data implies, five
-eligible users predicts 0.5 reviews. **The prompt is not the constraint; the
-number of people who ever receive a code is.**
+🔴 **THE NATIVE REVIEW PROMPT HAS NEVER PRODUCED A MEASURABLE RATING, AND IT
+HAS NOT BEEN ABLE TO FIRE AT ALL SINCE 2026-08-19.** 215 users have received a
+code all-time and 189 of them since 2026-08-08, against ~1 unattributable
+silent rating. Two separate causes, one per era, and neither is user
+indifference:
 
-⚠️ **A second, unquantified leak: the review prompt lives on
-`OtpScreen.onAppear`, but the delivery push already contains the code**
-(`Your code is ${result.code}` in `poll-active-orders`). A user who reads it
-off the lock screen and types it straight into the target app never opens that
-screen and is never prompted — and that is the *designed* flow, since the ✕ was
-made non-destructive precisely because users must leave to paste the number.
-How often is **not measurable server-side**: whether `OtpScreen` appeared is
-device-side UserDefaults, and `push_devices.updated_at` cannot separate "warm
-foreground" from "never came back". The fix, if wanted, is to fire the prompt
-on app-foreground after a recent delivered code rather than tying it to one
-screen — a client release. Do **not** strip the code out of the push to force
-users in; that trades real UX for a review.
+- **Since `1fa0838` (2026-08-19, live in 2.3+ and therefore in 2.11): the
+  prompt is unreachable.** `ContentView`'s foreground handler is the only call
+  site and it gates on `reviewableRecentDelivery()`, which reads a UserDefaults
+  stamp written ONLY by the newly-appeared-code diff in `loadOrders` /
+  `loadEmailOrders`. **No real delivery arrives through those.** The SMS code is
+  written by `apply(server:for:wallet:)` (`self.orders[idx] = updated`) and the
+  e-mail code by `refreshEmailOrder` (`emailOrders[i] = fresh`) — the
+  single-order polls, neither of which stamps anything. `WaitingScreen` polls
+  every 4s, so the poll always wins: by the time the list refresh runs, the code
+  is already in `previouslyDelivered`, the diff is empty, and nothing is
+  recorded. `hadPriorState` then closes the cold-launch path by design, because
+  `orders` starts empty.
+- **Before that: it fired ~0.9s after the code rendered on `OtpScreen`** —
+  exactly when the user is rushing to paste, i.e. the reflex-dismiss position —
+  and only for users who opened that screen at all, which the delivery push
+  (`Your code is ${result.code}` in `poll-active-orders`) lets them skip. Do
+  **not** strip the code out of the push to force users in; that trades real UX
+  for a review.
+
+⚠️ **Nothing is instrumented at the call site**, so "prompt shown and declined"
+and "prompt never fired" are indistinguishable in the data. Any fix must add an
+event, or the next reading is as blind as this one.
+
+⚠️ **A decision was already made from the friend reviews and it should not be
+repeated.** On 2026-07-31 the threshold dropped from the second delivered code
+to the first, reasoning that "7 users reached two codes and produced all 3
+reviews (~43%)". Those three were friends; the 43% was not a prompt→review rate
+and no such rate has ever been measured. The comment stating it still sits in
+`AppState.shouldRequestReview`.
 
 ⚠️ **Never let email keywords go live ahead of the build that ships email.**
