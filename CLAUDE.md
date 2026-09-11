@@ -2207,6 +2207,24 @@ the same commit.**
 Moved to the `aso-listing` skill. **Search is the app's ENTIRE acquisition
 channel** — invoke it before touching the listing, keywords or screenshots.
 
+🔴 **RATINGS CAP SEARCH POSITION, AND THE APP HAS 8 — SIX OF THE SEVEN WRITTEN
+REVIEWS ARE THE OWNER'S FRIENDS** (owner, 2026-09-11). The only organic review
+is the DEU 1★, from a user who never received a code and was therefore never
+prompted. **No prompt→rating rate has ever been measured in this product**; the
+"~43%" once quoted was those friends. Re-read the count with
+`python3 scripts/app-ratings.py` (no auth; ASC's `customerReviews` shows only
+*written* reviews and cannot see a silent star) — never quote the 8.
+
+✅ **The review prompt was rebuilt 2026-09-11 and it could not fire at all
+before that.** From 2026-08-19 it was gated on a UserDefaults stamp written
+only by a list diff that no real delivery ever reached, while 215 users
+received codes. It is now DERIVED from `Order.arrivedAt`, fires from two arms
+(cold launch + foreground) after a calm dwell, and emits
+`review_prompt_eligible` / `_blocked` / `_requested`. Full detail — including
+the two rules that make it safe, *never reintroduce a delivery stamp* and
+*ask first, consume second* — is in `.claude/rules/ios-client.md`, "The review
+prompt". ⚠️ **Ships with the next build; 2.11 and 2.13 do not carry it.**
+
 The live name is `vSMS: Second Number & Temp SMS` / subtitle **`USA Phone Line
 & Verification`**, in all 13 locales — localized, so de-DE is `USA-Nummer &
 SMS-Code`, fr-FR `Ligne USA & SMS temporaire`, it `Linea USA e SMS temporanei`.

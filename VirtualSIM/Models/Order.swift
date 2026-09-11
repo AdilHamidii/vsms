@@ -14,6 +14,14 @@ struct Order: Identifiable, Hashable {
     var status: OrderStatus { server.status }
     var createdAt: Date { server.createdAt }
     var expiresAt: Date { server.expiresAt }
+    /// When the code actually landed, server-stamped. Already selected by
+    /// `OrdersAPI.columns` and populated on every delivered order measured
+    /// (88 of 88 in the 30 days to 2026-09-11) — it is what
+    /// `AppState.lastCodeArrival` reads, so the review prompt needs no
+    /// client-side delivery bookkeeping of its own.
+    /// ⚠️ Non-nil only where a code arrived; read it with `otp != nil`, never
+    /// with `status == .received` (a rescued code lives on a canceled row).
+    var arrivedAt: Date? { server.arrivedAt }
     var costCredits: Int { server.costCredits }
     /// Which provider filled this order. nil = not recorded, which is NOT the
     /// same as "no provider" — see `AppState.minHoldSeconds(forProvider:)`.

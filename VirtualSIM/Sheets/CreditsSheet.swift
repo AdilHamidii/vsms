@@ -197,6 +197,12 @@ struct CreditsSheet: View {
             Analytics.shared.track("paywall_shown", [
                 "source": .string(needed > 0 ? "shortfall" : "manual"),
                 "needed": .int(needed)])
+            // A review prompt and a paywall must never share a session — asking
+            // for five stars right after telling someone they have to pay is
+            // the worst possible moment. The mail paywall has always carried
+            // this rule; the CREDITS paywall never did, and it is the bigger of
+            // the two (212 distinct users saw it in the 11 days to 2026-09-11).
+            state.suppressReviewThisSession = true
             withAnimation(RMotion.content) { appeared = true }
             await iap.loadProducts()
             // Also here, not only in `onChange(of: productsLoaded)`: products

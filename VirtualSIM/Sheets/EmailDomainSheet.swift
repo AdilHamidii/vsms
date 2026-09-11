@@ -249,6 +249,8 @@ struct EmailDomainSheet: View {
             ChipButton(label: String(localized: "Subscribe"),
                        active: true, soft: true) {
                 state.intent = .mailSubscription
+                // Local presentation, shared suppression — see TempScreen.
+                state.suppressReviewThisSession = true
                 showPaywall = true
             }
         } else if option.isFree {

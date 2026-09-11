@@ -70,6 +70,31 @@ struct ServerEmailOrder: Codable, Hashable, Identifiable {
     /// canceled row was scored as a delivery failure.
     var hasCode: Bool { !(code ?? "").isEmpty }
 
+    /// `createdAt` parsed. 🔴 **PostgREST emits `timestamptz` WITH fractional
+    /// seconds, which a default `ISO8601DateFormatter` REJECTS** — a single
+    /// plain formatter returns nil for every real row, which is how a
+    /// minutes-old activation once sorted below the oldest SMS order and read
+    /// as though it had vanished. Try the fractional form first.
+    ///
+    /// ⚠️ `email_orders` has NO arrival timestamp, so this is the closest
+    /// thing to "when the code landed" the client can get. The provider window
+    /// is ~22 minutes, which is noise against the hours-scale floor
+    /// `AppState.reviewPromptBlocker` uses and unacceptable for anything
+    /// finer-grained. ⚠️ `OrdersScreen.HistoryItem.sortDate` and
+    /// `HomeScreen.parseCreatedAt` each carry a private copy of this parse;
+    /// they predate it and should migrate here rather than a fourth appearing.
+    var createdAtDate: Date? {
+        guard let createdAt else { return nil }
+        return Self.isoFractional.date(from: createdAt) ?? Self.iso.date(from: createdAt)
+    }
+
+    private static let isoFractional: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return f
+    }()
+    private static let iso = ISO8601DateFormatter()
+
     /// Paid orders that ended without a code are refunded server-side. Free
     /// ones have nothing to give back, so claiming a refund would be a lie.
     var wasRefunded: Bool { costCredits > 0 && status.isTerminal && !hasCode }

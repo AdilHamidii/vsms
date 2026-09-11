@@ -48,8 +48,10 @@ VirtualSIM/
                                  TempScreen (the Temp tab:
                                  temp SMS + temp e-mail, `emailMode`),
                                  Checkout, Waiting (+ WaitingAnimations),
-                                 OTP (fires native review prompt on code
-                                 delivery), Orders, Account, + the eSIM flow,
+                                 OTP (⚠️ fires NO review prompt — see "The
+                                 review prompt" below; it did until 2026-08-19
+                                 and must not again), Orders, Account,
+                                 + the eSIM flow,
                                  reached from no tab since 2026-09-08
                                  (EsimStore = Store/My eSIMs/Activity segments,
                                  EsimMapView = clustered MapKit country picker,
@@ -384,6 +386,78 @@ rate-limited network round-trip per country, which would make the map's contents
 depend on connectivity). `CountryGeo.missingCodes(in:)` exists so a catalog
 country with no pin is *assertable* — the map renders a "N not on map" note
 rather than silently dropping a country it can sell. Currently 66/66 are placed.
+
+## The review prompt — derived, dwelled, and instrumented (2026-09-11)
+
+**Ratings cap App Store search position and search is this app's entire
+acquisition channel**, so this path is growth infrastructure, not a nicety.
+
+🔴 **The app had 8 ratings against 215 users who had received a code, and 6 of
+the 7 written reviews are people the owner knows.** Cause, found 2026-09-11:
+from `1fa0838` (2026-08-19) the prompt was gated on a UserDefaults stamp whose
+only writers were the newly-arrived-code diffs inside `loadOrders` /
+`loadEmailOrders` — **and no real delivery ever reached those.** Every code is
+written into the arrays FIRST by a single-order poll that stamped nothing
+(`apply(server:for:wallet:)`, `refreshEmailOrder`, and the "the cancel came
+back delivered" branches in `cancelWaiting` / `rerollNumber`), so the diff was
+always empty. Cold launch could not rescue it: `ContentView` exists only inside
+`AuthGate`'s `.signedIn` arm, constructed after `session.bootstrap()` has
+awaited a Keychain read and a token refresh, **so its `.onChange(of: scenePhase)`
+never fires at launch** — and both loaders skipped their first population by
+design. The one surviving path was a race, and *winning* it landed the sheet a
+second after the user returned to read a code they were about to paste.
+
+**How it works now.** `AppState.reviewPromptBlocker()` is a **pure** predicate —
+no persistence, no network, no side effects — returning `nil` when the moment
+qualifies and a `ReviewBlock` case naming the gate otherwise. Eligibility is
+**derived** from state the client already holds: `Order.arrivedAt` (server-
+stamped, selected by `OrdersAPI.columns`, populated 88/88 on delivered orders)
+and `ServerEmailOrder.createdAtDate`. `ContentView.scheduleReviewPrompt()` is
+the single call site, reached from **two** arms — the cold-launch `.task` after
+`coldStart`, and the `scenePhase` foreground — and it fires only after
+`AppState.reviewDwellSeconds` of uninterrupted calm.
+
+Five properties that reading the code does not give you:
+
+- 🔴 **The old gate was a 30-minute CEILING; it is now an hours-scale FLOOR
+  (`reviewCalmFloorHours`), and that inversion is the point.** Making the stamp
+  reachable while leaving the ceiling in place would have been WORSE than the
+  bug: the sheet would fire on the user's next foreground, i.e. on their return
+  from pasting the code — the rushed moment, delivered at full volume instead
+  of to nobody. **Never reintroduce a delivery stamp.**
+- 🔴 **The dwell is the design, not a politeness delay.** At the instant of a
+  launch nothing is in flight *yet*, and the likeliest reason to reopen this app
+  is to buy another number in a hurry — such a user is inside a flow a second
+  later. The post-sleep re-evaluation IS the cancellation, and it beats an
+  explicit hook because it reports *why* through `review_prompt_blocked`.
+- 🔴 **Ask first, consume second.** `markReviewPromptRequested()` runs only
+  after `requestReview()` has been attempted. The gate used to be spent inside
+  the eligibility check, one second and one uncancelled `Task` hop before the
+  call — against a 120-day cooldown that ordering turns a silent no-op into a
+  120-day lockout.
+- 🔴 **Nothing may claim the sheet was DISPLAYED.** `requestReview()` has no
+  callback and iOS silently drops it (quota spent, the user's "In-App Ratings &
+  Reviews" switch off, scene not active). Hence `review_prompt_requested`, never
+  `_shown`, and `scene_active` on it — the one silent-drop cause observable
+  from here.
+- **All four paywalls now set `suppressReviewThisSession`.** `TempScreen`,
+  `EmailDomainSheet` and `EmailCodeScreen` present the mail paywall from their
+  OWN `@State` (the root sheet is unreachable under a cover), which bypassed
+  `AppState.showMailPaywall`'s didSet entirely — so the mail paywall's primary
+  entry point never suppressed. `CreditsSheet` never did either, and it is the
+  bigger of the two. ⚠️ Do **not** "fix" the flag's one-per-process lifetime;
+  `AppState` documents it as deliberate.
+
+⚠️ **`reviewCalmFloorHours` (2), `reviewDwellSeconds` (8) and
+`reviewCooldownDays` (120) are JUDGEMENT CALLS, not measurements**, and are
+labelled as such at the declaration. Nothing in the data picks them. Read
+`review_prompt_blocked{reason: too_soon}` and `{stage: dwell, reason:
+flow_active}` against `review_prompt_requested` before moving any of them.
+
+⚠️ **Apple gives NO attribution for a rating.** ASC's `customerReviews` returns
+only *written* reviews, so a silent star is invisible there. The only read-out
+is the `userRatingCount` time series from `scripts/app-ratings.py`, and it is
+only a read-out if the series starts BEFORE a change ships.
 
 ## Order-state honesty (client) — the reconcile invariant
 

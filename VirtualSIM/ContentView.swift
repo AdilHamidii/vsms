@@ -1,8 +1,10 @@
 import SwiftUI
-import StoreKit   // \.requestReview lives here. The ONLY call site is the
-                 // foreground block below; OtpScreen and EmailCodeScreen
-                 // both dropped the import when the prompt moved off the
-                 // code screens.
+import StoreKit   // \.requestReview lives here. The ONLY call site is
+                 // `scheduleReviewPrompt`, reached from two arms — the
+                 // cold-launch `.task` and the `scenePhase` foreground — and
+                 // it fires only after a dwell. OtpScreen and EmailCodeScreen
+                 // both dropped the import when the prompt moved off the code
+                 // screens, and it must not go back: that is the rushed moment.
 
 enum ActiveSheet: String, Identifiable {
     case services, country, credits, emailDomain
@@ -46,6 +48,8 @@ struct ContentView: View {
     @Environment(\.requestReview) private var requestReview
 
     @State private var state = AppState()
+    /// The in-flight review dwell. See `scheduleReviewPrompt`.
+    @State private var reviewDwell: Task<Void, Never>?
     /// Sheets presented from the TAB content (home / esim / orders / account).
     @State private var sheet: ActiveSheet?
     /// Sheets presented from INSIDE the fullScreenCover (checkout, eSIM
@@ -229,6 +233,22 @@ struct ContentView: View {
             // before the splash lifts. See AppState.coldStart.
             await state.coldStart(api: api)
 
+            // 🔴 THE COLD-LAUNCH ARM, AND IT IS NOT REDUNDANT WITH THE
+            // `scenePhase` ONE BELOW. `ContentView` is constructed only inside
+            // `AuthGate`'s `.signedIn` arm, which is reached after
+            // `session.bootstrap()` has awaited a Keychain read and a token
+            // refresh — by which time the scene is ALREADY `.active`. So
+            // `.onChange(of: scenePhase)` never fires at launch, and for the
+            // whole of 2026-08-19 → 09-11 the only review call site in the app
+            // was unreachable on every cold start. It is also unreachable for a
+            // user who signs in mid-session, for the same reason.
+            //
+            // Placed after the await, so it can never lengthen the boot
+            // critical path; the eligibility read itself is pure and
+            // synchronous (no network, no persistence), and by here both
+            // order lists are loaded.
+            scheduleReviewPrompt()
+
             // `mailStore` is attached and its transaction handler registered in
             // `AuthGate`, before the restore sweep — doing it here meant the
             // sweep had already dropped the transaction. Do not move it back.
@@ -352,7 +372,14 @@ struct ContentView: View {
         }
         .onChange(of: scenePhase) { _, phase in
             // The one moment we know a session is ending. Fire-and-forget.
-            if phase == .background { Analytics.shared.flushOnBackground() }
+            if phase == .background {
+                Analytics.shared.flushOnBackground()
+                // A user who left is not a calm user. Cancelling on
+                // `.background` only, never `.inactive` — that fires for a
+                // Control Centre pull, and for the review sheet itself.
+                reviewDwell?.cancel()
+                reviewDwell = nil
+            }
             if phase == .active {
                 Task {
                     // Re-fetch catalog too so server-side sync-prices runs
@@ -371,22 +398,9 @@ struct ContentView: View {
                     await state.loadOrders(using: OrdersAPI(client: api))
                     await state.loadEmailOrders(using: EmailAPI(client: api))
 
-                    // The ONLY review-prompt call site in the app. It used to
-                    // fire ~0.9s after a code rendered on `OtpScreen`/
-                    // `EmailCodeScreen` — exactly when the user is rushing to
-                    // paste it elsewhere, guaranteeing a reflex dismissal and
-                    // burning one of Apple's ~3 prompts/year. Now it fires only
-                    // here, on the user's next return to the app, whether they
-                    // reopened the code screen or read it off a lock-screen
-                    // push. `loadOrders` just recorded any code it noticed for
-                    // the first time; `shouldRequestReview` (via
-                    // `reviewableRecentDelivery`) owns every gate — once per
-                    // version, per-order dedupe, session-level paywall
-                    // suppression.
-                    if state.reviewableRecentDelivery() {
-                        try? await Task.sleep(for: .seconds(1))
-                        requestReview()
-                    }
+                    // Both loaders have just run, so the derived eligibility
+                    // read below sees this foreground's orders.
+                    scheduleReviewPrompt()
                 }
             }
         }
@@ -513,6 +527,91 @@ struct ContentView: View {
                 }
                 .animation(.easeOut(duration: 0.22), value: calls.isLive)
         }
+    }
+
+    // MARK: - Review prompt
+
+    /// Ask for Apple's native review sheet, but only after the user has sat
+    /// still for `AppState.reviewDwellSeconds`.
+    ///
+    /// 🔴 **THE DWELL IS THE WHOLE DESIGN, NOT A POLITENESS DELAY.** The
+    /// eligibility predicate already refuses while anything is in flight, but
+    /// at the instant of a launch or a foreground nothing is in flight *yet* —
+    /// and the likeliest reason to reopen this app is to buy another number in
+    /// a hurry. Such a user is inside a flow a second or two later, so the
+    /// re-check after the sleep fails on `.flowActive` and nothing is asked.
+    /// A user still on Home or Orders eight seconds in is browsing. That is the
+    /// difference between the two, and it is the only one available to us.
+    ///
+    /// There is no explicit cancellation hook on `flow`: the post-sleep
+    /// re-evaluation IS the cancel, and it is strictly better than one, because
+    /// it reports WHY through `review_prompt_blocked` instead of vanishing.
+    ///
+    /// 🔴 **Nothing here may claim the sheet was DISPLAYED.**
+    /// `requestReview()` has no callback and iOS silently drops it — quota
+    /// spent, the user's "In-App Ratings & Reviews" switch off, scene not
+    /// active. `review_prompt_requested` is therefore the honest event name;
+    /// `scene_active` on it is the one silent-drop cause the client can see.
+    @MainActor
+    private func scheduleReviewPrompt() {
+        if let blocker = state.reviewPromptBlocker() {
+            // `.noDelivery` is ~80% of every launch and answers nothing worth
+            // the row — it means "this user has never received a code", not
+            // "a gate stopped us". Every other reason is a funnel step.
+            if blocker != .noDelivery {
+                Analytics.shared.track("review_prompt_blocked", [
+                    "stage": .string("precheck"),
+                    "reason": .string(blocker.rawValue)])
+            }
+            return
+        }
+        Analytics.shared.track("review_prompt_eligible", reviewProps())
+
+        reviewDwell?.cancel()
+        reviewDwell = Task { @MainActor in
+            try? await Task.sleep(for: .seconds(AppState.reviewDwellSeconds))
+            guard !Task.isCancelled else { return }
+
+            if let blocker = state.reviewPromptBlocker() {
+                Analytics.shared.track("review_prompt_blocked", [
+                    "stage": .string("dwell"),
+                    "reason": .string(blocker.rawValue)])
+                return
+            }
+            guard scenePhase == .active else {
+                Analytics.shared.track("review_prompt_blocked", [
+                    "stage": .string("dwell"),
+                    "reason": .string(AppState.ReviewBlock.sceneInactive.rawValue)])
+                return
+            }
+
+            // 🔴 ASK FIRST, CONSUME SECOND. The gate used to be spent inside
+            // the eligibility check, one second and one uncancelled `Task` hop
+            // before the call — so a request that never happened still locked
+            // the user out. Against a 120-day cooldown that ordering turns a
+            // silent no-op into a 120-day lockout.
+            requestReview()
+            state.markReviewPromptRequested()
+            var props = reviewProps()
+            props["scene_active"] = .bool(true)
+            Analytics.shared.track("review_prompt_requested", props)
+        }
+    }
+
+    /// Shared props for the three review events, so the funnel can be read as
+    /// one. `since_code_h` is what tunes `reviewCalmFloorHours`; `surface`
+    /// separates the two products, which behave differently (e-mail codes are
+    /// never pushed, so those users are always in-app when one lands).
+    @MainActor
+    private func reviewProps() -> [String: AnalyticsValue] {
+        var props: [String: AnalyticsValue] = [
+            "lifetime_codes": .int(state.lifetimeCodeCount),
+            "surface": .string(state.lastCodeSurface ?? "unknown"),
+        ]
+        if let arrived = state.lastCodeArrival {
+            props["since_code_h"] = .int(max(0, Int(Date().timeIntervalSince(arrived) / 3600)))
+        }
+        return props
     }
 
     @ViewBuilder

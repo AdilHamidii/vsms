@@ -212,18 +212,16 @@ enum PrefKey {
     /// `AppState.visibleAnnouncement`.
     static let dismissedAnnounce = "announce.dismissedId"
 
-    // Review-prompt gating (App Store 5.6.4: native prompt, no incentive).
-    static let successfulCodes  = "review.successfulCodes"
-    static let lastCountedOrder = "review.lastCountedOrder"
-    static let lastPromptVer    = "review.lastPromptVersion"
-
-    /// The most recent order the client noticed carrying a code it had not
-    /// seen before, plus when it noticed — so a foreground check can still ask
-    /// for a review after a cold launch, for someone who read the code off a
-    /// lock-screen push and never opened `OtpScreen` at all. See
-    /// `AppState.reviewableRecentDelivery`.
-    static let lastDeliveredOrderId = "review.lastDeliveredOrderId"
-    static let lastDeliveredAt      = "review.lastDeliveredAt"
+    /// Review-prompt gating (App Store 5.6.4: native prompt, no incentive).
+    ///
+    /// 🔴 **ONE key, and it records only that the sheet was ASKED FOR.** Five
+    /// keys used to live here — `successfulCodes`, `lastCountedOrder`,
+    /// `lastPromptVersion`, `lastDeliveredOrderId`, `lastDeliveredAt` — and the
+    /// whole mechanism they served could not fire; see the block comment on
+    /// `AppState.reviewPromptBlocker`. Eligibility is now DERIVED from `orders`
+    /// and `emailOrders`, which the client already holds after `coldStart`, so
+    /// there is no delivery state to persist and nothing to keep in sync.
+    static let lastReviewPromptAt = "review.lastPromptAt"
 
     /// eSIM order ids whose install flow has been opened at least once.
     static let esimInstallsStarted = "esim.installsStarted"
@@ -943,79 +941,168 @@ final class AppState {
 
     var deliveredCount: Int { orders.filter { $0.status == .received }.count }
 
-    /// Whether to surface Apple's native review sheet now that a fresh code
-    /// was delivered. Returns true at most once per app version, from the
-    /// user's FIRST successful code — a genuinely positive moment, and for
-    /// most users the only one (see the threshold note below).
+    // MARK: - Review prompt
+
+    /// Why the native review sheet is not being asked for right now. `nil`
+    /// from `reviewPromptBlocker` means the moment qualifies.
     ///
-    /// No credits or incentive are attached: App Store guideline 5.6.4 forbids
-    /// paying for reviews. The system further throttles the actual sheet
-    /// (~3 prompts/user/year), so we spend that quota only on happy outcomes.
-    func shouldRequestReview(forOrderId id: String) -> Bool {
-        // 🔴 A screenshot run delivers a code by construction, so this fires
-        // and Apple's rating sheet lands squarely over the code card — which
-        // is exactly the frame the whole harness exists to produce. It reached
-        // an App Store upload once. Gated here rather than at the two call
-        // sites so a third caller cannot reintroduce it, and it also stops a
-        // harness run burning the user's ~3-prompts-per-year system quota.
-        if ScreenshotMode.isActive { return false }
-        let d = UserDefaults.standard
-        // A re-render of the same delivery must not double-count.
-        guard d.string(forKey: PrefKey.lastCountedOrder) != id else { return false }
-        d.set(id, forKey: PrefKey.lastCountedOrder)
-
-        let count = d.integer(forKey: PrefKey.successfulCodes) + 1
-        d.set(count, forKey: PrefKey.successfulCodes)
-        // Fires on the FIRST delivered code, lowered from the second on
-        // 2026-07-31. Ratings are what decide App Store search POSITION —
-        // keywords only decide which queries you are eligible for — and the US
-        // storefront shows 0 ratings. Measured the same day: 20 users have ever
-        // received a code but only 7 ever reached two, and those 7 produced all
-        // 3 reviews the app has (~43%). The prompt was working; the eligible
-        // pool was the constraint, so the threshold was the thing to move.
-        //
-        // Still compliant with App Store 5.6.4 — this is Apple's native prompt,
-        // nothing is rewarded for leaving a review, and there is no custom UI or
-        // App Store deep link. It stays gated to once per app version and
-        // de-duped per order above, and Apple independently caps its own prompt
-        // at three per year.
-        guard count >= 1 else { return false }
-
-        let version = Bundle.main
-            .object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? ""
-        guard d.string(forKey: PrefKey.lastPromptVer) != version else { return false }
-        d.set(version, forKey: PrefKey.lastPromptVer)
-        return true
+    /// A CLOSED vocabulary on purpose: it is emitted as the `reason` prop on
+    /// `review_prompt_blocked`, and it is the only way to learn WHICH gate
+    /// starves the funnel — the exact question nobody could answer when this
+    /// was rebuilt, because the old path emitted no events at all.
+    enum ReviewBlock: String {
+        case noDelivery     = "no_delivery"
+        case cooldown       = "cooldown"
+        case paywallSession = "paywall_session"
+        case tooSoon        = "too_soon"
+        case flowActive     = "flow_active"
+        case orderWaiting   = "order_waiting"
+        case emailActive    = "email_active"
+        /// Caller-side only: the scene stopped being foreground-active during
+        /// the dwell. `requestReview()` is silently dropped off-screen.
+        case sceneInactive  = "scene_inactive"
     }
 
-    /// Records that the client just noticed a code on an order it hadn't seen
-    /// carrying one before — see the diff in `loadOrders`. Persisted (not just
-    /// in-memory) so a cold launch after the app was force-quit or backgrounded
-    /// through the delivery still has something to check on the next foreground.
-    private func recordCodeDelivered(orderId: String) {
-        let d = UserDefaults.standard
-        d.set(orderId, forKey: PrefKey.lastDeliveredOrderId)
-        d.set(Date().timeIntervalSince1970, forKey: PrefKey.lastDeliveredAt)
+    /// Hours that must have passed since the user's most recent delivered code
+    /// before the sheet may be asked for.
+    ///
+    /// ⚠️ **A JUDGEMENT CALL, NOT A MEASUREMENT.** Nothing in the data picks 2
+    /// over 1 or 6. The only adjacent measurement — median code arrival ~53s
+    /// against a median cancel at 57s — rules out *minutes*, and says nothing
+    /// about hours. Read `review_prompt_blocked{reason: too_soon}` against
+    /// `review_prompt_requested` before moving it.
+    static let reviewCalmFloorHours: Double = 2
+
+    /// Seconds of UNINTERRUPTED calm before the sheet. The dwell is the part
+    /// that separates a browsing user from a rushing one: the likeliest reason
+    /// to reopen this app is to buy another number in a hurry, and such a user
+    /// is inside a flow within a second or two — at which point the re-check
+    /// after this sleep fails on `.flowActive` and nothing is asked.
+    ///
+    /// ⚠️ Also a judgement call. `review_prompt_blocked{stage: dwell}` is the
+    /// read-out: a high `flow_active` share means the dwell is doing its job,
+    /// near-zero means it is only costing prompts.
+    static let reviewDwellSeconds: Double = 8
+
+    /// Days between two prompts on the same install. Deliberately longer than
+    /// the release cadence, which is why there is no per-version gate any more:
+    /// at a release every week or two, "once per version" permitted ~8 prompts
+    /// inside this window, and Apple silently eats everything past its own ~3
+    /// per year. Spending our few on moments we chose beats having them eaten.
+    static let reviewCooldownDays: Double = 120
+
+    /// The most recent moment this user actually received a code, either
+    /// product, or nil if they never have.
+    ///
+    /// 🔴 **`otp != nil` / `hasCode`, never `status == .received`** — the late-
+    /// code rescue writes a code onto a CANCELED row, and scoring that as a
+    /// non-delivery is a bug this repo has already shipped twice.
+    ///
+    /// ⚠️ The e-mail half is an APPROXIMATION. `email_orders` carries no
+    /// arrival timestamp, so the order's own `created_at` stands in; the
+    /// provider window is ~22 minutes, which is noise against a floor measured
+    /// in hours. Do not reuse this value for anything needing real precision.
+    var lastCodeArrival: Date? {
+        let sms = orders.compactMap { $0.otp != nil ? $0.arrivedAt : nil }.max()
+        let mail = emailOrders.compactMap { $0.hasCode ? $0.createdAtDate : nil }.max()
+        return [sms, mail].compactMap { $0 }.max()
     }
 
-    /// Whether THIS foreground should surface the native review prompt after a
-    /// code the user may never have opened the app to read — the designed flow
-    /// for anyone who takes it straight off a lock-screen push and pastes it
-    /// into the other app without reopening vSMS. Fed by BOTH delivery
-    /// surfaces: `loadOrders` (SMS) and `loadEmailOrders`. Bounded
-    /// to 30 minutes so a delivery discovered long after the fact (e.g. an
-    /// unrelated cold launch days later) doesn't retroactively read as a fresh
-    /// happy moment. Every other gate — once per app version,
-    /// per-order dedupe — still lives in `shouldRequestReview`, which this
-    /// calls rather than duplicates.
-    func reviewableRecentDelivery() -> Bool {
-        guard !suppressReviewThisSession else { return false }
-        let d = UserDefaults.standard
-        guard let orderId = d.string(forKey: PrefKey.lastDeliveredOrderId) else { return false }
-        let deliveredAt = d.double(forKey: PrefKey.lastDeliveredAt)
-        let elapsed = Date().timeIntervalSince1970 - deliveredAt
-        guard deliveredAt > 0, elapsed >= 0, elapsed <= 30 * 60 else { return false }
-        return shouldRequestReview(forOrderId: orderId)
+    /// Which product delivered that most recent code — an analytics prop, so
+    /// the two surfaces can be read apart. Nil when nothing has ever arrived.
+    var lastCodeSurface: String? {
+        let sms = orders.compactMap { $0.otp != nil ? $0.arrivedAt : nil }.max()
+        let mail = emailOrders.compactMap { $0.hasCode ? $0.createdAtDate : nil }.max()
+        switch (sms, mail) {
+        case let (s?, m?): return s >= m ? "sms" : "email"
+        case (_?, nil):    return "sms"
+        case (nil, _?):    return "email"
+        default:           return nil
+        }
+    }
+
+    /// Codes this user has ever received, both products.
+    ///
+    /// ⚠️ Counted off the loaded lists, which are RLS-filtered to this user but
+    /// subject to whatever the server returns — so this is "codes the client
+    /// can see", not a guaranteed lifetime total. It is an analytics prop and
+    /// nothing gates on it.
+    var lifetimeCodeCount: Int {
+        orders.filter { $0.otp != nil }.count + emailOrders.filter(\.hasCode).count
+    }
+
+    /// Whether Apple's native review sheet may be asked for at this instant —
+    /// `nil` means yes. **Pure: no side effects, no persistence, no network.**
+    /// That is what lets the caller run it twice, once before the dwell and
+    /// once after, and lets it run on the boot path without lengthening it.
+    ///
+    /// 🔴 **WHY THIS IS DERIVED RATHER THAN STAMPED, 2026-09-11.** From
+    /// 2026-08-19 (`1fa0838`) to this commit the prompt was gated on a
+    /// UserDefaults stamp whose only writers were the newly-appeared-code diffs
+    /// inside `loadOrders` / `loadEmailOrders`. **No real delivery ever reached
+    /// those.** Every code is written into the arrays FIRST by a single-order
+    /// poll that stamped nothing — `apply(server:for:wallet:)` for SMS,
+    /// `refreshEmailOrder` for e-mail, plus the two "the cancel came back
+    /// delivered" branches in `cancelWaiting` and `rerollNumber` — so by the
+    /// time either diff ran, the code was already in its own `previously`
+    /// set and the diff was empty. Cold launch could not rescue it either:
+    /// `ContentView` is constructed only in `AuthGate`'s `.signedIn` arm, after
+    /// the scene is already `.active`, so its `.onChange(of: scenePhase)` never
+    /// fires at launch. Measured result: 215 users had received a code and the
+    /// app held 8 ratings, 7 of them written by people the owner knows.
+    ///
+    /// 🔴 **AND RESTORING THE STAMP ALONE WOULD HAVE BEEN WORSE THAN THE BUG.**
+    /// The old gate was `elapsed <= 30 * 60` — a CEILING. Make the stamp
+    /// reachable and leave that in place and the sheet fires on the user's next
+    /// foreground, which is them returning from pasting the code they came for:
+    /// the rushed moment, delivered at full volume instead of to nobody. The
+    /// ceiling is now a FLOOR (`reviewCalmFloorHours`), and that inversion is
+    /// the point of the rewrite. Do not reintroduce a delivery stamp.
+    ///
+    /// ⚠️ The order of the checks is not arbitrary — it decides which reason is
+    /// reported when several apply. Structural gates first, so the transient
+    /// ones (`flowActive`, `orderWaiting`, `emailActive`) are what surface at
+    /// the dwell re-check, which is where they are worth measuring.
+    func reviewPromptBlocker(now: Date = Date()) -> ReviewBlock? {
+        guard let arrived = lastCodeArrival else { return .noDelivery }
+
+        let previous = UserDefaults.standard.double(forKey: PrefKey.lastReviewPromptAt)
+        if previous > 0,
+           now.timeIntervalSince1970 - previous < Self.reviewCooldownDays * 86_400 {
+            return .cooldown
+        }
+        if suppressReviewThisSession { return .paywallSession }
+        if now.timeIntervalSince(arrived) < Self.reviewCalmFloorHours * 3600 { return .tooSoon }
+
+        // Nothing may be in progress. A flow means a cover is up — which is
+        // also what keeps `requestReview()` from firing underneath one — and a
+        // waiting order of either kind means the user is here to watch it land.
+        if flow != nil { return .flowActive }
+        if orders.contains(where: { $0.status == .waiting }) { return .orderWaiting }
+        if emailOrders.contains(where: { $0.status == .waiting }) { return .emailActive }
+        return nil
+    }
+
+    /// Records that the sheet was **asked for**.
+    ///
+    /// 🔴 **Never that it was SHOWN, and the name says so deliberately.**
+    /// `requestReview()` has no callback and iOS silently no-ops it — quota
+    /// spent, the user's "In-App Ratings & Reviews" switch off, scene not
+    /// foreground. "Asked for while the scene was active" is the strongest fact
+    /// this client can ever hold, so nothing here or in the analytics may claim
+    /// display.
+    ///
+    /// 🔴 **Called only AFTER `requestReview()` has been attempted.** It used
+    /// to be consumed inside the eligibility check, one second and one
+    /// uncancelled `Task` hop before the call — so a gate that was never spent
+    /// on an actual request still locked the user out. With a 120-day cooldown
+    /// that ordering turns a silent no-op into a 120-day lockout.
+    func markReviewPromptRequested() {
+        UserDefaults.standard.set(Date().timeIntervalSince1970,
+                                  forKey: PrefKey.lastReviewPromptAt)
+        // One ask per launch, whatever else happens. Mirrors the paywall rule:
+        // two interruptions in one session is one too many.
+        suppressReviewThisSession = true
     }
 
     // MARK: - Cold launch
@@ -2142,32 +2229,15 @@ final class AppState {
         // RLS-filtered and would succeed with an EMPTY list, silently wiping
         // the sample — which is how the thread frame came back black.
         if ScreenshotMode.isActive { return }
-        // The SAME newly-appeared-code diff `loadOrders` runs, feeding the SAME
-        // gate, because e-mail deliveries are deliveries too. The subscription
-        // branch removed `EmailCodeScreen`'s own `requestReview` call and moved
-        // every prompt to the foreground path in `ContentView` — but only the
-        // SMS half recorded anything for it, so the prompt silently stopped
-        // covering the app's highest-volume surface.
-        //
-        // `hadPriorState` skips the first population of a session for the same
-        // reason it does there: an empty prior list cannot tell "just arrived"
-        // from "arrived last week", and every cold launch starts empty.
-        //
-        // No gate is duplicated here. `recordCodeDelivered` only stamps the
-        // id and the time; once-per-version, the 30-minute bound and the
-        // per-order dedupe all stay in `shouldRequestReview` /
-        // `reviewableRecentDelivery`. Both tables key on UUIDs, so sharing
-        // `lastDeliveredOrderId` across the two surfaces cannot collide.
-        let hadPriorState = !emailOrders.isEmpty
-        let previouslyDelivered = Set(emailOrders.compactMap { $0.hasCode ? $0.id : nil })
+        // ⚠️ Same deleted diff as `loadOrders` — and this half was even more
+        // thoroughly dead. `refreshEmailOrder` writes every e-mail code into
+        // `emailOrders` from a 10-second poll that runs app-wide
+        // (`ContentView`'s root `.task`, which exists because e-mail has no
+        // push and no server cron), so the code was ALWAYS already present
+        // before this ran. Review eligibility is derived now; see
+        // `reviewPromptBlocker`.
         do {
-            let rows = try await api.list()
-            emailOrders = rows
-            if hadPriorState {
-                for order in rows where order.hasCode && !previouslyDelivered.contains(order.id) {
-                    recordCodeDelivered(orderId: order.id)
-                }
-            }
+            emailOrders = try await api.list()
         } catch { /* keep what we have */ }
     }
 
@@ -2567,23 +2637,15 @@ final class AppState {
         // the sample — which is how the thread frame came back black.
         if ScreenshotMode.isActive { return }
         do {
-            let rows = try await api.list()
-            // A code that appears here and wasn't on the previous fetch is new
-            // information for the foreground review prompt: the user may have
-            // read it straight off a lock-screen push and never opened
-            // `OtpScreen` at all. `hadPriorState` skips the very first
-            // population of a session — an empty prior list can't tell "just
-            // arrived" from "arrived last week", and every cold launch starts
-            // from `orders == []`. See `reviewableRecentDelivery`.
-            let hadPriorState = !orders.isEmpty
-            let previouslyDelivered = Set(orders.compactMap { $0.otp != nil ? $0.id : nil })
-            let resolved = rows.compactMap { resolve($0) }
-            orders = resolved
-            if hadPriorState {
-                for order in resolved where order.otp != nil && !previouslyDelivered.contains(order.id) {
-                    recordCodeDelivered(orderId: order.id)
-                }
-            }
+            // ⚠️ This used to diff the incoming rows against the in-memory copy
+            // to spot a newly-arrived code, and stamp it for the review prompt.
+            // It could never fire — every code is written into `orders` by
+            // `apply(server:for:wallet:)` (and the cancel/reroll rescue
+            // branches) BEFORE this runs, so the diff was always empty, and the
+            // first population of a session was skipped by design on top of
+            // that. Eligibility is derived from `arrivedAt` now; see
+            // `reviewPromptBlocker`. Do not reintroduce a delivery stamp here.
+            orders = try await api.list().map { resolve($0) }
         } catch {
             // keep current
         }

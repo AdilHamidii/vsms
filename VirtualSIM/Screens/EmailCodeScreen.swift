@@ -174,6 +174,8 @@ struct EmailCodeScreen: View {
                     // the paywall and anything sized from `intent` agree about
                     // which product is being bought.
                     state.intent = .mailSubscription
+                    // Local presentation, shared suppression — see TempScreen.
+                    state.suppressReviewThisSession = true
                     showPaywall = true
                 }
             }

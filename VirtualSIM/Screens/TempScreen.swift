@@ -835,6 +835,11 @@ struct TempScreen: View {
                         // order path does, so the paywall and anything sized
                         // from `intent` agree about what is being bought.
                         state.intent = .mailSubscription
+                        // Presentation is local (the root sheet is unreachable
+                        // under a cover) but the suppression is not: a review
+                        // prompt and a paywall must never share a session, and
+                        // this path bypassed `AppState.showMailPaywall`'s didSet.
+                        state.suppressReviewThisSession = true
                         showMailPaywall = true
                     }
                 )
