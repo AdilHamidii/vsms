@@ -1953,17 +1953,19 @@ Each has been wrong within a day of being written at least once.
   paused, daily credit **disabled**.
 - **Balances** — re-query, these move hourly:
   `select key, value->>'balance_usd' from app_config where key like '%_health';`
-  5sim $8.29, HeroSMS $14.90, Telnyx $12.42, eSIM Access $86.69
-  (re-read 2026-09-10 19:40Z).
+  5sim $8.29, HeroSMS $14.85, Telnyx $2.87, eSIM Access $86.69
+  (re-read 2026-09-11 07:42Z).
 
-🔴 **ONE WATCHDOG CHECK IS FIRING:**
-- **`5sim-float` — $8.29 covers ~3.4 days of reservations** ($2.45/day gross;
+🔴 **TWO WATCHDOG CHECKS ARE FIRING:**
+- 🔴 **`telnyx-float` — $2.87, under the $10 floor** (`alert_tier` 1). It read
+  $12.42 at 2026-09-10 19:40Z, so **$9.55 went in twelve hours**, and a US/CA
+  number costs **$2.00 to buy** ($1.00 upfront + $1.00 first month, measured
+  2026-08-05, `_shared/telnyx.ts`). At $2.87 the NEXT rental or swap is one
+  purchase from `line_float_exhausted`. **Owner action: fund Telnyx.**
+- **`5sim-float` — $8.29 covers ~3.5 days of reservations** ($2.38/day gross;
   the runway check, not the $5 floor). 5sim is the PRIMARY SMS provider, so an
   empty float fails every temp-SMS order as `provider_unreachable`.
   **Owner action: fund 5sim.**
-- ✅ **`telnyx-float` cleared** — $12.42 against the $10 floor, `alert_tier` 0.
-  It read $4.20 earlier on 2026-09-10 and was funded; the old text calling it
-  "the urgent one" is gone because it is no longer true.
 
 ### Territories and store
 
@@ -1978,10 +1980,27 @@ Genuinely open items only. Resolved history is in `docs/decisions-archive.md`.
 
 **Money / owner action**
 
-- 🔴 **Fund 5sim.** $8.29, ~3.4 days of runway, and it is the only watchdog
-  check currently failing. Everything else on this list is cheaper than this
-  one. (Telnyx was the urgent one earlier on 2026-09-10 and is now funded at
-  $12.42 — re-query both, never quote either.)
+- 🔴 **Fund Telnyx, then 5sim.** Both float checks are failing (Telnyx $2.87
+  under the $10 floor; 5sim $8.29, ~3.5 days of runway). Telnyx is first
+  because a number purchase is $2.00 and the balance no longer covers two.
+  Re-query both, never quote either.
+- ⚠️ **Telnyx float is drained by NUMBER PURCHASES, and most of them are
+  SWAPS — not by calls.** Measured 2026-09-11 over the prior 7 days: **24
+  numbers bought, 15 of them swaps** (from **4** users; one line swapped 7
+  times in 2 days), ≈ **$48/week** at $2.00 a number, against **$2.00 of call
+  cost over 14 days**. A swap buys a fresh number AND forfeits the old one's
+  remaining month, so it costs a full $2.00 every time.
+  `app_config.line_swap_cooldown_days` is **0** and `begin_line_swap` caps
+  nothing else, so swap frequency is unbounded. It is not abuse and not a
+  loss — 8 credits (~$3.20 net) covers $2.00, and the four swappers are the
+  app's heaviest pack buyers (8, 4 and 2 packs) — but Apple pays weeks later
+  while Telnyx debits now, so **growth and swaps are a working-capital
+  problem, not a leak**. A non-zero cooldown is an owner decision; the
+  machinery already exists and needs only the config key set. Re-derive:
+  ```sql
+  select 'swap' src, count(*) from line_number_swaps where created_at > now()-interval '7 days'
+  union all select 'new line', count(*) from phone_lines where created_at > now()-interval '7 days';
+  ```
 - ⚠️ **`/revenue` and `/profit` understate by every subscription dollar.** They
   read `iap_receipts` only; neither `line_subscriptions` nor
   `email_subscriptions` is included.
