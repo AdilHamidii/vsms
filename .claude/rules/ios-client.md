@@ -459,6 +459,46 @@ only *written* reviews, so a silent star is invisible there. The only read-out
 is the `userRatingCount` time series from `scripts/app-ratings.py`, and it is
 only a read-out if the series starts BEFORE a change ships.
 
+## Checkout steers BEFORE the charge, and it is an offer (2026-09-11)
+
+`CheckoutScreen.betterOddsCard` offers a better-rated country while the user can
+still act on it for free. It resolves through `AppState.bestPoolRatedCountry` —
+the same helper `RecoveryScreen` uses AFTER a failure — so there is one
+definition of "a pool worth steering to".
+
+Five properties that reading the view does not give you:
+
+- 🔴 **It may never swap the selection.** Routes the user names themselves
+  delivered 35.1% against 2.5% for routes the app named (45 days to
+  2026-09-09), which is why `applyStartupSelection` computes no starter pair at
+  all. The receipt above the card keeps reading the user's own country until
+  they tap it, and the copy says staying put is fine. **If this ever
+  pre-selects, it has become the `from_default` bug wearing a better name.**
+- **It is silent when the CHOSEN route publishes no rate.** There is then
+  nothing to compare against, and "no information" must not render as "bad" —
+  the same asymmetry `rankedUntestedKey` encodes by sorting a published 0%
+  below unrated. `poolRate` here is `displayedPoolRate`, which is already nil
+  while the owner has the metric off, so both that flag and the `showMetrics`
+  pref are covered.
+- **`AppState.checkoutSteerMinGain` (15 points) is a judgement call, not a
+  measurement**, and says so at its declaration. `bestPoolRatedCountry` already
+  requires the HIGH band (> 60); this only stops a 59-against-61 crossing
+  drawing a card. Read `checkout_steer_shown` against `checkout_steer_taken`
+  before moving it.
+- **Tapping it goes through `AppState.commitCountryPick`**, which is now the ONE
+  country-commit path — the body used to live in `CountrySheet`'s `onPick`
+  closure. Two copies would be two places for the `checkoutPremium` reset and
+  the `needsCountryChoice` clear to drift, which is the `PurchaseIntent` bug
+  class this repo has hit three times.
+- **The rate renders as a colour-banded WORD via `NetworkRateMeter`, never the
+  percentage**, with the standing "not our own record" sentence beside it. It is
+  a third party's network-wide aggregate over traffic that is not ours.
+
+Why it exists: of 411 numbered SMS orders in the 30 days to 2026-09-11, 211
+expired with no code and 111 were cancelled against 89 delivered, and the only
+route steer in the product fired after that had already happened.
+⚠️ Build-verified only — never walked on a device.
+
 ## Order-state honesty (client) — the reconcile invariant
 
 **`check-order` is NOT the authority on whether an order ended.** It polls the

@@ -116,7 +116,12 @@ event, or the next reading is as blind as this one.
 repeated.** On 2026-07-31 the threshold dropped from the second delivered code
 to the first, reasoning that "7 users reached two codes and produced all 3
 reviews (~43%)". Those three were friends; the 43% was not a prompt→review rate
-and no such rate has ever been measured. The comment stating it still sits in
-`AppState.shouldRequestReview`.
+and no such rate has ever been measured. ✅ `shouldRequestReview` and the comment
+stating that figure were both DELETED on 2026-09-11 when the prompt was rebuilt
+around `AppState.reviewPromptBlocker` — see `.claude/rules/ios-client.md`, "The
+review prompt". The instrumentation added there
+(`review_prompt_eligible` / `_blocked` / `_requested`) is the first thing in this
+product's history that can produce a real prompt→rating rate; it ships in 2.13
+build 63 and has no reading yet.
 
 ⚠️ **Never let email keywords go live ahead of the build that ships email.**

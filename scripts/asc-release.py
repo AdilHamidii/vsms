@@ -5,6 +5,7 @@
     python3 scripts/asc-release.py listing 2.3 <dir>      # PATCH description+whatsNew per locale from <dir>/<locale>.json
     python3 scripts/asc-release.py build 2.3 43           # attach build 43 (waits for VALID)
     python3 scripts/asc-release.py submit 2.3             # reviewSubmission + item + submitted:true
+    python3 scripts/asc-release.py cancel 2.3             # pull it back out of review (app-version items ONLY)
     python3 scripts/asc-release.py status 2.3             # state, build, localizations, submissions
 
 Add --apply to any mutating step; without it the step prints what it would do.
@@ -154,6 +155,57 @@ def cmd_submit(vs):
           f"version now {v2['attributes']['appStoreState']}")
 
 
+def cmd_cancel(vs):
+    """Cancel the in-flight submission so the version becomes editable again.
+
+    🔴 REFUSES if the submission carries anything but the app version. Cancelling
+    an APP VERSION submission is cheap and reversible — the version lands in
+    DEVELOPER_REJECTED and re-attaching a build flips it straight back to
+    PREPARE_FOR_SUBMISSION, about a minute end to end, exercised five times now.
+    Cancelling one that also holds IAP / subscription items is close to a ONE-WAY
+    DOOR: those items land in DEVELOPER_REJECTED and NOTHING in the public API
+    moves them back, only the ASC web UI. Today IAPs cannot be attached to a
+    version submission at all (`POST /v1/reviewSubmissionItems` with an
+    `inAppPurchaseV2` relationship returns ENTITY_ERROR.RELATIONSHIP.UNKNOWN), so
+    this guard should never fire — which is exactly why it is worth keeping: it
+    is asserting the assumption, not defending against today's API.
+    """
+    v = find_version(vs)
+    if not v:
+        print(f"version {vs}: absent"); sys.exit(1)
+    print(f"version {vs}: {v['attributes']['appStoreState']}")
+    subs = call("GET", f"/v1/reviewSubmissions?filter[app]={APP}"
+                       "&filter[platform]=IOS&limit=10")["data"]
+    live = [s for s in subs
+            if s["attributes"].get("state") in
+            ("WAITING_FOR_REVIEW", "IN_REVIEW", "READY_FOR_REVIEW", "UNRESOLVED_ISSUES")]
+    if not live:
+        print("  no cancellable submission"); return
+    for s in live:
+        items = call("GET", f"/v1/reviewSubmissions/{s['id']}/items?limit=50")["data"]
+        kinds = set()
+        for it in items:
+            for k, rel in (it.get("relationships") or {}).items():
+                if (rel or {}).get("data"):
+                    kinds.add(k)
+        other = kinds - {"appStoreVersion"}
+        print(f"  submission {s['id']} {s['attributes'].get('state')} "
+              f"items={len(items)} kinds={sorted(kinds) or ['(none reported)']}")
+        if other:
+            print(f"  🔴 REFUSING: carries {sorted(other)} — cancelling those is "
+                  f"recoverable only in the ASC web UI. Cancel by hand.")
+            sys.exit(1)
+        if not APPLY:
+            print("  DRY: would cancel"); continue
+        call("PATCH", f"/v1/reviewSubmissions/{s['id']}",
+             {"data": {"type": "reviewSubmissions", "id": s["id"],
+                       "attributes": {"canceled": True}}})
+        back = call("GET", f"/v1/reviewSubmissions/{s['id']}")["data"]["attributes"]
+        print(f"  cancelled, read back: state {back.get('state')}")
+    if APPLY:
+        print(f"  version now {find_version(vs)['attributes']['appStoreState']}")
+
+
 def cmd_status(vs):
     v = find_version(vs)
     if not v:
@@ -174,6 +226,7 @@ cmds = {"version": lambda: cmd_version(args[1]),
         "listing": lambda: cmd_listing(args[1], args[2]),
         "build": lambda: cmd_build(args[1], args[2]),
         "submit": lambda: cmd_submit(args[1]),
+        "cancel": lambda: cmd_cancel(args[1]),
         "status": lambda: cmd_status(args[1])}
 if not args or args[0] not in cmds:
     print(__doc__); sys.exit(2)

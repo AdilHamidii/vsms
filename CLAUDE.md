@@ -268,11 +268,18 @@ subscription GROUP per Apple ID — so every current and lapsed line subscriber
 (including the 2026-08 yearly-trial takers) is ineligible and pays $5.99 at
 the sheet. `monthlyIntroOffer` is therefore set in `loadProduct()` only after
 the eligibility read returns true, and cleared on a successful purchase.
-⚠️ **`trialLabel` and `MailSubscriptionStore.yearlyTrialLabel` still read the
-offer's mere presence** — inert for the line (no trial exists) but LIVE for
-mail: a user who already used the mail trial is shown "3 days free" and then
-charged the year. Same fix as `monthlyIntroOffer`; not done, listed under
-Known-open.
+✅ **`trialLabel` and `MailSubscriptionStore.yearlyTrialLabel` carry the same
+eligibility gate since 2026-09-11** (2.13 build 63). Both used to read the
+offer's mere presence — inert for the line, since no yearly line trial exists in
+ASC, but LIVE for mail: `mail.yearly` carries a 3-day trial in every territory,
+so every repeat mail subscriber was shown "3 days free" and then charged for the
+whole year. Both are now stored properties written in the load path behind the
+async `isEligibleForIntroOffer` read and cleared on a successful purchase.
+🔴 **Never reintroduce a computed `…IntroOffer` that reads
+`subscription?.introductoryOffer` directly.** StoreKit hands the offer AS
+CONFIGURED to every Apple ID; only the async call knows who qualifies. The old
+`trialLabel` doc comment *claimed* the gate it did not have, which is how it
+survived review twice.
 
 **The yearly line plan carried a 3-day free trial from 2026-08-15 to at least
 08-24, and it is GONE from ASC** (`GET /v1/subscriptions/6798759539/
@@ -289,6 +296,52 @@ a legacy payload with no `offerDiscountType` is a trial only at `price 0`.
 `linePlanLabel` renders "· intro price" for the $3.99 period so ops never
 reads it as a $5.99 renewal. `telegram-notify`'s trial test is `price_milli
 = 0` and stays correct on its own.
+
+### 🔴 The master funnel — 69% of signups never place a single order
+
+Measured 2026-09-11. This is the largest number in the product by an order of
+magnitude, and every other conversion problem is smaller than it:
+
+| stage | users | |
+|---|---|---|
+| signed up | 1,678 | |
+| placed ANY order (SMS or e-mail) | 521 | 31% |
+| …placed temp SMS | 303 | got a code: **100** |
+| …placed temp e-mail | 274 | got a code: **123** |
+| ever paid (Production, credits > 0) | 48 | **2.9%** |
+
+**1,157 people signed up and ordered nothing at all.** It is NOT the signup
+grant going to 0 — that was 2026-09-10 and this cohort long predates it. Sign in
+with Apple is mandatory *before* any product is usable, so a "signup" here is
+closer to "opened the app" than to intent; treat the 31% as an ACTIVATION rate,
+not a conversion one. 2.13's `home_view` / `home_card_tapped` are the first
+instrumentation that can say where those users stop — **read them before
+designing a fix**, because this file records two earlier attempts at the same
+leak that both missed.
+
+🔴 **The FREE product delivers more than twice as well as the PAID one.** Per
+order, 30 days to 2026-09-11:
+
+| | orders | delivered | |
+|---|---|---|---|
+| temp SMS (costs credits) | 411 | 89 | **21.7%** |
+| temp e-mail (92% free) | 367 | 181 | **49.3%** |
+
+SMS: 211 expired, 111 cancelled, 89 received. This is the root of the 1★, the
+absent reorders and the 8 ratings — and it is why the checkout steer exists.
+
+⚠️ **"E-mail acquires users" is UNPROVEN and currently reads negative.** Of 274
+mail users, 56 ever placed an SMS order and **5 ever paid — 1.8%, BELOW the
+2.9% all-user baseline**. Mail also ran **−$3.65** in those 30 days (367 orders,
+336 free, 31 credits charged ≈ $12.40 against $16.05 wholesale). That is noise
+financially; the cost is attention — half the order volume, a second provider
+protocol, its own subscription, cron and watchdog. **Do not cut it yet:** the
+e-mail-heavy keyword field only reached ASC on 2026-09-11 and has never been
+live, so the actual bet is untested. Judge it after 2.13 is approved and adopted
+— if temp-mail keywords drive installs converting at ≤2%, e-mail is a free
+service being run, not a funnel. Re-derive all of the above rather than quoting
+it; the queries are one `count(*) filter` over `profiles`, `orders`,
+`email_orders` and `iap_receipts`.
 
 ### What the line can and cannot do
 
@@ -1693,8 +1746,21 @@ Detail is in `.claude/rules/ops-bot.md`. What matters from outside it:
   $4.99 in the USA but €5.99 in France — so a USD ladder would overstate US
   revenue ~17%. The signed `price`/`currency`/`storefront` are decoded from the
   JWS we already persist. Mixed currencies are never silently totalled.
-- 🔴 **`/revenue` and `/profit` still omit BOTH subscription lines.** They count
-  credit packs only, so every subscription dollar is invisible. Open.
+- ✅ **`/revenue` and `/profit` count BOTH subscription families** (fixed
+  2026-09-11). Line money was already in the headline via
+  `lines_money_snapshot`; **mail money was in there too, mislabelled as line
+  money** — `line_notifications` is a misnomer that holds EVERY product, and the
+  snapshot filtered on none, so mail.monthly/mail.yearly payments were rendered
+  under "Second numbers" while `active`/`renewing`/`mrr` read
+  `line_subscriptions` and were line-only. The two halves described different
+  populations. Top-level keys are line-only now; mail has its own object and its
+  own 📧 block, and `allSubsCurrencies`/`allSubsPayments` are the ONLY way the
+  headline and the digest may read across both.
+  🔴 **MRR is `mrr_by_currency`, an ARRAY, and there is deliberately no scalar.**
+  The old `mrr_milli` summed across currencies and `mrr_currency` was an
+  unordered `limit 1`; the formatter then converted the whole sum at that one
+  label's rate, which rendered ₦4,900 + $5.98 as "$4,903/mo". Convert each
+  currency at its own rate, and never re-add a single-number MRR field.
 
 ### Behavioural analytics
 
@@ -1960,13 +2026,21 @@ Each has been wrong within a day of being written at least once.
 
 **Verified 2026-09-09:**
 
-- **iOS**: `MARKETING_VERSION 2.13`, `CURRENT_PROJECT_VERSION 62`.
-  **2.13 (build 62) SUBMITTED 2026-09-10 17:39Z by the owner** — submission
-  `42c648b1-…`, version `WAITING_FOR_REVIEW`, release notes in all 13
-  locales, screenshots added by the owner in the ASC web UI. It carries the
-  Home tab, the $3.99 first-month intro display, and the signup grant at 0.
+- **iOS**: `MARKETING_VERSION 2.13`, `CURRENT_PROJECT_VERSION 63`.
+  **2.13 (build 63) SUBMITTED 2026-09-11 12:07Z** — submission `c131076d-…`,
+  version `WAITING_FOR_REVIEW`. Build 62's submission (`42c648b1-…`) was
+  cancelled the same day and replaced; the version row, its 13 localizations
+  and **the 11 screenshots the owner uploaded by hand are unchanged** — which
+  is the whole reason this shipped as a new BUILD of 2.13 rather than a new
+  version, since a new version row would need the screenshots again.
+  Build 63 adds, on top of build 62's Home tab / intro display / grant-at-0:
+  the rebuilt review prompt, the trial-eligibility gate on both subscription
+  stores, the checkout better-odds steer, and the **approved keyword field in
+  all 13 locales**.
   ⚠️ **Read ASC, never this line** — `python3 scripts/asc-release.py status
-  2.13`.
+  2.13`. Pull a version back out of review with `asc-release.py cancel 2.13
+  --apply`, which REFUSES if the submission carries anything but the app
+  version (cancelling IAP items is recoverable only in the web UI).
   ⚠️ **2.12 was never released**: Apple refuses a second editable version
   (`ENTITY_ERROR.RELATIONSHIP.INVALID`, "You cannot create a new version of
   the App in the current state"), so the 2.12 row was RENAMED to 2.13 rather
@@ -1993,7 +2067,7 @@ Each has been wrong within a day of being written at least once.
   2.12`. It has been wrong about the review state five versions running, and
   that is a decision error, not a typo: "still in review" is the argument for
   cutting another release.
-- **Backend**: 49 edge function dirs besides `_shared`, 229 migration files, 26
+- **Backend**: 49 edge function dirs besides `_shared`, 232 migration files, 26
   files in `_shared`, 138 Swift sources (re-counted 2026-09-10), 23 active
   cron jobs.
 - **Catalog**: 9,364 active routes (5sim 8,074 / HeroSMS 1,290), 468 services,
@@ -2093,11 +2167,12 @@ Genuinely open items only. Resolved history is in `docs/decisions-archive.md`.
   on `line_purchase_result` `props.intro = true` sheet→paid at ~30 sheets,
   against 3 of 30 before. The client display ships in 2.13; until then only
   Apple's sheet shows it.
-- ⚠️ **`MailSubscriptionStore.yearlyTrialLabel` promises "3 days free" to
-  Apple IDs that are NOT eligible** (it reads the offer's presence, not
-  `isEligibleForIntroOffer`), so a repeat mail subscriber is shown a trial and
-  charged the year. The line's `monthlyIntroOffer` has the correct gate; copy
-  it. Unfixed as of 2026-09-10.
+- ⚠️ **The checkout better-odds steer is build-verified only.** New in 2.13
+  build 63: `CheckoutScreen.betterOddsCard` offers a HIGH-band country before
+  the charge, the same `bestPoolRatedCountry` the recovery card uses after a
+  failure. Never walked on a device, and its thresholds
+  (`AppState.checkoutSteerMinGain` = 15 points) are judgement calls. Read
+  `checkout_steer_shown` against `checkout_steer_taken` before moving either.
 
 **Product / listing**
 
@@ -2223,19 +2298,24 @@ received codes. It is now DERIVED from `Order.arrivedAt`, fires from two arms
 `review_prompt_eligible` / `_blocked` / `_requested`. Full detail — including
 the two rules that make it safe, *never reintroduce a delivery stamp* and
 *ask first, consume second* — is in `.claude/rules/ios-client.md`, "The review
-prompt". ⚠️ **Ships with the next build; 2.11 and 2.13 do not carry it.**
+prompt". ✅ **Ships in 2.13 build 63** (submitted 2026-09-11); 2.11 and 2.13
+build 62 do not carry it. Nothing has been read out yet — run
+`python3 scripts/app-ratings.py` regularly starting NOW, because Apple gives no
+attribution for a rating and an interrupted time series is only a read-out if it
+begins before the change reaches users.
 
 The live name is `vSMS: Second Number & Temp SMS` / subtitle **`USA Phone Line
 & Verification`**, in all 13 locales — localized, so de-DE is `USA-Nummer &
 SMS-Code`, fr-FR `Ligne USA & SMS temporaire`, it `Linea USA e SMS temporanei`.
 The USA token shipped with **2.10 (2026-09-06)**.
 
-🔴 **APPLY THIS KEYWORD FIELD TO THE NEXT VERSION** (owner-approved
-2026-09-11). Keywords ship only with a release, and 2.13 was already
-`WAITING_FOR_REVIEW` when this was decided, so it could not be applied then.
-**The moment a `PREPARE_FOR_SUBMISSION` version exists, run
-`python3 scripts/asc-keywords.py --apply`** (dry-run by default; it REFUSES to
-write to a version in review, and reads back). en-US, 95/100:
+✅ **APPLIED to 2.13 on 2026-09-11** (owner-approved), all 13 locales, read back
+13/13 matching, and submitted with build 63. Keywords ship only with a release,
+so they take effect when 2.13 is approved — **nothing about ranking can be read
+before then**, and Apple exposes no per-query search terms, so attribution is
+before/after inference over 7–14 days. Re-apply with
+`python3 scripts/asc-keywords.py --apply` (dry-run by default; it REFUSES to
+write to a version already in review, and reads back). en-US, 95/100:
 
 ```
 email,virtual,disposable,temporary,online,otp,code,burner,mail,verify,receive,text,call,2nd,get
@@ -2256,7 +2336,7 @@ Three facts behind the list, none derivable from the code:
   **`mail` was the missing token**: "temp mail" is popularity **82** — higher
   than "second number" (72) — and was UNFORMABLE despite `Temp` being in the
   app name.
-- 🔴 **The app has ~5 ratings, and ratings cap position.** So the
+- 🔴 **The app has 8 ratings (2026-09-11), and ratings cap position.** So the
   second-number cluster is not bought here at any price: "second phone number"
   is popularity 92 but its top results are TextNow (**919k** ratings), Text
   Free (602k) and Text Me (672k). The verification cluster is winnable — its
@@ -2324,6 +2404,25 @@ to write). Three properties that are not derivable from the code:
   them for indexing. It is display copy. And **no price claim may appear in
   `en-US`**: it is the fallback locale for NL/SE/DK/NO/FI/PL, so a "$3.99"
   there renders in Sweden.
+
+🔴 **NO LISTING FIELD MAY QUOTE A PRICE — release notes and description
+included, in EVERY locale, not just `en-US`** (2026-09-11). The rule above was
+written for promotional text; the mechanism is a property of the listing, so it
+binds all of them, and stating it narrowly let a live example through. Every one
+of the twelve 2.13 release notes that mentioned the intro offer quoted it in
+**dollars**: fr-FR, de-DE, it and es-ES said "3,99 $" where Apple bills €3.99;
+`ja` said "$3.99" where Japan is billed **¥600**; pt-BR said "US$ 3,99" against
+**R$24.9**. Corrected before build 63 went out — the claim stays, the numeral is
+gone ("costs less for your first month"), and the real figure is rendered by
+StoreKit on `LineCheckoutScreen` and again on Apple's sheet, localized and
+correct in both.
+
+This is the listing-side instance of the rule the code already follows twice
+over — *never hardcode a price*, *never quote a number the server owns*. The
+pack ladder drifted to $4.99-vs-€5.99 on its top product for the same reason,
+and **the app's only organic review is a 1★ saying the price rose overnight**.
+Re-check before any submission: scan every locale's `whatsNew` and `description`
+for `[$€£¥₹]` and expect zero hits.
 
 ⚠️ **The fallback language is the app's PRIMARY locale, `en-US`, not en-GB**
 (`GET /v1/apps/6774768570` → `primaryLocale`). GB and IE resolve to `en-GB`;
