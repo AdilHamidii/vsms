@@ -75,10 +75,60 @@ ISS = "4644ed13-4d98-489e-a94b-687f63946f46"
 APP = "6774768570"
 LIMIT = 100
 
+EN = ("email,virtual,disposable,temporary,online,otp,code,burner,"
+      "mail,verify,receive,text,call,2nd,get")
+
 # ⚠️ No spaces after commas — a space costs a character and buys nothing.
+#
+# 🔴 EVERY LOCALE IS CHECKED AGAINST ITS OWN NAME + SUBTITLE, which differ.
+# de-DE's subtitle carries `Nummer`, fr-FR's carries `temporaire`, it's carries
+# the PLURAL `temporanei` — so the wasted-duplicate set differs per locale and
+# a field cannot be copied between them.
+#
+# Scored via aso-connect per storefront on 2026-09-11 (popularity/difficulty):
+#   fr  mail temporaire 58/34 SWEET · recevoir sms 55/36 · numero virtuel 54/47
+#       verification sms 48/40 · recevoir code 40/30 SWEET
+#   de  virtuelle nummer 71/46 GOOD · sms empfangen 71/58 · temp mail 67/61
+#       sms verifizierung 42/29 SWEET · zweite nummer 58/51
+#   es  recibir sms 64/49 GOOD · correo temporal 53/26 SWEET
+#       numero virtual 52/42 · verificacion sms 38/25 HIDDEN GEM
+#   it  numero virtuale 64/44 GOOD · secondo numero 63/47 GOOD
+#       mail temporanea 59/31 SWEET (opportunity 41 — best of any locale)
+#       verifica sms 53/33 SWEET · sms temporaneo 40/30 SWEET
+#
+# ⚠️ `numero americain` (fr) scores 34/57 and `numero americano` (es) 3/22.
+# **The US-number angle does NOT sell in Europe.** These fields buy
+# verification and temp-mail intent instead, which is what Europe searches.
 KEYWORDS = {
-    "en-US": "email,virtual,disposable,temporary,online,otp,code,burner,"
-             "mail,verify,receive,text,call,2nd,get",
+    # en-US is also the fallback locale for NL/SE/DK/NO/FI/PL.
+    # ru and ar-SA carry ENGLISH name+subtitle on this listing, so they get the
+    # English field — better than the `generator,throwaway,trash,minute` padding
+    # they held, though a native field would beat both. Neither is a real
+    # market yet (single-digit installs).
+    "en-US": EN, "en-GB": EN, "en-CA": EN, "en-AU": EN, "ru": EN, "ar-SA": EN,
+    "fr-FR": "recevoir,mail,verification,virtuel,jetable,deuxieme,code,email,"
+             "otp,temp,boite,activation",
+    "de-DE": "virtuelle,empfangen,verifizierung,zweite,mail,email,wegwerf,"
+             "handynummer,online,otp,trashmail",
+    "es-ES": "correo,recibir,virtual,verificacion,codigo,desechable,email,"
+             "online,otp,mail,falso,movil",
+    "es-MX": "correo,recibir,virtual,verificacion,codigo,desechable,email,"
+             "online,otp,mail,falso,movil",
+    # 🔴 The it subtitle's `temporanei` is PLURAL and does NOT cover the
+    # singular forms people search — `temporanea` (mail temporanea, the single
+    # best-scoring term in any locale) and `temporaneo`. Bought deliberately.
+    "it":    "mail,temporanea,temporaneo,virtuale,verifica,ricevere,codice,"
+             "email,getta,ricevi,numeri,spam",
+    "pt-BR": "correio,receber,virtual,verificacao,codigo,descartavel,email,"
+             "online,otp,mail,caixa,falso",
+    # ⚠️ ja is the LEAST confident field here. Apple segments Japanese
+    # morphologically, so a comma-split check cannot prove a token is not
+    # already covered — 使い捨て was caught only by substring against the NAME.
+    # 番号 / 認証 / コード / 受信 / 電話番号 / 米国 are all in the name or
+    # subtitle and excluded; 仮想 suffices for 仮想番号. Japan is ~164 installs
+    # in 40 days, so this stays deliberately conservative. 無料 ("free") is
+    # omitted on the same 2.3.7 reasoning that removed `anonymous`.
+    "ja":    "仮想,ワンタイム,メール,一時的,スパム,テンポラリ,迷惑メール,登録",
 }
 
 # A version in either of these states must not be edited.

@@ -2250,9 +2250,39 @@ Three facts behind the list, none derivable from the code:
   2026-09-07 for drawing two-way-texting intent the product cannot serve. Paid
   and organic are different calculus — do not "fix" one to match the other.
 
-⚠️ **fr-FR, de-DE, es-ES and it have NOT been reworked** — they still carry
-`generator,throwaway,inbox` padding copied from the English field, and each
-needs its own scoring pass (`score_keywords_batch` is one country per call).
+✅ **ALL 13 LOCALES ARE WRITTEN** (2026-09-11), each scored in its own
+storefront, each checked against its OWN name+subtitle. The script holds them;
+this is the summary:
+
+| locale | field | len |
+|---|---|---|
+| en-US/GB/CA/AU, ru, ar-SA | `email,virtual,disposable,temporary,online,otp,code,burner,mail,verify,receive,text,call,2nd,get` | 95 |
+| fr-FR | `recevoir,mail,verification,virtuel,jetable,deuxieme,code,email,otp,temp,boite,activation` | 88 |
+| de-DE | `virtuelle,empfangen,verifizierung,zweite,mail,email,wegwerf,handynummer,online,otp,trashmail` | 92 |
+| es-ES, es-MX | `correo,recibir,virtual,verificacion,codigo,desechable,email,online,otp,mail,falso,movil` | 87 |
+| it | `mail,temporanea,temporaneo,virtuale,verifica,ricevere,codice,email,getta,ricevi,numeri,spam` | 91 |
+| pt-BR | `correio,receber,virtual,verificacao,codigo,descartavel,email,online,otp,mail,caixa,falso` | 88 |
+| ja | `仮想,ワンタイム,メール,一時的,スパム,テンポラリ,迷惑メール,登録` | 35 |
+
+🔴 **A field cannot be copied between locales** — each name+subtitle indexes a
+different set, so the wasted-duplicate list differs. `Nummer` is in the de
+subtitle, `temporaire` in the fr one, and **`temporanei` in the it one is
+PLURAL and does NOT cover `temporanea`/`temporaneo`**, which is why both
+singulars are bought there.
+
+🔴 **The US-number angle does not sell in Europe.** `numero americain` (fr)
+scores 34 popularity / 57 difficulty and `numero americano` (es) scores **3**.
+The European fields buy verification and temp-mail intent instead — which is
+also where the Sweet Spots are: `mail temporanea` (it) 59/31 is the single
+best-scoring term in any locale, `correo temporal` (es) 53/26, `mail
+temporaire` (fr) 58/34, `sms verifizierung` (de) 42/29.
+
+⚠️ **`ja` is the least confident field.** Apple segments Japanese
+morphologically, so a comma-split duplicate check cannot prove a token is free
+— `使い捨て` was caught only by substring against the NAME. Kept deliberately
+short. ⚠️ **`ru` and `ar-SA` get the ENGLISH field** because their name and
+subtitle are English on this listing; a native field would beat both, but
+neither is a real market yet.
 
 ✅ **Promotional text is SET in all 13 locales on BOTH the live version and the
 editable one (2026-09-11)** — "One app, three jobs: a real US number you keep
