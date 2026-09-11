@@ -474,7 +474,7 @@ instead — different auth path, unaffected.
 
 ### Deploying edge functions
 
-There are **49** function directories besides `_shared` (re-count with
+There are **50** function directories besides `_shared` (re-count with
 `ls supabase/functions | grep -v _shared | wc -l`). Two groups:
 
 ```bash
@@ -495,11 +495,11 @@ supabase functions deploy poll-active-orders sync-prices sync-5sim sync-herosms 
   sync-esim-plans sync-smspva-operators sync-smspva-conversions winback \
   telegram-notify telegram-webhook daily-credit telegram-setup goodwill-credit \
   broadcast-push telnyx-webhook apple-notifications release-lines sync-telnyx-cdr \
-  sync-line-voice probe-telnyx-connection sync-line-countries \
+  sync-line-voice probe-telnyx-connection sync-line-countries rc-sync \
   --no-verify-jwt
 ```
 
-✅ **Verified exhaustive 2026-09-09**: 26 + 22 = 48 against 49 on disk. The one
+✅ **Verified exhaustive 2026-09-11**: 26 + 23 = 49 against 50 on disk. The one
 omission is **`probe-5sim`**, deliberately outside both lists — it is a
 diagnostic, not on a normal cadence, but it DOES carry a `config.toml`
 `verify_jwt = false` entry and must be deployed `--no-verify-jwt` by hand when
@@ -507,8 +507,8 @@ diagnostic, not on a normal cadence, but it DOES carry a `config.toml`
 a function in neither list is a function nobody redeploys, which is exactly how
 a stale bundle survives a fix.**
 
-`supabase/config.toml` carries a `verify_jwt = false` entry for all 22 plus
-`probe-5sim` (23 total).
+`supabase/config.toml` carries a `verify_jwt = false` entry for all 23 plus
+`probe-5sim` (24 total).
 
 🔴 **`_shared/*` is bundled PER FUNCTION at deploy time.** After touching
 `_shared/fivesim.ts`, redeploy `sync-5sim` AND `poll-active-orders` AND every
@@ -524,7 +524,7 @@ create-order      no auth              -> 401   (auth still enforced)
 ⚠️ `telegram-setup` fails closed, and rotating `TELEGRAM_WEBHOOK_SECRET`
 requires re-running it.
 
-### Cron schedule (23 jobs, all active — re-verified 2026-09-09)
+### Cron schedule (24 jobs, all active — re-verified 2026-09-11)
 
 ```
 relay-poll-active-orders  * * * * *     relay-telegram-notify   * * * * *
@@ -535,6 +535,7 @@ relay-sync-esim-plans     0 2 * * *     relay-winback           0 15 * * *  (4 n
 expire-esim-orders        */15 * * * *  expire-email-orders     */5 * * * *
 purge-job-run-details     7 3 * * *     telegram-events-prune   30 4 * * *
 app-events-prune          50 3 * * *
+relay-rc-sync             6,16,26,36,46,56 * * * *  (RevenueCat mirror, read-only)
 ── rented lines ──
 reclaim-lapsed-lines      */15 * * * *  (PURE SQL, no HTTP hop — the claim must
                                          survive the edge layer dying)
@@ -1762,6 +1763,77 @@ Detail is in `.claude/rules/ops-bot.md`. What matters from outside it:
   label's rate, which rendered ₦4,900 + $5.98 as "$4,903/mo". Convert each
   currency at its own rate, and never re-add a single-number MRR field.
 
+### RevenueCat is a MIRROR, never an authority (2026-09-11)
+
+`rc-sync` posts every Production Apple purchase to RevenueCat's
+`POST /v1/receipts` so the owner can read the business from RevenueCat's phone
+app. Cron `relay-rc-sync`, every 10 minutes at :6.
+
+🔴 **It grants no entitlement, gates no product and settles no money, and it
+must stay that way.** `has_email_subscription`, `reclaim_lapsed_lines`,
+`credit_iap_purchase`, `iap-verify` and `apple-notifications` are all untouched
+by it and never read from it. A RevenueCat outage may cost exactly one thing: a
+stale chart. **Never make a product decision depend on a row there** — the
+entitlement truth is Postgres, and `reclaim_lapsed_lines` is deliberately pure
+SQL so the claim survives the edge layer dying.
+
+Six facts that reading the code does not give you:
+
+- 🔴 **It is a SWEEP, deliberately, not a forward from the money paths.**
+  RevenueCat requires the receipts call to land — *"if you don't have this
+  endpoint hit for that user, that subscription will most likely not be
+  tracked"* — so an inline POST would need its own retry inside the two
+  functions this repo most needs to keep boring, and a discarded error there is
+  exactly the shape of the four silent `wallet_credit` bugs already fixed.
+  A sweep cannot lose a row: unsynced stays unsynced and is retried. **Do not
+  "improve" this by moving it into `iap-verify`.**
+- **Subscriptions track `rc_synced_txn`, not a boolean.** A renewal REWRITES
+  `latest_signed_transaction`, so a "synced" flag would mirror month one and go
+  silent forever. The sweep re-sends whenever `last_transaction_id` moves.
+- **Sandbox is excluded everywhere.** Those receipts are genuinely Apple-signed
+  and cost $0; mirroring them would invent revenue on the one surface built to
+  be trusted at a glance. Same gate as `credit_iap_purchase`, different
+  consequence.
+- **Price and currency are NOT sent.** RevenueCat derives them per storefront
+  from the JWS via the In-App Purchase key. Restating a price we own is the
+  mistake this repo has made in three other places.
+- ⚠️ **RevenueCat's MRR excludes consumables, and packs are ~3/4 of the
+  revenue.** On 2026-09-11: 46 pack purchases in 30 days (≈$275 gross) against
+  MRR of USD 66.88 + INR 399 + NGN 4,900. The Revenue chart counts one-time
+  purchases; the MRR/churn/cohort views do not. **The glanceable number is
+  Revenue, not MRR** — reading MRR as "how am I doing" understates the business
+  ~4×.
+- **A second In-App Purchase key (`HK4WN3S8ZF`) was generated for RevenueCat**
+  rather than sharing `BTPZRH3GW3`, which is wired into four Supabase secrets —
+  so revoking RevenueCat later cannot break our own App Store Server API calls.
+  Apple allows 10 active keys and both live in `~/.appstoreconnect/private_keys/`.
+
+`REVENUECAT_API_KEY` is the **public** app key (`appl_…`), not a secret one:
+`/v1/receipts` is a client-shaped endpoint and RevenueCat designs that key to
+ship inside an IPA. It needs no rotation if it appears in a transcript — unlike
+the HeroSMS and Telnyx keys. A secret `sk_…` key would only be needed to delete
+customers or grant entitlements, neither of which this product does.
+
+⚠️ **`00000000-0000-0000-0000-000000000000` is a throwaway subscriber** created
+while probing the key on 2026-09-11. It holds no purchases and affects no chart.
+Deleting it needs a secret key we deliberately do not hold.
+
+🔴 **`relay-rc-sync` has NO watchdog check, and that is a deliberate exception
+to "every scheduled job gets one".** The watchdog's only output is a Telegram
+page, and the whole failure mode here is *a chart is stale* — a mirror falling
+behind costs nothing and fixes itself on the next run. Paging for it would spend
+the one channel that has to stay readable, which this file already records as
+how the next real outage gets missed. Check it by hand with the query above when
+the numbers look wrong; `rc_sync_error` holds RevenueCat's own words, and a row
+stuck at `rc_sync_attempts = 10` is the thing to look for.
+
+Re-derive the mirror's health rather than trusting this line:
+```sql
+select count(*) filter (where rc_synced_at is not null)||'/'||count(*) from iap_receipts
+  where environment='Production' and granted_credits>0 and raw_jws is not null;
+select count(*) from iap_receipts where rc_sync_error is not null;
+```
+
 ### Behavioural analytics
 
 `app_events` is written ONLY by the `record-events` edge function. **RLS is on
@@ -2067,7 +2139,7 @@ Each has been wrong within a day of being written at least once.
   2.12`. It has been wrong about the review state five versions running, and
   that is a decision error, not a typo: "still in review" is the argument for
   cutting another release.
-- **Backend**: 49 edge function dirs besides `_shared`, 232 migration files, 26
+- **Backend**: 50 edge function dirs besides `_shared`, 234 migration files, 26
   files in `_shared`, 138 Swift sources (re-counted 2026-09-10), 23 active
   cron jobs.
 - **Catalog**: 9,364 active routes (5sim 8,074 / HeroSMS 1,290), 468 services,
@@ -2131,9 +2203,6 @@ Genuinely open items only. Resolved history is in `docs/decisions-archive.md`.
   select 'swap' src, count(*) from line_number_swaps where created_at > now()-interval '7 days'
   union all select 'new line', count(*) from phone_lines where created_at > now()-interval '7 days';
   ```
-- ⚠️ **`/revenue` and `/profit` understate by every subscription dollar.** They
-  read `iap_receipts` only; neither `line_subscriptions` nor
-  `email_subscriptions` is included.
 - ⚠️ **`orders`, `esim_orders` and `email_orders` still expose per-order
   wholesale** to a self-reading user. Smaller than the cost-book leak that was
   closed (RLS is self-read, so a user leaks only their own), and **the adoption
