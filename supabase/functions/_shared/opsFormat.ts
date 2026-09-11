@@ -224,7 +224,21 @@ interface RevenueSnapshot {
   };
 }
 
-interface LinesMoney {
+/** One currency's share of what will bill again next month.
+ *
+ *  🔴 There is deliberately NO scalar MRR field. `lines_money_snapshot` used to
+ *  return `mrr_milli` (a sum ACROSS currencies) beside `mrr_currency` (whichever
+ *  row an unordered `limit 1` produced), and this formatter multiplied the whole
+ *  sum by that one label's rate. Live, that summed an NGN subscription with two
+ *  USD ones and rendered ₦4,900 + $5.98 as "$4,903/mo". Mixed currencies are
+ *  never silently totalled — the same rule that keeps /revenue reading the
+ *  signed price per receipt instead of applying a USD ladder. */
+interface MrrRow { currency?: string; milli?: number }
+
+/** The shape both subscription families report. The line adds the cost of the
+ *  numbers underneath it; mail has no per-address cost, because the domains it
+ *  sells on are free. */
+interface SubsMoney {
   by_currency?: CurrencyRow[];
   /** Paid events in the window: first charges PLUS renewals. Derived from the
    *  notification stream, never from line_subscriptions — that table holds one
@@ -236,11 +250,35 @@ interface LinesMoney {
   trials?: number;
   active?: number;
   renewing?: number;
-  mrr_milli?: number;
-  mrr_currency?: string | null;
+  mrr_by_currency?: MrrRow[];
+}
+
+interface LinesMoney extends SubsMoney {
   numbers_live?: number;
   rent_run_rate_cents?: number;
   credit_rented?: number;
+  /** The temp-e-mail plan. Its money used to be counted into the fields ABOVE
+   *  — `line_notifications` carries every product and the snapshot filtered on
+   *  none — so "Second numbers" reported the $2.99 mail plan as second-number
+   *  business. Its own block since 2026-09-11. */
+  mail?: SubsMoney;
+}
+
+/** Every subscription currency row, BOTH families, as one list.
+ *
+ *  🔴 The headline total must span both plans. `lines_money_snapshot`'s
+ *  top-level keys became line-only on 2026-09-11 when mail was split out of
+ *  them, so a caller still reading `lm.by_currency` alone UNDERCOUNTS by the
+ *  entire mail plan — the same class of error as the misattribution that split
+ *  fixed, just pointing the other way. Read through here, never off the raw
+ *  object. */
+function allSubsCurrencies(lm: LinesMoney): CurrencyRow[] {
+  return [...(lm.by_currency ?? []), ...(lm.mail?.by_currency ?? [])];
+}
+
+/** Paid subscription events across both families. Same reasoning as above. */
+function allSubsPayments(lm: LinesMoney): number {
+  return (lm.payments ?? 0) + (lm.mail?.payments ?? 0);
 }
 
 function periodLabel(s: RevenueSnapshot): string {
@@ -295,8 +333,8 @@ export function formatGross(
   // subscription is $9.99 taken, exactly like a credit pack, and a renewal is
   // another $9.99.
   const lm = (linesRaw ?? {}) as LinesMoney;
-  const subsUsd = convert(lm.by_currency, [], unconverted);
-  const subPayments = lm.payments ?? 0;
+  const subsUsd = convert(allSubsCurrencies(lm), [], unconverted);
+  const subPayments = allSubsPayments(lm);
   const purchases = r.purchases ?? 0;
 
   if (purchases === 0 && subPayments === 0) {
@@ -354,8 +392,8 @@ export function formatRevenue(
   // Apple takes its cut of a subscription exactly as it does of a credit pack.
   // Counted per PAYMENT EVENT, so renewals accumulate.
   const lm = (linesRaw ?? {}) as LinesMoney;
-  const subsUsd = convert(lm.by_currency, [], unconverted);
-  const subPayments = lm.payments ?? 0;
+  const subsUsd = convert(allSubsCurrencies(lm), [], unconverted);
+  const subPayments = allSubsPayments(lm);
   const purchases = r.purchases ?? 0;
 
   if (purchases === 0 && subPayments === 0) {
@@ -449,18 +487,18 @@ export function formatRevenue(
  *
  *  This is the TAIL of the /revenue and /profit replies, so it is the piece
  *  that carries stamp() for that pair. */
-export function formatLinesMoney(raw: Record<string, unknown>): string {
-  const s = (raw ?? {}) as LinesMoney;
+/** One subscription family's rows: payments, what recurs, trials.
+ *
+ *  Shared by the line and the mail block so the two cannot drift into phrasing
+ *  the same fact two ways, and so the per-currency MRR rule below is written
+ *  exactly once. */
+function subsRows(s: SubsMoney, heading: string): string[] {
   const active = s.active ?? 0;
   const trials = s.trials ?? 0;
   const payments = s.payments ?? 0;
-  const numbers = s.numbers_live ?? 0;
+  const renewing = s.renewing ?? 0;
+  const out = ["", heading];
 
-  if (active === 0 && payments === 0 && numbers === 0) {
-    return `\n\n📞 <b>Second numbers</b> — nothing sold yet.\n\n${stamp()}`;
-  }
-
-  const out = ["", "", "📞 <b>Second numbers</b>"];
   if (payments > 0) {
     out.push(`Payments: <b>${esc(payments)}</b> — ${esc(s.first_buys ?? 0)} new · ` +
              `${esc(n("renewal", s.renewals ?? 0))}`);
@@ -468,27 +506,70 @@ export function formatLinesMoney(raw: Record<string, unknown>): string {
 
   // The number the owner actually needs. A subscription that will not renew is
   // a one-off sale wearing a subscription's clothes.
-  const mrr = (s.mrr_milli ?? 0) / 1000;
-  const renewing = s.renewing ?? 0;
   if (renewing === 0) {
     out.push(`Recurring: <b>$0.00</b> — none of the ${esc(active)} active ` +
              `sub${active === 1 ? "" : "s"} will renew`);
   } else {
-    const cur = (s.mrr_currency ?? "USD").toUpperCase();
-    out.push(`Recurring: <b>${esc(usd(mrr * (FX_TO_USD[cur] ?? 1)))}/mo</b> ` +
-             `from ${esc(renewing)} renewing`);
+    // Every currency converted at ITS OWN rate, through the same helper
+    // /revenue uses — which names any currency it has no rate for instead of
+    // folding it in at 1.0. `native` and `unconverted` arrive pre-escaped.
+    const native: string[] = [];
+    const unconverted: string[] = [];
+    const mrr = convert(
+      (s.mrr_by_currency ?? []).map((r) => ({
+        currency: r.currency,
+        gross_milli: r.milli,
+      })),
+      native,
+      unconverted,
+    );
+    let row = `Recurring: <b>${esc(usd(mrr))}/mo</b> from ${esc(renewing)} renewing`;
+    // Only worth showing the split when there IS one — a single-currency
+    // business does not need its own total repeated back to it.
+    if (native.length > 1) row += `\n<i>${native.join(" · ")}</i>`;
+    if (unconverted.length) {
+      row += `\n⚠️ <b>no FX rate</b> for ${unconverted.join(", ")} — the figure ` +
+        `above is LOW`;
+    }
+    out.push(row);
   }
   if (trials > 0) {
     out.push(`<i>${esc(n("free trial", trials))} — paid nothing yet · see /trials</i>`);
   }
+  return out;
+}
 
-  // Cost, stated as a RUN RATE, never folded into a profit figure.
-  if (numbers > 0) {
-    const credit = s.credit_rented ?? 0;
-    const suffix = credit > 0 ? ` (${esc(credit)} rented with credits)` : "";
-    out.push(`Numbers live: <b>${esc(numbers)}</b>${suffix} · ` +
-             `rent <b>${esc(usd((s.rent_run_rate_cents ?? 0) / 100))}/mo</b>`);
+export function formatLinesMoney(raw: Record<string, unknown>): string {
+  const s = (raw ?? {}) as LinesMoney;
+  const mail = s.mail ?? {};
+  const numbers = s.numbers_live ?? 0;
+  const sold = (s.active ?? 0) > 0 || (s.payments ?? 0) > 0 || numbers > 0;
+  const mailSold = (mail.active ?? 0) > 0 || (mail.payments ?? 0) > 0;
+
+  if (!sold && !mailSold) {
+    return `\n\n📞 <b>Subscriptions</b> — nothing sold yet.\n\n${stamp()}`;
   }
+
+  const out: string[] = [""];
+
+  if (sold) {
+    out.push(...subsRows(s, "📞 <b>Second numbers</b>"));
+    // Cost, stated as a RUN RATE, never folded into a profit figure.
+    if (numbers > 0) {
+      const credit = s.credit_rented ?? 0;
+      const suffix = credit > 0 ? ` (${esc(credit)} rented with credits)` : "";
+      out.push(`Numbers live: <b>${esc(numbers)}</b>${suffix} · ` +
+               `rent <b>${esc(usd((s.rent_run_rate_cents ?? 0) / 100))}/mo</b>`);
+    }
+  }
+
+  // Its own block since 2026-09-11. Before that `lines_money_snapshot` filtered
+  // on no product at all, so these payments were counted into the second-number
+  // figures above — 15 of the 43 subscription payment events in the app's
+  // history were mail, reported as lines. No per-address cost row: the domains
+  // mail sells on are free, so there is nothing to state.
+  if (mailSold) out.push(...subsRows(mail, "📧 <b>Temp e-mail plan</b>"));
+
   out.push("");
   out.push(stamp());
   return out.join("\n");
@@ -587,9 +668,13 @@ export function formatDigest(
   const received = o.received ?? 0;
   const purchases = buys.count ?? 0;
   const credits = buys.credits ?? 0;
-  const subPayments = lm.payments ?? 0;
+  // BOTH families. `lines_money_snapshot`'s top-level keys became line-only on
+  // 2026-09-11 when mail was split out of them; reading only those here would
+  // have quietly dropped every mail payment out of the digest's money line —
+  // trading one misattribution for an undercount.
+  const subPayments = allSubsPayments(lm);
   let subUsd = 0;
-  for (const cur of lm.by_currency ?? []) {
+  for (const cur of allSubsCurrencies(lm)) {
     const rate = FX_TO_USD[(cur.currency ?? "?").toUpperCase()];
     if (rate != null) subUsd += ((cur.gross_milli ?? 0) / 1000) * rate;
   }
