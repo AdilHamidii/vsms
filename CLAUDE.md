@@ -535,7 +535,7 @@ relay-sync-esim-plans     0 2 * * *     relay-winback           0 15 * * *  (4 n
 expire-esim-orders        */15 * * * *  expire-email-orders     */5 * * * *
 purge-job-run-details     7 3 * * *     telegram-events-prune   30 4 * * *
 app-events-prune          50 3 * * *
-relay-rc-sync             6,16,26,36,46,56 * * * *  (RevenueCat mirror, read-only)
+relay-rc-sync             * * * * *     (RevenueCat mirror, read-only; idle run ~266ms)
 ── rented lines ──
 reclaim-lapsed-lines      */15 * * * *  (PURE SQL, no HTTP hop — the claim must
                                          survive the edge layer dying)
@@ -1767,7 +1767,16 @@ Detail is in `.claude/rules/ops-bot.md`. What matters from outside it:
 
 `rc-sync` posts every Production Apple purchase to RevenueCat's
 `POST /v1/receipts` so the owner can read the business from RevenueCat's phone
-app. Cron `relay-rc-sync`, every 10 minutes at :6.
+app. Cron `relay-rc-sync`, **every minute** (owner, 2026-09-11: "1 minute max").
+
+⚠️ **It shipped at every 10 minutes and that was the wrong reasoning, not a
+wrong number.** "~2 purchases a day, so latency is irrelevant" reasoned about
+the PURCHASE rate and ignored the READ rate — the owner opens the phone app to
+look. A purchase at 19:37:55 against a sweep at 19:36:00 was then invisible for
+eight more minutes and read as "RevenueCat registers purchases late". **On a
+glance surface, late and wrong are the same complaint.** Every minute is
+affordable because an idle sweep is one indexed query per family in ~266ms, and
+`relay-poll-active-orders` has run at that cadence since launch.
 
 🔴 **It grants no entitlement, gates no product and settles no money, and it
 must stay that way.** `has_email_subscription`, `reclaim_lapsed_lines`,
@@ -2139,7 +2148,7 @@ Each has been wrong within a day of being written at least once.
   2.12`. It has been wrong about the review state five versions running, and
   that is a decision error, not a typo: "still in review" is the argument for
   cutting another release.
-- **Backend**: 50 edge function dirs besides `_shared`, 234 migration files, 26
+- **Backend**: 50 edge function dirs besides `_shared`, 236 migration files, 26
   files in `_shared`, 138 Swift sources (re-counted 2026-09-10), 23 active
   cron jobs.
 - **Catalog**: 9,364 active routes (5sim 8,074 / HeroSMS 1,290), 468 services,
