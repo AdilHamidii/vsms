@@ -2989,7 +2989,14 @@ final class AppState {
             // The backend does a last-chance poll before canceling: if the
             // code was already in flight, the "cancel" comes back as a
             // delivered order. Show the code — it's what they paid for.
-            if updated.status == .received {
+            //
+            // 🔴 `otp != nil`, NOT `status == .received`. The late-code rescue
+            // writes the code onto a CANCELED row — which is precisely what a
+            // cancel produces — so testing the status sent a user holding a
+            // real, paid-for code to the "no code arrived" recovery screen.
+            // Same bug `apply(server:for:wallet:)` was fixed for, and its
+            // comment states the rule; these two paths never adopted it.
+            if updated.otp != nil {
                 activeOrder = updated
                 flow = .otp
                 return
@@ -3116,7 +3123,12 @@ final class AppState {
             // The cancel can come back DELIVERED (last-chance provider poll).
             // Rerolling away from a code we just fetched would throw away the
             // thing the user paid for.
-            if updated.status == .received {
+            //
+            // 🔴 `otp != nil`, NOT `status == .received` — see `cancelWaiting`.
+            // A rescued code lives on a canceled row, and a reroll releases the
+            // number, so this path loses the code outright rather than merely
+            // mis-routing to recovery.
+            if updated.otp != nil {
                 activeOrder = updated
                 flow = .otp
                 return
