@@ -2145,7 +2145,7 @@ Each has been wrong within a day of being written at least once.
 **Verified 2026-09-09:**
 
 - **iOS**: `MARKETING_VERSION 2.13`, `CURRENT_PROJECT_VERSION 63`.
-  **2.13 (build 63) is `READY_FOR_SALE`** (read from ASC 2026-09-13 00:10Z;
+  **2.13 (build 63) is `READY_FOR_SALE`** (read from ASC 2026-09-12 22:00Z;
   submitted 2026-09-11 12:07Z as `c131076d-…`; 22 distinct users fired
   `home_view` — which only 2.13 emits — in the 24h to 2026-09-12 22:00Z, so
   approval landed within a day of submission and adoption has begun). Build
