@@ -535,7 +535,7 @@ relay-sync-esim-plans     0 2 * * *     relay-winback           0 15 * * *  (4 n
 expire-esim-orders        */15 * * * *  expire-email-orders     */5 * * * *
 purge-job-run-details     7 3 * * *     telegram-events-prune   30 4 * * *
 app-events-prune          50 3 * * *
-relay-rc-sync             * * * * *     (RevenueCat mirror, read-only; idle run ~266ms)
+relay-rc-sync             * * * * *     (RevenueCat mirror, read-only; sleeps 5s past :00 — see the herd gotcha)
 ── rented lines ──
 reclaim-lapsed-lines      */15 * * * *  (PURE SQL, no HTTP hop — the claim must
                                          survive the edge layer dying)
@@ -1775,8 +1775,19 @@ the PURCHASE rate and ignored the READ rate — the owner opens the phone app to
 look. A purchase at 19:37:55 against a sweep at 19:36:00 was then invisible for
 eight more minutes and read as "RevenueCat registers purchases late". **On a
 glance surface, late and wrong are the same complaint.** Every minute is
-affordable because an idle sweep is one indexed query per family in ~266ms, and
+affordable because an idle sweep is three tiny indexed reads and no write, and
 `relay-poll-active-orders` has run at that cadence since launch.
+
+⚠️ **"An idle run takes ~266ms" was written here and it was one lucky sample.**
+Over 299 successful runs on 2026-09-12 the idle wall time was **p50 1.3s, p90
+5.3s, max 24.6s** — and ~18% of runs answered 500 `*_read_failed: Gateway
+Timeout`. The queries take under 1ms (`explain analyze`); the time is spent
+queuing behind the top-of-minute burst described in the herd gotcha. The
+function now sleeps `HERD_SETTLE_MS` (5s) before its first read and retries
+each read `READ_ATTEMPTS` (3) times, because a mirror can afford to start late
+and the alternative was the watchdog's generic `relay-http` check reading red
+for a dashboard. Re-derive from `net._http_response` (`content->>'elapsed_ms'`
+on the 200s, `content->>'error'` on the 500s) rather than quoting either number.
 
 🔴 **It grants no entitlement, gates no product and settles no money, and it
 must stay that way.** `has_email_subscription`, `reclaim_lapsed_lines`,
@@ -1827,7 +1838,7 @@ customers or grant entitlements, neither of which this product does.
 while probing the key on 2026-09-11. It holds no purchases and affects no chart.
 Deleting it needs a secret key we deliberately do not hold.
 
-🔴 **`relay-rc-sync` has NO watchdog check, and that is a deliberate exception
+🔴 **`relay-rc-sync` has NO watchdog check OF ITS OWN, and that is a deliberate exception
 to "every scheduled job gets one".** The watchdog's only output is a Telegram
 page, and the whole failure mode here is *a chart is stale* — a mirror falling
 behind costs nothing and fixes itself on the next run. Paging for it would spend
@@ -1835,6 +1846,14 @@ the one channel that has to stay readable, which this file already records as
 how the next real outage gets missed. Check it by hand with the query above when
 the numbers look wrong; `rc_sync_error` holds RevenueCat's own words, and a row
 stuck at `rc_sync_attempts = 10` is the thing to look for.
+
+⚠️ **But the GENERIC `relay-http` check does see it** — it counts every
+non-2xx cron relay response, whatever the job. On 2026-09-12 the sweep's
+`Gateway Timeout` 500s tripped it for most of the day, and that check is one of
+the ones the stranded-nudge gate reads ("no failing check other than
+`*-float`"), so a cosmetic mirror was silencing a real winback cohort. A
+`* * * * *` job that answers 500 on a transient is a watchdog outage by another
+name: it must retry, then sleep past the burst, and only then fail loudly.
 
 Re-derive the mirror's health rather than trusting this line:
 ```sql
@@ -1928,6 +1947,24 @@ is the missing piece.
 
 ## Non-obvious gotchas (real bugs, do not re-introduce)
 
+- 🔴 **PostgREST drops ~1% of edge-function calls at the top of every minute,
+  and it is the cron herd, not the query.** Every `* * * * *` relay fires at
+  second :00, so three or four functions boot together and open their first
+  PostgREST call at the same instant; on the free-tier compute PostgREST
+  answers part of that burst with **504 after ~5s** (`postgrest_logs`: "Warp
+  server error: Thread killed by timeout manager", ~2,000/day). Measured
+  2026-09-12: 1,229 REST 504s in 24h, **89% in seconds 0–2 of the minute**, a
+  flat ~50/hour around the clock, 99.7% from edge functions (the app itself
+  took 4). The queries behind them run in under a millisecond. Consequences:
+  a minutely job's FIRST read is the one that fails; a job that turns that
+  into a 500 trips the watchdog's `relay-http` check; `poll-active-orders`'
+  `app_config` health reads are the largest victim (819/day) and are simply
+  lost until the next minute. Anything new on a minutely cadence must retry
+  its reads or start a few seconds late (`rc-sync` does both). The fix that
+  would help everything — staggering the relays off :00, or paid compute —
+  is an owner decision. Re-derive with the Supabase MCP `query_logs` tool on
+  `edge_logs`, filtered to `response.status_code = 504` and grouped by
+  `toSecond(timestamp)`; the second-of-minute histogram is the proof.
 - **Edge functions die at ~150s wall clock**, and `EdgeRuntime.waitUntil`
   background tasks are killed at the same mark. Any job longer than ~2 minutes
   must be cursor-chunked across invocations.

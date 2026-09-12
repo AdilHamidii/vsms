@@ -50,6 +50,39 @@ const DEADLINE_MS = 100_000;
  *  `rc_sync_error` rather than retried into the ground. */
 const MAX_ATTEMPTS = 10;
 
+/** Wait out the top-of-minute burst before touching the database.
+ *
+ *  Every `* * * * *` relay fires at second :00, so three or four functions
+ *  boot together and each opens its first PostgREST call at the same instant.
+ *  On the free-tier compute PostgREST answers ~1% of that burst with a 504
+ *  ("Thread killed by timeout manager") after ~5s — measured 2026-09-12:
+ *  1,229 such 504s in 24h, **89% of them in seconds 0–2 of the minute**, at a
+ *  flat ~50/hour around the clock. Every other minutely job swallows its
+ *  share; this one answered 500 and tripped the watchdog's generic
+ *  `relay-http` check ~65 times in 6 hours, for a mirror whose failure costs
+ *  nothing. A dashboard sweep can afford to start five seconds late. */
+const HERD_SETTLE_MS = 5_000;
+
+/** A read that still fails after these attempts is a real fault, not the
+ *  burst above, and is allowed to surface as a 500. */
+const READ_ATTEMPTS = 3;
+
+/** Re-run a PostgREST read on failure with a short backoff. The residual 504
+ *  rate outside the burst is ~0.1%, so three attempts make a false page
+ *  vanishingly rare without hiding a database that is genuinely down.
+ *  Generic over the builder's own result so `data` keeps its inferred row
+ *  type; a `{ data, error }` shape is all it needs. */
+async function readWithRetry<R extends { error: unknown }>(
+  run: () => PromiseLike<R>,
+): Promise<R> {
+  let last = await run();
+  for (let attempt = 2; attempt <= READ_ATTEMPTS && last.error; attempt++) {
+    await new Promise((r) => setTimeout(r, 1_000 * (attempt - 1)));
+    last = await run();
+  }
+  return last;
+}
+
 function cronOk(req: Request): boolean {
   const secret = Deno.env.get("CRON_SECRET");
   return !!secret && req.headers.get("x-cron-secret") === secret;
@@ -113,6 +146,10 @@ Deno.serve(async (req) => {
   const dryRun = body.dry_run === true;
   const limit = Math.min(Number(body.limit) || BATCH, BATCH);
 
+  // Let the :00 burst pass before the first read. `immediate` is for a hand
+  // run; the cron never sends it.
+  if (body.immediate !== true) await new Promise((r) => setTimeout(r, HERD_SETTLE_MS));
+
   const sb = admin();
   const started = Date.now();
   const out = {
@@ -129,15 +166,17 @@ Deno.serve(async (req) => {
   // ── 1. Credit packs (consumables) ───────────────────────────────────────
   // Immutable once written, so `rc_synced_at is null` is the whole predicate.
   {
-    const { data, error } = await sb
-      .from("iap_receipts")
-      .select("id,user_id,product_id,raw_jws,rc_sync_attempts")
-      .is("rc_synced_at", null)
-      .eq("environment", "Production")
-      .not("raw_jws", "is", null)
-      .lt("rc_sync_attempts", MAX_ATTEMPTS)
-      .order("created_at", { ascending: true })
-      .limit(limit);
+    const { data, error } = await readWithRetry(() =>
+      sb
+        .from("iap_receipts")
+        .select("id,user_id,product_id,raw_jws,rc_sync_attempts")
+        .is("rc_synced_at", null)
+        .eq("environment", "Production")
+        .not("raw_jws", "is", null)
+        .lt("rc_sync_attempts", MAX_ATTEMPTS)
+        .order("created_at", { ascending: true })
+        .limit(limit)
+    );
     if (error) return json({ error: "pack_read_failed", detail: error.message }, { status: 500 });
 
     for (const row of data ?? []) {
@@ -174,17 +213,19 @@ Deno.serve(async (req) => {
     const table = fam === "line" ? "line_subscriptions" : "email_subscriptions";
     const bucket = out[fam];
 
-    const { data, error } = await sb
-      .from(table)
-      .select(
-        "original_transaction_id,user_id,product_id,latest_signed_transaction," +
-        "last_transaction_id,rc_synced_txn,rc_sync_attempts",
-      )
-      .eq("environment", "Production")
-      .not("latest_signed_transaction", "is", null)
-      .lt("rc_sync_attempts", MAX_ATTEMPTS)
-      .order("updated_at", { ascending: true })
-      .limit(limit);
+    const { data, error } = await readWithRetry(() =>
+      sb
+        .from(table)
+        // One literal, not a concatenation: supabase-js types the row from the
+        // select string only when it can read it at compile time, and `a + b`
+        // is plain `string` — every field access below became a type error.
+        .select("original_transaction_id,user_id,product_id,latest_signed_transaction,last_transaction_id,rc_synced_txn,rc_sync_attempts")
+        .eq("environment", "Production")
+        .not("latest_signed_transaction", "is", null)
+        .lt("rc_sync_attempts", MAX_ATTEMPTS)
+        .order("updated_at", { ascending: true })
+        .limit(limit)
+    );
     if (error) return json({ error: `${fam}_read_failed`, detail: error.message }, { status: 500 });
 
     for (const row of data ?? []) {
