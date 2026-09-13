@@ -1184,14 +1184,36 @@ distinction is between a list the user scrolls and a choice we make FOR them:
 defaulting someone onto inventory the vendor itself reports as dead is the same
 error as cheapest-first. **"No information" beats "reported dead".**
 
-⚠️ **Does the rate predict OUR delivery? STILL UNVERIFIED, and this is the test
-that justifies the whole feature.** Against HeroSMS orders it correlated
-*negatively* (r = −0.51, n = 16). The ranking is monotone against our own
-outcomes, which is a positive read on the steering; the LEVEL is ~2× our
-realised delivery. `orders.pool_rate_pct` and `pool_pinned` are stamped at
-reservation for exactly this. **If the correlation is not positive, the number
-must come off the row.** Two mandatory filters: split on 2026-08-05, and
-**exclude default-landed orders** or you measure our own steering.
+✅ **The rate DOES predict our delivery — settled 2026-09-13, and the number
+stays on the row.** This was the test that justified the whole feature and it
+had been open since the feature shipped. Run with both mandatory filters (only
+`status in ('received','expired')`, only `created_at >= '2026-08-05'`, and
+`from_default` excluded), over 295 settled orders:
+
+| band shown | avg rate shown | OUR delivery per try | n |
+|---|---|---|---|
+| High (>60) | 73.5 | **46.9%** | 98 |
+| Medium (30–60) | 44.5 | **39.6%** | 111 |
+| Low (<30) | 12.0 | **17.4%** | 86 |
+
+Monotone, and a 2.7× spread from Low to High. The earlier negative reading
+(r = −0.51) was **n = 16 HeroSMS orders** — too small, wrong provider, and
+taken before the `rate24` → `rate720` switch. ⚠️ **The LEVEL still overstates
+in the High band** (73 shown vs 47 realised) while Medium and Low track
+closely, which is why the row renders a colour-banded WORD and never the
+number. Re-derive rather than quoting; the query is one `count(*) filter` over
+`orders` grouped by the band.
+
+🔴 **What this licenses, and what it does not.** It licenses steering ON the
+band and telling a user that a green route is worth retrying. It does NOT
+license "try N times" as a promise: per-try probability is 47% at best, so
+three tries on High is ~85% only if attempts are independent, and a genuinely
+dead route makes them correlated. The honest, defensible statement is
+descriptive — **of the 82 users who ever got a code, 62% had it on try 1, 82%
+by try 2, 89% by try 3, 100% by try 7** — and it describes people who
+succeeded, so it must never be worded as a forecast for someone who has just
+failed three times. On a Low route the right advice is a DIFFERENT COUNTRY,
+not more attempts (17% per try, ~8 attempts to reach where High gets in 3).
 
 ### The grant size decides which ONE route new users land on
 
@@ -2302,10 +2324,10 @@ Genuinely open items only. Resolved history is in `docs/decisions-archive.md`.
 
 - ⚠️ **The second-code resend window has never delivered a second code.** The
   pool list is 5sim's claim. Proof is the first `resend_promoted` log line.
-- ⚠️ **`pool_rate_pct` has never been shown to predict OUR delivery.** The test
-  that justifies the whole feature. Two mandatory filters (split on 2026-08-05,
-  exclude default-landed). **If the correlation is not positive, the number must
-  come off the row.**
+- ✅ **RESOLVED 2026-09-13: `pool_rate_pct` DOES predict our delivery** (47% /
+  40% / 17% per try across High / Medium / Low, 295 settled orders, both
+  filters applied). The number stays on the row. See "The pool rate is the
+  tie-break" for the table and for what the finding does NOT license.
 - ⚠️ **The VoIP/`physicalCount` hypothesis is untested, not falsified.**
   `orders.operator_used` is the control arm; it needs volume.
 - ⚠️ **The tail 5× pricing experiment has not been read out.**
