@@ -59,11 +59,24 @@ struct TempScreen: View {
     /// this keeps TempScreen on the same pattern as `EmailCodeScreen`.
     @State private var showMailPaywall = false
 
-    /// The delivery explainer. `deliveryInfoGated` is true only for the
-    /// automatic showing, which holds its CTA grey until the reader reaches
-    /// the end and the dwell elapses; the ⓘ opens it ungated.
-    @State private var showDeliveryInfo = false
-    @State private var deliveryInfoGated = false
+    /// How the delivery explainer was raised. `.gated` is the automatic
+    /// showing, which holds its CTA grey until the reader reaches the end and
+    /// the dwell elapses; `.voluntary` is the ⓘ, ungated.
+    ///
+    /// 🔴 **ONE `item:` value, NOT a Bool plus a separate mode flag.** The
+    /// first version used `.sheet(isPresented:)` alongside a
+    /// `deliveryInfoGated` Bool set in the same tick, and SwiftUI evaluated
+    /// the content closure against the OLD value of that flag — so the
+    /// automatic showing presented UNGATED. That in turn meant the CTA never
+    /// wrote the acknowledgement, so the sheet reappeared on every single
+    /// visit to the tab, forever. Reported from the device on 2026-09-13.
+    /// `.sheet(item:)` binds the mode to the presentation itself and cannot
+    /// drift. **Never reintroduce a `isPresented` + mode-flag pair here.**
+    enum DeliveryInfoMode: String, Identifiable {
+        case gated, voluntary
+        var id: String { rawValue }
+    }
+    @State private var deliveryInfoMode: DeliveryInfoMode?
 
     /// `-screenshot deliveryInfo` opens the sheet on appear. DEBUG-only and
     /// inert in a release build; see `ScreenshotMode.Screen.deliveryInfo`.
@@ -149,18 +162,17 @@ struct TempScreen: View {
         .task {
             withAnimation(RMotion.content) { appeared = true }
             if screenshotWantsDeliveryInfo {
-                deliveryInfoGated = true
-                showDeliveryInfo = true
+                deliveryInfoMode = .gated
             } else {
-                raiseDeliveryInfoIfNeeded()
+                await raiseDeliveryInfoIfNeeded()
             }
         }
         // The user can arrive on this tab in e-mail mode, or with a flow on
         // top, and switch out of either without the tab being re-created — so
         // `.task` alone would miss them. Both re-checks are cheap (one
         // UserDefaults read) and idempotent.
-        .onChange(of: state.emailMode) { _, _ in raiseDeliveryInfoIfNeeded() }
-        .onChange(of: state.flow == nil) { _, _ in raiseDeliveryInfoIfNeeded() }
+        .onChange(of: state.emailMode) { _, _ in Task { await raiseDeliveryInfoIfNeeded() } }
+        .onChange(of: state.flow == nil) { _, _ in Task { await raiseDeliveryInfoIfNeeded() } }
         // The segmented control is a shared component with no haptic of its
         // own; switching product line is the biggest state change on the
         // screen and should be felt.
@@ -177,11 +189,12 @@ struct TempScreen: View {
                 .presentationDragIndicator(.visible)
                 .presentationBackground(theme.bg)
         }
-        // Same explicit injection as the paywall above, same reason.
-        .sheet(isPresented: $showDeliveryInfo) {
+        // Same explicit injection as the paywall above, same reason. `item:`
+        // rather than `isPresented:` — see `DeliveryInfoMode`.
+        .sheet(item: $deliveryInfoMode) { mode in
             DeliveryInfoSheet(
-                source: deliveryInfoGated ? "auto" : "button",
-                mustAcknowledge: deliveryInfoGated
+                source: mode == .gated ? "auto" : "button",
+                mustAcknowledge: mode == .gated
             )
             .environment(\.theme, theme)
             .environment(state)
@@ -269,8 +282,7 @@ struct TempScreen: View {
     private var deliveryInfoButton: some View {
         Button {
             RHaptic.select()
-            deliveryInfoGated = false
-            showDeliveryInfo = true
+            deliveryInfoMode = .voluntary
         } label: {
             Image(systemName: RIcon.info)
                 .font(.system(size: 16, weight: .semibold))
@@ -373,12 +385,25 @@ struct TempScreen: View {
     /// checkout, a waiting screen or a code is on top of this tab; a sheet
     /// arriving there interrupts an order in progress rather than informing
     /// one that has not started. The tab is still here when the flow ends.
-    private func raiseDeliveryInfoIfNeeded() {
+    ///
+    /// ⚠️ **The settle delay is deliberate.** Presenting in the same frame the
+    /// tab draws makes the sheet appear to slam up out of nothing — the owner's
+    /// words from the device were "it opens so quickly". Letting the tab render
+    /// first and then raising the sheet turns it into a transition the eye can
+    /// follow. It is not a "wait for data" delay; nothing here is loading.
+    private func raiseDeliveryInfoIfNeeded() async {
         guard !state.emailMode, state.flow == nil,
+              deliveryInfoMode == nil,
               !UserDefaults.standard.bool(forKey: PrefKey.deliveryInfoAcked)
         else { return }
-        deliveryInfoGated = true
-        showDeliveryInfo = true
+        try? await Task.sleep(for: .milliseconds(550))
+        // Re-check: half a second is long enough for the user to have switched
+        // to e-mail, started an order, or left the tab.
+        guard !Task.isCancelled, !state.emailMode, state.flow == nil,
+              deliveryInfoMode == nil,
+              !UserDefaults.standard.bool(forKey: PrefKey.deliveryInfoAcked)
+        else { return }
+        deliveryInfoMode = .gated
     }
 
     /// First run AND cannot afford the route in front of them — including the
