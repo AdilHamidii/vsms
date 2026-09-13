@@ -755,9 +755,15 @@ commit:**
   by the old ladder carry tiers up to 4, and without the clamp a provider at
   tier 4 could never satisfy `tier > prevTier` again — its page permanently
   disarmed, silently.
-- **The RUNWAY check is separate and untouched** (`balance ÷ 7-day burn < 5
-  days`). Neither subsumes the other: at $0.20/day of burn, $2.00 reads as a
-  10-day runway and pages nothing while a single $1.50 route is unfundable.
+- 🔴 **The RUNWAY check (`balance ÷ 7-day burn < 5 days`) is OFF for 5sim and
+  HeroSMS** (owner, 2026-09-13: *"don't mention 5sim or herosms balance in the
+  watchdog unless they're under 5 usd"*; migration `20260913070630`). For
+  those two the $5 floor is the ONLY balance page. It was a standing page at
+  the owner's fund-on-demand cadence — 5sim sat at ~4 days of runway for most
+  of a week while well above the floor, re-paging every 6 hours. The
+  dead-route branch under the same check name ("no spend in 7 days against N
+  orders the week before") is NOT a balance page and stays. Do not re-enable
+  the runway line without the owner.
 - An order refused for insufficient float pages separately
   (`create-order`'s `alertLowBalanceBlock`) and carries the **shortfall** — a
   route may need $60 of float while the balance page does not fire until $5.
@@ -2196,7 +2202,7 @@ Each has been wrong within a day of being written at least once.
   2.12`. It has been wrong about the review state five versions running, and
   that is a decision error, not a typo: "still in review" is the argument for
   cutting another release.
-- **Backend**: 50 edge function dirs besides `_shared`, 237 migration files, 27
+- **Backend**: 50 edge function dirs besides `_shared`, 238 migration files, 27
   files in `_shared`, 138 Swift sources (re-counted 2026-09-13), 24 active
   cron jobs.
 - **Catalog**: 9,364 active routes (5sim 8,074 / HeroSMS 1,290), 468 services,
@@ -2216,11 +2222,12 @@ Each has been wrong within a day of being written at least once.
   5sim $8.29, HeroSMS $14.85, Telnyx $12.87, eSIM Access $86.69
   (re-read 2026-09-11 08:14Z).
 
-🔴 **ONE WATCHDOG CHECK IS FIRING:**
-- **`5sim-float` — $8.29 covers ~3.5 days of reservations** ($2.38/day gross;
-  the runway check, not the $5 floor). 5sim is the PRIMARY SMS provider, so an
-  empty float fails every temp-SMS order as `provider_unreachable`.
-  **Owner action: fund 5sim.**
+✅ **NO WATCHDOG CHECK IS FIRING** (verdict `[]` at 2026-09-13 07:07Z):
+- **`5sim-float` cleared** — not by money but by the owner retiring the runway
+  line for the SMS providers (above). 5sim is at $16.94 against the $5 floor,
+  burning $4.38/day gross; it is the PRIMARY SMS provider, so an empty float
+  fails every temp-SMS order as `provider_unreachable`, and the page now comes
+  only under $5. Re-query, never quote.
 - ✅ **`telnyx-float` cleared** — $12.87 against the $10 floor, `alert_tier` 0.
   It fell to $2.87 on the morning of 2026-09-11 (from $12.42 twelve hours
   earlier) and the owner funded it. **The drain was number purchases at $2.00
@@ -2240,9 +2247,11 @@ Genuinely open items only. Resolved history is in `docs/decisions-archive.md`.
 
 **Money / owner action**
 
-- 🔴 **Fund 5sim.** $8.29, ~3.5 days of runway, and the only watchdog check
-  currently failing. (Telnyx fell to $2.87 on the morning of 2026-09-11 and
-  the owner funded it to $12.87. Re-query both, never quote either.)
+- ⚠️ **5sim float is ~4 days of reservations** ($16.94 at $4.38/day gross on
+  2026-09-13) and the watchdog no longer says so — the runway page is off by
+  owner decision, so the next page arrives only under $5, roughly one day of
+  burn. (Telnyx fell to $2.87 on the morning of 2026-09-11 and the owner
+  funded it; $24.12 on 09-12. Re-query both, never quote either.)
 - ⚠️ **Telnyx float is drained by NUMBER PURCHASES, and most of them are
   SWAPS — not by calls.** Measured 2026-09-11 over the prior 7 days: **24
   numbers bought, 15 of them swaps** (from **4** users; one line swapped 7
