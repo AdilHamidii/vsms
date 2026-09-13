@@ -2057,6 +2057,28 @@ Six facts that reading the code does not give you:
   purchases; the MRR/churn/cohort views do not. **The glanceable number is
   Revenue, not MRR** — reading MRR as "how am I doing" understates the business
   ~4×.
+- 🔴 **"Active Users" reads 0 and ALWAYS WILL — that is not a sync failure, and
+  there is no server-side fix.** RevenueCat defines it as App User IDs that
+  "communicated with RevenueCat in the past 28 days", and it is fed by devices;
+  we ship no RevenueCat SDK, so no app open, session or `getCustomerInfo` call
+  ever reaches them. The same is true of **Installs** and of every retention /
+  cohort view. Checked on 2026-09-13 with the mirror provably healthy: 96/96
+  pack receipts and 28/28 production subscriptions synced, 0 `rc_sync_error`
+  rows, **77 distinct App User IDs posted within the 28-day window** — and the
+  card still read 0 while Active Subscriptions read **21**, Revenue €326 and
+  MRR €88 on the same screen. ⚠️ The 0-against-77 gap is the evidence; Revenue-
+  Cat's docs never state outright whether a server-side `/v1/receipts` POST
+  counts as "communicating", so treat the mechanism as INFERRED. **Do not add
+  the SDK to light this up** — it would put RevenueCat inside the app for the
+  first time, against the read-only-mirror rule above, to fix a chart
+  `app_events` already answers better.
+- ✅ **Active Subscriptions IS trustworthy, and it spans BOTH families.** On
+  2026-09-13 RevenueCat's 21 matched our own tables exactly — 17 active
+  `line_subscriptions` + 4 active `email_subscriptions`, Production, unexpired.
+  `rc-sync` picks the table from `subscriptionFamily` (`index.ts`: `fam ===
+  "line" ? "line_subscriptions" : "email_subscriptions"`), so a count that is
+  short by a few is a MAIL sync problem, not a line one. Re-derive both halves
+  before believing a discrepancy.
 - **A second In-App Purchase key (`HK4WN3S8ZF`) was generated for RevenueCat**
   rather than sharing `BTPZRH3GW3`, which is wired into four Supabase secrets —
   so revoking RevenueCat later cannot break our own App Store Server API calls.
