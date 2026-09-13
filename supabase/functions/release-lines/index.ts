@@ -27,6 +27,7 @@
 
 import { handleCors, json } from "../_shared/cors.ts";
 import { admin } from "../_shared/supabaseAdmin.ts";
+import { readWithRetry } from "../_shared/pgRetry.ts";
 import {
   releaseNumber, findNumberId, deleteTelephonyCredential, listOwnedNumbers,
   faultOf,
@@ -80,8 +81,11 @@ Deno.serve(async (req) => {
   const sb = admin();
   const at = new Date().toISOString();
 
-  const { data: pending, error: pendErr } = await sb
-    .rpc("lines_awaiting_release", { p_limit: MAX_RELEASE });
+  // Retried: this is the read that lands in the :00 burst and used to answer
+  // 500 on a stray PostgREST 504 (see `_shared/pgRetry.ts`).
+  const { data: pending, error: pendErr } = await readWithRetry(() =>
+    sb.rpc("lines_awaiting_release", { p_limit: MAX_RELEASE })
+  );
   if (pendErr) {
     console.error(JSON.stringify({
       alert: "line_release_lookup_failed", detail: pendErr.message,
@@ -182,8 +186,9 @@ Deno.serve(async (req) => {
   // exactly which number was replaced and when. There is no matching to get
   // wrong.
   let swapReleased = 0, swapFailed = 0;
-  const { data: swapPending, error: swapErr } = await sb
-    .rpc("swaps_pending_release", { p_limit: 20 });
+  const { data: swapPending, error: swapErr } = await readWithRetry(() =>
+    sb.rpc("swaps_pending_release", { p_limit: 20 })
+  );
   // Whatever a swap row still owns is this loop's to release, never the orphan
   // sweep's — even when the DELETE below fails and the number is still listed.
   const swapOwned = new Set<string>(

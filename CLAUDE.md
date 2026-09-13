@@ -579,7 +579,7 @@ unreachable from the code that needs it.
 ### Backend layout
 
 - `supabase/migrations/` — chronological SQL, each phase ships its own file
-- `supabase/functions/_shared/` — **26 files** (`ls supabase/functions/_shared |
+- `supabase/functions/_shared/` — **27 files** (`ls supabase/functions/_shared |
   wc -l`; count, do not trust a list). The ones worth knowing:
   `providers.ts` (the unified router — order/poll functions call this, never a
   provider), `pricing.ts` (the ONE definition of SMS retail), `fivesim.ts`,
@@ -589,7 +589,8 @@ unreachable from the code that needs it.
   `lineCatalog.ts` (the fail-closed sellability gate every line seller calls),
   `lineProvision.ts` (the ONE order→poll→messaging→voice→activate sequence —
   it was written out three times, which is how voice provisioning ended up in
-  one path and not another), `nanp.ts`, `phone.ts`, `emailStatus.ts`,
+  one path and not another), `pgRetry.ts` (retry a PostgREST READ through the
+  top-of-minute herd; never a write), `nanp.ts`, `phone.ts`, `emailStatus.ts`,
   `cors.ts`, `telegram.ts`, `tgCommands.ts`, `tgHandlers.ts`, `tgFormat.ts`,
   `tgAlert.ts`, `opsFormat.ts`, `supabaseAdmin.ts`, `lines.ts`, `lineVoice.ts`
 - `supabase/functions/<name>/index.ts` — one per endpoint, all `Deno.serve`
@@ -1665,7 +1666,12 @@ why the sweep's latency is the thing that had to change.
 
 ### The watchdog is plain SQL — keep it that way
 
-`run_watchdog()` (pg_cron `*/10`) checks job freshness and any non-2xx row in
+`run_watchdog()` (pg_cron `*/10`) checks job freshness and **three or more**
+non-2xx rows in 25 minutes (`relay-http`, threshold raised from one on
+2026-09-13 because the top-of-minute PostgREST herd below made a single stray
+500 flap the check several times an hour, each flip a page plus an all-clear;
+a real outage fails every minutely relay, three per minute, and still trips it
+inside a minute) in
 `net._http_response`, and writes its verdict to `app_config.watchdog`. It
 deliberately uses **no edge function, no CRON_SECRET, no HTTP**, so it still
 evaluates when the whole edge/secret layer is broken. If you add a scheduled
@@ -1960,7 +1966,9 @@ is the missing piece.
   into a 500 trips the watchdog's `relay-http` check; `poll-active-orders`'
   `app_config` health reads are the largest victim (819/day) and are simply
   lost until the next minute. Anything new on a minutely cadence must retry
-  its reads or start a few seconds late (`rc-sync` does both). The fix that
+  its reads — `readWithRetry` in `_shared/pgRetry.ts`, READS ONLY, used by
+  `rc-sync`, `release-lines` and `sync-telnyx-cdr` — or start a few seconds
+  late (`rc-sync` also sleeps 5s). The fix that
   would help everything — staggering the relays off :00, or paid compute —
   is an owner decision. Re-derive with the Supabase MCP `query_logs` tool on
   `edge_logs`, filtered to `response.status_code = 504` and grouped by
@@ -2188,8 +2196,8 @@ Each has been wrong within a day of being written at least once.
   2.12`. It has been wrong about the review state five versions running, and
   that is a decision error, not a typo: "still in review" is the argument for
   cutting another release.
-- **Backend**: 50 edge function dirs besides `_shared`, 236 migration files, 26
-  files in `_shared`, 138 Swift sources (re-counted 2026-09-10), 23 active
+- **Backend**: 50 edge function dirs besides `_shared`, 237 migration files, 27
+  files in `_shared`, 138 Swift sources (re-counted 2026-09-13), 24 active
   cron jobs.
 - **Catalog**: 9,364 active routes (5sim 8,074 / HeroSMS 1,290), 468 services,
   0 active eSIM plans (line parked). `active_sms_provider()` = `5sim`.

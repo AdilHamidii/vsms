@@ -37,6 +37,7 @@
 
 import { handleCors, json } from "../_shared/cors.ts";
 import { admin } from "../_shared/supabaseAdmin.ts";
+import { readWithRetry } from "../_shared/pgRetry.ts";
 import { fetchCallDetailRecords, faultOf } from "../_shared/telnyx.ts";
 
 /// How far back to sweep. Comfortably wider than the lag between a hangup and
@@ -81,11 +82,15 @@ Deno.serve(async (req) => {
   // nothing to settle, an unreachable CDR endpoint costs exactly nothing, and
   // paging about it every ten minutes is how the one alert channel we have
   // gets ignored.
-  const { data: pending, error: pendErr } = await sb.from("line_calls")
-    .select("id, provider_call_session_id, provider_call_leg_id, peer_e164")
-    .eq("allowance_settled", false)
-    .gte("created_at", new Date(until.getTime() - pendingLookbackHours * 60 * 60_000).toISOString())
-    .limit(MAX_SETTLE);
+  // Retried: this is the read that lands in the :00 burst and used to answer
+  // 500 on a stray PostgREST 504 (see `_shared/pgRetry.ts`).
+  const { data: pending, error: pendErr } = await readWithRetry(() =>
+    sb.from("line_calls")
+      .select("id, provider_call_session_id, provider_call_leg_id, peer_e164")
+      .eq("allowance_settled", false)
+      .gte("created_at", new Date(until.getTime() - pendingLookbackHours * 60 * 60_000).toISOString())
+      .limit(MAX_SETTLE)
+  );
   if (pendErr) {
     console.error(JSON.stringify({ alert: "telnyx_cdr_pending_failed", detail: pendErr.message }));
     return json({ ok: false, error: "lookup_failed" }, { status: 500 });

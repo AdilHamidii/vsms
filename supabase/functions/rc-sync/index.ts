@@ -32,6 +32,7 @@
 
 import { handleCors, json } from "../_shared/cors.ts";
 import { admin } from "../_shared/supabaseAdmin.ts";
+import { readWithRetry } from "../_shared/pgRetry.ts";
 
 const RC_RECEIPTS = "https://api.revenuecat.com/v1/receipts";
 
@@ -63,25 +64,8 @@ const MAX_ATTEMPTS = 10;
  *  nothing. A dashboard sweep can afford to start five seconds late. */
 const HERD_SETTLE_MS = 5_000;
 
-/** A read that still fails after these attempts is a real fault, not the
- *  burst above, and is allowed to surface as a 500. */
-const READ_ATTEMPTS = 3;
-
-/** Re-run a PostgREST read on failure with a short backoff. The residual 504
- *  rate outside the burst is ~0.1%, so three attempts make a false page
- *  vanishingly rare without hiding a database that is genuinely down.
- *  Generic over the builder's own result so `data` keeps its inferred row
- *  type; a `{ data, error }` shape is all it needs. */
-async function readWithRetry<R extends { error: unknown }>(
-  run: () => PromiseLike<R>,
-): Promise<R> {
-  let last = await run();
-  for (let attempt = 2; attempt <= READ_ATTEMPTS && last.error; attempt++) {
-    await new Promise((r) => setTimeout(r, 1_000 * (attempt - 1)));
-    last = await run();
-  }
-  return last;
-}
+// Each read is also retried (`_shared/pgRetry.ts`); a read that still fails
+// after that is a real fault, not the burst above, and surfaces as a 500.
 
 function cronOk(req: Request): boolean {
   const secret = Deno.env.get("CRON_SECRET");
