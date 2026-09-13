@@ -226,15 +226,26 @@ enum PrefKey {
     /// eSIM order ids whose install flow has been opened at least once.
     static let esimInstallsStarted = "esim.installsStarted"
 
-    /// Set once `DeliveryInfoSheet` has been shown by itself, so it never
-    /// interrupts a second order. The ⓘ button on the Temp tab ignores it —
-    /// that path is the user asking, and a user who asks twice gets it twice.
+    /// Set when the user has ACKNOWLEDGED `DeliveryInfoSheet` — scrolled to
+    /// the end, waited out the dwell, and tapped "I understand". Until then
+    /// the Temp tab raises it on every appearance, for every user, whether or
+    /// not they have ordered before (owner, 2026-09-13).
+    ///
+    /// 🔴 **Versioned, and the suffix is the point.** Bump it to `…V2` when
+    /// the screen's ADVICE materially changes — that is the only way an
+    /// existing user is ever shown it again, and the advice here is branched
+    /// on delivery bands that move. Never reuse a version for new copy.
+    ///
+    /// ⚠️ It replaced `temp.deliveryInfoSeen`, which gated the older
+    /// show-before-first-order design. That key is dead and deliberately NOT
+    /// read: anyone carrying it saw a screen with no acknowledgement gate, so
+    /// honouring it would exempt exactly the users this change exists for.
     ///
     /// Device-local on purpose: it gates an interstitial, not an entitlement,
-    /// so the cost of a reinstall showing it again is one extra tap, while
-    /// putting it on the server would add a column and a round-trip to the
-    /// boot path for a screen that must render from local state.
-    static let deliveryInfoSeen = "temp.deliveryInfoSeen"
+    /// so a reinstall showing it again costs one read, while putting it on the
+    /// server would add a column and a round-trip to a screen that must render
+    /// from local state on its first frame.
+    static let deliveryInfoAcked = "temp.deliveryInfoAckedV1"
 
     /// The given name Apple handed us at sign-in, parked here until a cold
     /// launch can PATCH it onto `profiles`. Apple sends the name ONLY on the

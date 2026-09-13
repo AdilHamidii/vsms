@@ -55,15 +55,34 @@ struct DeliveryInfoSheet: View {
     @Environment(Session.self) private var session
     @Environment(\.dismiss) private var dismiss
 
-    /// "auto" when it opened itself before a first order, "button" from ⓘ.
-    /// Read the two apart before judging the screen: the automatic showing is
-    /// the one that has to change behaviour.
+    /// "auto" when the Temp tab opened it, "button" from ⓘ. Read the two apart
+    /// before judging the screen: the automatic showing is the one that has to
+    /// change behaviour.
     let source: String
 
-    /// Called only when the sheet opened itself in front of an order the user
-    /// had already asked for, so the tap is not thrown away. nil from the ⓘ
-    /// button, where there is no pending order to continue into.
-    var onContinue: (() -> Void)?
+    /// 🔴 The acknowledgement GATE, and it is on only for the automatic
+    /// showing (owner, 2026-09-13). The CTA stays grey and inert until the
+    /// reader has both reached the bottom AND spent `Self.dwellSeconds` on the
+    /// screen, which is the owner's explicit design: *"that'd make users
+    /// understand its important to read"*. From the ⓘ it is off — that path is
+    /// the user asking, and making someone re-earn a screen they chose to open
+    /// is punishment, not instruction.
+    var mustAcknowledge: Bool = false
+
+    /// How long the gate holds even for a reader who flicks straight to the
+    /// bottom. Short enough not to feel punitive, long enough that the refund
+    /// sentence is read rather than scrolled past.
+    private static let dwellSeconds = 5
+
+    @State private var reachedEnd = false
+    @State private var secondsLeft = DeliveryInfoSheet.dwellSeconds
+    @State private var shownAt = Date()
+
+    /// Both conditions, or neither matters: a timer alone rewards waiting
+    /// without reading, and a scroll alone is satisfied by one flick.
+    private var canContinue: Bool {
+        !mustAcknowledge || (reachedEnd && secondsLeft == 0)
+    }
 
     var body: some View {
         ScrollView {
@@ -72,7 +91,27 @@ struct DeliveryInfoSheet: View {
                 refundCard
                 if state.showsDeliveryMetrics { bands }
                 tries
+
+                // The last section doubles as the end sentinel.
+                //
+                // 🔴 `onAppear` DOES NOT WORK for this and shipping it would
+                // have made the gate decorative. A `VStack` inside a
+                // `ScrollView` realises every child eagerly, so an `onAppear`
+                // fires at presentation while the view is still far below the
+                // fold — the CTA was green on the first frame. Caught in the
+                // simulator, not by reading the code.
+                //
+                // `onScrollVisibilityChange` asks the scroll view whether the
+                // view is actually on screen, which is the real question.
+                // iOS 18+, and the project floor is 18.0. It hangs off the
+                // support CARD rather than a hairline spacer for two reasons:
+                // a 1pt view's "visibility fraction" is a coin-flip against
+                // any threshold, and reaching the last section IS reaching the
+                // end as far as a reader is concerned.
                 support
+                    .onScrollVisibilityChange(threshold: 0.2) { visible in
+                        if visible { reachedEnd = true }
+                    }
             }
             .padding(.horizontal, 20)
             .padding(.top, 26)
@@ -80,8 +119,19 @@ struct DeliveryInfoSheet: View {
         }
         .background(theme.bg)
         .safeAreaInset(edge: .bottom) { cta }
+        // No swipe-away while the gate is on, or the gate is decorative.
+        .interactiveDismissDisabled(mustAcknowledge && !canContinue)
         .onAppear {
+            shownAt = Date()
             Analytics.shared.track("delivery_info_shown", ["source": .string(source)])
+        }
+        .task {
+            guard mustAcknowledge else { secondsLeft = 0; return }
+            while secondsLeft > 0 {
+                try? await Task.sleep(for: .seconds(1))
+                if Task.isCancelled { return }
+                secondsLeft -= 1
+            }
         }
     }
 
@@ -220,27 +270,62 @@ struct DeliveryInfoSheet: View {
         }
     }
 
+    /// Grey and inert until the gate opens, then the app's normal green. The
+    /// two states are `PrimaryButton`'s own `disabled` rendering (chip fill +
+    /// `text3`), so this screen invents no button of its own.
     private var cta: some View {
-        VStack(spacing: 0) {
+        VStack(spacing: 8) {
+            // Says WHY it is grey. A disabled button with no explanation reads
+            // as a bug, and a reader who thinks the screen is broken learns
+            // nothing from it.
+            if mustAcknowledge && !canContinue {
+                Text(reachedEnd
+                     ? "Just a moment…"
+                     : "Scroll down to continue")
+                    .font(RFont.text(13))
+                    .foregroundStyle(theme.text3)
+                    .transition(.opacity)
+            }
+
             PrimaryButton(
-                label: onContinue == nil ? "Got it" : "Get my number",
-                icon: onContinue == nil ? RIcon.check : RIcon.bolt,
+                label: gateLabel,
+                icon: canContinue ? RIcon.check : nil,
+                disabled: !canContinue,
                 action: {
                     RHaptic.select()
-                    let go = onContinue
-                    dismiss()
-                    // The order the user already asked for. Deferred so the
-                    // sheet is gone before the flow cover is presented —
-                    // presenting one over the other's dismissal drops it.
-                    if let go {
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35, execute: go)
+                    if mustAcknowledge {
+                        // 🔴 Written HERE, on the acknowledgement, and not
+                        // when the sheet was presented. Writing it on
+                        // presentation would let a force-quit mid-read skip
+                        // the screen forever — the one outcome the gate is
+                        // for.
+                        UserDefaults.standard.set(true, forKey: PrefKey.deliveryInfoAcked)
+                        Analytics.shared.track("delivery_info_acknowledged", [
+                            "seconds": .int(Int(Date().timeIntervalSince(shownAt))),
+                        ])
                     }
+                    dismiss()
                 }
             )
+            .animation(RMotion.content, value: canContinue)
             .padding(.horizontal, 20)
-            .padding(.top, 10)
-            .padding(.bottom, 8)
         }
+        .padding(.top, 10)
+        .padding(.bottom, 8)
         .background(theme.bg)
+    }
+
+    /// ⚠️ Built with `String(localized:)` and interpolation, NOT a bare
+    /// literal: `PrimaryButton` takes a `String` and resolves it against the
+    /// catalog at runtime, so an interpolated value has to arrive already
+    /// translated or it renders the format string.
+    private var gateLabel: String {
+        guard mustAcknowledge, !canContinue else {
+            return String(localized: "I understand")
+        }
+        if secondsLeft > 0 {
+            return String(localized: "I understand (\(secondsLeft))")
+        }
+        return String(localized: "I understand")
     }
 }

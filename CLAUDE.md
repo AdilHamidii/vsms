@@ -1342,13 +1342,23 @@ service's own record.
 
 ### The delivery explainer (2.14, owner design 2026-09-13)
 
-`DeliveryInfoSheet` opens ONCE in front of a user's first temp number, and
-from an always-available ⓘ in the Temp tab's header. It targets the largest
-measured leak in the app: of 303 users who ordered at all in the 60 days to
-2026-09-13, **166 placed exactly one order**, three quarters of them leaving
-without a code. Success by persistence runs 25% / 34% / 52% / 64% / 83% across
-the 1 / 2–3 / 4–6 / 7–12 / 13+ bands, so the people who behave the way the
-product works do fine and the majority quit at the first failure.
+`DeliveryInfoSheet` opens on EVERY appearance of the Temp tab in SMS mode
+until the user acknowledges it — *"wether they ordered before or not"* (owner,
+2026-09-13) — and from an always-available ⓘ in that tab's header. It targets
+the largest measured leak in the app: of 303 users who ordered at all in the
+60 days to 2026-09-13, **166 placed exactly one order**, three quarters of them
+leaving without a code. Success by persistence runs 25% / 34% / 52% / 64% /
+83% across the 1 / 2–3 / 4–6 / 7–12 / 13+ bands, so the people who behave the
+way the product works do fine and the majority quit at the first failure.
+
+🔴 **The automatic showing is GATED: the CTA is grey and inert until the
+reader has BOTH reached the last section AND spent 5 seconds on screen**
+(`DeliveryInfoSheet.dwellSeconds`), and the sheet cannot be swiped away while
+it is. Owner's design, and the reasoning is that the friction is the message —
+a screen you must work through reads as important. Both conditions are needed:
+a timer alone rewards waiting without reading, a scroll alone is satisfied by
+one flick. **The ⓘ path is deliberately UNGATED** — that user chose to open
+it, and making them re-earn it is punishment, not instruction.
 
 🔴 **Three copy rules, and breaking any of them makes the screen worse than
 nothing:**
@@ -1375,14 +1385,33 @@ nothing:**
 none.
 
 **Mechanics that reading the code does not give you:**
-- **`PrefKey.deliveryInfoSeen` gates the AUTOMATIC showing only.** The ⓘ
-  ignores it: most people meet this screen after a failure, by which time a
-  once-only interstitial has been forgotten.
-- 🔴 **The gate is that flag and NOT `isFirstRun`.** They differ for anyone who
-  ordered on a previous install or before this build, and gating on order
-  history would re-interrupt an experienced user who had simply never seen it.
-- **When it interrupts an order the CTA continues into that order**, so the tap
-  is not thrown away (the label changes to "Get my number").
+- 🔴 **`onAppear` CANNOT detect "scrolled to the end", and using it made the
+  gate decorative.** A `VStack` inside a `ScrollView` realises every child
+  eagerly, so a bottom sentinel's `onAppear` fires at presentation while it is
+  far below the fold — the CTA rendered green on the first frame. The working
+  mechanism is **`onScrollVisibilityChange`** (iOS 18+, the project floor),
+  hung off the support CARD rather than a hairline spacer: a 1pt view's
+  visibility fraction is a coin-flip against any threshold, and reaching the
+  last section is what "reaching the end" means to a reader. **Caught in the
+  simulator, never by reading the code — which is the argument for walking any
+  gate you add.**
+- 🔴 **`PrefKey.deliveryInfoAckedV1` is written on the ACKNOWLEDGEMENT, not on
+  presentation.** Writing it when the sheet appears would let a force-quit
+  mid-read skip the screen forever, which is the one outcome the gate exists
+  to prevent.
+- 🔴 **The key is VERSIONED and the suffix is the point.** Bump to `…V2` when
+  the ADVICE materially changes; that is the only way an existing user sees it
+  again, and this advice is branched on delivery bands that move. The old
+  `temp.deliveryInfoSeen` is dead and deliberately NOT read — anyone carrying
+  it saw an ungated screen, so honouring it would exempt exactly the users
+  this exists for.
+- **It does not raise over a live `state.flow`.** A checkout, waiting screen or
+  code is an order in progress; a sheet there interrupts one rather than
+  informing one. It re-checks when the flow ends and when e-mail mode is
+  switched off, because the tab is not re-created in either case.
+- **`PrefKey.deliveryInfoAcked` gates the AUTOMATIC showing only.** The ⓘ
+  ignores it: most people meet this screen after a failure, by which time the
+  copy they acknowledged on day one has been forgotten.
 - ⚠️ **The ⓘ costs ~36pt in a header row that was already full**, and both
   obvious fixes break something: without help the eyebrow truncates mid-word,
   and with `layoutPriority` on the eyebrow the CREDIT PILL clips instead. The
@@ -1395,10 +1424,14 @@ none.
   adding the catalog entry yourself** — this is how six translations once
   shipped and reached no button.
 
-Events: `delivery_info_shown` (`source` = `auto` | `button`) and
+Events: `delivery_info_shown` (`source` = `auto` | `button`),
+`delivery_info_acknowledged` (`seconds` actually spent) and
 `delivery_info_support_tapped`. **Read the `auto` arm against the one-try quit
 rate**, which is the thing it exists to move; the `button` arm answers a
-different question. Re-derive the baseline before judging it:
+different question. ⚠️ **Watch `shown` minus `acknowledged` on the auto arm** —
+a large gap means people are abandoning the Temp tab at the wall rather than
+reading it, which is the cost side of this design and the number that would
+justify shortening the dwell. Re-derive the baseline before judging it:
 ```sql
 select case when n=1 then '1 try' when n<=3 then '2-3' when n<=6 then '4-6'
             when n<=12 then '7-12' else '13+' end band,

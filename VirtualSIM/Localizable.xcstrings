@@ -16337,6 +16337,90 @@
         }
       }
     },
+    "I understand": {
+      "comment": "CTA that closes the delivery explainer. Grey until the reader reaches the end and the dwell elapses; green after. Runtime lookup via PrimaryButton — not extractable.",
+      "extractionState": "extracted (manual)",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ich habe verstanden"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Entiendo"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "J'ai compris"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ho capito"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "理解しました"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Entendi"
+          }
+        }
+      }
+    },
+    "I understand (%lld)": {
+      "comment": "Same CTA while the dwell timer runs; %lld is the seconds remaining. Keep exactly one %lld.",
+      "extractionState": "extracted (manual)",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ich habe verstanden (%lld)"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Entiendo (%lld)"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "J'ai compris (%lld)"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ho capito (%lld)"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "理解しました（%lld）"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Entendi (%lld)"
+          }
+        }
+      }
+    },
     "IF NO CODE ARRIVES": {
       "extractionState": "stale",
       "localizations": {
@@ -17469,6 +17553,48 @@
           "stringUnit": {
             "state": "translated",
             "value": "Não é o nosso próprio histórico de entrega. Onde já pedimos por conta própria, a linha indica isso separadamente."
+          }
+        }
+      }
+    },
+    "Just a moment…": {
+      "comment": "Shown once the reader has reached the end but the dwell timer is still running.",
+      "extractionState": "extracted (manual)",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Einen Moment noch …"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Un momento…"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Un instant…"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Un attimo…"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "少々お待ちください…"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Só um momento…"
           }
         }
       }
@@ -28171,6 +28297,48 @@
           "stringUnit": {
             "state": "translated",
             "value": "Salvar e entrar"
+          }
+        }
+      }
+    },
+    "Scroll down to continue": {
+      "comment": "Says WHY the CTA is grey — the reader has not reached the end yet. A disabled button with no explanation reads as a bug.",
+      "extractionState": "extracted (manual)",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nach unten scrollen, um fortzufahren"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Desplázate hacia abajo para continuar"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Faites défiler pour continuer"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Scorri verso il basso per continuare"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "下までスクロールして続行"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Role para baixo para continuar"
           }
         }
       }

@@ -59,11 +59,11 @@ struct TempScreen: View {
     /// this keeps TempScreen on the same pattern as `EmailCodeScreen`.
     @State private var showMailPaywall = false
 
-    /// The delivery explainer. `deliveryInfoContinue` is non-nil only when the
-    /// sheet opened itself in front of an order the user had already asked
-    /// for, so that tap is carried through rather than thrown away.
+    /// The delivery explainer. `deliveryInfoGated` is true only for the
+    /// automatic showing, which holds its CTA grey until the reader reaches
+    /// the end and the dwell elapses; the ⓘ opens it ungated.
     @State private var showDeliveryInfo = false
-    @State private var deliveryInfoContinue: (() -> Void)?
+    @State private var deliveryInfoGated = false
 
     /// `-screenshot deliveryInfo` opens the sheet on appear. DEBUG-only and
     /// inert in a release build; see `ScreenshotMode.Screen.deliveryInfo`.
@@ -149,10 +149,18 @@ struct TempScreen: View {
         .task {
             withAnimation(RMotion.content) { appeared = true }
             if screenshotWantsDeliveryInfo {
-                deliveryInfoContinue = nil
+                deliveryInfoGated = true
                 showDeliveryInfo = true
+            } else {
+                raiseDeliveryInfoIfNeeded()
             }
         }
+        // The user can arrive on this tab in e-mail mode, or with a flow on
+        // top, and switch out of either without the tab being re-created — so
+        // `.task` alone would miss them. Both re-checks are cheap (one
+        // UserDefaults read) and idempotent.
+        .onChange(of: state.emailMode) { _, _ in raiseDeliveryInfoIfNeeded() }
+        .onChange(of: state.flow == nil) { _, _ in raiseDeliveryInfoIfNeeded() }
         // The segmented control is a shared component with no haptic of its
         // own; switching product line is the biggest state change on the
         // screen and should be felt.
@@ -172,8 +180,8 @@ struct TempScreen: View {
         // Same explicit injection as the paywall above, same reason.
         .sheet(isPresented: $showDeliveryInfo) {
             DeliveryInfoSheet(
-                source: deliveryInfoContinue == nil ? "button" : "auto",
-                onContinue: deliveryInfoContinue
+                source: deliveryInfoGated ? "auto" : "button",
+                mustAcknowledge: deliveryInfoGated
             )
             .environment(\.theme, theme)
             .environment(state)
@@ -251,15 +259,17 @@ struct TempScreen: View {
     // to `String`, which selects `Text.init<S: StringProtocol>` — so the copy
     // silently stops being localized and never reaches the catalog at all.
     @ViewBuilder
-    /// Always available, and deliberately NOT gated on `deliveryInfoSeen`:
-    /// the once-only rule is about the screen interrupting an order, never
-    /// about the user being allowed to read it again. Most people meet this
-    /// after a failure, which is exactly when the once-only copy has already
-    /// been forgotten.
+    /// Always available, and deliberately UNGATED — no dwell, no scroll
+    /// requirement, dismissible. The acknowledgement gate is about the
+    /// automatic showing; a user who chooses to open the screen has already
+    /// done the thing the gate exists to cause, and making them re-earn it
+    /// would be punishment rather than instruction. Most people come here
+    /// after a failure, which is exactly when the copy they acknowledged on
+    /// day one has been forgotten.
     private var deliveryInfoButton: some View {
         Button {
             RHaptic.select()
-            deliveryInfoContinue = nil
+            deliveryInfoGated = false
             showDeliveryInfo = true
         } label: {
             Image(systemName: RIcon.info)
@@ -349,22 +359,25 @@ struct TempScreen: View {
     /// A user who has never placed an order.
     private var isFirstRun: Bool { state.orders.isEmpty }
 
-    /// The order tap. Shows the delivery explainer ONCE, in front of the first
-    /// order this device ever places, and carries the tap through afterwards
-    /// so the interstitial costs no intent.
+    /// Raise the delivery explainer the first time this user opens the Temp
+    /// tab in SMS mode, gated, and keep raising it until they acknowledge
+    /// (owner, 2026-09-13: everyone sees it, "wether they ordered before or
+    /// not").
     ///
-    /// 🔴 **The gate is the SEEN flag, not `isFirstRun`.** Those differ for
-    /// anyone who ordered on a previous install or before this build shipped,
-    /// and gating on order history would re-interrupt an experienced user who
-    /// had simply never been shown it — while gating on the flag alone shows
-    /// it exactly once to everyone, which is what was asked for.
-    private func startOrder() {
-        if UserDefaults.standard.bool(forKey: PrefKey.deliveryInfoSeen) {
-            onStart()
-            return
-        }
-        UserDefaults.standard.set(true, forKey: PrefKey.deliveryInfoSeen)
-        deliveryInfoContinue = onStart
+    /// 🔴 **The flag is written on ACKNOWLEDGEMENT, not on presentation.**
+    /// Writing it here would let a user who force-quits mid-read skip the
+    /// screen forever, which is the one outcome the gate exists to prevent.
+    /// `DeliveryInfoSheet` writes it from its CTA instead.
+    ///
+    /// ⚠️ **Not raised over a live flow.** `state.flow` non-nil means a
+    /// checkout, a waiting screen or a code is on top of this tab; a sheet
+    /// arriving there interrupts an order in progress rather than informing
+    /// one that has not started. The tab is still here when the flow ends.
+    private func raiseDeliveryInfoIfNeeded() {
+        guard !state.emailMode, state.flow == nil,
+              !UserDefaults.standard.bool(forKey: PrefKey.deliveryInfoAcked)
+        else { return }
+        deliveryInfoGated = true
         showDeliveryInfo = true
     }
 
@@ -810,7 +823,7 @@ struct TempScreen: View {
                     label: "Get number",
                     sub: "\(routeCost) cr",
                     icon: RIcon.bolt,
-                    action: { RHaptic.select(); startOrder() }
+                    action: { RHaptic.select(); onStart() }
                 )
             }
         } else {
