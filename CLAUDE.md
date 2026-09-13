@@ -1340,6 +1340,75 @@ service's own record.
 
 ## The temp-SMS product
 
+### The delivery explainer (2.14, owner design 2026-09-13)
+
+`DeliveryInfoSheet` opens ONCE in front of a user's first temp number, and
+from an always-available ⓘ in the Temp tab's header. It targets the largest
+measured leak in the app: of 303 users who ordered at all in the 60 days to
+2026-09-13, **166 placed exactly one order**, three quarters of them leaving
+without a code. Success by persistence runs 25% / 34% / 52% / 64% / 83% across
+the 1 / 2–3 / 4–6 / 7–12 / 13+ bands, so the people who behave the way the
+product works do fine and the majority quit at the first failure.
+
+🔴 **Three copy rules, and breaking any of them makes the screen worse than
+nothing:**
+
+1. **It leads with the REFUND, not with a try count.** A failed attempt costs
+   the user nothing (all 311 non-delivering orders in 30 days carry a refund
+   row) and costs us nothing (`five.cancel` reclaims the wholesale on both the
+   cancel and the expiry path). That fact removes the actual reason people
+   stop; a recommended number does not.
+2. **The advice BRANCHES BY BAND.** High 47% per try, Medium 40%, Low 17%
+   (n = 295, see "The pool rate is the tie-break"). "Try again" is correct on
+   High and WRONG on Low, where the copy says *pick another country* — about
+   eight attempts to reach where High gets in three. Never flatten this into
+   one instruction.
+3. **The count is DESCRIPTIVE, past tense, about people who already
+   succeeded** ("nine in ten people who get a code have it within three
+   tries" — 89% of the 82 who ever received one). It is NOT a forecast: per-try
+   probability tops out at 47%, and the app's only organic review is already
+   someone angry about a promise that did not hold.
+
+⚠️ No supplier is named, the figures are labelled network-wide and explicitly
+*not our own delivery record*, and the band legend hides under
+`delivery_metrics_hidden` — a legend for an invisible control is worse than
+none.
+
+**Mechanics that reading the code does not give you:**
+- **`PrefKey.deliveryInfoSeen` gates the AUTOMATIC showing only.** The ⓘ
+  ignores it: most people meet this screen after a failure, by which time a
+  once-only interstitial has been forgotten.
+- 🔴 **The gate is that flag and NOT `isFirstRun`.** They differ for anyone who
+  ordered on a previous install or before this build, and gating on order
+  history would re-interrupt an experienced user who had simply never seen it.
+- **When it interrupts an order the CTA continues into that order**, so the tap
+  is not thrown away (the label changes to "Get my number").
+- ⚠️ **The ⓘ costs ~36pt in a header row that was already full**, and both
+  obvious fixes break something: without help the eyebrow truncates mid-word,
+  and with `layoutPriority` on the eyebrow the CREDIT PILL clips instead. The
+  fix is the eyebrow's **three**-line limit. Do not "tidy" it back to two.
+- **`-screenshot deliveryInfo`** exists because the sheet is otherwise
+  reachable only by a tap and tap automation is unavailable on this machine.
+- Six of its 17 strings are RUNTIME lookups through `SectionHeader` /
+  `PrimaryButton` that Xcode's extractor cannot see, and were written into
+  `Localizable.xcstrings` by hand. **Adding a string to either component means
+  adding the catalog entry yourself** — this is how six translations once
+  shipped and reached no button.
+
+Events: `delivery_info_shown` (`source` = `auto` | `button`) and
+`delivery_info_support_tapped`. **Read the `auto` arm against the one-try quit
+rate**, which is the thing it exists to move; the `button` arm answers a
+different question. Re-derive the baseline before judging it:
+```sql
+select case when n=1 then '1 try' when n<=3 then '2-3' when n<=6 then '4-6'
+            when n<=12 then '7-12' else '13+' end band,
+       count(*) users, count(*) filter (where codes>0) got_a_code
+from (select user_id, count(*) n, count(*) filter (where otp is not null) codes
+      from orders where smspva_number is not null
+        and created_at > now()-interval '60 days' group by 1) u
+group by 1 order by min(n);
+```
+
 ### The minimum hold (90s) and the late-code rescue
 
 ⚠️ **The hold is PER-PROVIDER — `MIN_HOLD_BY_PROVIDER` in `cancel-order`, all at
@@ -2247,7 +2316,7 @@ Each has been wrong within a day of being written at least once.
   that is a decision error, not a typo: "still in review" is the argument for
   cutting another release.
 - **Backend**: 50 edge function dirs besides `_shared`, 238 migration files, 27
-  files in `_shared`, 138 Swift sources (re-counted 2026-09-13), 24 active
+  files in `_shared`, 139 Swift sources (re-counted 2026-09-13), 24 active
   cron jobs.
 - **Catalog**: 9,364 active routes (5sim 8,074 / HeroSMS 1,290), 468 services,
   0 active eSIM plans (line parked). `active_sms_provider()` = `5sim`.
