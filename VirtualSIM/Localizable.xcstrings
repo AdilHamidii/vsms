@@ -17599,6 +17599,48 @@
         }
       }
     },
+    "Just as worth trying. These come from a different network that doesn't publish a figure.": {
+      "comment": "Advice for the no-figure band. Claim is 'not distinguishable' (33.3% vs 35.6% per try), not 'proven equal' — the sample is 18 orders. No supplier may be named.",
+      "extractionState": "extracted (manual)",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Genauso einen Versuch wert. Sie stammen aus einem anderen Netz, das keine Werte veröffentlicht."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Igual de recomendables. Vienen de otra red que no publica cifras."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tout aussi valables. Ils viennent d'un autre réseau qui ne publie pas de chiffres."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vale la pena allo stesso modo. Arrivano da un'altra rete che non pubblica dati."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "同じように試す価値があります。数値を公開していない別のネットワークの番号です。"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Valem igualmente a tentativa. Vêm de outra rede que não publica números."
+          }
+        }
+      }
+    },
     "Just need a one-off verification code?": {
       "extractionState": "stale",
       "localizations": {
@@ -21353,6 +21395,48 @@
           "stringUnit": {
             "state": "translated",
             "value": "Nenhum pedido concluído"
+          }
+        }
+      }
+    },
+    "No label": {
+      "comment": "Fourth band in the delivery legend: the route publishes no figure, so no meter renders at all. Neutral grey, never red.",
+      "extractionState": "extracted (manual)",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Keine Angabe"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sin etiqueta"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aucune indication"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nessuna etichetta"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "表示なし"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sem rótulo"
           }
         }
       }

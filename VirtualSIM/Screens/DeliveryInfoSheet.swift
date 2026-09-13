@@ -192,13 +192,22 @@ struct DeliveryInfoSheet: View {
             bandRow(color: theme.fail, word: "Low",
                     advice: "Pick another country instead. Retrying here rarely pays off.")
 
-            // The attribution is load-bearing: this data is network-wide and
-            // is NOT our own record. Never drop it to shorten the screen.
-            Text("These are network-wide figures for the pool your number comes from, not our own delivery record.")
-                .font(RFont.text(12))
-                .foregroundStyle(theme.text3)
-                .fixedSize(horizontal: false, vertical: true)
-                .padding(.top, 2)
+            // 🔴 The FOURTH row, and it covers the MAJORITY of the catalogue:
+            // 6,443 of 9,336 active routes publish no figure at all (2026-09-13
+            // — every route on the second network, plus 64% of the first's).
+            // Without it, the commonest thing a user sees is the one thing the
+            // legend does not explain, which reads as "unrated means bad".
+            //
+            // ⚠️ The claim is "not distinguishable", not "proven equal", and
+            // the sample is why. Settled orders since 2026-08-05, app-picked
+            // excluded: routes WITH a figure delivered 35.6% per try (n = 295);
+            // routes with none delivered 33.3% on the other network (n = 18)
+            // and 28.6% overall (n = 28). Twenty-eight orders cannot separate
+            // those. If that gap widens on a real sample, soften this row —
+            // it is the only row making a positive claim about inventory we
+            // have no vendor figure for.
+            bandRow(color: theme.text3, word: "No label",
+                    advice: "Just as worth trying. These come from a different network that doesn't publish a figure.")
         }
     }
 
@@ -230,9 +239,15 @@ struct DeliveryInfoSheet: View {
                 VStack(alignment: .leading, spacing: 10) {
                     // Descriptive, past tense, about people who SUCCEEDED.
                     // Not a forecast — see the header.
+                    //
+                    // Green at the owner's request (2026-09-13), to pull the
+                    // eye to the one sentence that changes behaviour. It is
+                    // the semantic success colour, which is consistent here:
+                    // this line and the refund card are the two pieces of good
+                    // news on the screen, and they now read as a pair.
                     Text("Nine in ten people who get a code have it within three tries.")
                         .font(RFont.text(15, weight: .semibold))
-                        .foregroundStyle(theme.text)
+                        .foregroundStyle(theme.live)
                         .fixedSize(horizontal: false, vertical: true)
                     Text("Each try gets you a different number, so a fresh attempt is a fresh chance. If three or four tries on the same country come up empty, switch country rather than keep going.")
                         .font(RFont.text(14))

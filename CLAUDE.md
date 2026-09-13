@@ -1296,11 +1296,20 @@ denominator should not wear two significant figures. Sorting, stamping and ops
 surfaces stay numeric.
 
 **Never name or allude to a supplier in user-facing copy** (owner decision). The
-app must not advertise that it resells someone else's inventory. But this data
-still has to be visibly **not our own measurement**, so the wording carries
-"network-wide" plus an explicit "not our own delivery record". Dropping the
-attribution entirely to solve the naming problem would turn a third party's
-aggregate into an implied claim of our own. ("Carrier" is fine and is not the
+app must not advertise that it resells someone else's inventory. The row itself
+still carries the word **"network"** beside the band, which is what keeps the
+figure from reading as a measurement of our own fulfilment.
+
+⚠️ **The longer disclaimer — "not our own delivery record" — is GONE from
+`DeliveryInfoSheet` (owner, 2026-09-13), and this paragraph used to forbid
+that.** It was written when the published figure had never been checked against
+our outcomes and ran ~2× them, so restating it unattributed really would have
+been borrowing a claim. That changed the same day: the band is now MEASURED to
+predict our delivery (47% / 40% / 17% per try, n = 295 — see "The pool rate is
+the tie-break"), and the sheet shows a band WORD and advice rather than a
+figure. **The naming ban is untouched and absolute.** Do not read this as
+licence to drop attribution wherever a raw third-party number is printed.
+("Carrier" is fine and is not the
 same thing — the Real SIM tier's "named mobile carrier" means Verizon/T-Mobile,
 which is the product, not our wholesaler.)
 
@@ -1379,10 +1388,22 @@ nothing:**
    probability tops out at 47%, and the app's only organic review is already
    someone angry about a promise that did not hold.
 
-⚠️ No supplier is named, the figures are labelled network-wide and explicitly
-*not our own delivery record*, and the band legend hides under
-`delivery_metrics_hidden` — a legend for an invisible control is worse than
-none.
+⚠️ No supplier is named — that ban is absolute — and the band legend hides
+under `delivery_metrics_hidden`, since a legend for an invisible control is
+worse than none. The "not our own delivery record" disclaimer was REMOVED from
+this sheet on 2026-09-13; see the note under "Never present seed data as
+measured fact" for why that is now defensible and where it still is not.
+
+🔴 **There are FOUR bands, and the fourth covers most of the catalogue.**
+6,443 of 9,336 active routes publish no figure at all (2026-09-13: every route
+on the second network, plus 64% of the first's), so a route with NO delivery
+label is the commonest thing a user sees. The legend says those are just as
+worth trying, from a network that does not publish figures. ⚠️ That claim is
+"not distinguishable", not "proven equal": rated routes deliver 35.6% per try
+(n = 295), unrated ones 33.3% on the other network (n = 18) and 28.6% overall
+(n = 28). Twenty-eight orders cannot separate those. **It is the only row
+making a positive claim about inventory we hold no vendor figure for — soften
+it if a real sample opens that gap.**
 
 **Mechanics that reading the code does not give you:**
 - 🔴 **`onAppear` CANNOT detect "scrolled to the end", and using it made the
