@@ -960,7 +960,10 @@ extension ContentView {
         // ⚠️ NOT the Home tab. `.home` is the temp-SMS store's frame and its
         // raw value is a FILENAME that `scripts/screenshots/make-set.py`
         // filters on, so it keeps the name and keeps pointing at `.temp`.
-        case .home:
+        // Same state as `.home` — `TempScreen` raises the sheet itself when it
+        // sees this case, because the sheet is `@State` on that screen and
+        // cannot be presented from out here.
+        case .home, .deliveryInfo:
             state.tab = .temp
             // Pin a pair that PUBLISHES a network rate, so the frame shows the
             // delivery figure the whole picker is built around. The default

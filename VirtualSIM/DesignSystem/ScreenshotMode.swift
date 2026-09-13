@@ -59,6 +59,12 @@ enum ScreenshotMode {
         case mailPaywallYearly
         case lineInbox       // an owned number, with conversations
         case home            // the temp-SMS store
+        // The delivery explainer, opened over the temp-SMS store. It exists
+        // because `DeliveryInfoSheet` is otherwise reachable only by a TAP,
+        // and tap automation is not available on this machine — so without a
+        // frame of its own the screen could be built-and-shipped without
+        // anyone ever having SEEN it. Same reason the paywall cases exist.
+        case deliveryInfo
         case homeRouter      // the Home tab, no line: three need-cards
         case homeLine        // the Home tab for a subscriber: line card on top
         case waiting         // waiting for a code

@@ -59,6 +59,22 @@ struct TempScreen: View {
     /// this keeps TempScreen on the same pattern as `EmailCodeScreen`.
     @State private var showMailPaywall = false
 
+    /// The delivery explainer. `deliveryInfoContinue` is non-nil only when the
+    /// sheet opened itself in front of an order the user had already asked
+    /// for, so that tap is carried through rather than thrown away.
+    @State private var showDeliveryInfo = false
+    @State private var deliveryInfoContinue: (() -> Void)?
+
+    /// `-screenshot deliveryInfo` opens the sheet on appear. DEBUG-only and
+    /// inert in a release build; see `ScreenshotMode.Screen.deliveryInfo`.
+    private var screenshotWantsDeliveryInfo: Bool {
+        #if DEBUG
+        return ScreenshotMode.screen == .deliveryInfo
+        #else
+        return false
+        #endif
+    }
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
@@ -130,7 +146,13 @@ struct TempScreen: View {
             .padding(.bottom, 140)
         }
         .scrollIndicators(.hidden)
-        .task { withAnimation(RMotion.content) { appeared = true } }
+        .task {
+            withAnimation(RMotion.content) { appeared = true }
+            if screenshotWantsDeliveryInfo {
+                deliveryInfoContinue = nil
+                showDeliveryInfo = true
+            }
+        }
         // The segmented control is a shared component with no haptic of its
         // own; switching product line is the biggest state change on the
         // screen and should be felt.
@@ -146,6 +168,19 @@ struct TempScreen: View {
                 .presentationDetents([.large])
                 .presentationDragIndicator(.visible)
                 .presentationBackground(theme.bg)
+        }
+        // Same explicit injection as the paywall above, same reason.
+        .sheet(isPresented: $showDeliveryInfo) {
+            DeliveryInfoSheet(
+                source: deliveryInfoContinue == nil ? "button" : "auto",
+                onContinue: deliveryInfoContinue
+            )
+            .environment(\.theme, theme)
+            .environment(state)
+            .environment(session)
+            .presentationDetents([.large])
+            .presentationDragIndicator(.visible)
+            .presentationBackground(theme.bg)
         }
     }
 
@@ -191,9 +226,20 @@ struct TempScreen: View {
     /// entire pitch.
     private var header: some View {
         VStack(alignment: .leading, spacing: 8) {
-            HStack(alignment: .center, spacing: 12) {
+            // ⚠️ The ⓘ takes ~36pt out of a row that was already full, and the
+            // two obvious fixes both break something: with no help the eyebrow
+            // truncates to "…WITHOUT YOUR REAL NUMB…", and with
+            // `layoutPriority` on the eyebrow the CREDIT PILL is the thing
+            // that gets clipped instead. The fix is to let the eyebrow take a
+            // third line (see `eyebrow`), which shrinks the width it asks for
+            // and leaves both neighbours intact.
+            HStack(alignment: .center, spacing: 8) {
                 eyebrow
                 Spacer(minLength: 0)
+                // SMS only, at the owner's instruction: the explainer is about
+                // temp-number delivery, and e-mail mode has its own, very
+                // different delivery profile (49% against 22%).
+                if !state.emailMode { deliveryInfoButton }
                 CreditPill(value: state.balance, action: openCredits)
             }
             headline
@@ -205,11 +251,41 @@ struct TempScreen: View {
     // to `String`, which selects `Text.init<S: StringProtocol>` — so the copy
     // silently stops being localized and never reaches the catalog at all.
     @ViewBuilder
+    /// Always available, and deliberately NOT gated on `deliveryInfoSeen`:
+    /// the once-only rule is about the screen interrupting an order, never
+    /// about the user being allowed to read it again. Most people meet this
+    /// after a failure, which is exactly when the once-only copy has already
+    /// been forgotten.
+    private var deliveryInfoButton: some View {
+        Button {
+            RHaptic.select()
+            deliveryInfoContinue = nil
+            showDeliveryInfo = true
+        } label: {
+            Image(systemName: RIcon.info)
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundStyle(theme.text2)
+                // 28pt, under Apple's 44pt guidance, and deliberately: the row
+                // has no width to spare and this is a secondary affordance
+                // beside a primary one. `contentShape` still takes the taps in
+                // the padding, which is where a near-miss lands.
+                .frame(width: 28, height: 28)
+                .contentShape(.rect)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(Text("How temporary numbers work"))
+    }
+
     private var eyebrow: some View {
+        // 🔴 THREE lines, not two. The ⓘ button shares this row in SMS mode
+        // and a two-line cap makes the label truncate mid-word at 393pt. A
+        // third line is free — the headline below it is what carries the
+        // screen — and truncating the sentence that says what the product
+        // does is not a trade worth making for a button.
         if state.emailMode {
-            MicroLabel("Sign up without your real e-mail").lineLimit(2)
+            MicroLabel("Sign up without your real e-mail").lineLimit(3)
         } else {
-            MicroLabel("Verify any account without your real number").lineLimit(2)
+            MicroLabel("Verify any account without your real number").lineLimit(3)
         }
     }
 
@@ -272,6 +348,25 @@ struct TempScreen: View {
 
     /// A user who has never placed an order.
     private var isFirstRun: Bool { state.orders.isEmpty }
+
+    /// The order tap. Shows the delivery explainer ONCE, in front of the first
+    /// order this device ever places, and carries the tap through afterwards
+    /// so the interstitial costs no intent.
+    ///
+    /// 🔴 **The gate is the SEEN flag, not `isFirstRun`.** Those differ for
+    /// anyone who ordered on a previous install or before this build shipped,
+    /// and gating on order history would re-interrupt an experienced user who
+    /// had simply never been shown it — while gating on the flag alone shows
+    /// it exactly once to everyone, which is what was asked for.
+    private func startOrder() {
+        if UserDefaults.standard.bool(forKey: PrefKey.deliveryInfoSeen) {
+            onStart()
+            return
+        }
+        UserDefaults.standard.set(true, forKey: PrefKey.deliveryInfoSeen)
+        deliveryInfoContinue = onStart
+        showDeliveryInfo = true
+    }
 
     /// First run AND cannot afford the route in front of them — including the
     /// `nil` price case, which is also "you cannot buy this right now".
@@ -715,7 +810,7 @@ struct TempScreen: View {
                     label: "Get number",
                     sub: "\(routeCost) cr",
                     icon: RIcon.bolt,
-                    action: { RHaptic.select(); onStart() }
+                    action: { RHaptic.select(); startOrder() }
                 )
             }
         } else {

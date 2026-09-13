@@ -226,6 +226,16 @@ enum PrefKey {
     /// eSIM order ids whose install flow has been opened at least once.
     static let esimInstallsStarted = "esim.installsStarted"
 
+    /// Set once `DeliveryInfoSheet` has been shown by itself, so it never
+    /// interrupts a second order. The ⓘ button on the Temp tab ignores it —
+    /// that path is the user asking, and a user who asks twice gets it twice.
+    ///
+    /// Device-local on purpose: it gates an interstitial, not an entitlement,
+    /// so the cost of a reinstall showing it again is one extra tap, while
+    /// putting it on the server would add a column and a round-trip to the
+    /// boot path for a screen that must render from local state.
+    static let deliveryInfoSeen = "temp.deliveryInfoSeen"
+
     /// The given name Apple handed us at sign-in, parked here until a cold
     /// launch can PATCH it onto `profiles`. Apple sends the name ONLY on the
     /// FIRST authorization for an Apple ID — never again, not even after a

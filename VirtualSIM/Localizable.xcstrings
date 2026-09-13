@@ -3509,52 +3509,6 @@
         }
       }
     },
-    "A better network-wide rate for %@ right now. Not our own record — staying with %@ is fine.": {
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Aktuell eine bessere netzweite Rate für %1$@. Nicht unsere eigene Statistik — bei %2$@ zu bleiben ist auch in Ordnung."
-          }
-        },
-        "en": {
-          "stringUnit": {
-            "state": "new",
-            "value": "A better network-wide rate for %1$@ right now. Not our own record — staying with %2$@ is fine."
-          }
-        },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Ahora mismo tiene una tasa mejor en toda la red para %1$@. No es nuestro propio registro — quedarte con %2$@ también está bien."
-          }
-        },
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Un meilleur taux à l'échelle du réseau pour %1$@ en ce moment. Ce n'est pas notre propre historique — rester sur %2$@ convient aussi."
-          }
-        },
-        "it": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Al momento ha un tasso migliore a livello di rete per %1$@. Non è il nostro dato — restare su %2$@ va benissimo."
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "現在、%1$@ のネットワーク全体の成功率がより高い国です。当社独自の実績ではありません。%2$@ のままでも問題ありません。"
-          }
-        },
-        "pt-BR": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Tem uma taxa melhor em toda a rede para %1$@ agora. Não é o nosso próprio registro — ficar com %2$@ também serve."
-          }
-        }
-      }
-    },
     "A Canadian number that receives texts from US and Canadian phones": {
       "extractionState": "stale",
       "localizations": {
@@ -3633,6 +3587,52 @@
           "stringUnit": {
             "state": "translated",
             "value": "Um número dos EUA ou do Canadá que vive neste app"
+          }
+        }
+      }
+    },
+    "A better network-wide rate for %@ right now. Not our own record — staying with %@ is fine.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aktuell eine bessere netzweite Rate für %1$@. Nicht unsere eigene Statistik — bei %2$@ zu bleiben ist auch in Ordnung."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "new",
+            "value": "A better network-wide rate for %1$@ right now. Not our own record — staying with %2$@ is fine."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ahora mismo tiene una tasa mejor en toda la red para %1$@. No es nuestro propio registro — quedarte con %2$@ también está bien."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Un meilleur taux à l'échelle du réseau pour %1$@ en ce moment. Ce n'est pas notre propre historique — rester sur %2$@ convient aussi."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Al momento ha un tasso migliore a livello di rete per %1$@. Non è il nostro dato — restare su %2$@ va benissimo."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "現在、%1$@ のネットワーク全体の成功率がより高い国です。当社独自の実績ではありません。%2$@ のままでも問題ありません。"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tem uma taxa melhor em toda a rede para %1$@ agora. Não é o nosso próprio registro — ficar com %2$@ também serve."
           }
         }
       }
@@ -4079,6 +4079,48 @@
           "stringUnit": {
             "state": "translated",
             "value": "Uma pessoa real lê isto. Se estivermos dormindo, responderemos assim que acordarmos, e você será notificado."
+          }
+        }
+      }
+    },
+    "A temporary number borrows a real handset on a mobile network. Sometimes the app you're verifying refuses it, or the message never arrives. That's normal, and it's why the next part matters.": {
+      "comment": "Explainer intro. Sets the expectation that failure is normal.",
+      "extractionState": "extracted (manual)",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Eine temporäre Nummer nutzt ein echtes Gerät in einem Mobilfunknetz. Manchmal lehnt die App, die du verifizierst, sie ab, oder die Nachricht kommt nie an. Das ist normal – und genau deshalb ist der nächste Teil wichtig."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Un número temporal usa un teléfono real en una red móvil. A veces la app que estás verificando lo rechaza, o el mensaje nunca llega. Es normal, y por eso importa lo que viene ahora."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Un numéro temporaire emprunte un vrai téléphone sur un réseau mobile. Parfois l'app que vous vérifiez le refuse, ou le message n'arrive jamais. C'est normal, et c'est pourquoi la suite compte."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Un numero temporaneo usa un telefono reale su una rete mobile. A volte l'app che stai verificando lo rifiuta, oppure il messaggio non arriva. È normale, ed è per questo che conta ciò che segue."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "一時的な番号は、携帯ネットワーク上の実際の端末を借りて使います。認証したいアプリに拒否されたり、メッセージが届かなかったりすることもあります。これは普通のことで、だからこそ次の説明が大切です。"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Um número temporário usa um aparelho real em uma rede móvel. Às vezes o app que você está verificando o recusa, ou a mensagem nunca chega. Isso é normal, e é por isso que o próximo trecho importa."
           }
         }
       }
@@ -6190,6 +6232,48 @@
           "stringUnit": {
             "state": "translated",
             "value": "Saldo"
+          }
+        }
+      }
+    },
+    "Before you start": {
+      "comment": "Eyebrow above the temp-number delivery explainer.",
+      "extractionState": "extracted (manual)",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bevor du startest"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Antes de empezar"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Avant de commencer"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Prima di iniziare"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "はじめる前に"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Antes de começar"
           }
         }
       }
@@ -12971,6 +13055,48 @@
         }
       }
     },
+    "Each try gets you a different number, so a fresh attempt is a fresh chance. If three or four tries on the same country come up empty, switch country rather than keep going.": {
+      "comment": "The stop rule. Keeps a user from grinding a dead route.",
+      "extractionState": "extracted (manual)",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Jeder Versuch gibt dir eine andere Nummer, ein neuer Versuch ist also eine neue Chance. Bleiben drei oder vier Versuche im selben Land ohne Code, wechsle das Land, statt weiterzumachen."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cada intento te da un número distinto, así que volver a intentarlo es una nueva oportunidad. Si tres o cuatro intentos en el mismo país quedan vacíos, cambia de país en lugar de seguir."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Chaque essai vous donne un numéro différent, donc une nouvelle tentative est une nouvelle chance. Si trois ou quatre essais dans le même pays ne donnent rien, changez de pays plutôt que d'insister."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ogni tentativo ti dà un numero diverso, quindi riprovare è una nuova possibilità. Se tre o quattro tentativi nello stesso Paese non danno nulla, cambia Paese invece di insistere."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "試すたびに別の番号になるため、やり直すたびに新しいチャンスがあります。同じ国で3〜4回試しても届かない場合は、粘らずに国を変えてください。"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cada tentativa te dá um número diferente, então tentar de novo é uma nova chance. Se três ou quatro tentativas no mesmo país não derem nada, troque de país em vez de insistir."
+          }
+        }
+      }
+    },
     "Earlier codes": {
       "localizations": {
         "de": {
@@ -14629,6 +14755,48 @@
         }
       }
     },
+    "Get my number": {
+      "comment": "CTA when the explainer interrupted a first order — it continues into that order. Runtime lookup via PrimaryButton — not extractable.",
+      "extractionState": "extracted (manual)",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nummer holen"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Obtener mi número"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Obtenir mon numéro"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ottieni il numero"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "番号を取得"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Obter meu número"
+          }
+        }
+      }
+    },
     "Get number": {
       "extractionState": "manual",
       "localizations": {
@@ -15233,6 +15401,48 @@
           "stringUnit": {
             "state": "translated",
             "value": "Bom saber"
+          }
+        }
+      }
+    },
+    "Got it": {
+      "comment": "Dismiss button when the explainer was opened from the ⓘ button. Runtime lookup via PrimaryButton — not extractable.",
+      "extractionState": "extracted (manual)",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Alles klar"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Entendido"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "J'ai compris"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ho capito"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "了解"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Entendi"
           }
         }
       }
@@ -16003,6 +16213,48 @@
         }
       }
     },
+    "How many tries": {
+      "comment": "Section header. Runtime lookup via SectionHeader — not extractable.",
+      "extractionState": "extracted (manual)",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Wie viele Versuche"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cuántos intentos"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Combien d'essais"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Quanti tentativi"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "何回試すか"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Quantas tentativas"
+          }
+        }
+      }
+    },
     "How often codes have been arriving on this route network-wide, across everyone's orders and not just ours.": {
       "localizations": {
         "de": {
@@ -16039,6 +16291,48 @@
           "stringUnit": {
             "state": "translated",
             "value": "Com que frequência os códigos chegam nesta rota em toda a rede, nos pedidos de todo mundo e não só nos nossos."
+          }
+        }
+      }
+    },
+    "How temporary numbers work": {
+      "comment": "Title of the delivery explainer, and the ⓘ button's accessibility label.",
+      "extractionState": "extracted (manual)",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "So funktionieren temporäre Nummern"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cómo funcionan los números temporales"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Comment fonctionnent les numéros temporaires"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Come funzionano i numeri temporanei"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "一時的な番号のしくみ"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Como funcionam os números temporários"
           }
         }
       }
@@ -16124,6 +16418,48 @@
         }
       }
     },
+    "If a code won't come through, tell us which app and country and we'll help you land it.": {
+      "comment": "Body of the support card.",
+      "extractionState": "extracted (manual)",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kommt ein Code nicht durch, sag uns App und Land – wir helfen dir, ihn zu bekommen."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Si un código no llega, dinos qué app y qué país y te ayudamos a conseguirlo."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Si un code ne passe pas, dites-nous l'app et le pays et nous vous aiderons à l'obtenir."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Se un codice non arriva, dicci quale app e quale Paese e ti aiutiamo a riceverlo."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "コードが届かないときは、アプリ名と国を教えてください。受け取れるようお手伝いします。"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Se um código não chegar, diga qual app e país e a gente ajuda você a recebê-lo."
+          }
+        }
+      }
+    },
     "If no code arrived, your %lld credits are refunded automatically.": {
       "localizations": {
         "de": {
@@ -16160,6 +16496,48 @@
           "stringUnit": {
             "state": "translated",
             "value": "Se nenhum código chegar, seus %lld créditos são reembolsados automaticamente."
+          }
+        }
+      }
+    },
+    "If no code arrives, your credits come straight back automatically. Trying again costs you nothing.": {
+      "comment": "Body of the refund card.",
+      "extractionState": "extracted (manual)",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kommt kein Code an, bekommst du deine Credits automatisch sofort zurück. Ein neuer Versuch kostet dich nichts."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Si no llega ningún código, tus créditos vuelven automáticamente. Volver a intentarlo no te cuesta nada."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Si aucun code n'arrive, vos crédits vous sont rendus automatiquement. Réessayer ne vous coûte rien."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Se non arriva nessun codice, i crediti ti tornano subito in automatico. Riprovare non ti costa nulla."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "コードが届かなければ、クレジットは自動ですぐに返金されます。もう一度試しても費用はかかりません。"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Se nenhum código chegar, seus créditos voltam automaticamente. Tentar de novo não custa nada."
           }
         }
       }
@@ -19799,6 +20177,48 @@
           "stringUnit": {
             "state": "translated",
             "value": "Mais recente: %@"
+          }
+        }
+      }
+    },
+    "Nine in ten people who get a code have it within three tries.": {
+      "comment": "🔴 DESCRIPTIVE, past tense, about people who SUCCEEDED (89% of the 82 who ever received one). Must never be reworded as a forecast — per-try probability is 47% at best.",
+      "extractionState": "extracted (manual)",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Neun von zehn Leuten, die einen Code bekommen, haben ihn nach höchstens drei Versuchen."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nueve de cada diez personas que reciben un código lo tienen en tres intentos o menos."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Neuf personnes sur dix qui reçoivent un code l'ont en trois essais ou moins."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nove persone su dieci che ricevono un codice lo ottengono entro tre tentativi."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "コードを受け取れた人の10人中9人は、3回以内に届いています。"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nove em cada dez pessoas que recebem um código conseguem em até três tentativas."
           }
         }
       }
@@ -24431,6 +24851,48 @@
           "stringUnit": {
             "state": "translated",
             "value": "Escolha outro país"
+          }
+        }
+      }
+    },
+    "Pick another country instead. Retrying here rarely pays off.": {
+      "comment": "Advice for the Low band. 🔴 STEERS AWAY — retrying is the WRONG move at 17% a try.",
+      "extractionState": "extracted (manual)",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Wähle lieber ein anderes Land. Hier lohnt sich ein weiterer Versuch selten."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mejor elige otro país. Reintentar aquí rara vez funciona."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Choisissez plutôt un autre pays. Réessayer ici paie rarement."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Meglio scegliere un altro Paese. Riprovare qui raramente funziona."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "別の国を選びましょう。ここで粘っても報われることは多くありません。"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Escolha outro país. Insistir aqui raramente compensa."
           }
         }
       }
@@ -30694,6 +31156,48 @@
         }
       }
     },
+    "Still good. Plan on a few tries before it lands.": {
+      "comment": "Advice for the Medium band.",
+      "extractionState": "extracted (manual)",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Immer noch gut. Rechne mit ein paar Versuchen."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Todavía bien. Cuenta con unos cuantos intentos."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Correct. Prévoyez quelques essais."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ancora buono. Metti in conto qualche tentativo."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "まずまず。数回の試行を見込んでください。"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ainda bom. Conte com algumas tentativas."
+          }
+        }
+      }
+    },
     "Still loading. A slow connection can take a moment.": {
       "localizations": {
         "de": {
@@ -30810,6 +31314,48 @@
           "stringUnit": {
             "state": "translated",
             "value": "Loja"
+          }
+        }
+      }
+    },
+    "Stuck?": {
+      "comment": "Section header over the WhatsApp support card. Runtime lookup via SectionHeader — not extractable.",
+      "extractionState": "extracted (manual)",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kommst du nicht weiter?"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "¿Atascado?"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bloqué ?"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bloccato?"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "困ったときは"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Travou?"
           }
         }
       }
@@ -34236,6 +34782,48 @@
           "stringUnit": {
             "state": "translated",
             "value": "Já existe uma conta com esse e-mail. Entre, ou redefina sua senha."
+          }
+        }
+      }
+    },
+    "These are network-wide figures for the pool your number comes from, not our own delivery record.": {
+      "comment": "🔴 The attribution. Never drop it: the figure is a third party's aggregate, and without this line it reads as our own claim. No supplier may be named.",
+      "extractionState": "extracted (manual)",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Das sind netzweite Werte für den Pool, aus dem deine Nummer stammt – nicht unsere eigene Zustellstatistik."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Son cifras de toda la red para el grupo del que sale tu número, no nuestro propio historial de entrega."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ce sont des chiffres à l'échelle du réseau pour le pool d'où vient votre numéro, pas notre propre historique de réception."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sono dati a livello di rete per il pool da cui proviene il tuo numero, non il nostro storico di consegna."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "これはあなたの番号が属するプールのネットワーク全体の数値であり、当社自身の配信実績ではありません。"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "São números de toda a rede para o grupo de onde vem seu número, não o nosso próprio histórico de entrega."
           }
         }
       }
@@ -39094,6 +39682,7 @@
       }
     },
     "What should we call you?": {
+      "extractionState": "stale",
       "localizations": {
         "de": {
           "stringUnit": {
@@ -39169,6 +39758,48 @@
           "stringUnit": {
             "state": "translated",
             "value": "O que entrar significa"
+          }
+        }
+      }
+    },
+    "What the delivery label means": {
+      "comment": "Section header over the High/Medium/Low legend. Runtime lookup via SectionHeader — not extractable.",
+      "extractionState": "extracted (manual)",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Was die Zustell-Angabe bedeutet"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Qué significa la etiqueta de entrega"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ce que signifie l'indicateur de réception"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cosa significa l'etichetta di consegna"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "配信ラベルの意味"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "O que significa o rótulo de entrega"
           }
         }
       }
@@ -39666,6 +40297,48 @@
           "stringUnit": {
             "state": "translated",
             "value": "Funciona com WhatsApp, TikTok, DoorDash e a maioria dos outros apps. O código chega aqui, com um toque para copiar."
+          }
+        }
+      }
+    },
+    "Worth trying. Most codes land on the first or second go.": {
+      "comment": "Advice for the High band. Retrying is the right move here.",
+      "extractionState": "extracted (manual)",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Einen Versuch wert. Die meisten Codes kommen beim ersten oder zweiten Mal."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vale la pena. La mayoría de los códigos llegan al primer o segundo intento."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ça vaut le coup. La plupart des codes arrivent au premier ou au deuxième essai."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vale la pena. La maggior parte dei codici arriva al primo o al secondo tentativo."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "試す価値あり。多くは1〜2回目で届きます。"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vale tentar. A maioria dos códigos chega na primeira ou segunda tentativa."
           }
         }
       }
@@ -40497,6 +41170,48 @@
           "stringUnit": {
             "state": "translated",
             "value": "Você está indo um pouco rápido. Espere um instante e tente de novo."
+          }
+        }
+      }
+    },
+    "You're never charged for a number that doesn't deliver": {
+      "comment": "The strongest fact on the screen: failures are refunded automatically.",
+      "extractionState": "extracted (manual)",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Für eine Nummer ohne Code zahlst du nie"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nunca se te cobra por un número que no entrega"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Un numéro qui ne reçoit rien ne vous est jamais facturé"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Non paghi mai un numero che non consegna"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "コードが届かない番号に料金はかかりません"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Você nunca paga por um número que não entrega"
           }
         }
       }
