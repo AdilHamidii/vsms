@@ -1421,6 +1421,16 @@ it if a real sample opens that gap.**
   presentation.** Writing it when the sheet appears would let a force-quit
   mid-read skip the screen forever, which is the one outcome the gate exists
   to prevent.
+- ⚠️ **It is stored in `UserDefaults.standard`, which is DEVICE-global and
+  survives Delete Account — so the explainer CANNOT be re-tested by deleting
+  your account and signing up again** (owner hit exactly this on 2026-09-13:
+  a brand-new account on an already-acknowledged device saw no sheet). Only
+  deleting the APP clears it. Nothing in the client removes this key, and
+  nothing should: the same human on the same phone has already read it, and
+  keying the gate to the user id would re-wall someone who acknowledged it
+  five minutes earlier. The cost is a second-hand or shared device, which is
+  the rarer case. **A device walk of this screen therefore needs a fresh
+  install, not a fresh account.**
 - 🔴 **The key is VERSIONED and the suffix is the point.** Bump it when the
   ADVICE materially changes; that is the only way an existing user is shown
   the screen again, and this advice is branched on delivery bands that move.
@@ -1814,6 +1824,46 @@ subscribed."* Two mechanisms enforce it, and both have to stay:
   subscriber paid through that instant.
 - **`ORPHAN_MIN_AGE_MS` is 1 HOUR**, not the 24 it was. See the orphan sweep
   below.
+
+### 🔴 Delete Account RELEASES the user's number at Telnyx, irreversibly
+
+`delete-account` calls `releaseNumber()` INLINE for every `phone_lines` row
+whose status is not `released`, before deleting the auth user — deliberately,
+because the row holds the only pointers to the Telnyx resources and cascades
+away a moment later. A released DID goes straight back to Telnyx's pool and
+**cannot be bought back**, so testing the signup flow on an account that owns
+a number you care about destroys that number.
+
+🔴 **The owner's own line `+14375243093` is ALSO the support WhatsApp contact
+hardcoded in `VirtualSIM/LegalLinks.swift` and shipped in every build since
+2.9.** Losing it would point the Support button in every installed copy of the
+app at a number nobody owns. Treat any delete-account test on the owner's
+account as a number-losing operation until the line is protected.
+
+**The safe procedure (walked 2026-09-13, number verified still held after):**
+
+1. Snapshot the `phone_lines` row — the Telnyx number / connection / messaging
+   profile / voice profile / credential ids are unrecoverable once it cascades.
+2. `app_config.line_orphan_release_enabled` → `false`. Without this the sweep
+   below hands the number back within 15 minutes of the row cascading away.
+3. Set the line `status = 'released'` — the ONE status `delete-account`'s loop
+   skips, so `releaseNumber` never fires and the DID stays ours.
+4. Delete, test, re-sign-up.
+5. Re-INSERT the `phone_lines` row against the NEW uuid with the snapshotted
+   ids, restore the wallet with `wallet_credit(user, n, 'adjustment', null,
+   null)`, and set the flag back to `true`.
+6. **Verify at the provider, not in our table**:
+   `probe-telnyx-connection {"probe":"numbers"}` must report the e164 with
+   verdict `held_by_active_line`. Our own row saying `active` proves nothing
+   about whether Telnyx still has the number.
+
+⚠️ Everything else about the account is cheap to restore and needs no
+ceremony: credits are one `wallet_credit` call, and the grant tombstones
+(`signup_grants`, `email_free_grants`, `free_email_device_grants`) survive the
+cascade BY DESIGN, so a re-signup correctly mints nothing. `wallet_transactions
+.line_id` is SET NULL so the ledger survives; `line_calls`, `line_messages`,
+`line_threads`, `line_rent_charges` and `line_number_swaps` all CASCADE and are
+gone for good.
 
 ### 🔴 The orphan sweep releases any number no live line holds
 
