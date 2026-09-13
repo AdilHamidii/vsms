@@ -1352,7 +1352,7 @@ leaving without a code. Success by persistence runs 25% / 34% / 52% / 64% /
 way the product works do fine and the majority quit at the first failure.
 
 🔴 **The automatic showing is GATED: the CTA is grey and inert until the
-reader has BOTH reached the last section AND spent 5 seconds on screen**
+reader has BOTH reached the last section AND spent 10 seconds on screen**
 (`DeliveryInfoSheet.dwellSeconds`), and the sheet cannot be swiped away while
 it is. Owner's design, and the reasoning is that the friction is the message —
 a screen you must work through reads as important. Both conditions are needed:
@@ -1395,16 +1395,21 @@ none.
   last section is what "reaching the end" means to a reader. **Caught in the
   simulator, never by reading the code — which is the argument for walking any
   gate you add.**
-- 🔴 **`PrefKey.deliveryInfoAckedV1` is written on the ACKNOWLEDGEMENT, not on
+- 🔴 **`PrefKey.deliveryInfoAcked` (`temp.deliveryInfoAckedV2`) is written on
+  the ACKNOWLEDGEMENT, not on
   presentation.** Writing it when the sheet appears would let a force-quit
   mid-read skip the screen forever, which is the one outcome the gate exists
   to prevent.
-- 🔴 **The key is VERSIONED and the suffix is the point.** Bump to `…V2` when
-  the ADVICE materially changes; that is the only way an existing user sees it
-  again, and this advice is branched on delivery bands that move. The old
-  `temp.deliveryInfoSeen` is dead and deliberately NOT read — anyone carrying
-  it saw an ungated screen, so honouring it would exempt exactly the users
-  this exists for.
+- 🔴 **The key is VERSIONED and the suffix is the point.** Bump it when the
+  ADVICE materially changes; that is the only way an existing user is shown
+  the screen again, and this advice is branched on delivery bands that move.
+  ⚠️ It is at **V2** because the dwell went 5s → 10s, which is a TIMING change
+  and not strictly an advice one — that bump was free only because the screen
+  has never shipped and the sole device carrying V1 was the owner's. Once it
+  is in the App Store, apply the rule as written: bump for what the screen
+  SAYS, never for how long it holds. The pre-gate `temp.deliveryInfoSeen` is
+  dead and deliberately NOT read — anyone carrying it saw an ungated screen,
+  so honouring it would exempt exactly the users this exists for.
 - **It does not raise over a live `state.flow`.** A checkout, waiting screen or
   code is an order in progress; a sheet there interrupts one rather than
   informing one. It re-checks when the flow ends and when e-mail mode is

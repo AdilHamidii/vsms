@@ -245,7 +245,13 @@ enum PrefKey {
     /// so a reinstall showing it again costs one read, while putting it on the
     /// server would add a column and a round-trip to a screen that must render
     /// from local state on its first frame.
-    static let deliveryInfoAcked = "temp.deliveryInfoAckedV1"
+    /// ⚠️ V1 → V2 on 2026-09-13 when the dwell went 5s → 10s. Strictly that is
+    /// a timing change rather than an advice change, and the bump was made
+    /// because the screen has never shipped — the only device carrying V1 is
+    /// the owner's, and they needed to see the new gate to judge it. Once this
+    /// is in the App Store, apply the rule as written above: bump for a change
+    /// in what the screen SAYS, not for a change in how long it holds.
+    static let deliveryInfoAcked = "temp.deliveryInfoAckedV2"
 
     /// The given name Apple handed us at sign-in, parked here until a cold
     /// launch can PATCH it onto `profiles`. Apple sends the name ONLY on the

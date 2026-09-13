@@ -70,9 +70,15 @@ struct DeliveryInfoSheet: View {
     var mustAcknowledge: Bool = false
 
     /// How long the gate holds even for a reader who flicks straight to the
-    /// bottom. Short enough not to feel punitive, long enough that the refund
-    /// sentence is read rather than scrolled past.
-    private static let dwellSeconds = 5
+    /// bottom.
+    ///
+    /// **10 seconds** (owner, 2026-09-13, raised from 5 after using it on a
+    /// device). The cost of this number is measurable and should be watched
+    /// rather than argued about: `delivery_info_shown` minus
+    /// `delivery_info_acknowledged` on the `auto` arm is the count of people
+    /// who hit the wall and left the tab instead of reading. If that gap opens
+    /// up, this is the first thing to bring back down.
+    private static let dwellSeconds = 10
 
     @State private var reachedEnd = false
     @State private var secondsLeft = DeliveryInfoSheet.dwellSeconds
