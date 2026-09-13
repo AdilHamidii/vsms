@@ -759,11 +759,25 @@ commit:**
   HeroSMS** (owner, 2026-09-13: *"don't mention 5sim or herosms balance in the
   watchdog unless they're under 5 usd"*; migration `20260913070630`). For
   those two the $5 floor is the ONLY balance page. It was a standing page at
-  the owner's fund-on-demand cadence — 5sim sat at ~4 days of runway for most
-  of a week while well above the floor, re-paging every 6 hours. The
+  the owner's fund-on-demand cadence — 5sim sat at ~4 days of "runway" for
+  most of a week while well above the floor, re-paging every 6 hours. The
   dead-route branch under the same check name ("no spend in 7 days against N
   orders the week before") is NOT a balance page and stays. Do not re-enable
   the runway line without the owner.
+- 🔴 **And the runway number was WRONG, not merely noisy (2026-09-13).** It
+  summed `orders.actual_cost_cents`, which is stamped once at RESERVATION and
+  never reversed — but a cancel and an expiry both reach `five.cancel`, which
+  refunds the wholesale, so that column is what was RESERVED, not what was
+  SPENT. Over 30 days to 2026-09-13 it read $69.78 against a true provider
+  cost of **$15.52**, the 99 delivered orders only: a ~4.5× overstatement.
+  Confirmed against the live balance — 5sim fell $18.86 → $16.94 overnight,
+  exactly the $1.92 of codes that actually delivered in that window.
+  ⚠️ **The concept is wrong too, not just the magnitude.** What the float has
+  to cover is PEAK CONCURRENT reservations, since 5sim debits at reservation
+  and credits back on cancel — never cumulative daily spend. Any future
+  float check must measure concurrency, and `sum(actual_cost_cents)` is not
+  a spend figure anywhere it appears (`ops_snapshot`'s `spend_cents` and
+  `/profit` inherit the same overstatement).
 - An order refused for insufficient float pages separately
   (`create-order`'s `alertLowBalanceBlock`) and carries the **shortfall** — a
   route may need $60 of float while the balance page does not fire until $5.
@@ -1383,6 +1397,14 @@ than a hold-open, so it needs its own semantics.
 the answers are arithmetic:**
 - **Cancel REFUNDS, fully.** With ~60% of numbered orders cancelled, this is the
   one that would bleed float on every order if it were ever false.
+  🔴 **EXPIRY reclaims too, by the same call** — `poll-active-orders` sends an
+  expired order to `markDead`, which for 5sim is `five.cancel` then
+  `five.ban`. So **a failed delivery costs NOTHING at the provider**: the user
+  is refunded in credits (all 311 non-delivering orders in the 30 days to
+  2026-09-13 carry a `refund` ledger row) and 5sim refunds the wholesale. We
+  pay only for codes that arrive — $15.52 over those 30 days against $234 of
+  pack revenue. ⚠️ Do NOT read `sum(actual_cost_cents)` as money spent; see
+  the runway correction under "Balance alerts".
 - Both fresh buys read `status: RECEIVED` with `sms: null` at t=0. **RECEIVED
   means "number received", never "code received"** — live proof that
   `sms[].code` must stay the only authority.
