@@ -2513,6 +2513,33 @@ Genuinely open items only. Resolved history is in `docs/decisions-archive.md`.
   select 'swap' src, count(*) from line_number_swaps where created_at > now()-interval '7 days'
   union all select 'new line', count(*) from phone_lines where created_at > now()-interval '7 days';
   ```
+  ⚠️ **The swap is what some subscribers are actually buying, and the
+  subscription is the tollgate — so a cancel inside the first hour is not
+  churn and must not be read as one.** Walked end to end on 2026-09-14 from one
+  new French user's first session: signed up 18:16Z, priced temp SMS for France
+  at **90 credits** and backed out, subscribed at the €3.99 intro 18:19Z,
+  received a verification code for a French consumer app on the number at
+  18:20Z — then **swapped twice in seventeen minutes and collected three
+  more codes**, turning auto-renew OFF at 18:32Z between the second and third
+  while still actively succeeding. He was registering repeat accounts on one
+  service; the line was a disposable-number machine bought for a burst, and the
+  month was already paid. Read a fast `auto_renew = false` on a line that is
+  still receiving SMS as THIS, not as a product failure.
+  🔴 **The 8-credit pack costs EXACTLY one swap, so a swapper's balance
+  returns to 0 every single time and every additional number is a fresh paywall
+  plus an Apple sheet** — three sheets in seventeen minutes here, each
+  preceded by `line_swap_topup_shown` with `shortfall: 8`, plus three
+  `line_swap_open` events backed out of on seeing another charge. That is the
+  friction to read `line_swap_topup_shown` against `line_swap_result` for; it
+  is also what makes each swap self-funding, so do not "smooth" it by
+  discounting the swap without re-checking the $2.00 number cost first.
+  ⚠️ **Per-user margin is thinner than the swap arithmetic alone
+  suggests, because the SUBSCRIPTION's number is bought at $2.00 too and then
+  forfeited by the first swap.** That session: €11.97 gross (one intro month
+  + two 8-packs), ≈€8.38 net of Apple, against **three** Telnyx numbers
+  = $6.00 debited the same evening. Positive, and still the working-capital
+  shape above rather than a leak — but a two-swap first session nets a few
+  euro, not the €12 a revenue chart shows.
 - ⚠️ **`orders`, `esim_orders` and `email_orders` still expose per-order
   wholesale** to a self-reading user. Smaller than the cost-book leak that was
   closed (RLS is self-read, so a user leaks only their own), and **the adoption
