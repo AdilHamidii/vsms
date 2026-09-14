@@ -2536,10 +2536,15 @@ Genuinely open items only. Resolved history is in `docs/decisions-archive.md`.
   ⚠️ **Per-user margin is thinner than the swap arithmetic alone
   suggests, because the SUBSCRIPTION's number is bought at $2.00 too and then
   forfeited by the first swap.** That session: €11.97 gross (one intro month
-  + two 8-packs), ≈€8.38 net of Apple, against **three** Telnyx numbers
-  = $6.00 debited the same evening. Positive, and still the working-capital
-  shape above rather than a leak — but a two-swap first session nets a few
-  euro, not the €12 a revenue chart shows.
+  + two 8-packs), **≈€10.17 net at Apple's 15%**, against **three** Telnyx
+  numbers = **$6.00** debited the same evening — so roughly half of what
+  survives Apple went straight back out at the provider within the hour.
+  Comfortably positive, and the working-capital shape above rather than a
+  leak; the point is only that a revenue chart reading €12 is not €12 of
+  margin. 🔴 **Apple's cut is 15%, not 30% — vSMS is on the Small Business
+  Program** (`APPLE_COMMISSION = 0.15` in `_shared/opsFormat.ts`, and the
+  measured `NET_USD_PER_CREDIT = 0.40` independently confirms it: at 30% no
+  pack above the 5 nets even $0.33 a credit). Never net a vSMS figure at 30%.
 - ⚠️ **`orders`, `esim_orders` and `email_orders` still expose per-order
   wholesale** to a self-reading user. Smaller than the cost-book leak that was
   closed (RLS is self-read, so a user leaks only their own), and **the adoption
