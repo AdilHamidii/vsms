@@ -411,11 +411,45 @@ second after the user returned to read a code they were about to paste.
 no persistence, no network, no side effects — returning `nil` when the moment
 qualifies and a `ReviewBlock` case naming the gate otherwise. Eligibility is
 **derived** from state the client already holds: `Order.arrivedAt` (server-
-stamped, selected by `OrdersAPI.columns`, populated 88/88 on delivered orders)
-and `ServerEmailOrder.createdAtDate`. `ContentView.scheduleReviewPrompt()` is
+stamped, selected by `OrdersAPI.columns`, populated 88/88 on delivered orders),
+`ServerEmailOrder.createdAtDate`, and `Line.lastSuccessAt`.
+`ContentView.scheduleReviewPrompt()` is
 the single call site, reached from **two** arms — the cold-launch `.task` after
 `coldStart`, and the `scenePhase` foreground — and it fires only after
 `AppState.reviewDwellSeconds` of uninterrupted calm.
+
+🔴 **ALL THREE PRODUCTS ARE IN, AND THE LINE ARM WAS MISSING UNTIL
+2026-09-14.** The predicate guarded on `lastCodeArrival` — temp SMS + temp
+e-mail only — so a **line subscriber could never be asked, ever**. That was not
+a small gap: the two audiences have never overlapped (of 19 line subscribers,
+ONE ever placed a temp order and NONE ever received a code), so the count of
+subscribers who had ever been eligible was exactly **zero**, while
+subscriptions became the larger and faster-growing half of the revenue and the
+only cohort paying monthly. The cohort that COULD be asked was temp SMS, which
+fails ~78% of the time per order. `AppState.lastSuccessMoment` is now the
+single eligibility input — `max(lastCodeArrival, lastLineSuccess)` — and
+`lastCodeSurface` resolves to `sms` · `email` · `line` so the three can be read
+apart on every review event.
+
+- **The line's success signal is SERVER-computed, in `my_line.last_success_at`**
+  (migration `20260914194532`): the max of an inbound `line_messages.received_at`
+  and a `line_calls` leg that answered and ran **≥ 10s in EITHER direction**.
+  Do not re-derive it on the client — `lineMessages` load per-thread and
+  `lineCalls` only on the Number tab, so a client-side version would be silently
+  empty at cold launch, which is the arm that matters. `lines` IS loaded in
+  `coldStart` before the reveal, so the column is there on the first frame at
+  no boot cost.
+- ⚠️ **Outbound calls count, deliberately** (owner, 2026-09-14). Outbound is the
+  proven, heavily-used half of the line — 235 calls in September — so an
+  inbound-only signal would have excluded most subscribers. The 10s floor drops
+  misdials and voicemail blips.
+- **A lapsed subscriber is never asked**, with no extra gate: a released line
+  keeps its `last_success_at`, but `reviewPromptBlocker`'s other rules and the
+  120-day cooldown apply unchanged, and `lines` only holds what the view
+  returns.
+- 🔴 **`ScreenshotMode.sampleLine.lastSuccessAt` is `nil` and must stay nil.** A
+  sample line that "worked 11 days ago" clears the calm floor, and the review
+  sheet would fire **into a store screenshot**.
 
 Five properties that reading the code does not give you:
 

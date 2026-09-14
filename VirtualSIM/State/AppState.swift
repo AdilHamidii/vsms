@@ -218,9 +218,10 @@ enum PrefKey {
     /// keys used to live here — `successfulCodes`, `lastCountedOrder`,
     /// `lastPromptVersion`, `lastDeliveredOrderId`, `lastDeliveredAt` — and the
     /// whole mechanism they served could not fire; see the block comment on
-    /// `AppState.reviewPromptBlocker`. Eligibility is now DERIVED from `orders`
-    /// and `emailOrders`, which the client already holds after `coldStart`, so
-    /// there is no delivery state to persist and nothing to keep in sync.
+    /// `AppState.reviewPromptBlocker`. Eligibility is now DERIVED from `orders`,
+    /// `emailOrders` and `lines` — all three of which the client already holds
+    /// after `coldStart` — so there is no delivery state to persist and nothing
+    /// to keep in sync.
     static let lastReviewPromptAt = "review.lastPromptAt"
 
     /// eSIM order ids whose install flow has been opened at least once.
@@ -978,6 +979,8 @@ final class AppState {
     /// starves the funnel — the exact question nobody could answer when this
     /// was rebuilt, because the old path emitted no events at all.
     enum ReviewBlock: String {
+        /// Nothing has ever landed for this user on ANY of the three products —
+        /// no temp code, no temp-mail code, and no line success. Not "no code".
         case noDelivery     = "no_delivery"
         case cooldown       = "cooldown"
         case paywallSession = "paywall_session"
@@ -1035,17 +1038,40 @@ final class AppState {
         return [sms, mail].compactMap { $0 }.max()
     }
 
-    /// Which product delivered that most recent code — an analytics prop, so
-    /// the two surfaces can be read apart. Nil when nothing has ever arrived.
+    /// The last moment a RENTED LINE worked for this user — an inbound SMS, or
+    /// a call that connected for 10s+ either way. Server-computed
+    /// (`my_line.last_success_at`); the client never re-derives it.
+    ///
+    /// Taken across every line the caller holds, because the credits path can
+    /// rent more than one. A released line keeps its value, which is correct:
+    /// it still describes a moment the product worked.
+    var lastLineSuccess: Date? { lines.compactMap(\.lastSuccessAt).max() }
+
+    /// The last moment ANY product delivered for this user — the single input
+    /// to the review prompt's eligibility.
+    ///
+    /// 🔴 **All three products, and the line arm is why this exists
+    /// (2026-09-14).** `reviewPromptBlocker` used to guard on `lastCodeArrival`
+    /// alone, which is temp SMS + temp e-mail. The two audiences have never
+    /// overlapped — of 19 line subscribers, ONE ever placed a temp order and
+    /// NONE ever received a code — so no subscriber could ever be asked, while
+    /// subscriptions became the larger and faster-growing half of the business
+    /// and the only cohort paying monthly. Worse, the cohort that COULD be
+    /// asked is the temp-SMS one, which fails ~78% of the time per order.
+    var lastSuccessMoment: Date? {
+        [lastCodeArrival, lastLineSuccess].compactMap { $0 }.max()
+    }
+
+    /// Which product delivered that most recent success — an analytics prop, so
+    /// the three surfaces can be read apart. Nil when nothing has ever landed.
     var lastCodeSurface: String? {
         let sms = orders.compactMap { $0.otp != nil ? $0.arrivedAt : nil }.max()
         let mail = emailOrders.compactMap { $0.hasCode ? $0.createdAtDate : nil }.max()
-        switch (sms, mail) {
-        case let (s?, m?): return s >= m ? "sms" : "email"
-        case (_?, nil):    return "sms"
-        case (nil, _?):    return "email"
-        default:           return nil
-        }
+        let line = lastLineSuccess
+        let best = [(sms, "sms"), (mail, "email"), (line, "line")]
+            .compactMap { date, name in date.map { ($0, name) } }
+            .max { $0.0 < $1.0 }
+        return best?.1
     }
 
     /// Codes this user has ever received, both products.
@@ -1091,7 +1117,7 @@ final class AppState {
     /// ones (`flowActive`, `orderWaiting`, `emailActive`) are what surface at
     /// the dwell re-check, which is where they are worth measuring.
     func reviewPromptBlocker(now: Date = Date()) -> ReviewBlock? {
-        guard let arrived = lastCodeArrival else { return .noDelivery }
+        guard let arrived = lastSuccessMoment else { return .noDelivery }
 
         let previous = UserDefaults.standard.double(forKey: PrefKey.lastReviewPromptAt)
         if previous > 0,

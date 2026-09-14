@@ -600,15 +600,23 @@ struct ContentView: View {
 
     /// Shared props for the three review events, so the funnel can be read as
     /// one. `since_code_h` is what tunes `reviewCalmFloorHours`; `surface`
-    /// separates the two products, which behave differently (e-mail codes are
-    /// never pushed, so those users are always in-app when one lands).
+    /// separates the three products, which behave differently (e-mail codes are
+    /// never pushed, so those users are always in-app when one lands; a `line`
+    /// success is an inbound text or a connected call, so that user was on the
+    /// phone rather than waiting on a screen).
+    ///
+    /// ⚠️ `since_code_h` measures from `lastSuccessMoment`, the value
+    /// eligibility actually turns on — NOT from `lastCodeArrival`. Reading it
+    /// off the code-only value would report a line subscriber's distance from
+    /// a temp code they never received, which is the one number here that
+    /// tunes the calm floor.
     @MainActor
     private func reviewProps() -> [String: AnalyticsValue] {
         var props: [String: AnalyticsValue] = [
             "lifetime_codes": .int(state.lifetimeCodeCount),
             "surface": .string(state.lastCodeSurface ?? "unknown"),
         ]
-        if let arrived = state.lastCodeArrival {
+        if let arrived = state.lastSuccessMoment {
             props["since_code_h"] = .int(max(0, Int(Date().timeIntervalSince(arrived) / 3600)))
         }
         return props

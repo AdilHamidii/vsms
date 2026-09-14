@@ -2706,7 +2706,20 @@ before that.** From 2026-08-19 it was gated on a UserDefaults stamp written
 only by a list diff that no real delivery ever reached, while 215 users
 received codes. It is now DERIVED from `Order.arrivedAt`, fires from two arms
 (cold launch + foreground) after a calm dwell, and emits
-`review_prompt_eligible` / `_blocked` / `_requested`. Full detail — including
+`review_prompt_eligible` / `_blocked` / `_requested`.
+
+🔴 **It covers ALL THREE products only from 2026-09-14 — a line subscriber
+could never be asked before that**, because eligibility guarded on a temp
+SMS/e-mail code and the two audiences have never overlapped (19 subscribers,
+one temp order, zero codes between them). So the count of subscribers ever
+eligible was **zero**, while subscriptions became the larger half of the
+revenue, and the only cohort that COULD be asked was temp SMS — which fails
+~78% of the time per order. `AppState.lastSuccessMoment` is now the one
+eligibility input, adding `my_line.last_success_at` (migration
+`20260914194532`: an inbound SMS, or any call that connected ≥10s in EITHER
+direction — outbound counts, owner 2026-09-14). **Ships in 2.15; 2.14 and
+older ask only temp users.** Reads out on `review_prompt_*` `props.surface` ∈
+`sms` · `email` · `line`. Detail in `.claude/rules/ios-client.md`. Full detail — including
 the two rules that make it safe, *never reintroduce a delivery stamp* and
 *ask first, consume second* — is in `.claude/rules/ios-client.md`, "The review
 prompt". ✅ **Ships in 2.13 build 63** (submitted 2026-09-11); 2.11 and 2.13

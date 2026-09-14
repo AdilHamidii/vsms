@@ -124,6 +124,24 @@ struct Line: Codable, Identifiable, Hashable {
     let activatedAt: Date?
     let releasedAt: Date?
 
+    /// The last moment this line actually WORKED — an inbound SMS arriving, or
+    /// any call that connected for 10s+ in either direction. Computed by the
+    /// `my_line` view; nil until the number has done something for its owner.
+    ///
+    /// 🔴 **This is the line product's entry into the review prompt, and it is
+    /// the whole reason the column exists.** `reviewPromptBlocker()` guarded
+    /// only on a temp-SMS/e-mail code, and the two audiences have never
+    /// overlapped — of 19 line subscribers, one ever placed a temp order and
+    /// none ever received a code — so no subscriber had ever been eligible to
+    /// be asked. See `AppState.lastSuccessMoment`.
+    ///
+    /// ⚠️ Outbound calls count, deliberately (owner, 2026-09-14): outbound is
+    /// the proven, heavily-used half of this product, so an inbound-only
+    /// signal would exclude most subscribers. Server-side definition lives in
+    /// `supabase/migrations/20260914194532_my_line_last_success_at.sql` — do
+    /// not re-derive it on the client, or the two will drift.
+    let lastSuccessAt: Date?
+
     // MARK: Allowance
     //
     // Every accessor reports what is LEFT, never what is used. The provider

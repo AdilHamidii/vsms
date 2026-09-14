@@ -74,6 +74,11 @@ struct LineAPI {
         "sms_allowance", "sms_used", "voice_allowance_seconds", "voice_used_seconds",
         "allowance_period_start", "emergency_disabled",
         "created_at", "activated_at", "released_at",
+        // Feeds the review prompt's line arm. A column added to `my_line` must
+        // be added HERE too or it is simply never fetched — PostgREST returns
+        // exactly what `select` names, and the decode then fails on a
+        // non-optional or silently nils an optional.
+        "last_success_at",
     ].joined(separator: ",")
 
     /// EVERY line the caller holds, newest first.

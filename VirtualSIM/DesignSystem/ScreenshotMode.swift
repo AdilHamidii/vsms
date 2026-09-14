@@ -149,7 +149,14 @@ extension ScreenshotMode {
             emergencyDisabled: true,
             createdAt: now.addingTimeInterval(-11 * 86_400),
             activatedAt: now.addingTimeInterval(-11 * 86_400),
-            releasedAt: nil
+            releasedAt: nil,
+            // 🔴 nil DELIBERATELY, and never a date. This feeds
+            // `AppState.lastSuccessMoment`, which is the review prompt's
+            // eligibility input — a sample line that "worked 11 days ago" would
+            // clear the calm floor and let Apple's review sheet fire INTO a
+            // store screenshot. The sample is for capture, not for testing the
+            // prompt; walk that on a real account.
+            lastSuccessAt: nil
         )
     }
 
