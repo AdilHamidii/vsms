@@ -2523,11 +2523,20 @@ Each has been wrong within a day of being written at least once.
 
 **Verified 2026-09-09:**
 
-- **iOS**: **2.14 (build 64) is the LIVE version, `READY_FOR_SALE`** (read from
-  ASC 2026-09-15; version id `2e856187-…`, submitted 2026-09-13 10:04Z as
-  `13482642-…`). It carries the delivery explainer. 🔴 **It also carries a
-  hand-edited en-US keyword field that no document approved** — see the ASO
-  section. 2.13 (build 63) is also `READY_FOR_SALE` and is the version this
+- **iOS**: **2.15 (build 65) is `WAITING_FOR_REVIEW`** (submitted 2026-09-15
+  21:10Z, submission `567b7a25-…`, version `2819e552-…`). It carries the
+  announcement banner's move to Home, the vRoam card, the review prompt
+  extended to line subscribers, and **the re-scored keyword fields in all 13
+  locales** — the first release that could carry them, since keywords ship
+  only with a version and there was no editable one until 2.15 existed. It
+  therefore also UNDOES 2.14's hand-edit.
+  ⚠️ Built on beta macOS `26A5388g`, so the `BuildMachineOSBuild` → `25F84`
+  patch was applied and verified in the exported IPA; without it Apple rejects
+  the binary as ITMS-90111.
+- **2.14 (build 64) is the LIVE version, `READY_FOR_SALE`** (version id
+  `2e856187-…`, submitted 2026-09-13 10:04Z). It carries the delivery
+  explainer. 🔴 **It also carries a hand-edited en-US keyword field that no
+  document approved** — see the ASO section; 2.15 reverses it. 2.13 (build 63) is also `READY_FOR_SALE` and is the version this
   block used to call current; historical detail follows.
   **2.13 (build 63)** (read from ASC 2026-09-12 22:00Z;
   submitted 2026-09-11 12:07Z as `c131076d-…`; 22 distinct users fired
