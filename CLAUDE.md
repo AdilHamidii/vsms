@@ -2151,6 +2151,16 @@ SUBSCRIPTION it bought.
 - **The table cascades from `auth.users` on purpose.** It is user data, not a
   grant tombstone — do not "fix" it to match `signup_grants`.
 
+🔴 **ASA IS OFF. Owner decision 2026-09-15: *"asa is good but i dont want it
+anymore"*** — acquisition effort moved to organic
+(`docs/superpowers/specs/2026-09-15-organic-acquisition-design.md`). Separately
+and for the second time, **all 14 campaigns in the org (vSMS and vRoam alike)
+read `ENABLED` but `NOT_RUNNING`, reason `CREDIT_CARD_DECLINED`**, dark since
+~2026-09-13. Lifetime vSMS result: **€58.73 for 36 installs, blended CPI
+€1.63** against the owner's €1.00 bar, and **42 attributed installs against
+1,032 organic in the product's whole history**. Do not restart it without the
+owner.
+
 🔴 **A dead ASA campaign is probably BILLING, and the API cannot tell you.**
 Delivery once went to exactly zero for two days with `endTime`, budgets, bids
 and serving state all reading healthy. Apple exposes **no billing endpoint**, so
@@ -2476,8 +2486,13 @@ Each has been wrong within a day of being written at least once.
 
 **Verified 2026-09-09:**
 
-- **iOS**: `MARKETING_VERSION 2.13`, `CURRENT_PROJECT_VERSION 63`.
-  **2.13 (build 63) is `READY_FOR_SALE`** (read from ASC 2026-09-12 22:00Z;
+- **iOS**: **2.14 (build 64) is the LIVE version, `READY_FOR_SALE`** (read from
+  ASC 2026-09-15; version id `2e856187-…`, submitted 2026-09-13 10:04Z as
+  `13482642-…`). It carries the delivery explainer. 🔴 **It also carries a
+  hand-edited en-US keyword field that no document approved** — see the ASO
+  section. 2.13 (build 63) is also `READY_FOR_SALE` and is the version this
+  block used to call current; historical detail follows.
+  **2.13 (build 63)** (read from ASC 2026-09-12 22:00Z;
   submitted 2026-09-11 12:07Z as `c131076d-…`; 22 distinct users fired
   `home_view` — which only 2.13 emits — in the 24h to 2026-09-12 22:00Z, so
   approval landed within a day of submission and adoption has begun). Build
@@ -2810,6 +2825,31 @@ The live name is `vSMS: Second Number & Temp SMS` / subtitle **`USA Phone Line
 & Verification`**, in all 13 locales — localized, so de-DE is `USA-Nummer &
 SMS-Code`, fr-FR `Ligne USA & SMS temporaire`, it `Linea USA e SMS temporanei`.
 The USA token shipped with **2.10 (2026-09-06)**.
+
+🔴 **THE LIVE en-US FIELD IS NOT THE ONE BELOW. 2.14 dropped `email` and added
+`sim` and `usa` by hand** (read from ASC 2026-09-15; the field is stored per
+version, so `scripts/asc-keywords.py`-style reads recover the whole history):
+
+```
+2.0–2.11  email,virtual,disposable,temporary,online,otp,code,inbox,fake,spam,signup,burner,text,call,receive
+2.13      email,virtual,disposable,temporary,online,otp,code,burner,mail,verify,receive,text,call,2nd,get
+2.14      sim,virtual,disposable,temporary,online,otp,code,burner,mail,verify,receive,text,call,2nd,get,usa
+```
+
+That edit matches no approval and appears in no document, and it is a
+regression on two counts. **`usa` bought nothing** — the subtitle has carried
+`USA Phone Line & Verification` since 2.10 and Apple indexes name + subtitle +
+keywords as ONE pool, which is exactly what `asc-keywords.py`'s own header
+says. And the characters for it came out of **`email`**, so `temporary email`
+(popularity 71, difficulty 52 — a *good target*) and `disposable email` stopped
+being formable in the storefront that is **64% of all revenue**, while
+temp-email is roughly half of all order volume. vSMS is measured **outside the
+top 182** for `temporary email` in en-US on 2026-09-15.
+⚠️ Organic signups fell ~60% across the same window (≈58/day 08-27→09-04,
+≈20/day 09-12→09-15) but **that is correlation, not a proven cause** — there is
+no rank history to test against, because nothing has ever rank-tracked this
+app. Plan and evidence:
+`docs/superpowers/specs/2026-09-15-organic-acquisition-design.md`.
 
 ✅ **APPLIED to 2.13 on 2026-09-11** (owner-approved), all 13 locales, read back
 13/13 matching, and submitted with build 63. Keywords ship only with a release,
