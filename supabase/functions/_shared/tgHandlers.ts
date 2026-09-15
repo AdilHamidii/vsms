@@ -404,6 +404,44 @@ export const handlers: Record<string, Handler> = {
     return error || !data ? readFail("support") : stamped(formatSupport(data as Record<string, unknown>));
   },
 
+  /** Reddit threads the radar surfaced. READ ONLY — the write path is the two
+   *  inline buttons on the push (lead:done / lead:skip), handled in
+   *  telegram-webhook, so this command carries no `mutates` flag and stays
+   *  available to telegram-setup's preview. */
+  leads: async ({ sb, arg }) => {
+    // "open" is the working list: classified, pushed, not yet dealt with.
+    const scope = arg === "all" || arg === "skipped" ? arg : "open";
+
+    let q = sb.from("reddit_leads")
+      .select("id, subreddit, title, permalink, relevance, intent, need, sub_policy, status, posted_at")
+      .not("classified_at", "is", null)
+      .order("relevance", { ascending: false })
+      .limit(12);
+
+    if (scope === "open") q = q.eq("status", "notified");
+    else if (scope === "skipped") q = q.eq("status", "skipped");
+
+    const { data, error } = await q;
+    if (error) { console.error("leads failed:", error.message); return readFail("Reddit leads"); }
+    if (!data?.length) {
+      return scope === "open"
+        ? "🧵 No open Reddit leads. Nothing is waiting on you."
+        : `🧵 No <b>${esc(scope)}</b> leads yet.`;
+    }
+
+    const lines = data.map((l: Record<string, unknown>) => {
+      const flag = l.sub_policy === "restricted" ? " ⚠️" : "";
+      const when = l.posted_at ? ` · ${ago(new Date(l.posted_at as string))}` : "";
+      return `<b>${l.relevance}</b> · r/${esc(l.subreddit)}${flag}${when}\n` +
+        `${esc(String(l.title).slice(0, 110))}\n` +
+        `<i>${esc(l.need ?? "")}</i>\n${esc(l.permalink)}`;
+    });
+
+    return `🧵 <b>Reddit leads</b> — ${esc(scope)} (${data.length})\n\n` +
+      lines.join("\n\n") +
+      `\n\n<i>Drafts ride on the original push. Nothing posts itself.</i>`;
+  },
+
   // ── Controls ─────────────────────────────────────────────────────────────
   config: async ({ sb }) => {
     // A read-only window on the settings that decide money and gating. Every

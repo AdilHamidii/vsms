@@ -50,7 +50,17 @@ expiry in Paris and its price normalised to a MONTH), `/lines` (no arg now LISTS
 and real rent; `on|off` unchanged), `/support` (threads waiting, oldest first),
 `/alerts` (what is firing + ladder/cooldown states), `/funnel`, `/config`
 (read-only: grant, e-mail caps, pause switches, swap price), `/announce`,
-`/esim`, `/metrics`, `/help`.
+`/esim`, `/metrics`, `/leads` (Reddit threads worth answering, best first),
+`/help`.
+
+🔴 **`/leads` is READ-ONLY and carries no `mutates` flag, deliberately.** Its
+write path is the two inline buttons on each radar push — `lead:done:<id>` /
+`lead:skip:<id>`, dispatched in `telegram-webhook`'s `handleCallback` beside
+`sup:accept:` and claim-gated on `status='notified'` so a stale button cannot
+re-open a handled lead. Neither button posts anything to Reddit; they record
+what the owner already did by hand. The radar itself cannot post — its Reddit
+credential is app-only. See "The Reddit radar surfaces leads; it NEVER posts"
+in `CLAUDE.md`.
 
 **`/tabs number|temp` decides the order of Number and Temp BEHIND Home** (Home
 always opens first since 2.13 — owner decision 2026-09-10; before that, from

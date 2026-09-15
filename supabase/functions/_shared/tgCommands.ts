@@ -193,6 +193,16 @@ export const COMMANDS: CommandSpec[] = [
     group: "Status",
   },
   {
+    name: "leads",
+    args: "open|all|skipped",
+    summary: "Reddit threads worth answering, best first",
+    help: "Surfaced by <code>reddit-scan</code> hourly. Each carries a DRAFT " +
+      "reply — you edit it and post it yourself, from your own account. " +
+      "Nothing is ever posted to Reddit by this bot, and the Reddit " +
+      "credential is read-only so it could not be.",
+    group: "Other",
+  },
+  {
     name: "funnel",
     args: "7d|14d|30d",
     periods: FUNNEL_PERIODS,

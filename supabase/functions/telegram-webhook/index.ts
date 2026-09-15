@@ -126,6 +126,35 @@ async function handleCallback(
 ): Promise<Response> {
   const ok = () => json({ ok: true });
   const data = cb.data ?? "";
+
+  // Reddit radar triage. Both buttons only RECORD what the owner did on
+  // Reddit by hand — neither posts anything, and nothing downstream reads
+  // `status` to decide to act. It exists so /leads can show a working list
+  // instead of every thread ever surfaced.
+  const lead = /^lead:(done|skip):(\d+)$/.exec(data);
+  if (lead) {
+    const [, verb, id] = lead;
+    const sb = admin();
+    // Claim-gated on `notified`, same shape as the support accept below: a
+    // stale button from an old push cannot re-open a lead already dealt with.
+    const { data: claimed, error } = await sb
+      .from("reddit_leads")
+      .update({
+        status: verb === "done" ? "replied" : "skipped",
+        acted_at: new Date().toISOString(),
+      })
+      .eq("id", id).eq("status", "notified")
+      .select("id");
+    if (error) console.error(`lead ${verb}: ${error.message}`);
+    await answerCallback(
+      cb.id ?? "",
+      claimed?.length
+        ? (verb === "done" ? "Marked replied." : "Skipped.")
+        : "Already handled.",
+    );
+    return ok();
+  }
+
   if (!data.startsWith("sup:accept:")) { await answerCallback(cb.id ?? ""); return ok(); }
 
   const threadId = data.slice("sup:accept:".length);

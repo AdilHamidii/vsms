@@ -178,3 +178,5 @@ verify_jwt = false
 
 [functions.rc-sync]
 verify_jwt = false
+[functions.reddit-scan]
+verify_jwt = false

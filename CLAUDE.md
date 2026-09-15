@@ -474,7 +474,7 @@ instead — different auth path, unaffected.
 
 ### Deploying edge functions
 
-There are **50** function directories besides `_shared` (re-count with
+There are **51** function directories besides `_shared` (re-count with
 `ls supabase/functions | grep -v _shared | wc -l`). Two groups:
 
 ```bash
@@ -486,7 +486,7 @@ supabase functions deploy create-order check-order cancel-order register-push ia
   send-line-message line-thread-action mint-line-token begin-line-call report-line-call \
   record-attribution verify-email-subscription swap-line-number record-events
 
-# Cron-gated / webhooks (22) — MUST ship --no-verify-jwt: their pg_cron relays
+# Cron-gated / webhooks (23) — MUST ship --no-verify-jwt: their pg_cron relays
 # send only x-cron-secret, no Authorization header. `winback` lived in the JWT
 # group until 2026-07-21 and silently 401'd on every run — zero nudges ever
 # sent, invisible because pg_net purges response history within hours.
@@ -495,11 +495,11 @@ supabase functions deploy poll-active-orders sync-prices sync-5sim sync-herosms 
   sync-esim-plans sync-smspva-operators sync-smspva-conversions winback \
   telegram-notify telegram-webhook daily-credit telegram-setup goodwill-credit \
   broadcast-push telnyx-webhook apple-notifications release-lines sync-telnyx-cdr \
-  sync-line-voice probe-telnyx-connection sync-line-countries rc-sync \
+  sync-line-voice probe-telnyx-connection sync-line-countries rc-sync reddit-scan \
   --no-verify-jwt
 ```
 
-✅ **Verified exhaustive 2026-09-11**: 26 + 23 = 49 against 50 on disk. The one
+✅ **Verified exhaustive 2026-09-15**: 26 + 24 = 50 against 51 on disk. The one
 omission is **`probe-5sim`**, deliberately outside both lists — it is a
 diagnostic, not on a normal cadence, but it DOES carry a `config.toml`
 `verify_jwt = false` entry and must be deployed `--no-verify-jwt` by hand when
@@ -507,8 +507,8 @@ diagnostic, not on a normal cadence, but it DOES carry a `config.toml`
 a function in neither list is a function nobody redeploys, which is exactly how
 a stale bundle survives a fix.**
 
-`supabase/config.toml` carries a `verify_jwt = false` entry for all 23 plus
-`probe-5sim` (24 total).
+`supabase/config.toml` carries a `verify_jwt = false` entry for all 24 plus
+`probe-5sim` (25 total).
 
 🔴 **`_shared/*` is bundled PER FUNCTION at deploy time.** After touching
 `_shared/fivesim.ts`, redeploy `sync-5sim` AND `poll-active-orders` AND every
@@ -524,7 +524,7 @@ create-order      no auth              -> 401   (auth still enforced)
 ⚠️ `telegram-setup` fails closed, and rotating `TELEGRAM_WEBHOOK_SECRET`
 requires re-running it.
 
-### Cron schedule (24 jobs, all active — re-verified 2026-09-11)
+### Cron schedule (25 jobs, all active — re-verified 2026-09-15)
 
 ```
 relay-poll-active-orders  * * * * *     relay-telegram-notify   * * * * *
@@ -536,6 +536,7 @@ expire-esim-orders        */15 * * * *  expire-email-orders     */5 * * * *
 purge-job-run-details     7 3 * * *     telegram-events-prune   30 4 * * *
 app-events-prune          50 3 * * *
 relay-rc-sync             * * * * *     (RevenueCat mirror, read-only; sleeps 5s past :00 — see the herd gotcha)
+relay-reddit-scan         26 * * * *    (Reddit radar; READ-only, drafts never post — see below)
 ── rented lines ──
 reclaim-lapsed-lines      */15 * * * *  (PURE SQL, no HTTP hop — the claim must
                                          survive the edge layer dying)
@@ -579,7 +580,7 @@ unreachable from the code that needs it.
 ### Backend layout
 
 - `supabase/migrations/` — chronological SQL, each phase ships its own file
-- `supabase/functions/_shared/` — **27 files** (`ls supabase/functions/_shared |
+- `supabase/functions/_shared/` — **29 files** (`ls supabase/functions/_shared |
   wc -l`; count, do not trust a list). The ones worth knowing:
   `providers.ts` (the unified router — order/poll functions call this, never a
   provider), `pricing.ts` (the ONE definition of SMS retail), `fivesim.ts`,
@@ -592,7 +593,8 @@ unreachable from the code that needs it.
   one path and not another), `pgRetry.ts` (retry a PostgREST READ through the
   top-of-minute herd; never a write), `nanp.ts`, `phone.ts`, `emailStatus.ts`,
   `cors.ts`, `telegram.ts`, `tgCommands.ts`, `tgHandlers.ts`, `tgFormat.ts`,
-  `tgAlert.ts`, `opsFormat.ts`, `supabaseAdmin.ts`, `lines.ts`, `lineVoice.ts`
+  `tgAlert.ts`, `opsFormat.ts`, `supabaseAdmin.ts`, `lines.ts`, `lineVoice.ts`,
+  `reddit.ts` (read-only Reddit search), `kimi.ts` (the lead classifier)
 - `supabase/functions/<name>/index.ts` — one per endpoint, all `Deno.serve`
 - `supabase/README.md` — deployment + secret setup walkthrough
 
@@ -2184,6 +2186,78 @@ return rows.
 `/adgroups/{id}/ads` is normal, not the reason for zero impressions. Diagnose
 from `servingStateReasons`, bids and age.
 
+### The Reddit radar surfaces leads; it NEVER posts (2026-09-15)
+
+`reddit-scan` (cron `relay-reddit-scan`, hourly at :26) searches Reddit for
+people asking for what vSMS sells, scores each thread through Moonshot/Kimi,
+and pushes the good ones to Telegram with a **drafted reply the owner edits
+and posts by hand from their own account**. `/leads [open|all|skipped]` is the
+working list; the two inline buttons on each push (`lead:done` / `lead:skip`,
+handled in `telegram-webhook`) only RECORD what the owner did.
+
+🔴 **There is no posting path, and the credential could not post if there
+were.** The Reddit token is minted `grant_type=client_credentials` — the
+app-only grant, no user context — so submit/comment/vote endpoints 403. That
+is the safety property: an absent capability, not a flag someone can flip.
+**Never "upgrade" it to a password or refresh-token grant.** Undisclosed
+automated promotion is a Reddit Rule 2 (inauthentic engagement) violation, it
+is detected, and the sanction that matters is a sitewide **DOMAIN** ban —
+which costs the legitimate channel permanently, not just an account. Owner
+asked for a comment bot on 2026-09-15 and this is the shape that was built
+instead; do not quietly re-open the question.
+
+Five things reading the code does not give you:
+
+- **Three product truths are pinned into the classifier prompt**
+  (`_shared/kimi.ts`), because an overselling draft is worse than no draft —
+  this app's only organic review is already someone angry about a promise that
+  did not hold. Temp SMS delivers ~a quarter of the time per attempt and the
+  draft must say so; outbound texting is NANP→NANP only and the draft must
+  never imply otherwise; **no supplier is ever named** (the standing owner rule
+  applies to drafted copy exactly as it does to shipped copy). The disclosure
+  line is mandatory, and a subreddit read as `restricted` gets a draft with no
+  product mention at all.
+- 🔴 **`moonshot-v1-*` sunset 2026-08-31.** Live ids are `kimi-k3`,
+  `kimi-k2.6` (what this uses — it is classification, not writing) and
+  `kimi-k2.7-code-highspeed`. Re-read `platform.kimi.ai/docs/overview` rather
+  than trusting this line; the lineup moved twice in three months.
+- ⚠️ **Reddit search indexes POSTS, not comments.** There is no supported
+  comment-search endpoint and the Pushshift mirror that filled that gap closed
+  in 2023, so the radar finds threads and the reply opportunity is usually a
+  comment *on* one. Adding `type=comment` does nothing; it is silently ignored.
+- **`sort=new&t=week` against an hourly cadence is deliberate** — a 168×
+  window means a missed run cannot lose a thread. Sorting by relevance would
+  reorder under us and make the UNIQUE index on `reddit_leads.reddit_id` do all
+  the work. That index is the dedupe, not a pre-read: two queries matching the
+  same thread in one batch both pass a "have I seen this" check and then
+  collide on insert.
+- ⚠️ **No watchdog check of its own — the same deliberate exception
+  `relay-rc-sync` carries.** The whole failure mode is "a marketing lead
+  arrived late", which costs nothing and fixes itself next run; paging for it
+  spends the one channel that has to stay readable. Check by hand:
+  ```sql
+  select status, count(*) from reddit_leads group by 1;
+  select classify_error, count(*) from reddit_leads
+    where classify_error is not null group by 1 order by 2 desc;
+  ```
+
+Secrets: `REDDIT_CLIENT_ID`, `REDDIT_CLIENT_SECRET`, `REDDIT_USER_AGENT`
+(Reddit's documented shape `<platform>:<app id>:<version> (by /u/<user>)` — a
+generic one is throttled far below the documented ceiling, which reads exactly
+like a bad client id and is not), `MOONSHOT_API_KEY`. **All four missing is a
+clean no-op**: phase A records `reddit_credentials_missing` and the run still
+returns 200, so the cron does not flap while they are unset.
+
+Search terms live in `reddit_queries` (7 seeded) and are tunable without a
+deploy. `NOTIFY_MIN_RELEVANCE` (70) and the `buying`-only intent filter in
+`reddit-scan/index.ts` are **judgement calls, not measurements** — read
+`/leads all` against what the owner actually replied to before moving either.
+
+⚠️ **Unproven: this channel has produced nothing yet.** It went live
+2026-09-15 with no leads surfaced and no reply posted. Judge it on replies
+actually sent, never on leads surfaced — a radar that fills `/leads` with
+threads nobody answers is a cost, not a channel.
+
 ### Support is WhatsApp, not in-app
 
 🔴 **The in-app chat is GONE from the client (2.9).** Support is a `wa.me` deep
@@ -2446,8 +2520,8 @@ Each has been wrong within a day of being written at least once.
   2.12`. It has been wrong about the review state five versions running, and
   that is a decision error, not a typo: "still in review" is the argument for
   cutting another release.
-- **Backend**: 50 edge function dirs besides `_shared`, 238 migration files, 27
-  files in `_shared`, 139 Swift sources (re-counted 2026-09-13), 24 active
+- **Backend**: 51 edge function dirs besides `_shared`, 241 migration files, 29
+  files in `_shared`, 139 Swift sources (re-counted 2026-09-15), 25 active
   cron jobs.
 - **Catalog**: 9,364 active routes (5sim 8,074 / HeroSMS 1,290), 468 services,
   0 active eSIM plans (line parked). `active_sms_provider()` = `5sim`.
@@ -2563,6 +2637,10 @@ Genuinely open items only. Resolved history is in `docs/decisions-archive.md`.
 - ⚠️ **The VoIP/`physicalCount` hypothesis is untested, not falsified.**
   `orders.operator_used` is the control arm; it needs volume.
 - ⚠️ **The tail 5× pricing experiment has not been read out.**
+- ⚠️ **The Reddit radar has produced no reply yet** (live 2026-09-15). Judge it
+  on replies the owner actually POSTED, not on leads surfaced; a `/leads` list
+  nobody answers is a cost. Its relevance threshold and `buying`-only intent
+  filter are judgement calls that have never been read out.
 - ⚠️ **The first non-NANP line order has never run.** Today's sellable set
   (US/CA/PR) needs no documents, so only the proven NANP path is exercised. When
   a requirement group first makes a documented country sellable, **the first
