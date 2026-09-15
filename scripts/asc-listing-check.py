@@ -102,16 +102,27 @@ def token():
         open(KEY).read(), algorithm="ES256", headers={"kid": KID})
 
 
-def call(path):
-    req = urllib.request.Request(
-        "https://api.appstoreconnect.apple.com" + path,
-        headers={"Authorization": "Bearer " + token()})
-    try:
-        with urllib.request.urlopen(req) as r:
-            return json.loads(r.read())
-    except urllib.error.HTTPError as e:
-        print(f"  ASC {e.code}: {e.read().decode()[:200]}", file=sys.stderr)
-        return {}
+def call(path, attempts=3):
+    """⚠️ Catch URLError too, not just HTTPError. A network blip is a bare
+    URLError, and an uncaught one tracebacks out of a GATE — which on a
+    pre-submission check reads as 'the script is broken', not as 'I could not
+    reach Apple'. Those must never look the same."""
+    for attempt in range(attempts):
+        req = urllib.request.Request(
+            "https://api.appstoreconnect.apple.com" + path,
+            headers={"Authorization": "Bearer " + token()})
+        try:
+            with urllib.request.urlopen(req, timeout=30) as r:
+                return json.loads(r.read())
+        except urllib.error.HTTPError as e:
+            print(f"  ASC {e.code}: {e.read().decode()[:200]}", file=sys.stderr)
+            return {}
+        except (urllib.error.URLError, TimeoutError, OSError) as e:
+            if attempt == attempts - 1:
+                print(f"  ASC unreachable after {attempts} tries: {e}", file=sys.stderr)
+                return {}
+            time.sleep(2 * (attempt + 1))
+    return {}
 
 
 def localizations(version_id):
