@@ -70,6 +70,12 @@ struct CreditsSheet: View {
     /// a selection changing under someone's thumb is worse than a stale one.
     @State private var userChosePack = false
     @State private var appeared = false
+    /// True when THIS sheet is what set `suppressReviewThisSession`, so a
+    /// successful purchase may lift it again. A mail-subscription paywall
+    /// earlier in the same launch must KEEP its suppression: that user was
+    /// asked for a commitment and declined, which is the moment the rule
+    /// exists for. Buying credits is the opposite — see `buy()`.
+    @State private var suppressionWasOurs = false
     @State private var restoreNote: Note?
     @State private var restoreTask: Task<Void, Never>?
 
@@ -202,6 +208,20 @@ struct CreditsSheet: View {
             // the worst possible moment. The mail paywall has always carried
             // this rule; the CREDITS paywall never did, and it is the bigger of
             // the two (212 distinct users saw it in the 11 days to 2026-09-11).
+            //
+            // 🔴 But a SUCCESSFUL purchase lifts it again — see `buy()`. The
+            // rule was written when the signup grant covered a first order, so
+            // "saw a paywall" really did mean "was refused something". The
+            // grant went to 0 on 2026-09-10 and every user now opens this sheet
+            // before they can receive their first code, so a launch-wide
+            // suppression set here fired on every successful session. Measured
+            // over the 30 days to 2026-09-16: `paywall_session` was 73 of 114
+            // blocks, the prompt was requested ONCE ever, and the app has 8
+            // lifetime ratings. Ownership is tracked because only OUR
+            // suppression may be lifted — the three mail-subscription sites
+            // (`TempScreen`, `EmailCodeScreen`, `EmailDomainSheet`) set the
+            // same flag and must keep it.
+            suppressionWasOurs = !state.suppressReviewThisSession
             state.suppressReviewThisSession = true
             withAnimation(RMotion.content) { appeared = true }
             await iap.loadProducts()
@@ -676,6 +696,20 @@ struct CreditsSheet: View {
             return
         }
         RHaptic.success()
+        // 🔴 "Bought credits → ordered → code arrived" is the happiest moment
+        // this product has, and suppressing the review ask there is backwards.
+        // A CANCELLED purchase deliberately leaves the suppression standing:
+        // that user WAS just told they have to pay, and said no.
+        //
+        // This cannot produce a second ask in one launch, and the reason is an
+        // ordering in `AppState.reviewPromptBlocker`, not a check here:
+        // `markReviewPromptRequested` writes the PERSISTED `lastReviewPromptAt`
+        // and the cooldown is tested BEFORE `.paywallSession`. Do not reorder
+        // those two.
+        if suppressionWasOurs {
+            state.suppressReviewThisSession = false
+            suppressionWasOurs = false
+        }
         // AWAIT the wallet refresh before dismissing. This used to be
         // fire-and-forget, racing the dismissal: the CTA could still read
         // "Buy credits — need N more" against a balance that had already been

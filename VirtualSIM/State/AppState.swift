@@ -560,12 +560,24 @@ final class AppState {
         }
     }
 
-    /// A review prompt and the subscription paywall must never appear in the
-    /// same session. Both are interruptions asking for something; stacking them
-    /// spends Apple's ~3-prompts-per-year quota on a user who was just told
-    /// they have to pay, which is the worst possible moment to ask for five
-    /// stars. Whichever fires first suppresses the other until the next cold
-    /// launch. Deliberately NOT persisted — "session" means this launch.
+    /// A review prompt and a paywall must never appear in the same session.
+    /// Both are interruptions asking for something; stacking them spends
+    /// Apple's ~3-prompts-per-year quota on a user who was just told they have
+    /// to pay, which is the worst possible moment to ask for five stars.
+    /// Whichever fires first suppresses the other for the rest of the launch.
+    /// Deliberately NOT persisted — "session" means this launch.
+    ///
+    /// 🔴 **ONE EXCEPTION, and it is the difference between a rule and a bug:
+    /// a SUCCESSFUL credit purchase lifts it again** (`CreditsSheet.buy()`).
+    /// The rule assumes "saw a paywall" means "was refused something", which
+    /// stopped being true when the signup grant went to 0 on 2026-09-10 —
+    /// every user now opens the credits sheet before their first code, so a
+    /// launch-wide suppression set there covered every successful session.
+    /// Measured over the 30 days to 2026-09-16: `paywall_session` was **73 of
+    /// 114 blocks**, the prompt was requested **once, ever**, and the app has
+    /// 8 lifetime ratings. A CANCELLED purchase still suppresses, and the three
+    /// mail-subscription sites still suppress unconditionally — only the
+    /// surface that SET the flag may lift it, which `CreditsSheet` tracks.
     var suppressReviewThisSession = false
 
     // eSIM product line
@@ -1130,6 +1142,12 @@ final class AppState {
     /// reported when several apply. Structural gates first, so the transient
     /// ones (`flowActive`, `orderWaiting`, `emailActive`) are what surface at
     /// the dwell re-check, which is where they are worth measuring.
+    ///
+    /// 🔴 **`cooldown` MUST stay ahead of `paywallSession`.** Since 2026-09-16
+    /// a successful credit purchase can clear `suppressReviewThisSession`
+    /// mid-launch, so the persisted `lastReviewPromptAt` is the ONLY thing
+    /// stopping a second ask in one launch. Swapping these two reintroduces
+    /// that, silently.
     func reviewPromptBlocker(now: Date = Date()) -> ReviewBlock? {
         guard let arrived = lastSuccessMoment else { return .noDelivery }
 

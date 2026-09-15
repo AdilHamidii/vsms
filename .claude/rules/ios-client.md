@@ -474,13 +474,41 @@ Five properties that reading the code does not give you:
   Reviews" switch off, scene not active). Hence `review_prompt_requested`, never
   `_shown`, and `scene_active` on it — the one silent-drop cause observable
   from here.
-- **All four paywalls now set `suppressReviewThisSession`.** `TempScreen`,
+- **All four paywalls set `suppressReviewThisSession`.** `TempScreen`,
   `EmailDomainSheet` and `EmailCodeScreen` present the mail paywall from their
   OWN `@State` (the root sheet is unreachable under a cover), which bypassed
   `AppState.showMailPaywall`'s didSet entirely — so the mail paywall's primary
   entry point never suppressed. `CreditsSheet` never did either, and it is the
   bigger of the two. ⚠️ Do **not** "fix" the flag's one-per-process lifetime;
   `AppState` documents it as deliberate.
+
+🔴 **A SUCCESSFUL credit purchase LIFTS the suppression again (2026-09-16), and
+without that exception the prompt could barely fire at all.** The rule assumes
+"saw a paywall" means "was refused something". That stopped being true when the
+signup grant went to **0** on 2026-09-10: every user now opens `CreditsSheet`
+before they can receive their first code, so a launch-wide suppression set there
+covered essentially every SUCCESSFUL session. Measured over the 30 days to
+2026-09-16 — `paywall_session` **73 of 114 blocks**, `review_prompt_requested`
+**1, ever**, 8 lifetime ratings unchanged since the 09-11 baseline.
+
+Three properties of the exception, none derivable from reading it:
+
+- **A CANCELLED purchase still suppresses.** That user really was told they have
+  to pay and said no; "bought credits → ordered → code arrived" is the opposite,
+  and the happiest moment the product has.
+- **Only the surface that SET the flag may lift it.** `CreditsSheet` captures
+  `suppressionWasOurs = !state.suppressReviewThisSession` before setting it, so
+  a mail-subscription paywall earlier in the same launch keeps its suppression.
+  The three mail sites above still suppress unconditionally.
+- 🔴 **`cooldown` must stay ahead of `paywallSession` in `reviewPromptBlocker`.**
+  The flag can now clear mid-launch, so the persisted `lastReviewPromptAt` — the
+  cooldown's input — is the ONLY thing preventing a second ask in one launch.
+  Reordering those two checks reintroduces that silently.
+
+⚠️ **Unread.** This ships in the next release; judge it on
+`review_prompt_requested` per week and on the `app-ratings.py` SLOPE, never on a
+single total. It cannot raise the rating count on its own — it only stops the
+gate from swallowing the ask.
 
 ⚠️ **`reviewCalmFloorHours` (2), `reviewDwellSeconds` (8) and
 `reviewCooldownDays` (120) are JUDGEMENT CALLS, not measurements**, and are

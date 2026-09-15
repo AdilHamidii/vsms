@@ -2847,6 +2847,21 @@ received codes. It is now DERIVED from `Order.arrivedAt`, fires from two arms
 (cold launch + foreground) after a calm dwell, and emits
 `review_prompt_eligible` / `_blocked` / `_requested`.
 
+🔴 **FIRST READ-OUT, 2026-09-16: the rebuilt prompt asked ONE person, ever, and
+the gate that swallowed it was `suppressReviewThisSession`.** Over the prior 30
+days `review_prompt_blocked{paywall_session}` was **73 of 114 blocks** (6 users)
+against `review_prompt_requested` **1** (1 user), while `app-ratings.py` read 8
+— unmoved from the 09-11 baseline. The cause is a premise that broke under the
+code rather than a coding error: the no-prompt-in-a-paywall-session rule assumes
+"saw a paywall" means "was refused something", and **the signup grant went to 0
+on 2026-09-10**, so every user now opens `CreditsSheet` before their first code
+and every SUCCESSFUL session contained a paywall. Fixed 2026-09-16 — a
+successful credit purchase lifts the suppression, a cancelled one does not, and
+only the surface that set the flag may lift it. Detail, and the
+`cooldown`-before-`paywallSession` ordering that now keeps it safe, in
+`.claude/rules/ios-client.md`. ⚠️ Ships in the next release and is UNREAD; it
+removes a blocker, it does not by itself produce ratings.
+
 🔴 **It covers ALL THREE products only from 2026-09-14 — a line subscriber
 could never be asked before that**, because eligibility guarded on a temp
 SMS/e-mail code and the two audiences have never overlapped (19 subscribers,
