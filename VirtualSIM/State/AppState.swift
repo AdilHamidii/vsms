@@ -1022,12 +1022,35 @@ final class AppState {
     /// Hours that must have passed since the user's most recent delivered code
     /// before the sheet may be asked for.
     ///
-    /// ⚠️ **A JUDGEMENT CALL, NOT A MEASUREMENT.** Nothing in the data picks 2
-    /// over 1 or 6. The only adjacent measurement — median code arrival ~53s
-    /// against a median cancel at 57s — rules out *minutes*, and says nothing
-    /// about hours. Read `review_prompt_blocked{reason: too_soon}` against
-    /// `review_prompt_requested` before moving it.
-    static let reviewCalmFloorHours: Double = 2
+    /// 🔴 **0 SINCE 2026-09-16 (owner decision) — the floor is OFF, and the
+    /// 8-second dwell is now the only timing gate.** It was 2, labelled here as
+    /// a judgement call with the instruction to read
+    /// `review_prompt_blocked{reason: too_soon}` against
+    /// `review_prompt_requested` first. That read-out arrived: over the 30 days
+    /// to 2026-09-16, `too_soon` blocked **22 times across 4 of the 6 users the
+    /// gate ever evaluated**, against **1** request, ever.
+    ///
+    /// **A floor measured in hours required a RETURN VISIT, and this product is
+    /// disposable by design** — 20 of 185 users who received a code in those 30
+    /// days came back at all. That is the structural reason the number had to
+    /// move rather than shrink.
+    ///
+    /// Why 0 is not the "rushed moment" the 2026-09-11 rewrite inverted away
+    /// from: the prompt has exactly TWO arms, cold launch and
+    /// background→foreground (`ContentView.scheduleReviewPrompt`). It cannot
+    /// fire while the user sits watching a code arrive. At 0 the ask lands on
+    /// the user's NEXT return to the app — which, for a code that worked, is
+    /// the moment they come back from pasting it. A user whose code did NOT
+    /// work returns to order another number, is inside a flow within a second
+    /// or two, and the post-dwell re-check blocks on `.flowActive`. The dwell
+    /// separates them; the floor never did.
+    ///
+    /// ⚠️ **The residual risk is real and was accepted knowingly:** a code
+    /// ARRIVING is not the verification SUCCEEDING, so some user will be asked
+    /// shortly before learning the service rejected the number. Restore the
+    /// floor — 10 or 30 minutes, not 2 hours — if `app-ratings.py` shows the
+    /// average falling rather than the count rising.
+    static let reviewCalmFloorHours: Double = 0
 
     /// Seconds of UNINTERRUPTED calm before the sheet. The dwell is the part
     /// that separates a browsing user from a rushing one: the likeliest reason

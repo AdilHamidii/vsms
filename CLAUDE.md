@@ -2862,6 +2862,26 @@ only the surface that set the flag may lift it. Detail, and the
 `.claude/rules/ios-client.md`. ⚠️ Ships in the next release and is UNREAD; it
 removes a blocker, it does not by itself produce ratings.
 
+🔴 **`reviewCalmFloorHours` is also 0 now (owner, 2026-09-16) — the 2-hour calm
+floor is OFF and the 8-second dwell is the only timing gate left.** A floor in
+HOURS required a return visit and this product is disposable: 20 of the 185
+users who received a code in 30 days came back at all, and `too_soon` blocked 22
+times across 4 of the 6 users the gate ever evaluated. It is not a return to the
+rushed moment — `scheduleReviewPrompt` has only two arms (cold launch,
+background→foreground), so the ask lands on the user's NEXT return, and a user
+whose code failed is inside a flow by then and blocks on `.flowActive`.
+⚠️ Accepted risk: a code arriving is not the verification succeeding. Reverse
+with a floor of 10–30 MINUTES if `app-ratings.py` shows the AVERAGE falling.
+
+⚠️ **The real ceiling right now is ADOPTION, not the gates.** Of the 185 users
+who received a code in the 30 days to 2026-09-16, only **9** were on a build
+that can emit the prompt at all (2.13+), so the addressable pool is ~9/month
+until 2.13/2.14/2.15 adopt. Re-derive before judging either constant:
+```sql
+select count(distinct user_id) from app_events
+ where name='home_view' and created_at > now()-interval '30 days';
+```
+
 🔴 **It covers ALL THREE products only from 2026-09-14 — a line subscriber
 could never be asked before that**, because eligibility guarded on a temp
 SMS/e-mail code and the two audiences have never overlapped (19 subscribers,

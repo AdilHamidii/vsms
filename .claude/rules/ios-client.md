@@ -510,11 +510,35 @@ Three properties of the exception, none derivable from reading it:
 single total. It cannot raise the rating count on its own — it only stops the
 gate from swallowing the ask.
 
-⚠️ **`reviewCalmFloorHours` (2), `reviewDwellSeconds` (8) and
-`reviewCooldownDays` (120) are JUDGEMENT CALLS, not measurements**, and are
-labelled as such at the declaration. Nothing in the data picks them. Read
-`review_prompt_blocked{reason: too_soon}` and `{stage: dwell, reason:
-flow_active}` against `review_prompt_requested` before moving any of them.
+⚠️ **`reviewDwellSeconds` (8) and `reviewCooldownDays` (120) are JUDGEMENT
+CALLS, not measurements**, and are labelled as such at the declaration. Nothing
+in the data picks them. Read `review_prompt_blocked{stage: dwell, reason:
+flow_active}` against `review_prompt_requested` before moving either.
+
+🔴 **`reviewCalmFloorHours` IS 0 — the floor is OFF (owner decision
+2026-09-16), and the 8-second dwell is now the only timing gate.** It was 2,
+and its own doc comment asked for `too_soon` against `requested` before moving
+it; that read-out arrived and said the floor was the expensive gate — **22
+blocks across 4 of the 6 users ever evaluated, against 1 request, ever.**
+
+**A floor in HOURS required a return visit, and the product is disposable by
+design**: 20 of the 185 users who received a code in the 30 days to 2026-09-16
+came back at all. Shrinking the number would not have fixed the shape.
+
+This is not a return to the "rushed moment" the 2026-09-11 rewrite inverted away
+from, and the reason is the arms: `scheduleReviewPrompt` is reached ONLY from
+cold launch and background→foreground, so it cannot fire while someone watches a
+code land. At 0 the ask lands on the user's NEXT return to the app — for a code
+that worked, the moment they come back from pasting it. A user whose code FAILED
+returns to order another number, is inside a flow within a second or two, and
+the post-dwell re-check blocks on `.flowActive`. **The dwell separates those two;
+the floor never did.**
+
+⚠️ **Residual risk, accepted knowingly:** a code ARRIVING is not the verification
+SUCCEEDING, so someone will be asked shortly before learning the service refused
+the number. The reversal is a floor of 10 or 30 MINUTES, never 2 hours again —
+and the trigger for it is `app-ratings.py` showing the AVERAGE fall, not the
+count fail to rise.
 
 ⚠️ **Apple gives NO attribution for a rating.** ASC's `customerReviews` returns
 only *written* reviews, so a silent star is invisible there. The only read-out
