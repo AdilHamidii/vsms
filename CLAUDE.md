@@ -2523,13 +2523,21 @@ Each has been wrong within a day of being written at least once.
 
 **Verified 2026-09-09:**
 
-- **iOS**: **2.15 (build 65) is `WAITING_FOR_REVIEW`** (submitted 2026-09-15
-  21:10Z, submission `567b7a25-…`, version `2819e552-…`). It carries the
+- **iOS**: **2.15 (build 66) is `WAITING_FOR_REVIEW`** (submitted 2026-09-15
+  22:58Z, submission `6c5dd143-…`, version `2819e552-…`). It carries the
   announcement banner's move to Home, the vRoam card, the review prompt
-  extended to line subscribers, and **the re-scored keyword fields in all 13
+  extended to line subscribers, **the two review-gate fixes of 2026-09-16**
+  (a successful credit purchase lifts `suppressReviewThisSession`;
+  `reviewCalmFloorHours` is 0), and **the re-scored keyword fields in all 13
   locales** — the first release that could carry them, since keywords ship
   only with a version and there was no editable one until 2.15 existed. It
   therefore also UNDOES 2.14's hand-edit.
+  ⚠️ **Build 65 was cancelled and replaced by 66** (owner, 2026-09-16), the
+  fourth exercise of the DEVELOPER_REJECTED recovery path: submission
+  `567b7a25-…` cancelled → version `DEVELOPER_REJECTED` → attach 66 →
+  `PREPARE_FOR_SUBMISSION` → resubmit. The 13 localizations and the
+  screenshots survived untouched, and `asc-listing-check.py` read 0 findings
+  immediately before the resubmit.
   ⚠️ Built on beta macOS `26A5388g`, so the `BuildMachineOSBuild` → `25F84`
   patch was applied and verified in the exported IPA; without it Apple rejects
   the binary as ITMS-90111.
