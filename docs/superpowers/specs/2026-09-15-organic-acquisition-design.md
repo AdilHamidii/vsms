@@ -258,6 +258,15 @@ it no later phase can be read out.
    handler per `.claude/rules/ops-bot.md`; **re-run `telegram-setup`** after,
    or the `/` menu keeps the old list.
 
+✅ **Built 2026-09-15: `scripts/asc-listing-check.py`.** It closes the two
+invariants this plan found stated but unenforced — the live keyword field
+against `asc-keywords.py`'s approved list, and a price scan over
+`description` / `whatsNew` / `promotionalText` / `name` / `subtitle` in every
+locale. Exits 1 on any finding, so it serves as both a pre-submission gate and
+a daily cron line. It currently reports one finding: the 2.14 `email`
+regression. It **never writes** — a disagreement may mean the script is stale
+rather than the listing, and auto-fixing would destroy the evidence.
+
 **Read-out.** None — this phase produces the instrument, not a result. It is
 done when a rank series exists for ≥7 consecutive days and the analytics
 puller has returned a full storefront × source table at least once.

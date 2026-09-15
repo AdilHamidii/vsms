@@ -2851,6 +2851,13 @@ no rank history to test against, because nothing has ever rank-tracked this
 app. Plan and evidence:
 `docs/superpowers/specs/2026-09-15-organic-acquisition-design.md`.
 
+✅ **This drift is now DETECTED, since 2026-09-15** —
+`python3 scripts/asc-listing-check.py` diffs the live field in every locale
+against `asc-keywords.py`'s approved list and exits 1 on any disagreement. It
+currently reports exactly this one finding. 🔴 **It never writes, and neither
+should you reflexively**: a disagreement may mean the SCRIPT is stale rather
+than the listing, so decide which is right and make them agree in one commit.
+
 ✅ **APPLIED to 2.13 on 2026-09-11** (owner-approved), all 13 locales, read back
 13/13 matching, and submitted with build 63. Keywords ship only with a release,
 so they take effect when 2.13 is approved — **nothing about ranking can be read
@@ -2963,8 +2970,19 @@ This is the listing-side instance of the rule the code already follows twice
 over — *never hardcode a price*, *never quote a number the server owns*. The
 pack ladder drifted to $4.99-vs-€5.99 on its top product for the same reason,
 and **the app's only organic review is a 1★ saying the price rose overnight**.
-Re-check before any submission: scan every locale's `whatsNew` and `description`
-for `[$€£¥₹]` and expect zero hits.
+✅ **ENFORCED since 2026-09-15 — run it before every submission:**
+
+```bash
+python3 scripts/asc-listing-check.py     # exits 1 on any finding
+```
+
+It scans `description`, `whatsNew` and `promotionalText` on the version, plus
+`name` and `subtitle` at the app level, in EVERY locale, for `[$€£¥₹₦₺₪₩฿₫]`
+and for `USD/EUR/GBP/JPY/INR/US$`. Verified against the five strings that
+actually shipped wrong in 2.13 — it catches all five and stays silent on clean
+copy. ⚠️ **A written invariant is not an enforced one**, which is the whole
+reason this exists: the rule below was in this file while twelve locales
+violated it.
 
 ⚠️ **The fallback language is the app's PRIMARY locale, `en-US`, not en-GB**
 (`GET /v1/apps/6774768570` → `primaryLocale`). GB and IE resolve to `en-GB`;
