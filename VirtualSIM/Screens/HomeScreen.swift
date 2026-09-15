@@ -102,26 +102,27 @@ struct HomeScreen: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
-                // 🔴 ABOVE the greeting, and first on the screen on purpose:
-                // an announcement is the owner telling users something about
-                // the service right now (an outage, a provider switch), which
-                // outranks a greeting. It lived on the Temp tab until
-                // 2026-09-15; Home is element 0 of every `launchOrder` by
-                // construction, so moving it here means everyone sees it on
-                // cold launch rather than only Temp visitors.
+                header
+                    .padding(.horizontal, 20)
+                    .padding(.top, 6)
+                    .riseIn(appeared, index: 0)
+
+                // Directly UNDER the greeting (owner, 2026-09-15), and above
+                // everything else on the screen: an announcement is the owner
+                // telling users something about the service right now — an
+                // outage, a provider switch — which outranks every card below
+                // it but reads better after the greeting than in front of it.
+                // It lived on the Temp tab until 2026-09-15; Home is element 0
+                // of every `launchOrder` by construction, so it is now seen on
+                // every cold launch rather than only by Temp visitors.
                 if let announcement = state.visibleAnnouncement {
                     AnnouncementBanner(announcement: announcement) {
                         state.dismissAnnouncement()
                     }
                     .padding(.horizontal, 16)
-                    .padding(.bottom, 4)
+                    .padding(.top, 18)
                     .transition(.move(edge: .top).combined(with: .opacity))
                 }
-
-                header
-                    .padding(.horizontal, 20)
-                    .padding(.top, 6)
-                    .riseIn(appeared, index: 0)
 
                 if hasLine, let line = state.line {
                     lineCard(line)

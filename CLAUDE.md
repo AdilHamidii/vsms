@@ -160,8 +160,9 @@ retrying it would re-ask an unanswerable question on every launch forever.
 **Two things joined the bottom of Home on 2026-09-15** (owner decisions), both
 below the invite card so neither competes with the router:
 
-- **The announcement banner MOVED here from the Temp tab**, to the very TOP of
-  Home — above the greeting, since an outage notice outranks a greeting. It is
+- **The announcement banner MOVED here from the Temp tab**, and sits directly
+  UNDER the greeting — above every card, since an outage notice outranks them,
+  but after the greeting rather than in front of it. It is
   a reach win, not a lateral move: `.home` is element 0 of every `launchOrder`
   BY CONSTRUCTION, so every cold launch sees it, where Temp was seen only by
   people who went looking. 🔴 **Do not re-add it to `TempScreen`** — two copies
