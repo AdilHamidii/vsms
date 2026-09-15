@@ -483,6 +483,19 @@ change: `anon` reads `herosms_health` → `[]`. `anon` has a table SELECT grant
 but **no policy**, so it reads nothing; the app is past `AuthGate` and reads as
 `authenticated`.
 
+🔴 **`/announce` text is rendered VERBATIM to every user on the first screen
+of every cold launch, and nothing reviews it.** Since 2026-09-15 the banner
+sits at the top of **Home** (it was on the Temp tab before), so an announcement
+now reaches everyone rather than only people who open Temp. That makes the
+text an App Store surface. **Never post copy that offers anything in exchange
+for a review or a rating** — Guideline **5.6.4** forbids incentivised reviews,
+and asking specifically for *5-star* ones is review manipulation on top. This
+is the same rule the review prompt is built around ("never tie credits to a
+review"), and it binds the bot exactly as hard.
+⚠️ Found live on 2026-09-15: an announcement offering *5 free credits for a
+5-star review*, already shipping to users. Clear a violating announcement with
+`/announce` (empty) rather than leaving it to expire.
+
 Three details that are load-bearing:
 
 - **`/announce` reads the RAW message text, not the parsed one.** The webhook

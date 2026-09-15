@@ -96,17 +96,13 @@ struct TempScreen: View {
                     .padding(.top, 6)
                     .riseIn(appeared, index: 0)
 
-                // First on the screen on purpose: an announcement is the
-                // owner telling users something about the service right now
-                // (an outage, a provider switch), which outranks everything.
-                if let announcement = state.visibleAnnouncement {
-                    AnnouncementBanner(announcement: announcement) {
-                        state.dismissAnnouncement()
-                    }
-                    .padding(.horizontal, 16)
-                    .padding(.top, 14)
-                    .transition(.move(edge: .top).combined(with: .opacity))
-                }
+                // (The announcement banner lived here until 2026-09-15. It
+                // moved to the TOP OF HOME — owner decision, and it is a reach
+                // win rather than a lateral move: Home is element 0 of every
+                // `launchOrder` by construction, so it is the first screen on
+                // every cold launch, while this tab is only seen by people who
+                // go looking for it. Do not re-add it here; two copies would
+                // both be dismissible and the second would read as a bug.)
 
                 // (The daily-credit claim card lived here until 2026-08-02 —
                 // the feature was disabled server-side and then removed.)

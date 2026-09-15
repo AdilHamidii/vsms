@@ -59,6 +59,17 @@ struct HomeScreen: View {
     @State private var tracked = false
     @State private var showNameSheet = false
 
+    /// Seeded from UserDefaults once per `HomeScreen` init rather than read in
+    /// `body`: this screen redraws on every collection `AppState` publishes,
+    /// and a computed property would hit UserDefaults on each of them — the
+    /// same reasoning as `productOrder` below.
+    @State private var vroamDismissed =
+        UserDefaults.standard.bool(forKey: PrefKey.vroamCardDismissed)
+
+    /// vRoam's App Store page. The id is the owner's second app,
+    /// `com.adyl.vRoam`, read from Apple's lookup API on 2026-09-15.
+    private static let vroamAppStoreURL = "https://apps.apple.com/app/id6806653317"
+
     /// The card order, resolved into a stored property when the view is
     /// initialised — once per `HomeScreen` init, not per body evaluation —
     /// the same rule, and the same reason, as `TabBar.items`: `AppState` is
@@ -91,6 +102,22 @@ struct HomeScreen: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
+                // 🔴 ABOVE the greeting, and first on the screen on purpose:
+                // an announcement is the owner telling users something about
+                // the service right now (an outage, a provider switch), which
+                // outranks a greeting. It lived on the Temp tab until
+                // 2026-09-15; Home is element 0 of every `launchOrder` by
+                // construction, so moving it here means everyone sees it on
+                // cold launch rather than only Temp visitors.
+                if let announcement = state.visibleAnnouncement {
+                    AnnouncementBanner(announcement: announcement) {
+                        state.dismissAnnouncement()
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, 4)
+                    .transition(.move(edge: .top).combined(with: .opacity))
+                }
+
                 header
                     .padding(.horizontal, 20)
                     .padding(.top, 6)
@@ -137,10 +164,15 @@ struct HomeScreen: View {
                     .padding(.top, 26)
                     .riseIn(appeared, index: 5)
 
-                inviteCard
+                vroamCard
                     .padding(.horizontal, 16)
                     .padding(.top, 26)
                     .riseIn(appeared, index: 6)
+
+                inviteCard
+                    .padding(.horizontal, 16)
+                    .padding(.top, 26)
+                    .riseIn(appeared, index: 7)
             }
             .padding(.top, 8)
             // The tab bar floats over the content, as on every other tab.
@@ -898,6 +930,93 @@ struct HomeScreen: View {
         }
     }
 
+    // MARK: - vRoam cross-promotion
+
+    /// A card for **vRoam**, the owner's separate travel-eSIM app
+    /// (`id6806653317`). Owner decision 2026-09-15.
+    ///
+    /// 🔴 **This is a link OUT, and it must stay one.** The eSIM business is
+    /// permanently parked in vSMS and lives in a different app; this card
+    /// touches none of the parked `esim_*` infrastructure and must never grow
+    /// into an in-app plan list, a price fetch or a purchase. If it ever needs
+    /// to know anything about vRoam's catalogue, that is the signal it has
+    /// become the thing the park exists to prevent.
+    ///
+    /// 🔴 **`$0.99` is vRoam's PUBLISHED floor, copied from its own App Store
+    /// description on 2026-09-15 ("2,700+ plans across 170+ countries,
+    /// starting at $0.99"), and it is a constant this app cannot keep
+    /// honest.** vRoam can reprice without a vSMS release, and then this card
+    /// is a lie with our name on it — the same failure that made
+    /// `inviteJoinerCredits` a 150% overstatement and put a credit amount in
+    /// onboarding twice. It is here because the owner chose a concrete price
+    /// over "up to 70% cheaper", which had no substantiation at all; the
+    /// mitigation is that it is ONE literal in ONE place. **Re-check it
+    /// against vRoam's listing whenever either app ships.**
+    ///
+    /// ⚠️ Dismissal is device-global and permanent — see
+    /// `PrefKey.vroamCardDismissed`.
+    @ViewBuilder
+    private var vroamCard: some View {
+        if !vroamDismissed, let url = URL(string: Self.vroamAppStoreURL) {
+            Card {
+                VStack(alignment: .leading, spacing: 12) {
+                    HStack(alignment: .firstTextBaseline) {
+                        Text("Travelling?")
+                            .font(RFont.text(16, weight: .bold))
+                            .foregroundStyle(theme.text)
+
+                        Spacer(minLength: 8)
+
+                        Button {
+                            withAnimation(RMotion.content) {
+                                UserDefaults.standard.set(true, forKey: PrefKey.vroamCardDismissed)
+                                vroamDismissed = true
+                            }
+                            track("vroam_dismissed")
+                        } label: {
+                            Image(systemName: "xmark")
+                                .font(.system(size: 11, weight: .bold))
+                                .foregroundStyle(theme.text3)
+                                // Same 44pt-target reasoning as the
+                                // announcement banner's close control.
+                                .frame(width: 28, height: 28)
+                                .contentShape(.rect)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel(Text("Dismiss"))
+                    }
+
+                    Text("Our app vRoam has eSIM data plans for 170+ countries, **from $0.99**. No roaming bills, and your number keeps working.")
+                        .font(RFont.text(14))
+                        .lineSpacing(2)
+                        .foregroundStyle(theme.text2)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    Link(destination: url) {
+                        HStack(spacing: 6) {
+                            Text("Get vRoam")
+                                .font(RFont.display(14, weight: .semibold))
+                                .tracking(-0.2)
+                            Image(systemName: "arrow.up.right")
+                                .font(.system(size: 12, weight: .semibold))
+                        }
+                        .foregroundStyle(theme.onInk)
+                        .padding(.horizontal, 16)
+                        .frame(height: 46)
+                        .background(theme.ink, in: .rect(cornerRadius: RRadius.sm))
+                    }
+                    // `Link` owns its own tap, so the event rides alongside it
+                    // rather than replacing it — the same reason `ShareLink`
+                    // below uses `simultaneousGesture`.
+                    .simultaneousGesture(TapGesture().onEnded {
+                        track("vroam")
+                    })
+                }
+                .padding(18)
+            }
+        }
+    }
+
     // MARK: - Invite
 
     /// Rendered only when there is genuinely a code to share.
@@ -962,7 +1081,13 @@ struct HomeScreen: View {
 
     /// One event, one prop, one vocabulary:
     /// `sms | email | line | line_messages | line_call | credits |
-    ///  more_services | recent_sms | recent_email | invite`.
+    ///  more_services | recent_sms | recent_email | invite | vroam |
+    ///  vroam_dismissed`.
+    ///
+    /// ⚠️ `vroam_dismissed` is not a tap on a product, it is a REJECTION, and
+    /// it rides the same event so the two can be read against each other. Read
+    /// the ratio, not the raw `vroam` count: a card that is tapped 20 times and
+    /// dismissed 400 is costing more attention than it earns.
     private func track(_ card: String) {
         Analytics.shared.track("home_card_tapped", ["card": .string(card)])
     }

@@ -254,6 +254,20 @@ enum PrefKey {
     /// in what the screen SAYS, not for a change in how long it holds.
     static let deliveryInfoAcked = "temp.deliveryInfoAckedV2"
 
+    /// The user waved away the vRoam cross-promotion card on Home.
+    ///
+    /// ⚠️ `UserDefaults.standard` is DEVICE-global and survives Delete
+    /// Account, exactly like `deliveryInfoAcked`. That is the right trade for
+    /// a house ad — the same human on the same phone has already said no, and
+    /// keying it to the user id would re-show it to someone who dismissed it
+    /// five minutes earlier. It also means a dismissal cannot be undone from
+    /// inside the app; only deleting vSMS clears it.
+    ///
+    /// Not versioned, and deliberately so: a bump would re-show an
+    /// advertisement to people who have already declined it once, which is
+    /// what makes a promo card feel like spam rather than a tip.
+    static let vroamCardDismissed = "home.vroamCardDismissed"
+
     /// The given name Apple handed us at sign-in, parked here until a cold
     /// launch can PATCH it onto `profiles`. Apple sends the name ONLY on the
     /// FIRST authorization for an Apple ID — never again, not even after a

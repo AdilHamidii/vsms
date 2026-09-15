@@ -157,9 +157,45 @@ UserDefaults read, never a PATCH); one with NO owner — parked by a build befor
 the key existed — is dropped, because it can never be matched to anybody and
 retrying it would re-ask an unanswerable question on every launch forever.
 
+**Two things joined the bottom of Home on 2026-09-15** (owner decisions), both
+below the invite card so neither competes with the router:
+
+- **The announcement banner MOVED here from the Temp tab**, to the very TOP of
+  Home — above the greeting, since an outage notice outranks a greeting. It is
+  a reach win, not a lateral move: `.home` is element 0 of every `launchOrder`
+  BY CONSTRUCTION, so every cold launch sees it, where Temp was seen only by
+  people who went looking. 🔴 **Do not re-add it to `TempScreen`** — two copies
+  would both be dismissible and the second would read as a bug. It is also
+  bigger now (16pt text, tinted fill instead of a hairline) and **has no
+  megaphone icon**: a decorative "loud" glyph on every notice makes routine
+  news look like an alarm and then a real alarm look routine. The
+  `exclamationmark.triangle.fill` survives for `isWarning` ONLY, where it
+  carries meaning — do not "restore consistency" by giving the normal case an
+  icon back.
+- **A vRoam cross-promotion card**, linking out to the owner's separate
+  travel-eSIM app (`id6806653317`, `com.adyl.vRoam`). 🔴 **It is a link OUT and
+  must stay one** — it touches none of the parked `esim_*` infrastructure, and
+  if it ever needs to know anything about vRoam's catalogue that is the signal
+  it has become the thing the eSIM park exists to prevent. Dismissible via
+  `PrefKey.vroamCardDismissed` (device-global, survives Delete Account,
+  deliberately not versioned — bumping it would re-show an advert to someone
+  who already declined).
+  🔴 **Its `$0.99` is vRoam's PUBLISHED floor, copied from that app's own
+  listing on 2026-09-15, and vSMS cannot keep it honest** — vRoam can reprice
+  without a vSMS release. Same class as `inviteJoinerCredits` and the
+  onboarding credit amount. It is ONE literal in ONE place; re-check it
+  whenever either app ships. ⚠️ The owner asked for *"up to 70% cheaper"* and
+  that was declined in favour of a concrete price: vRoam's own listing makes
+  no percentage claim, so it would have been a new unsubstantiated one, and
+  the app's only organic review is already someone angry that a promise did
+  not hold.
+
 Home's own events are `home_view` (`has_line`, `has_orders`) and
 `home_card_tapped` (`card` ∈ sms · email · line · line_messages · line_call ·
-credits · more_services · recent_sms · recent_email · invite). A grid tap fires
+credits · more_services · recent_sms · recent_email · invite · vroam ·
+vroam_dismissed). ⚠️ `vroam_dismissed` is a REJECTION riding the same event so
+the two can be read against each other — read the RATIO, since a card tapped
+20 times and dismissed 400 costs more attention than it earns. A grid tap fires
 `service_selected` with `source: "home"` instead — the picker sends `sheet` or
 `search` — and `display_name_set` carries `source` `home` (the user typed it)
 or `apple` (the parked name, flushed at launch).

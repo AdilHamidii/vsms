@@ -14920,6 +14920,46 @@
         }
       }
     },
+    "Get vRoam": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "vRoam laden"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Obtener vRoam"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Obtenir vRoam"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Scarica vRoam"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "vRoam を入手"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Baixar vRoam"
+          }
+        }
+      }
+    },
     "Getting a new number…": {
       "extractionState": "stale",
       "localizations": {
@@ -24160,6 +24200,46 @@
           "stringUnit": {
             "state": "translated",
             "value": "Os pedidos aguardando código aparecem aqui enquanto estão em andamento."
+          }
+        }
+      }
+    },
+    "Our app vRoam has eSIM data plans for 170+ countries, **from $0.99**. No roaming bills, and your number keeps working.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Unsere App vRoam bietet eSIM-Datentarife für 170+ Länder, **ab 0,99 $**. Keine Roaming-Rechnungen, und deine Nummer funktioniert weiter."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nuestra app vRoam tiene planes de datos eSIM para más de 170 países, **desde 0,99 $**. Sin facturas de itinerancia, y tu número sigue funcionando."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Notre app vRoam propose des forfaits data eSIM dans plus de 170 pays, **à partir de 0,99 $**. Aucune facture d'itinérance, et votre numéro continue de fonctionner."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "La nostra app vRoam offre piani dati eSIM per oltre 170 paesi, **da 0,99 $**. Nessuna bolletta di roaming e il tuo numero continua a funzionare."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "姉妹アプリ vRoam なら、170か国以上の eSIM データプランが **0.99ドルから**。ローミング料金はかからず、今の番号もそのまま使えます。"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nosso app vRoam tem planos de dados eSIM para mais de 170 países, **a partir de US$ 0,99**. Sem contas de roaming, e seu número continua funcionando."
           }
         }
       }
@@ -37024,6 +37104,46 @@
           "stringUnit": {
             "state": "translated",
             "value": "As eSIMs de viagem estão temporariamente fora de venda. Qualquer eSIM que você já comprou continua funcionando. Encontre-a em «Meus eSIMs»."
+          }
+        }
+      }
+    },
+    "Travelling?": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Auf Reisen?"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "¿De viaje?"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "En voyage ?"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "In viaggio?"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "旅行の予定は？"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vai viajar?"
           }
         }
       }
