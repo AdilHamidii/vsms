@@ -2903,6 +2903,25 @@ this is the summary:
 
 | locale | field | len |
 |---|---|---|
+⚠️ **The table below is the 2026-09-11 set and it is SUPERSEDED.** A full
+per-storefront re-score on 2026-09-15 replaced all 13 fields; they are STAGED
+in `scripts/asc-keywords.py` (run it for a dry-run print) and ship with the
+next version. Headlines: **no shared `EN` constant any more** (the four English
+storefronts diverge because their difficulty does); **`ru` and `ar-SA` go
+NATIVE**, because a Latin field cannot match a Cyrillic or Arabic query and
+those two were therefore buying nothing at all; **de-DE gains
+`telefonnummer`**, unlocking `zweite telefonnummer` 78/50 at opportunity 39 —
+the best score in any locale, against beatable incumbents (2Number 3,006).
+Dropped for cause: fr `activation` (top result is an AI-chat app) and `boite`
+(returns temp-work agencies — *boîte* reads as "firm"), pt-BR `correio`
+(popularity **10**) and `caixa` (65/**78**), it `spam` (anti-spam blockers) and
+`numeri` (completes nothing without the plural adjective), ja `テンポラリ`
+(popularity **1**, one result, which is vSMS) and `ワンタイム` (bank token apps).
+🔴 **`sms activate` measures 62/54 and is deliberately NOT bought** — it is a
+competitor's name, so the supplier rule and 2.3.7 both bite.
+
+| locale | field (SUPERSEDED — see above) | len |
+|---|---|---|
 | en-US/GB/CA/AU, ru, ar-SA | `email,virtual,disposable,temporary,online,otp,code,burner,mail,verify,receive,text,call,2nd,get` | 95 |
 | fr-FR | `recevoir,mail,verification,virtuel,jetable,deuxieme,code,email,otp,temp,boite,activation` | 88 |
 | de-DE | `virtuelle,empfangen,verifizierung,zweite,mail,email,wegwerf,handynummer,online,otp,trashmail` | 92 |

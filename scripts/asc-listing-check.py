@@ -26,6 +26,13 @@ NOT established — nothing has ever rank-tracked this app, so there is no
 before. What is established is that a money-relevant field changed with no
 record and no alarm. This script is the alarm.
 
+⚠️ **A freshly STAGED field set makes every locale report a difference, and
+that is normal, not a fault.** Keywords ship only with a release, so between
+staging a new set in `asc-keywords.py` and that release going live, the whole
+catalogue reads as drift. The signal to watch in that state is a token
+appearing under "live but UNAPPROVED" that nobody staged — that is a hand
+edit. Everything under "approved but ABSENT" is just waiting for the release.
+
 🔴 **CHECK 2 — a written invariant with no enforcement is not an invariant.**
 CLAUDE.md: *"NO LISTING FIELD MAY QUOTE A PRICE — release notes and description
 included, in EVERY locale."* It shipped violated anyway: all twelve non-en-US
