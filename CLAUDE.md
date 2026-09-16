@@ -1841,6 +1841,26 @@ simply not reachable from the code depending on them, and every inbound webhook
 would have 500'd. **A structural check cannot catch this** — only a behavioural
 test found it.
 
+🔴 **`verify-line-subscription` is called TWICE per purchase, and a
+same-transaction `line_exists` is a REPLAY that answers 200 (2026-09-16).**
+`SubscriptionStore` verifies one transaction from both the `product.purchase()`
+result and the shared `Transaction.updates` listener, so the second call
+routinely finds the line the first just created. `begin_line_rental` answers
+`line_exists` without asking which transaction bought the line, and the
+function used to return 409 `line_paid_but_exists` — which the app renders as
+*"we couldn't set the number up"* for a purchase that SUCCEEDED. On 2026-09-16
+alone two buyers hit it; one (`37cd2b0b`) reached the 409 100 minutes after
+his number went live, never used it, turned auto-renew off and asked Apple for
+a refund. It now returns `{ok, line_id, e164, replay: true}` when the existing
+line's `original_transaction_id` matches AND its status is usable
+(`provisioning`/`active`/`grace`/`past_due`), logging `line_verify_replay`.
+**A line bought by a DIFFERENT transaction still 409s and still pages** — that
+is the genuine paid-twice case the guard exists for. Server-side on purpose, so
+every shipped build is fixed without a release. ⚠️ Verified by `deno check`
+and by matching both victims' rows, NOT by a live double-verify — no real JWS
+can be minted from here. The proof is the first `line_verify_replay` log line
+with no `line_paid_but_exists` beside it.
+
 **Every Swift enum mirroring a PG enum needs an `unknown` fallback in
 `init(from:)`, in the first client commit.** iOS `OrderStatus` has no unknown
 case, which is why `begin_order` had to write a semantically wrong `'waiting'`.

@@ -168,6 +168,52 @@ Deno.serve(async (req) => {
     return json({ error: "provision_failed" }, { status: 500 });
   }
   if (begun?.ok !== true) {
+    // 🔴 `line_exists` FOR THIS SAME PURCHASE IS A REPLAY, NOT A CONFLICT
+    // (2026-09-16). The client verifies ONE transaction from TWO places — the
+    // `product.purchase()` result and the shared `Transaction.updates`
+    // listener — so the second call routinely finds the line the first one
+    // just created. `begin_line_rental` answers `line_exists` without asking
+    // which transaction bought it, and this function used to turn that into a
+    // 409, which the app renders as "we couldn't set the number up" for a
+    // purchase that SUCCEEDED. Two buyers hit it on 2026-09-16 alone: one got
+    // a 200 from the other call 7s later, the other reached the 409 100
+    // minutes after his line went live, never used the number and asked Apple
+    // for a refund. Server-side on purpose: it fixes every shipped build.
+    //
+    // Matching on `original_transaction_id` is what keeps the real guard
+    // intact — a live line bought by a DIFFERENT transaction still refuses and
+    // still pages below, because that one really is money moved for nothing.
+    // A replay that lands while the first call is still provisioning answers
+    // ok too; if that first call then fails, `rescue-unprovisioned-lines`
+    // re-provisions a paid line with no number.
+    if (begun?.reason === "line_exists" && begun?.line_id) {
+      const { data: existing, error: existingErr } = await sb
+        .from("phone_lines")
+        .select("id, e164, status, original_transaction_id")
+        .eq("id", String(begun.line_id))
+        .maybeSingle();
+      if (existingErr) {
+        console.error(JSON.stringify({
+          alert: "line_replay_lookup_failed", user: userId,
+          tx: tx.originalTransactionId, detail: existingErr.message,
+        }));
+      } else if (
+        existing?.original_transaction_id === tx.originalTransactionId &&
+        // Usable states only. `begin_line_rental` also counts `suspended` and
+        // `releasing` as existing; a replay must never tell the app a number
+        // that is being deleted is ready, so those keep the old path.
+        ["provisioning", "active", "grace", "past_due"].includes(String(existing.status))
+      ) {
+        console.log(JSON.stringify({
+          line_verify_replay: tx.originalTransactionId, user: userId,
+          line: existing.id, status: existing.status,
+        }));
+        return json({
+          ok: true, line_id: existing.id, e164: existing.e164,
+          inbound_ready: existing.status === "active", replay: true,
+        });
+      }
+    }
     // A user who already holds a line and somehow paid again: refuse rather
     // than provisioning a second number. They keep the subscription; a human
     // resolves it. Paging because it means money moved for nothing.
