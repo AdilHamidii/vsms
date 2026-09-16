@@ -308,9 +308,9 @@ the eligibility read returns true, and cleared on a successful purchase.
 ✅ **`trialLabel` and `MailSubscriptionStore.yearlyTrialLabel` carry the same
 eligibility gate since 2026-09-11** (2.13 build 63). Both used to read the
 offer's mere presence — inert for the line, since no yearly line trial exists in
-ASC, but LIVE for mail: `mail.yearly` carries a 3-day trial in every territory,
-so every repeat mail subscriber was shown "3 days free" and then charged for the
-whole year. Both are now stored properties written in the load path behind the
+ASC, but LIVE for mail: `mail.yearly` carried a 3-day trial in every territory
+(REMOVED 2026-09-16, below), so every repeat mail subscriber was shown "3 days
+free" and then charged for the whole year. Both are now stored properties written in the load path behind the
 async `isEligibleForIntroOffer` read and cleared on a successful purchase.
 🔴 **Never reintroduce a computed `…IntroOffer` that reads
 `subscription?.introductoryOffer` directly.** StoreKit hands the offer AS
@@ -324,8 +324,29 @@ introductoryOffers` → empty, 2026-09-10). Its record: 9 takers, 1 call between
 them, 0 conversions, a $1 number each — decoded from
 `latest_signed_transaction.offerDiscountType = FREE_TRIAL` on
 `line_subscriptions`. `trialLabel` (yearly ONLY) therefore renders nothing.
-`mail.yearly` DOES still carry a 3-day trial in every territory. Do not
-re-add a line trial without the owner.
+🔴 **`mail.yearly`'s 3-day trial is ALSO GONE, removed 2026-09-16** (owner
+decision; 175 territory offers deleted via
+`/v1/subscriptionIntroductoryOffers/<id>`, read back 0, and `line.monthly`'s
+175 $3.99 first-month offers verified untouched in the same run). **Neither
+subscription carries a free trial any more; `line.monthly`'s PAID intro is the
+only introductory offer left in the app.** Three independent reasons, each
+sufficient:
+
+- **It converted 1 of 13 settled trials.** 14 started, 1 paid $29.99, 2
+  cancelled inside the trial, and **10 of the 11 who let it auto-renew were
+  DECLINED at the first charge** — that is the entire `billing_retry` pile, not
+  card trouble.
+- **It manufactured the angriest possible user**: a 3-day trial ending in a
+  surprise $29.99 attempt, in an app whose only organic review is already a
+  price complaint.
+- **It was the free-farm vector.** See the TikTok-farming note under "The
+  temp-e-mail product".
+
+⚠️ Users already inside a trial keep it — Apple honours a granted offer — so
+the last of them lapse 2026-09-18. No client change was needed: with no offer
+configured StoreKit returns none, `yearlyTrialLabel` goes nil, and the "3 days
+free" copy disappears by itself. Do not re-add a trial on EITHER product
+without the owner.
 
 ⚠️ **`isFreeTrial` in `_shared/iap.ts` no longer treats `offerType === 1` as
 "free"**: since the paid intro, an introductory period can carry a price, so
@@ -367,7 +388,10 @@ order, 30 days to 2026-09-11:
 SMS: 211 expired, 111 cancelled, 89 received. This is the root of the 1★, the
 absent reorders and the 8 ratings — and it is why the checkout steer exists.
 
-⚠️ **"E-mail acquires users" is UNPROVEN and currently reads negative.** Of 274
+⚠️ **"E-mail acquires users" is UNPROVEN and currently reads negative**, and
+the 2026-09-16 TikTok-farming cohort reads negative HARDER — four
+subscribers, 37 orders, **zero** SMS orders between them (see the
+temp-e-mail product section). Of 274
 mail users, 56 ever placed an SMS order and **5 ever paid — 1.8%, BELOW the
 2.9% all-user baseline**. Mail also ran **−$3.65** in those 30 days (367 orders,
 336 free, 31 credits charged ≈ $12.40 against $16.05 wholesale). That is noise
@@ -1741,9 +1765,33 @@ not against the brief that specified it.
 
 **The free rule is lifetime-and-retroactive**, not per-day:
 `email_free_lifetime_grants` (1) counted over ALL history. A subscriber instead
-gets unlimited free-domain addresses under `email_sub_daily_cap` (25) — a stated
+gets unlimited free-domain addresses under `email_sub_daily_cap` — a stated
 hard stop, not a throttle, because the free pool is scarce and shared and one
 looping subscriber could drain it for everyone.
+
+🔴 **The cap is 8, cut from 25 on 2026-09-16, and the number is MEASURED.**
+Re-read it (`select value from app_config where key='email_sub_daily_cap'`),
+never quote this. Over the product's whole history **373 of 376 user-days are
+≤5 orders**; only three days ever exceeded five, and those ran 92–100%
+`tiktok.com`. So 8 clears every legitimate day observed with 60% headroom and
+cuts only the farm. It is enforced in SQL from `app_config`, so the write takes
+effect with no deploy and no release.
+
+🔴 **WHY, 2026-09-16 — the temp-mail line was being used to farm TikTok
+accounts.** Four accounts created within 8.5 hours on 2026-09-15, each
+subscribing **14–73 minutes after signup**, placing **37 of 37 orders against
+`tiktok.com`** and **zero** SMS orders between them. TikTok's share of all mail
+orders went 3.6% → 22.4% → **76.9%** across three weeks while distinct sites
+collapsed 17 → 6 and orders-per-user rose 1.4 → 2.9. ⚠️ **They are not bots**
+— gaps are irregular and human (79s to 8.5h), four separate devices, no shared
+push tokens, all Production Apple IDs. Read it as a coordinated playbook, not a
+script, and do not go looking for an API abuser.
+⚠️ **The direct cost was trivial — $1.85 of wholesale against two paid monthly
+subs** — so this is NOT a money leak. What it actually costs is the shared free
+outlook/hotmail pool (which genuinely runs dry: one sweep measured TWO addresses
+available for discord.com), and it quietly falsifies "e-mail acquires users":
+this cohort placed no SMS orders, will never rate the app and will never buy a
+line. **Judge the mail line on what its users do NEXT, never on order volume.**
 
 `verify-email-subscription` deliberately **accepts Sandbox**, unlike
 `iap-verify`. There is no equivalent exposure: the entitlement grants addresses
@@ -2600,9 +2648,13 @@ Each has been wrong within a day of being written at least once.
   grace, 4 billing_retry, 2 expired).
 - **Config**: signup grant **0** (owner decision 2026-09-10 — see the grant
   section above; `app_config.signup_bonus_credits`), free e-mail cap
-  **1**/user/day, swap **8**
+  **1**/user/day, **subscriber e-mail cap 8/day (cut from 25 on 2026-09-16 —
+  TikTok farming, see the temp-e-mail section)**, swap **8**
   credits, `launch_tab` = `line` (order behind Home; Home always first from
-  2.13), mail subscription **enforced**, eSIM **paused**, lines **not**
+  2.13), mail subscription **enforced**, **no free trial on either
+  subscription** (`mail.yearly`'s 175 territory offers removed 2026-09-16;
+  `line.monthly`'s $3.99 PAID intro is the only introductory offer left),
+  eSIM **paused**, lines **not**
   paused, daily credit **disabled**.
 - **Balances** — re-query, these move hourly:
   `select key, value->>'balance_usd' from app_config where key like '%_health';`
