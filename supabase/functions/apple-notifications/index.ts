@@ -186,6 +186,23 @@ async function process(sb: ReturnType<typeof admin>, n: Awaited<ReturnType<typeo
   // decoded. A notification is exactly as trustworthy as its signatures.
   const tx = await verifyTransactionJWS(txJws);
 
+  // Join the forensic row to the purchase it describes — for EVERY product.
+  // 🔴 This stamp used to sit below the family dispatch, so the credit-pack
+  // refund branches and the whole mail handler returned before it ran: every
+  // mail notification and every pack CONSUMPTION_REQUEST carried a NULL
+  // `original_transaction_id`, which is why diagnosing the mail
+  // `billing_retry` pile on 2026-09-16 took a decode of
+  // `latest_signed_transaction` instead of a join. Not fatal — the
+  // notification still processes if this write fails.
+  const { error: stampErr } = await sb.from("line_notifications")
+    .update({ original_transaction_id: tx.originalTransactionId })
+    .eq("notification_uuid", n.notificationUUID);
+  if (stampErr) {
+    console.error(JSON.stringify({
+      alert: "assn_stamp_failed", uuid: n.notificationUUID, detail: stampErr.message,
+    }));
+  }
+
   // 🔴 REFUND TRAFFIC FOR **CREDIT PACKS** REACHES THIS FUNCTION AND USED TO
   // DIE ON THE NEXT LINE. Live `line_notifications` holds 15 CONSUMPTION_REQUEST
   // rows and 3 REFUND_DECLINED, every one with a null original_transaction_id —
@@ -212,7 +229,8 @@ async function process(sb: ReturnType<typeof admin>, n: Awaited<ReturnType<typeo
       what: `credit pack: ${esc(tx.productId)}\n` +
         `tx ${esc(tx.originalTransactionId ?? "(none)")}`,
       why: "Credits already granted are NOT revoked automatically — Apple decides the refund.",
-      action: "Respond in App Store Connect within 12h; the window then closes on its own.",
+      action: "No reply is sent. Apple takes usage data only through the App Store Server API, "
+        + "only with the customer's prior consent, and vSMS collects none — so Apple decides alone.",
       at: new Date(n.signedDate),
     }), sb, `consumption:${n.notificationUUID}`, "line_consumption");
     return;
@@ -301,18 +319,7 @@ async function process(sb: ReturnType<typeof admin>, n: Awaited<ReturnType<typeo
 
   const ri = riJws ? await verifyRenewalInfoJWS(riJws).catch(() => null) : null;
   const originalTx = tx.originalTransactionId;
-
-  // Now that the inner JWS is verified, join the forensic row to the
-  // subscription it describes. Not fatal — the notification still processes if
-  // this write fails — but it is the only thing that makes the trail useful.
-  const { error: stampErr } = await sb.from("line_notifications")
-    .update({ original_transaction_id: originalTx })
-    .eq("notification_uuid", n.notificationUUID);
-  if (stampErr) {
-    console.error(JSON.stringify({
-      alert: "assn_stamp_failed", uuid: n.notificationUUID, detail: stampErr.message,
-    }));
-  }
+  // (The forensic stamp now runs at the top of `process`, for every family.)
 
   const type = n.notificationType;
   const sub = n.subtype ?? "";
@@ -550,7 +557,8 @@ async function process(sb: ReturnType<typeof admin>, n: Awaited<ReturnType<typeo
           `held ${facts.daysHeld ?? "?"}d · ${facts.smsUsed ?? 0} SMS · ` +
           `${Math.round((facts.voiceUsedSeconds ?? 0) / 60)} min used`,
         why: "Apple decides the refund. Reply only if you have consent to share usage.",
-        action: "Respond in App Store Connect within 12h; the window then closes on its own.",
+        action: "No reply is sent. Apple takes usage data only through the App Store Server API, "
+        + "only with the customer's prior consent, and vSMS collects none — so Apple decides alone.",
         at: new Date(n.signedDate),
       }), sb, `consumption:${n.notificationUUID}`, "line_consumption");
       return;
@@ -888,6 +896,16 @@ async function handleMailNotification(
       state = "active"; break;
     case "DID_FAIL_TO_RENEW":
       state = sub === "GRACE_PERIOD" ? "grace" : "billing_retry"; break;
+    case "GRACE_PERIOD_EXPIRED":
+      // 🔴 Unhandled until 2026-09-16: it fell into `default`, which returns
+      // BEFORE any write, so a lapsed subscriber stayed `grace` forever — three
+      // rows were found stranded, two with an `updated_at` sixteen days older
+      // than the notification. The line handler has always handled it.
+      // `billing_retry`, NOT `expired`: grace ending does not end Apple's
+      // retries, and Apple sends EXPIRED separately when it gives up, which
+      // the next case already handles. Entitlement is unaffected either way —
+      // `has_email_subscription` grants only `active`/`grace`.
+      state = "billing_retry"; break;
     case "EXPIRED":
       state = "expired"; break;
     case "REFUND":

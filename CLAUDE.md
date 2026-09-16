@@ -208,6 +208,15 @@ then watches the section swap How-it-works → Recent a beat later. Read the pro
 as "had SMS history at the first frame", not as "had no history". Deliberate —
 history does not earn a place on the boot critical path.
 
+🔴 **`home_view.has_line` has the same first-frame flaw, and it nearly caused a
+wrong conclusion.** `hasLine` is `linesLoaded && isLive`, so a subscriber whose
+`my_line` read is still in flight logs `false` — on 2026-09-16 one who swapped
+three times logged 0 true / 8 false. **From 2.16, `home_view` carries
+`lines_loaded`; trust `has_line` only where it is `true`.** Events from 2.15 and
+older have no such prop, so their `has_line` proves nothing on its own — read
+`home_card_tapped` (`line_messages`/`line_call` only render for a live line)
+instead.
+
 **Why a router.** Measured on the first session of the 241 users who signed
 up 2026-09-04 → 09-10 (live build 2.11 landed on Temp): 70 stayed on Temp
 (2 opened support), **68 bounced Temp → Number (11 opened support)**, 61
@@ -1792,6 +1801,37 @@ outlook/hotmail pool (which genuinely runs dry: one sweep measured TWO addresses
 available for discord.com), and it quietly falsifies "e-mail acquires users":
 this cohort placed no SMS orders, will never rate the app and will never buy a
 line. **Judge the mail line on what its users do NEXT, never on order volume.**
+
+🔴 **Four mail-subscription state bugs fixed 2026-09-16 — read these before
+trusting any mail `state` from before that date:**
+
+- **`GRACE_PERIOD_EXPIRED` was unhandled on the mail path.** It fell into
+  `default`, which returns before any write, so a lapsed subscriber stayed
+  `grace` forever. It now maps to `billing_retry` (grace ending does not end
+  Apple's retries; `EXPIRED` follows separately). Three stranded rows were
+  corrected by hand (`230003619439163`, `200003561300725`, `390002488584011`
+  → `billing_retry`); none was date-entitled, so nobody lost access.
+- **Mail notifications could not be joined to their subscription.** The
+  `line_notifications.original_transaction_id` stamp ran below the family
+  dispatch, so every mail event — and every credit-pack refund notification —
+  was logged with a NULL id. It now runs straight after the inner JWS is
+  verified, for every product. Rows before 2026-09-16 stay NULL.
+- **A client re-post could resurrect a lapsed row, move expiry BACKWARDS, and
+  reset auto-renew** (migration `20260916190000`). `record_email_subscription`'s
+  ON CONFLICT branch is reached almost only by the app re-posting a receipt it
+  still holds, with `active`/`auto_renew=true` hard-coded. The expiry half was
+  the serious one: an original-purchase JWS re-posted after a renewal could
+  lower `expires_at` and deny a PAYING subscriber. Now a lapsed row keeps its
+  state against a receipt whose period has ended, `expires_at` only moves
+  forward (`greatest`), and `auto_renew` on conflict keeps what Apple last
+  said. Returns `ok: true` + `state_kept` — deliberately no new refusal, so no
+  client change. Verified in a rolled-back transaction against live Postgres:
+  stale receipt kept `billing_retry`; renewed receipt → `active`; old receipt
+  after renewal left expiry in the future; `revoked` still refused.
+- **The refund-request page said "Respond in App Store Connect".** Apple
+  documents the response only as the App Store Server API, and only with the
+  customer's PRIOR consent (`customerConsented: true`, else 400) — which vSMS
+  does not collect. The alert now says no reply is sent and Apple decides.
 
 `verify-email-subscription` deliberately **accepts Sandbox**, unlike
 `iap-verify`. There is no equivalent exposure: the entitlement grants addresses

@@ -183,9 +183,19 @@ struct HomeScreen: View {
         .onAppear {
             guard !tracked else { return }
             tracked = true
+            // ⚠️ `has_line` is `false` whenever lines have not loaded yet, and
+            // this fires on the FIRST frame — so on its own it cannot tell a
+            // non-subscriber from a subscriber whose `my_line` read is still in
+            // flight. On 2026-09-16 a subscriber who swapped three times logged
+            // 0 true / 8 false, and the flag was nearly read as proof a buyer
+            // never saw his number. `lines_loaded` is what makes it readable:
+            // trust `has_line` only where `lines_loaded` is true. The event is
+            // deliberately NOT delayed until load — that would break the series
+            // and never fire at all for a user whose lines fail to load.
             Analytics.shared.track("home_view", [
                 "has_line": .bool(hasLine),
                 "has_orders": .bool(hasHistory),
+                "lines_loaded": .bool(state.linesLoaded),
             ])
         }
         // Env objects injected explicitly rather than inherited: sheet content
