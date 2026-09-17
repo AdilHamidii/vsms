@@ -2682,7 +2682,19 @@ Each has been wrong within a day of being written at least once.
 
 **Verified 2026-09-09:**
 
-- **iOS**: **2.15 (build 66) is `WAITING_FOR_REVIEW`** (submitted 2026-09-15
+- **iOS**: **2.16 (build 67) is staged and NOT YET SUBMITTED** (version
+  `60e2459a-…`, created 2026-09-17). It carries the US/CA texting disclosure
+  (`LineStoreScreen.sendingNotice`, `LineCheckoutScreen.capabilityNote`), its
+  13 release-note locales are written and read back, build 67 is attached and
+  `VALID`, `asc-listing-check.py` reads 0 findings, and the 11 en-US
+  screenshots carried over from 2.15 unchanged. **The submit step is the only
+  thing left**: `python3 scripts/asc-release.py submit 2.16 --apply`.
+  ⚠️ Built on beta macOS, so the `BuildMachineOSBuild` → `25F84` patch was
+  applied and verified in the exported IPA (2.16/67, VoIP background modes
+  present).
+- **2.15 (build 66) is `READY_FOR_SALE`** — approved (read from ASC
+  2026-09-17); this block called it `WAITING_FOR_REVIEW` for two days.
+  Historical: it was submitted 2026-09-15
   22:58Z, submission `6c5dd143-…`, version `2819e552-…`). It carries the
   announcement banner's move to Home, the vRoam card, the review prompt
   extended to line subscribers, **the two review-gate fixes of 2026-09-16**
