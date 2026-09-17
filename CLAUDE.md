@@ -296,9 +296,21 @@ A monthly free trial was the obvious lever and the owner declined it on
 ✅ **`line.monthly` carries a $3.99 FIRST-MONTH intro offer since 2026-09-10**
 (owner: "genuinely the best I can do" — treat $3.99 as the floor). It is a
 PAY_AS_YOU_GO offer, `ONE_MONTH × 1`, then the regular $5.99, in all **175**
-territories — same numeral where the tier exists (136, incl. USD/EUR/GBP/CAD),
-Apple's equalization elsewhere (¥600, ₹399, R$24.9). Created and READ BACK by
+territories — same numeral where the tier exists AND is worth at least the
+euro offer (USD, EUR, GBP and ~110 more), Apple's equalization elsewhere (¥600,
+₹399, R$24.9, A$5.99). Created and READ BACK by
 `scripts/asc-line-monthly-intro-offer.py` (dry-run by default, idempotent).
+🔴 **No territory's intro may net less than the €3.99 offer (owner, 2026-09-17).**
+The same-numeral rule put Canada at CA$3.99 — ~US$2.45 after Apple's 15%,
+against a $2.00 Telnyx number. `scripts/asc-line-intro-eur-floor.py` raised
+every bare-3.99 territory below Apple's equalization of FRA's €3.99 to that
+equalization: **CAN → CA$4.99 and 22 VAT-carrying USD territories → $4.99**
+(ALB ARM AZE BEN BLR BRB CIV CMR COG GEO GHA ISL KEN MAR MDA MUS NPL SEN UGA
+UKR ZMB ZWE). Apple's own equalization puts USA at $3.99, so the US was not
+below the euro value and is unchanged. Re-run the script (dry-run) after ANY
+change to the offer; it must print `to raise: 0`. ⚠️ ASC answers a DELETE with
+204 and an EMPTY body — the first run crashed on it after deleting Albania's
+offer, leaving that territory with none until the re-run restored it.
 A paid intro answers the free-trial objection: the $3.39 net covers the $1
 number. It applies at Apple's sheet with no client change; the client renders
 it on `LineCheckoutScreen` (plan row, price block, CTA, 3.1.2 sentence) from
@@ -423,8 +435,26 @@ app must never sell.
 | **outbound calling** | ✅ proven at volume |
 | **inbound calling** | ✅ proven 2026-09-08 on a device, app open AND closed |
 | **inbound SMS** | ✅ works |
-| **outbound SMS, NANP → NANP** | ✅ proven off-net 2026-09-08 |
+| **outbound SMS from a CANADIAN number** | ✅ every send delivered (30d to 2026-09-17) |
+| **outbound SMS from a US number** | 🔴 **mostly BLOCKED** — US numbers are not 10DLC-registered |
 | **outbound SMS outside NANP** | ❌ **genuinely blocked** — settled by experiment |
+
+🔴 **US-number texting fails `40010: The sending number is not 10DLC-registered
+but is required to be by the carrier`** (found 2026-09-17). Over the 30 days
+to then, 16 of 24 outbound sends failed on 9 lines, every one from a US number
+to a US number; the Canadian 437/604 numbers delivered every send, and the 3 US
+sends that did land reached carriers that still accept unregistered senders.
+Nothing in this repo registers a 10DLC brand or campaign. The 2026-09-08
+"proven" row was ONE successful send — the same best-case generalisation the
+note below warns about. It costs subscribers: `4c132957` had three test texts
+fail inside three minutes and turned auto-renew off six minutes later. Fixing
+it is an owner decision (register a 10DLC campaign — a consumer "second
+number" is a hard campaign to get approved — lead with Canadian numbers, or
+stop promising texting on US numbers). Re-derive:
+```sql
+select left(e164_from,5) prefix, status, error_code, count(*) from line_messages
+ where direction='outbound' and created_at > now()-interval '30 days' group by 1,2,3;
+```
 
 🔴 **Texting outside NANP is blocked, and the cause is NEITHER of the two flags
 this file blamed for weeks.** Two real sends from a US number we own to the
