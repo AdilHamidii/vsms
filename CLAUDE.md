@@ -450,7 +450,28 @@ note below warns about. It costs subscribers: `4c132957` had three test texts
 fail inside three minutes and turned auto-renew off six minutes later. Fixing
 it is an owner decision (register a 10DLC campaign — a consumer "second
 number" is a hard campaign to get approved — lead with Canadian numbers, or
-stop promising texting on US numbers). Re-derive:
+stop promising texting on US numbers).
+
+✅ **DECIDED 2026-09-17: KEEP SELLING US/PR AND DISCLOSE IT.** US and PR were
+`force_block`ed for about an hour (migration `20260917090000`) and unblocked
+the same day (`20260917100000`); all three of US, CA and PR sell again. The
+owner's call is that the buyer is TOLD instead: `LineStoreScreen.sendingNotice`
+(amber on a US/PR country, green "texts arrive normally" on CA — the country
+picker is where the choice is still free) and `LineCheckoutScreen`'s
+`capabilityNote`, which is **uncollapsed** on a US/PR purchase. The country
+list is ONE constant, `LineStoreScreen.unreliableSendingCountries` = {US, PR},
+so the two screens cannot disagree about who is warned.
+🔴 **That warning is the only thing standing between a US buyer and a refund
+request. If it is ever removed, `force_block` US and PR in the same commit** —
+the migration carries the exact SQL. Conversely, if the US ever gets a 10DLC
+campaign, BOTH halves of the notice go and this paragraph goes with them.
+⚠️ The existing "Some networks block texts sent from virtual numbers" row
+stays inside checkout's collapsed `goodToKnow`; it opens CLOSED, which is why
+the new note is not in it. ⚠️ Ships with the next release — the server change
+alone does nothing. ⚠️ Build-verified only, never walked on a device.
+⚠️ The App Store subtitle (`USA Phone Line & Verification`) and promotional
+text ("a real US number") still promise a US number, and promotional text is
+the ONE field that changes without review. Re-derive:
 ```sql
 select left(e164_from,5) prefix, status, error_code, count(*) from line_messages
  where direction='outbound' and created_at > now()-interval '30 days' group by 1,2,3;

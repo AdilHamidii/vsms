@@ -414,7 +414,7 @@ struct LineStoreScreen: View {
                 }
             }
 
-            if isVoiceOnly { voiceOnlyNotice }
+            if isVoiceOnly { voiceOnlyNotice } else { sendingNotice }
 
             if state.isLoadingLineNumbers, state.lineOffers.isEmpty {
                 numberSkeleton
@@ -535,6 +535,72 @@ struct LineStoreScreen: View {
             .padding(.vertical, 12)
         }
     }
+
+    /// What SENDING a text from this country's numbers actually does, stated
+    /// while the reader is still choosing the country — the one moment the
+    /// difference is free to act on.
+    ///
+    /// 🔴 It is a MEASURED difference, not a caveat (2026-09-17). US carriers
+    /// refuse texts from long codes that are not 10DLC-registered, and no
+    /// number we own carries a campaign: over the 30 days to 2026-09-17, every
+    /// send from a Canadian number was delivered and 16 of 24 US sends failed
+    /// with Telnyx `40010`. Two subscribers turned auto-renew off within
+    /// minutes of their first failed text. Receiving codes and calling are
+    /// unaffected on both, which is why this note is scoped to sending and the
+    /// pitch above it is not touched.
+    ///
+    /// ⚠️ The positive Canadian line is a CLAIM and is only honest while the
+    /// send record stays clean — re-derive before editing either half:
+    /// `select left(e164_from,5), status, count(*) from line_messages
+    ///   where direction='outbound' group by 1,2;`
+    /// If the US ever registers a campaign, BOTH halves go and the catalog
+    /// block note in CLAUDE.md goes with them.
+    @ViewBuilder
+    private var sendingNotice: some View {
+        if let iso = currentCountry?.countryCode {
+            if Self.unreliableSendingCountries.contains(iso) {
+                // Same amber caution surface as `voiceOnlyNotice` — a caution
+                // must look like every other caution in this funnel.
+                Card(radius: RRadius.md, elevation: .flat,
+                     fill: theme.warnSoft, border: theme.warn.opacity(0.28)) {
+                    HStack(alignment: .top, spacing: 10) {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(theme.warn)
+                            .padding(.top, 1)
+                        Text("Texts you send from an American number often don't arrive — most US networks block them. Receiving codes and calling work normally. A Canadian number sends texts reliably.")
+                            .font(RFont.text(12, weight: .medium))
+                            .foregroundStyle(theme.text)
+                            .lineSpacing(2)
+                            .fixedSize(horizontal: false, vertical: true)
+                        Spacer(minLength: 0)
+                    }
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 12)
+                }
+            } else if iso == "CA" {
+                // `live` green is the semantic "this is proven", the same tint
+                // the store's inbound-codes row carries, and the record behind
+                // it is every outbound send from a Canadian number delivering.
+                HStack(alignment: .top, spacing: 8) {
+                    Image(systemName: "checkmark.seal.fill")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(theme.live)
+                        .padding(.top, 1)
+                    Text("Texts you send from a Canadian number arrive normally.")
+                        .font(RFont.text(12, weight: .medium))
+                        .foregroundStyle(theme.text2)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Spacer(minLength: 0)
+                }
+            }
+        }
+    }
+
+    /// US and Puerto Rico: both are +1 US-carrier long codes under the same
+    /// 10DLC rule. Kept as ONE list so the two screens carrying this notice
+    /// cannot disagree about who it covers.
+    static let unreliableSendingCountries: Set<String> = ["US", "PR"]
 
     // MARK: - Nothing to sell
 

@@ -290,6 +290,40 @@ struct LineCheckoutScreen: View {
     /// is a lie that costs the sale.
     @ViewBuilder
     private var capabilityNote: some View {
+        if numberSendsTexts != false, let iso = state.lineCountry,
+           LineStoreScreen.unreliableSendingCountries.contains(iso) {
+            // 🔴 UNCOLLAPSED, and that is the point (2026-09-17). "Some
+            // networks block texts sent from virtual numbers" already lived in
+            // `goodToKnow`, which opens CLOSED — so the one limit this product
+            // actually hits was a tap away from a buyer who never taps. It is
+            // measured, not a caveat: 16 of 24 US sends failed with Telnyx
+            // `40010` (sender not 10DLC-registered) over the 30 days to
+            // 2026-09-17, against every Canadian send delivering, and two
+            // subscribers turned auto-renew off minutes after their first
+            // failed text. A limit discovered AFTER paying is a refund and an
+            // Apple CONSUMPTION_REQUEST; this is the 3.1.2(a) surface, so it
+            // belongs on it in full view.
+            //
+            // It names Canada because the remedy has to be actionable at the
+            // moment it is read: the country picker is two taps back.
+            Card(radius: RRadius.md, elevation: .flat,
+                 fill: theme.warnSoft, border: theme.warn.opacity(0.28)) {
+                HStack(alignment: .top, spacing: 10) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(theme.warn)
+                        .padding(.top, 1)
+                    Text("Texts you send from an American number often don't arrive — most US networks block them. Receiving codes and calling work normally. A Canadian number sends texts reliably.")
+                        .font(RFont.text(13, weight: .semibold))
+                        .foregroundStyle(theme.text)
+                        .lineSpacing(2)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Spacer(minLength: 0)
+                }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 12)
+            }
+        }
         if numberSendsTexts == false {
             // Through `Card` with a semantic fill + hairline, identical to the
             // emergency block below and to `LineStoreScreen.voiceOnlyNotice`:

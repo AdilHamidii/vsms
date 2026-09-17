@@ -33236,6 +33236,88 @@
         }
       }
     },
+    "Texts you send from a Canadian number arrive normally.": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Von einer kanadischen Nummer gesendete SMS kommen normal an."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Los SMS que envías desde un número canadiense llegan con normalidad."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Les SMS envoyés depuis un numéro canadien arrivent normalement."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gli SMS inviati da un numero canadese arrivano normalmente."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "カナダの番号から送信したSMSは通常どおり届きます。"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "As mensagens enviadas de um número canadense chegam normalmente."
+          }
+        }
+      }
+    },
+    "Texts you send from an American number often don't arrive — most US networks block them. Receiving codes and calling work normally. A Canadian number sends texts reliably.": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Von einer amerikanischen Nummer gesendete SMS kommen oft nicht an – die meisten US-Netze blockieren sie. Codes empfangen und Anrufe funktionieren normal. Eine kanadische Nummer sendet SMS zuverlässig."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Los SMS que envías desde un número estadounidense a menudo no llegan: la mayoría de las redes de EE. UU. los bloquean. Recibir códigos y llamar funcionan con normalidad. Un número canadiense envía SMS de forma fiable."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Les SMS envoyés depuis un numéro américain n'arrivent souvent pas : la plupart des réseaux américains les bloquent. La réception des codes et les appels fonctionnent normalement. Un numéro canadien envoie des SMS de façon fiable."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gli SMS inviati da un numero americano spesso non arrivano: la maggior parte delle reti statunitensi li blocca. Ricevere codici e chiamare funzionano normalmente. Un numero canadese invia SMS in modo affidabile."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "アメリカの番号から送信したSMSは届かないことが多く、米国の多くの通信会社がブロックします。コードの受信と通話は通常どおり使えます。カナダの番号なら確実に送信できます。"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "As mensagens enviadas de um número americano muitas vezes não chegam — a maioria das redes dos EUA as bloqueia. Receber códigos e ligar funcionam normalmente. Um número canadense envia mensagens com confiabilidade."
+          }
+        }
+      }
+    },
     "That call has already ended.": {
       "localizations": {
         "de": {

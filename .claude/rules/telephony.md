@@ -741,7 +741,12 @@ from all three functions). Clients read the **views** `line_country_menu` /
 `line_locality_menu` only; the base tables are the cost book and compliance
 record and are service-role-only. Bootstrapped 2026-08-26: 125 rows, 3
 sellable (US, CA, PR — all $1.00/mo except PR $3.00), GB/DE/FR/NL/PL/AU
-blocked `documents_required` (3–6 docs each).
+blocked `documents_required` (3–6 docs each). ⚠️ **US and PR were `force_block`ed
+for about an hour on 2026-09-17 and unblocked the same day** (`20260917090000`
+→ `20260917100000`) — the 10DLC outbound-SMS failure is disclosed in the client
+instead of blocked in the catalog; see the root CLAUDE.md line-capability
+table. That is the only time `sell_override` has ever been used, and it worked
+exactly as designed: two rows, one refresh, no deploy.
 
 🔴 **THE STORE WAS DARK IN EVERY COUNTRY FOR ~5 OF THE FIRST 9 DAYS, AND
 NOTHING PAGED (found 2026-09-05 when the owner hit it by hand).**
