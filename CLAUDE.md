@@ -3109,53 +3109,71 @@ says. And the characters for it came out of **`email`**, so `temporary email`
 being formable in the storefront that is **64% of all revenue**, while
 temp-email is roughly half of all order volume. vSMS is measured **outside the
 top 182** for `temporary email` in en-US on 2026-09-15.
-🔴 **THE KEYWORD REWRITES COST THE APP ITS SEARCH IMPRESSIONS, and it is
-measured at Apple now rather than inferred (2026-09-18).** Signups fell from
-≈46/day (09-04→09-11) to ≈29/day (09-13→09-16), and Apple's own daily reports
-say why: **search impressions ran ≈6,200/day in the eight days to 09-11 and
-≈2,800/day in the four days after, ending at 1,244 on 09-16** — the lowest
-figure in the series. Every stage below the impression is UNHARMED, which is
-what rules out the app: page-views-per-impression held at 3.6% → 3.8%,
-installs-per-page-view rose, and signups-per-install is unchanged at 0.43. The
-funnel did not get worse; **fewer people were shown the app at all.**
+🔴 **US SEARCH IMPRESSIONS STEPPED DOWN ~37% ON 2026-09-11/12 AND HAVE BEEN
+FLAT SINCE — measured at Apple, not inferred (2026-09-18).** Signups fell from
+≈49/day (08-19→09-10) to ≈28/day (09-13→09-17). Apple's own daily reports put
+the loss upstream of the product page: **US search impressions ran ≈1,709/day
+through 09-10 and ≈1,079/day from 09-11 on**, and the US is ~90% of all
+impressions. First-time installs fell 50/day → 38/day. The rates BELOW the
+impression held or improved (page-views-per-impression ~4%, installs-per-page-
+view up), so the product page and the app are not what changed. It is a **step
+change, not a slide**: every day from 09-11 to 09-17 sits in a flat 921–1,184
+band.
 
-The fall tracks each field change to the day. First-time downloads per version
-date the releases exactly (`asc-analytics.py versions`) — **2.13 live 09-12,
-2.14 live 09-13, 2.15 live 09-16** — against impressions 11,244 (09-11, the
-last 2.11 day) → 8,110 → 3,811 → 3,934 → 2,133 → 1,244. **Europe was wiped
-out, the US was halved**: FR −91%, DE −89%, GB −91%, IT −87%, ES −92%, and
-SE/NL/DK/PL to zero, against US −49% and NG/IN/JP roughly flat. SE, NL, DK and
-PL have no listing locale of their own and fall back to `en-US`, so they can
-only have lost what en-US lost.
+The step lands on the keyword rewrites. First-time downloads per version date
+the releases exactly (`asc-analytics.py versions`): **2.13 live 09-12, 2.14
+live 09-13, 2.15 live 09-16.** ⚠️ The US fall begins **09-11**, the day the 13
+localized fields were written to the 2.13 record but a day BEFORE 2.13 reached
+anyone — so either Apple re-indexes on the metadata edit rather than the
+release, or the 09-11 timing is coincidence. Not resolved; do not state the
+mechanism as known.
 
-⚠️ **Read this as a strong reading, not a controlled one.** Three complete
-keyword rewrites landed in five days (2.13, the 2.14 hand-edit, 2.15), Apple
-re-indexes on each, and nothing isolates "the new tokens match fewer queries"
-from "ranking is still re-settling". What IS settled is that the loss is
-upstream of the product page. The mechanism the tokens suggest: 2.13 dropped
-`inbox`, `fake`, `spam` and `signup` from en-US and the equivalents elsewhere
-(`throwaway`, `generator`, `inbox` in fr/it/es; `fake`, `spam`, `einweg`,
-`temporaere` in de) — the vocabulary of the temp-mail and fake-number queries
-that are half of all order volume — and the localized fields replaced English
-tokens with native ones in storefronts whose users had been finding the app in
-English. 🔴 **Those tokens were dropped on third-party popularity/difficulty
-SCORES, and the impressions they were actually earning were never checked
-first. The 2.11 field is the only one in the app's history measured at
-≈6,000 impressions/day.** Score a candidate field all you like; before
-replacing a field that is working, read what it earns.
+⚠️ **This supersedes a much larger claim that was wrong, and the way it was
+wrong is the lesson.** An earlier pass reported impressions falling 6,200/day →
+1,244/day with Europe "wiped out" 90–100%. Both were artifacts:
 
-🔴 **So the next move is to STOP EDITING and let it settle.** 2.16 carries
-2.15's field unchanged, which is correct — do not change keywords again until
-several stable days are on record, or the next reading will be uninterpretable
-for the same reason this one is hedged. 2.15 restored `email`, `mail` and
-`inbox` to en-US; whether that recovers the impressions is the thing to watch,
-and 09-17 onward is the first data that can answer it.
+- 🔴 **An analytics instance holds a ROLLING 3-DAY WINDOW (processingDate D
+  carries D-1, D-2, D-3), so summing the files counts a settled day three
+  times and the newest day once.** That alone manufactured a ~3× cliff out of
+  flat data. `asc-analytics.py` now keeps each data date from the newest
+  instance that contains it and prints the last two days as `PROVISIONAL` —
+  those read LOW until two more instances land, so **never call the last row a
+  trend**.
+- 🔴 **Europe never had traffic to lose.** SE, NL, DK, FI, NO, PL, IE and the
+  rest run at **≈28 impressions/day COMBINED** and did before and after. What
+  the "collapse" actually measured was a **two-day spike on 09-11/09-12 —
+  ≈2,490 and ≈1,640 EU impressions, against ~28 either side** — sitting inside
+  the "before" window. Comparing against it made a normal week look like a
+  wipeout.
 
-Re-derive all of it — the numbers above move daily:
+✅ **That spike is the most interesting unexplained thing in the data, and it
+is a LEAD, not a loss.** It was genuine App Store search (not browse) and it
+converted: **54 page views and 25 first-time installs on 09-11, 13 more on
+09-12**, against ~1 install/day from Europe normally. Two days produced ~38 EU
+installs. Nothing in this repo explains it — the localized keyword fields were
+applied to the 2.13 record on 09-11, but 2.11's own fields were never
+overwritten (read them back per version; they still hold the old tokens).
+**If it can be reproduced it is a bigger prize than recovering the US step**,
+because the European fields have otherwise bought essentially nothing.
+
+🔴 **The next move is to STOP EDITING and let it settle.** 2.16 carries 2.15's
+field unchanged, which is correct. Three rewrites in five days (2.13, the 2.14
+en-US hand-edit, 2.15) is why nothing here can be attributed cleanly; a fourth
+would extend that. 2.15 restored `email`, `mail` and `inbox` to en-US on 09-16
+— whether the US step recovers is the open question, and it needs several
+SETTLED days, not the provisional tail.
+
+⚠️ **One secondary signal, unconfirmed: signups per install fell ≈0.97 →
+≈0.73** across the same break. If real it is a first-run regression rather than
+a discovery one, and 2.13's Home tab and 2.14's delivery explainer are the
+candidates. It may equally be install/signup date skew across timezones and the
+provisional tail. **Check it before acting on it.**
+
+Re-derive all of it — these numbers move daily:
 ```bash
-python3 scripts/asc-analytics.py daily        # impressions -> page views -> installs
-python3 scripts/asc-analytics.py territory    # which storefronts moved
-python3 scripts/asc-analytics.py versions     # when each version actually went live
+python3 scripts/asc-analytics.py daily                  # impressions -> page views -> installs
+python3 scripts/asc-analytics.py territory 2026-09-13   # PASS THE PIVOT (see the script)
+python3 scripts/asc-analytics.py versions               # when each version actually went live
 ```
 Plan and earlier evidence:
 `docs/superpowers/specs/2026-09-15-organic-acquisition-design.md`.

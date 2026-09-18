@@ -57,16 +57,23 @@ one layer at a time and allow 7–14 days.
 
 🔴 **READ WHAT A FIELD EARNS BEFORE YOU REPLACE IT — `python3
 scripts/asc-analytics.py daily`.** Apple's own daily impressions, page views and
-first-time installs are available from the ONGOING analytics report request (see
-that script's header; **never delete the request — the history restarts**). This
-exists because three keyword rewrites in five days (2.13 09-12, the 2.14 en-US
-hand-edit 09-13, 2.15 09-16) took search impressions from ≈6,200/day to 1,244,
-Europe to near zero, while every conversion rate BELOW the impression held
-steady. The replaced tokens had been scored but never measured, and the field
-that was earning the impressions — 2.11's — was the one thrown away. Detail and
-the per-territory split are in CLAUDE.md's ASO section. **Change one field, then
-wait for several stable days; overlapping edits make the reading
-uninterpretable, which is exactly what happened here.**
+first-time installs come from the ONGOING analytics report request (see that
+script's header; **never delete the request — the history restarts**). Three
+keyword rewrites in five days (2.13 live 09-12, the 2.14 en-US hand-edit 09-13,
+2.15 09-16) coincide with **US search impressions stepping down ≈1,709/day →
+≈1,079/day and staying flat there**, while every conversion rate BELOW the
+impression held. The replaced tokens had been scored but never measured.
+
+⚠️ **Two traps that made a first pass at this badly overstate it** — both are
+in CLAUDE.md's ASO section in full, and both will catch the next reader:
+an analytics instance holds a **rolling 3-day window**, so summing the files
+triple-counts settled days and invents a cliff; and **Europe runs at ~28
+impressions/day normally**, so a two-day EU spike inside the baseline made a
+flat week look like a wipeout. Use the script (it de-duplicates and marks
+provisional days) rather than adding up the raw reports.
+
+**Change one field, then wait for several SETTLED days.** Overlapping edits
+make the reading uninterpretable, which is exactly what happened here.
 
 **Ratings cap position; keywords only buy eligibility.** This is the ASO
 ceiling, and the app has **8 ratings** across every storefront (2026-09-11,
