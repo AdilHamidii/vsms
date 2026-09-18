@@ -3109,10 +3109,55 @@ says. And the characters for it came out of **`email`**, so `temporary email`
 being formable in the storefront that is **64% of all revenue**, while
 temp-email is roughly half of all order volume. vSMS is measured **outside the
 top 182** for `temporary email` in en-US on 2026-09-15.
-⚠️ Organic signups fell ~60% across the same window (≈58/day 08-27→09-04,
-≈20/day 09-12→09-15) but **that is correlation, not a proven cause** — there is
-no rank history to test against, because nothing has ever rank-tracked this
-app. Plan and evidence:
+🔴 **THE KEYWORD REWRITES COST THE APP ITS SEARCH IMPRESSIONS, and it is
+measured at Apple now rather than inferred (2026-09-18).** Signups fell from
+≈46/day (09-04→09-11) to ≈29/day (09-13→09-16), and Apple's own daily reports
+say why: **search impressions ran ≈6,200/day in the eight days to 09-11 and
+≈2,800/day in the four days after, ending at 1,244 on 09-16** — the lowest
+figure in the series. Every stage below the impression is UNHARMED, which is
+what rules out the app: page-views-per-impression held at 3.6% → 3.8%,
+installs-per-page-view rose, and signups-per-install is unchanged at 0.43. The
+funnel did not get worse; **fewer people were shown the app at all.**
+
+The fall tracks each field change to the day. First-time downloads per version
+date the releases exactly (`asc-analytics.py versions`) — **2.13 live 09-12,
+2.14 live 09-13, 2.15 live 09-16** — against impressions 11,244 (09-11, the
+last 2.11 day) → 8,110 → 3,811 → 3,934 → 2,133 → 1,244. **Europe was wiped
+out, the US was halved**: FR −91%, DE −89%, GB −91%, IT −87%, ES −92%, and
+SE/NL/DK/PL to zero, against US −49% and NG/IN/JP roughly flat. SE, NL, DK and
+PL have no listing locale of their own and fall back to `en-US`, so they can
+only have lost what en-US lost.
+
+⚠️ **Read this as a strong reading, not a controlled one.** Three complete
+keyword rewrites landed in five days (2.13, the 2.14 hand-edit, 2.15), Apple
+re-indexes on each, and nothing isolates "the new tokens match fewer queries"
+from "ranking is still re-settling". What IS settled is that the loss is
+upstream of the product page. The mechanism the tokens suggest: 2.13 dropped
+`inbox`, `fake`, `spam` and `signup` from en-US and the equivalents elsewhere
+(`throwaway`, `generator`, `inbox` in fr/it/es; `fake`, `spam`, `einweg`,
+`temporaere` in de) — the vocabulary of the temp-mail and fake-number queries
+that are half of all order volume — and the localized fields replaced English
+tokens with native ones in storefronts whose users had been finding the app in
+English. 🔴 **Those tokens were dropped on third-party popularity/difficulty
+SCORES, and the impressions they were actually earning were never checked
+first. The 2.11 field is the only one in the app's history measured at
+≈6,000 impressions/day.** Score a candidate field all you like; before
+replacing a field that is working, read what it earns.
+
+🔴 **So the next move is to STOP EDITING and let it settle.** 2.16 carries
+2.15's field unchanged, which is correct — do not change keywords again until
+several stable days are on record, or the next reading will be uninterpretable
+for the same reason this one is hedged. 2.15 restored `email`, `mail` and
+`inbox` to en-US; whether that recovers the impressions is the thing to watch,
+and 09-17 onward is the first data that can answer it.
+
+Re-derive all of it — the numbers above move daily:
+```bash
+python3 scripts/asc-analytics.py daily        # impressions -> page views -> installs
+python3 scripts/asc-analytics.py territory    # which storefronts moved
+python3 scripts/asc-analytics.py versions     # when each version actually went live
+```
+Plan and earlier evidence:
 `docs/superpowers/specs/2026-09-15-organic-acquisition-design.md`.
 
 ✅ **This drift is now DETECTED, since 2026-09-15** —
