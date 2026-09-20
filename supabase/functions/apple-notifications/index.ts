@@ -387,15 +387,28 @@ async function process(sb: ReturnType<typeof admin>, n: Awaited<ReturnType<typeo
       if (type === "DID_RENEW") {
         await reprovisionAfterRenewal(sb, originalTx, periodEnd, n.notificationUUID, tx);
       } else if (data?.ok === true && data?.reason !== "already_applied" && !data?.line_id) {
-        await alertOwner(alertHtml({
-          sev: "🟠", title: "Renewal landed on a released line",
-          what: `tx ${esc(originalTx)} · ${esc(linePlanLabel(tx))}` +
-            (tx.price != null && tx.currency
-              ? ` — ${(tx.price / 1000).toFixed(2)} ${esc(tx.currency)}` : ""),
-          why: "Apple billed the subscriber after we released their number (no hold). They have paid and hold no line.",
-          action: "Reach out; they can provision a new number from the Number tab, or refund via Apple.",
-          at: new Date(),
-        }), sb, `renew_noline:${n.notificationUUID}`, "line_event");
+        // 🔴 THIS IS NOT AN ALERT, AND IT USED TO BE ONE — do not restore it.
+        // The branch is reachable ONLY for SUBSCRIBED (INITIAL_BUY /
+        // RESUBSCRIBE), because DID_RENEW is taken above. On that path the
+        // CLIENT owns provisioning: `verify-line-subscription` creates the
+        // line while the user picks their number. "No line yet" is therefore
+        // the normal first seconds of a purchase, not a fault.
+        //
+        // Apple's webhook routinely wins that race. On tx 300003376054774 the
+        // notification landed at 18:36:54 and the number at 18:36:57, and the
+        // page went out at :57 declaring the subscriber "has paid and holds no
+        // line" while they held an active one. It fired 12+ times between
+        // 2026-09-11 and 09-20 and was wrong every time — the copy described a
+        // renewal, which can never reach here.
+        //
+        // A purchase that GENUINELY never provisions is still covered, by two
+        // mechanisms that WAIT instead of racing: `rescue-unprovisioned-lines`
+        // (cron, 4x/hour) claims it once the subscription is older than 30
+        // minutes, and the watchdog's `line-paid-no-number` check pages if it
+        // is still unprovisioned. A webhook cannot wait; those can.
+        console.log(JSON.stringify({
+          subscribed_no_line_yet: originalTx, type, subtype: sub || null,
+        }));
       }
       // Alerts AFTER the state write succeeded — an alert must never describe
       // a transition that did not commit. Sandbox events (the reviewer's

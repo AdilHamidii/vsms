@@ -207,14 +207,23 @@ Deno.serve(async (req) => {
         .eq("environment", "Production")
         .not("latest_signed_transaction", "is", null)
         .lt("rc_sync_attempts", MAX_ATTEMPTS)
+        // 🔴 FILTER PENDING IN SQL, NEVER IN THE LOOP BELOW. This used to
+        // fetch the 40 oldest rows and skip the synced ones in JS, so once a
+        // table passed 40 rows the batch filled with rows it then discarded
+        // and the pending ones — always the newest, since a purchase and a
+        // renewal both set `updated_at = now()` — were never reached. The
+        // line mirror died silently on 2026-09-19 at 42 rows and could not
+        // recover on its own. `rc_pending` is a generated column
+        // (`rc_synced_txn IS DISTINCT FROM last_transaction_id`, migration
+        // 20260920200000) because PostgREST cannot compare two columns.
+        .eq("rc_pending", true)
         .order("updated_at", { ascending: true })
         .limit(limit)
     );
     if (error) return json({ error: `${fam}_read_failed`, detail: error.message }, { status: 500 });
 
     for (const row of data ?? []) {
-      // Already mirrored at this exact transaction — a renewal moves
-      // `last_transaction_id` and brings the row back here on its own.
+      // Belt and braces: `rc_pending` already excluded these in SQL.
       if (row.rc_synced_txn && row.rc_synced_txn === row.last_transaction_id) continue;
       if (outOfTime()) { out.deadline_hit = true; break; }
       bucket.seen++;

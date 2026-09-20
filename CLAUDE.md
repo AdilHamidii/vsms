@@ -1991,6 +1991,24 @@ notification uuid** — Apple delivers up to five times, `begin_line_rental` is 
 mutex, and a `failed` attempt sits OUTSIDE the partial index so a retry can still
 succeed. A uuid tombstone would have locked out the recovery this exists for.
 
+🔴 **"Renewal landed on a released line" pages ONLY from
+`reprovisionAfterRenewal`, i.e. only on `DID_RENEW`. Never page for a missing
+line on the SUBSCRIBED path** (fixed 2026-09-20). A second copy of that alert
+used to sit on the `else` of the `DID_RENEW` branch, which made it reachable
+only for `INITIAL_BUY` / `RESUBSCRIBE` — the one path where the CLIENT creates
+the line, while the user is picking their number. Apple's webhook routinely
+beats `verify-line-subscription` by a few seconds, so the handler looked for a
+line that did not exist YET and paged that the subscriber "has paid and holds
+no line" when they did. On tx `300003376054774` the notification landed
+18:36:54, the number 18:36:57, the page 18:36:57. It fired 12+ times between
+09-11 and 09-20 and was wrong every time, because the renewal it described can
+never reach that branch. It is now a `subscribed_no_line_yet` log line.
+⚠️ **Nothing was lost by removing it**: a purchase that genuinely never
+provisions is caught by `rescue-unprovisioned-lines` (cron, 4×/hour, 30-minute
+minimum age) and by the watchdog's `line-paid-no-number` check. **Both WAIT,
+which is the property a webhook cannot have — that is the general rule: never
+alert on the absence of a row another in-flight request is about to write.**
+
 🔴 **A Telnyx number costs $2.00 AT THE MOMENT OF ORDER — the $1.00 upfront
 fee and the first month TOGETHER.** Measured 2026-09-11 from Telnyx's own
 refusal, not inferred: `app_config.telnyx_test_number_probe` holds
@@ -2242,6 +2260,24 @@ Six facts that reading the code does not give you:
 - **Subscriptions track `rc_synced_txn`, not a boolean.** A renewal REWRITES
   `latest_signed_transaction`, so a "synced" flag would mirror month one and go
   silent forever. The sweep re-sends whenever `last_transaction_id` moves.
+- 🔴 **"Which rows still need mirroring" is answered in SQL by the generated
+  column `rc_pending`, NEVER by skipping rows inside the loop** (migration
+  `20260920200000`). It held the predicate in TypeScript until 2026-09-20, and
+  because the query took the 40 oldest rows by `updated_at` and discarded the
+  synced ones afterwards, **the line mirror died the moment
+  `line_subscriptions` passed 40 rows**: the batch filled with rows the loop
+  threw away, and the pending ones — always the NEWEST, since a purchase and a
+  renewal both set `updated_at = now()` — sat behind the wall. At 42 rows,
+  ranks 41 and 42 were stranded with `rc_sync_attempts = 0`, never once
+  attempted, and no later run could ever reach them. `email_subscriptions` had
+  24 rows and kept working, which is exactly how it presented: RevenueCat
+  showed `mail.monthly` and no `line.monthly`. The packs branch was never
+  affected — it filters `rc_synced_at is null` in SQL, which is the shape the
+  subscription branch now copies. ⚠️ **A batch limit plus an in-loop skip is a
+  silent stall, not a slow drain** — if you add another swept table, filter in
+  SQL. `IS DISTINCT FROM` is load-bearing in that column: `rc_synced_txn` is
+  NULL on a never-synced row and `NULL <> 'x'` is NULL, so `<>` would drop
+  precisely the rows that matter.
 - **Sandbox is excluded everywhere.** Those receipts are genuinely Apple-signed
   and cost $0; mirroring them would invent revenue on the one surface built to
   be trusted at a glance. Same gate as `credit_iap_purchase`, different
