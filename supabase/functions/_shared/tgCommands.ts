@@ -170,7 +170,8 @@ export const COMMANDS: CommandSpec[] = [
   },
   {
     name: "subs",
-    summary: "Subscriptions and lines, and where they disagree",
+    summary: "Live subs: how many renew, how many cancelled, and when each ends",
+    help: "Per product line, with the numbers-vs-subscriptions disagreement check.",
     group: "Money",
   },
   {

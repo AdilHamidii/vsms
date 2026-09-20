@@ -1306,9 +1306,35 @@ export function formatSubs(raw: Record<string, unknown>): string {
   const otherCcy = [...billedByCcy.entries()].filter(([c]) => c !== "USD");
   const net = usdMonthly * (1 - APPLE_COMMISSION);
 
+  /** Renewing vs cancelled INSIDE the entitled set.
+   *
+   *  🔴 A cancelled subscription here is still LIVE and still paid for — the
+   *  subscriber turned auto-renew off and keeps the product until `ends_at`.
+   *  It is not an expired one and must never be counted with one, or the live
+   *  total stops matching the number of people currently holding a number.
+   *  The test is `=== false`, identical to what `render()` prints per row, so
+   *  the header can never disagree with the list under it. */
+  const split = (rs: ActiveSub[]) => {
+    const cancelled = rs.filter((r) => r.auto_renew === false).length;
+    return { renewing: rs.length - cancelled, cancelled };
+  };
+  /** "N live · ▶️ X renewing · 🔕 Y cancelled" — the standing answer to
+   *  "how many are ongoing, how many will bill again". */
+  const headline = (rs: ActiveSub[], noun: string) => {
+    const { renewing, cancelled } = split(rs);
+    return `${esc(n(noun, rs.length))} · ▶️ ${esc(renewing)} renewing` +
+           ` · 🔕 ${esc(cancelled)} cancelled`;
+  };
+
+  const all = split(rows);
   const lines: string[] = [];
   lines.push(`📋 <b>${esc(n("live subscription", rows.length))} · ` +
              `${esc(usd(usdMonthly))}/mo billed · ~${esc(usd(net))}/mo net</b>`);
+  lines.push(`   ▶️ <b>${esc(all.renewing)}</b> set to renew · ` +
+             `🔕 <b>${esc(all.cancelled)}</b> cancelled but still paid through` +
+             (rows.length > 0
+               ? ` · ${esc(Math.round(all.renewing / rows.length * 100))}% renewing`
+               : ""));
   if (otherCcy.length > 0) {
     lines.push(`   <i>plus ` +
       otherCcy.map(([c, v]) => `${esc(c)} ${v.toFixed(2)}`).join(" + ") +
@@ -1334,7 +1360,7 @@ export function formatSubs(raw: Record<string, unknown>): string {
   if (lineRows.length === 0) {
     lines.push(`<b>Second Number</b> — <i>nobody subscribed</i>`);
   } else {
-    lines.push(`<b>Second Number</b> — ${esc(n("live sub", lineRows.length))}`);
+    lines.push(`<b>Second Number</b> — ${headline(lineRows, "live sub")}`);
     lines.push(...lineBody);
     if (lineOut.hidden > 0) {
       lines.push(`   <i>… and ${esc(lineOut.hidden)} more, not shown</i>`);
@@ -1347,7 +1373,7 @@ export function formatSubs(raw: Record<string, unknown>): string {
   if (mailRows.length === 0) {
     lines.push(`<b>Temp-mail</b> — <i>nobody subscribed</i>${paywall}`);
   } else {
-    lines.push(`<b>Temp-mail</b> — ${esc(n("live sub", mailRows.length))}${paywall}`);
+    lines.push(`<b>Temp-mail</b> — ${headline(mailRows, "live sub")}${paywall}`);
     lines.push(...mailBody);
     if (mailOut.hidden > 0) {
       lines.push(`   <i>… and ${esc(mailOut.hidden)} more, not shown</i>`);
