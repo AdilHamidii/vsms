@@ -585,6 +585,25 @@ rates behind a dashboard session. 5sim publishes them free and unauthenticated:
 the best pool" from guesswork into arithmetic, and it is the first time we can
 steer on delivery *before* placing an order rather than after failing one.
 
+🔴 **OWNER DECISION 2026-09-21: 5sim STAYS PRIMARY until HeroSMS exposes a
+delivery-stats endpoint to API keys — "we will stick with 5sim till they
+provide an endpoint".** This closes a question that will otherwise keep
+re-opening, because HeroSMS's website *displays* per-country and per-operator
+success rates and so looks like it must have an API for them. It does not, for
+key holders: `/api/v1/stats/*` answers **401** to the same
+`Authorization: ApiKey` header that `/activations/offers` answers **200** to,
+in the same request — it is a Laravel Sanctum browser session sharing the
+`/api/v1` prefix. Full contract, and the 12–24h window that would make it a
+`rate24` trap even if it opened, in `.claude/rules/providers.md`.
+
+**So the unauthenticated `rate720` above is not merely a convenience — it is
+the reason the primary provider is the primary provider.** Do not propose
+switching to a provider that cannot answer "which pool delivers?" before the
+order. ⚠️ Nobody has asked HeroSMS to enable it; that ask is unmade, not
+refused. **Re-probe with `probe-herosms` before assuming the answer is still
+no — and never re-derive this by asking anyone for another API key**, which is
+what the probe exists to make unnecessary.
+
 ## Common commands
 
 ```bash
