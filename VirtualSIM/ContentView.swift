@@ -1032,11 +1032,24 @@ extension ContentView {
 
         case .credits:
             state.tab = .temp
-            // A modest balance, so the sheet leads with the balance card rather
-            // than a shortfall context that would tie the frame to one route's
-            // price. `creditsShortfall` is 0 here — the seeded catalog has no
-            // route for the default pair — so no pack is preselected and the
-            // sheet opens on MOST POPULAR, which is the frame we want.
+            // 🔴 Without this the frame is the DELIVERY EXPLAINER, not the
+            // credits sheet. `DeliveryInfoSheet` raises on EVERY appearance of
+            // the Temp tab until acknowledged, and this fixture lands on Temp
+            // — so it covered the pack ladder completely, and the capture
+            // looked like the app had ignored the launch argument. Marking it
+            // acknowledged is the honest fixture: a review screenshot has to
+            // show the product being reviewed.
+            UserDefaults.standard.set(true, forKey: PrefKey.deliveryInfoAcked)
+            // A modest balance. ⚠️ This comment used to claim
+            // `creditsShortfall` is 0 here — "the seeded catalog has no route
+            // for the default pair" — so the sheet opened on MOST POPULAR.
+            // That is NO LONGER TRUE (verified from the capture, 2026-09-21):
+            // the frame renders a real shortfall context, WhatsApp / United
+            // States at 24 credits against a balance of 5, "19 more needed",
+            // and the pack that covers it is preselected. That is a BETTER
+            // frame for an IAP review screenshot, not a worse one — it shows
+            // the pack being reviewed, selected, in the situation that sells
+            // it — so it is kept deliberately rather than neutralised.
             state.balance = 5
             // Without this every row renders "Unavailable" over a disabled CTA:
             // `simctl` does not apply the scheme's StoreKit configuration, so
@@ -1050,9 +1063,9 @@ extension ContentView {
                 "com.anthersystems.VirtualSIM.credits.5":   "$2.99",
                 "com.anthersystems.VirtualSIM.credits.8":   "$3.99",
                 "com.anthersystems.VirtualSIM.credits.12":  "$5.49",
+                "com.anthersystems.VirtualSIM.credits.20":  "$8.99",
                 "com.anthersystems.VirtualSIM.credits.30":  "$12.99",
                 "com.anthersystems.VirtualSIM.credits.60":  "$24.99",
-                "com.anthersystems.VirtualSIM.credits.150": "$59.99",
             ]
             sheet = .credits
 

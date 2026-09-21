@@ -185,6 +185,15 @@ Deno.serve(async (req) => {
   if (res?.reason === "daily_cap_reached") {
     return json({ error: "daily_cap_reached", cap: res.cap ?? 25 }, { status: 429 });
   }
+  // And a ROLLING 30-day stop on top of it (`app_config.email_sub_monthly_cap`).
+  // The daily cap does not bound a month — at 8/day it permits 240 addresses
+  // against a break-even of ~60 — and it bites the wrong user, throttling a
+  // legitimate burst while never touching a sustained farm. Distinct from
+  // `daily_cap_reached` on purpose: that one clears at midnight and this one
+  // does not, so telling the user to come back tomorrow would be a lie.
+  if (res?.reason === "monthly_cap_reached") {
+    return json({ error: "monthly_cap_reached", cap: res.cap ?? 60 }, { status: 429 });
+  }
   const orderId = res?.order_id;
   if (!res?.ok || !orderId) {
     console.error(`create-email-order: unexpected begin result ${JSON.stringify(res)}`);

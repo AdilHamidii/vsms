@@ -48,6 +48,21 @@
       "type": "Consumable"
     },
     {
+      "displayPrice": "8.99",
+      "familyShareable": false,
+      "internalID": "66666666-6666-6666-6666-666666666666",
+      "localizations": [
+        {
+          "description": "Get 20 SMS verification codes",
+          "displayName": "20 OTP Credits",
+          "locale": "en_US"
+        }
+      ],
+      "productID": "com.anthersystems.VirtualSIM.credits.20",
+      "referenceName": "20 Credits",
+      "type": "Consumable"
+    },
+    {
       "displayPrice": "12.99",
       "familyShareable": false,
       "internalID": "33333333-3333-3333-3333-333333333333",
@@ -75,21 +90,6 @@
       ],
       "productID": "com.anthersystems.VirtualSIM.credits.60",
       "referenceName": "60 Credits",
-      "type": "Consumable"
-    },
-    {
-      "displayPrice": "59.99",
-      "familyShareable": false,
-      "internalID": "55555555-5555-5555-5555-555555555555",
-      "localizations": [
-        {
-          "description": "150 credits — best value per credit, for larger eSIM data plans",
-          "displayName": "150 Credits",
-          "locale": "en_US"
-        }
-      ],
-      "productID": "com.anthersystems.VirtualSIM.credits.150",
-      "referenceName": "150 Credits",
       "type": "Consumable"
     }
   ],

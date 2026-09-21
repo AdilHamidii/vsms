@@ -2699,9 +2699,10 @@ final class AppState {
             await refreshWallet(using: wallet)
         } catch let err as APIError {
             // The paywall, not an error banner — and ONLY for this code.
-            // `daily_cap_reached` is a SUBSCRIBER who hit their own daily
-            // limit; they are already paying and do not need to be sold
-            // anything, so it falls through to the ordinary `userMessage`.
+            // `daily_cap_reached` and `monthly_cap_reached` are a SUBSCRIBER
+            // who hit their own daily or rolling-30-day limit; they are
+            // already paying and do not need to be sold anything, so both
+            // fall through to the ordinary `userMessage`.
             if case .http(_, let body) = err, Self.errorCode(in: body) == "subscription_required" {
                 Analytics.shared.track("email_walled")
                 intent = .mailSubscription

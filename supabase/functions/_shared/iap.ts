@@ -408,8 +408,16 @@ const PRODUCT_TO_CREDITS: Record<string, number> = {
   "com.anthersystems.VirtualSIM.credits.5":   5,
   "com.anthersystems.VirtualSIM.credits.8":   8,
   "com.anthersystems.VirtualSIM.credits.12":  12,
+  "com.anthersystems.VirtualSIM.credits.20":  20,   // added 2026-09-21
   "com.anthersystems.VirtualSIM.credits.30":  30,
   "com.anthersystems.VirtualSIM.credits.60":  60,   // for eSIM plans
+  // 🔴 `credits.150` is RETIRED FROM SALE (2026-09-21, zero units ever sold)
+  // and this entry MUST STAY. The map is a decoder for receipts, not a
+  // catalogue: `credit_iap_purchase` grants from it, so a restore or a
+  // late-arriving transaction from a build that still listed the product has
+  // to resolve here. Deleting the line would take a real payment and grant
+  // nothing — `creditsForProduct` would return null and the purchase would
+  // 400. Never prune this map when retiring a product.
   "com.anthersystems.VirtualSIM.credits.150": 150,
 };
 

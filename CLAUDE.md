@@ -293,6 +293,29 @@ opened Apple's sheet → 3 paid**. **Adding traffic to this funnel does nothing.
 A monthly free trial was the obvious lever and the owner declined it on
 2026-09-09 (numbers cost $1 each upfront, and 17 of 20 cancel at the sheet).
 
+🔴 **NOTHING RENEWS. There are THREE `DID_RENEW` notifications in the entire
+history of the product, the last on 2026-09-08** (measured 2026-09-21 over
+`line_notifications`; that week produced 25 `SUBSCRIBED` and **zero**
+renewals). 19 of 30 active line subscriptions have auto-renew off, and the
+cancellations are not churn — they are immediate: of 29 `AUTO_RENEW_DISABLED`
+events, **11 land within ONE HOUR of subscribing and 21 within a day.**
+
+**So the line is not a subscription business; it is a one-month number
+rental, and every calculation that assumed a second month is wrong.** The
+concrete casualty is the intro offer's own justification, recorded below as
+*"the $3.39 net covers the $1 number"* — **the number costs $2.00**, measured
+from Telnyx's own refusal, so the real arithmetic is $3.99 gross → $3.39 net
+→ **$1.39 once, forever.** Over the 7 days to 2026-09-21 that was 14 line
+subscriptions (~$57 gross, ~$48 net) against **$28.00 of Telnyx numbers** —
+a 58% cost ratio, where credit packs ran 9%. ⚠️ Do NOT read this as "raise
+the price" on its own: it is the owner's call, and $3.99 was set as a floor
+(2026-09-10). It IS the reason to re-open the question, because the premise
+has been measured false. Re-derive before acting:
+```sql
+select notification_type, count(*), max(created_at)::date from line_notifications
+ where notification_type in ('DID_RENEW','SUBSCRIBED') group by 1;
+```
+
 ✅ **`line.monthly` carries a $3.99 FIRST-MONTH intro offer since 2026-09-10**
 (owner: "genuinely the best I can do" — treat $3.99 as the floor). It is a
 PAY_AS_YOU_GO offer, `ONE_MONTH × 1`, then the regular $5.99, in all **175**
@@ -1233,8 +1256,53 @@ via the SMS curve, so the two product lines never collide.
 
 ### The pack ladder
 
-5/$2.99 · 8/$3.99 · 12/$5.49 · 30/$12.99 · 60/$24.99 · 150/$59.99, asserted by
-`assertLadderImproves()`.
+**5/$2.99 · 8/$3.99 · 12/$5.49 · 20/$8.99 · 30/$12.99 · 60/$24.99**, asserted
+by `assertLadderImproves()` (0.598 > 0.49875 > 0.4575 > 0.4495 > 0.433 >
+0.4165 per credit).
+
+✅ **`credits.20` added 2026-09-21** (`scripts/asc-create-credits-20.py`,
+dry-run by default and idempotent; ASC id `6814392381`, submitted
+`WAITING_FOR_REVIEW`). It was placed by MEASUREMENT: over the 7 days to
+2026-09-21 the largest paywall shortfall after 4 credits was **24** — 76
+`paywall_shown` events across 40 distinct users — and nothing sat between
+$5.49 and $12.99, so everyone short ~24 credits was asked for the 30-pack.
+Packs are the only high-margin line in the product (that week: 91%
+contribution, against 42% for the line and 50% for mail), which is why the
+gap was worth closing. ⚠️ **Unread.** Judge it on `pack_selected` /
+`purchase_result` for `credits.20` against the `needed: 24` paywall arm, not
+on revenue in aggregate.
+
+🔴 **`credits.150` is RETIRED FROM SALE — zero units sold, ever.** It is gone
+from `CreditPack.all` and from `Products.storekit`, and BEST VALUE moved to
+`credits.60`. It existed to lift the eSIM ceiling and that line has been
+parked since 2026-08-29. ⚠️ **It is deliberately still ON SALE in ASC and
+still in `PRODUCT_TO_CREDITS`.** Removing it at ASC would make shipped builds
+that still list it render an "Unavailable" row, and pruning the backend map
+would take a real payment from such a build and grant nothing —
+`creditsForProduct` would return null. **That map is a decoder for receipts,
+not a catalogue of what is on sale; never prune it when retiring a product.**
+It dies out as builds adopt.
+
+🔴 **A new IAP cannot be submitted without an App Store review screenshot.**
+The submit fails 409 `STATE_ERROR.INVALID_REQUEST_ENTITY_STATE_INVALID` whose
+top-level detail says only *"please check associated errors"* — the cause is
+in `meta.associatedErrors`. Two blockers appear there together:
+`IAP_SUBMISSION_NOT_ALLOWED_AVAILABILITY_NEVER_SET` (POST
+`/v1/inAppPurchaseAvailabilities`; copy the 175-territory list off an existing
+pack) and `ENTITY_ERROR.RELATIONSHIP.REQUIRED` on
+`/data/relationships/appStoreReviewScreenshot`
+(`scripts/asc-upload-iap-screenshot.py` — reserve, PUT, then **PATCH
+`uploaded: true`**, or the asset is reserved and empty).
+⚠️ **Read the screenshot relationship on `/v2`, never `/v1`** — the v1 path
+404s `PATH_ERROR`, and a tool that prints that 404 as "none" makes it look
+like no pack has a screenshot and the field is optional. Every pack has one.
+⚠️ `availableInAllTerritories` is **not** an attribute on `inAppPurchases`
+(409 `ATTRIBUTE.UNKNOWN`); territory availability follows the price schedule
+and the availability resource.
+⚠️ `-screenshot credits` is the fixture that produces the review frame, and
+it needed `PrefKey.deliveryInfoAcked` set: `DeliveryInfoSheet` raises on every
+Temp-tab appearance and covered the pack ladder completely, which read as the
+launch argument being ignored.
 
 🔴 **ASC consumable price equalization is a ladder-inverting trap.** Every pack
 carries MANUAL prices in both USD and EUR (same numeral); never set only the
@@ -1392,6 +1460,19 @@ correct.** "Not tested" beats a retired provider's number.
    PRICE and for `blocked_routes` is untouched: those mean "you cannot buy
    this", not "this performed badly". The un-hide statement **must** exclude
    `blocked_routes`.
+   ⚠️ **ONE hand-made exception exists: `google/us`, hidden 2026-09-21 by
+   owner decision** (migration `20260921100100`). It delivered **0 of 25
+   settled orders** in the 14 days to then — the app's highest-volume route
+   that week and the only one with an empty column — while 5sim published
+   `pool_rate_pct = 41` for it, so the vendor figure and our outcome disagree
+   completely. **This does not reintroduce auto-hide**: no threshold was
+   added and nothing hides itself; 0-of-25 is "has never once worked", not
+   "performs badly". It cost no cash (5sim refunds cancels and expiries) —
+   the cost was a 7-credit charge refunded 25 times to users who then left.
+   🔴 **The `routes.status` write alone does NOT hold — `sync-5sim` runs
+   hourly and re-activates anything that prices and stocks fine.** The route
+   was also appended to `blocked_routes`, which is the only guard that
+   survives the sync. Hide anything by hand and you must do both halves.
 
 🔴 **Our own record is no longer rendered anywhere (owner decision 2026-08-22).**
 "Worked X of Y times", "Not tested" and the odds sentences are gone from every
@@ -1829,7 +1910,33 @@ gets unlimited free-domain addresses under `email_sub_daily_cap` — a stated
 hard stop, not a throttle, because the free pool is scarce and shared and one
 looping subscriber could drain it for everyone.
 
-🔴 **The cap is 8, cut from 25 on 2026-09-16, and the number is MEASURED.**
+🔴 **There are TWO caps since 2026-09-21: a DAILY one (8) and a ROLLING
+30-DAY one (60, `app_config.email_sub_monthly_cap`, migration
+`20260921100000`).** Both are read from `app_config` inside
+`begin_email_order`, so either moves with no deploy and no release. The
+monthly one refuses with `monthly_cap_reached` (429) and its copy must never
+say "resets at midnight" — it clears an address at a time as old orders age
+out, not all at once.
+
+**Why the daily cap alone is the wrong SHAPE, not merely the wrong size.** It
+does not bound a month at all: at 8/day it permits 240 addresses, while a
+$2.99 subscriber nets $2.54 and blended wholesale is ~4.2c/address, so
+break-even is **~60 a month — under 2/day against a cap of 8**. And it bites
+the wrong user: legitimate use is BURSTY (someone registering a few accounts
+in one sitting) while farming is SUSTAINED, so a per-day limit throttles the
+burst and never touches the farm. 60 is chosen so the worst case is
+break-even (60 × 4.2c = $2.52 against $2.54) and it clears every legitimate
+month ever observed — the heaviest non-farm month was 36.
+🔴 **The evidence that the daily cut did not work: tiktok.com ran 76.9% of
+mail volume when the cap went 25 → 8 on 2026-09-16, and 205 of 237 orders
+(86.5%) from 13 accounts in the 7 days to 2026-09-21** — single accounts at
+53, 43, 33 and 30. Verified behaviourally in a rolled-back transaction: 59
+allowed, 60 refused, and rolling one order past 30 days re-opened it, with
+never more than 3 on any one day so the daily cap could not be what fired.
+⚠️ `email_sub_monthly_cap` is deliberately NOT in the `app_config` RLS
+whitelist — no client reads it, and the refusal already carries `cap`.
+
+🔴 **The daily cap is 8, cut from 25 on 2026-09-16, and the number is MEASURED.**
 Re-read it (`select value from app_config where key='email_sub_daily_cap'`),
 never quote this. Over the product's whole history **373 of 376 user-days are
 ≤5 orders**; only three days ever exceeded five, and those ran 92–100%
@@ -2807,8 +2914,9 @@ Each has been wrong within a day of being written at least once.
   grace, 4 billing_retry, 2 expired).
 - **Config**: signup grant **0** (owner decision 2026-09-10 — see the grant
   section above; `app_config.signup_bonus_credits`), free e-mail cap
-  **1**/user/day, **subscriber e-mail cap 8/day (cut from 25 on 2026-09-16 —
-  TikTok farming, see the temp-e-mail section)**, swap **8**
+  **1**/user/day, **subscriber e-mail cap 8/day AND 60 per rolling 30 days
+  (the monthly one added 2026-09-21 because the 25 → 8 daily cut did not stop
+  the TikTok farm — see the temp-e-mail section)**, swap **8**
   credits, `launch_tab` = `line` (order behind Home; Home always first from
   2.13), mail subscription **enforced**, **no free trial on either
   subscription** (`mail.yearly`'s 175 territory offers removed 2026-09-16;

@@ -178,6 +178,14 @@ enum APIError: Error, LocalizedError {
                     return String(localized: "You've used your free address. Subscribe for more addresses each day on Outlook and Hotmail.")
                 case "daily_cap_reached":
                     return String(localized: "You've hit today's limit on addresses. It resets at midnight UTC.")
+                // 🔴 Must NOT say "resets at midnight" — this is the rolling
+                // 30-day cap, not the daily one, and it clears an address at a
+                // time as old orders age out of the window rather than all at
+                // once. Reusing the daily copy would promise a reset that does
+                // not come, which is the same class of mistake as the "3 days
+                // free" trial that charged for a year.
+                case "monthly_cap_reached":
+                    return String(localized: "You've reached your address limit for the past 30 days. More become available as your earlier ones age out.")
                 // Both are 409s from `record_email_subscription`, and both are
                 // reached almost exclusively from RESTORE — the device still
                 // holds a signed transaction the server has since marked dead.

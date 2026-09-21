@@ -72,6 +72,16 @@ extension CreditPack {
               credits: 8,   priceUsd: 3.99,  badge: nil, optional: true),
         .init(id: "md", productId: "com.anthersystems.VirtualSIM.credits.12",
               credits: 12,  priceUsd: 5.49,  badge: "MOST POPULAR"),
+        // 2.17: `credits.20` fills the ladder's widest gap, and it was placed
+        // by MEASUREMENT rather than by symmetry. In the 7 days to 2026-09-21
+        // the single largest paywall shortfall after 4 credits was **24**
+        // (76 `paywall_shown` events across 40 distinct users) — people short
+        // 24 credits had to buy the 30-pack at $12.99, because nothing existed
+        // between 12 ($5.49) and 30. $8.99/20 is 0.4495 per credit, which sits
+        // strictly between the 12-pack's 0.4575 and the 30-pack's 0.433, so
+        // `assertLadderImproves()` still holds at every rung.
+        .init(id: "ml", productId: "com.anthersystems.VirtualSIM.credits.20",
+              credits: 20,  priceUsd: 8.99,  badge: nil, optional: true),
         .init(id: "lg", productId: "com.anthersystems.VirtualSIM.credits.30",
               credits: 30,  priceUsd: 12.99, badge: nil),
         // Larger packs for eSIM data plans (which run pricier than OTP numbers).
@@ -92,9 +102,25 @@ extension CreditPack {
         // carrying BEST VALUE. **Read ASC before acting on any claim about
         // product state.**
         .init(id: "xl", productId: "com.anthersystems.VirtualSIM.credits.60",
-              credits: 60,  priceUsd: 24.99, badge: nil),
-        .init(id: "xxl", productId: "com.anthersystems.VirtualSIM.credits.150",
-              credits: 150, priceUsd: 59.99, badge: "BEST VALUE"),
+              credits: 60,  priceUsd: 24.99, badge: "BEST VALUE"),
+        // 🔴 `credits.150` was RETIRED 2026-09-21 (owner decision) and is
+        // deliberately absent. It sold **zero** units in the product's entire
+        // history — not a slow rung, a never-once-bought one — while
+        // credits.60 sold 3 and credits.5 sold 50. It existed to lift the eSIM
+        // ceiling (median eSIM plan 25 credits, mean 59), and the eSIM line
+        // has been permanently parked since 2026-08-29, so it was serving a
+        // product that no longer exists. Removing it is what keeps the ladder
+        // at six rungs while `credits.20` joins it.
+        //
+        // ⚠️ It stays in the BACKEND `PRODUCT_TO_CREDITS` map forever, and
+        // that is not an oversight: the map is what `credit_iap_purchase`
+        // grants from, and a restore or a late-arriving transaction from an
+        // older build must still pay out. Deleting the mapping would take a
+        // real payment and grant nothing — the map is a decoder for receipts,
+        // not a catalogue of what is on sale.
+        //
+        // The BEST VALUE badge moved down to credits.60 so the ladder still
+        // names a top rung; it is the largest pack on sale now.
     ]
 
     /// The WHOLE ladder must improve strictly: a bigger pack always beats
@@ -105,8 +131,10 @@ extension CreditPack {
     /// prices come from App Store Connect where the same rule has to be kept by
     /// hand.
     ///
-    /// The 2026-08-10 ladder satisfies it at every step, entry rung included:
-    /// 0.598 > 0.49875 > 0.4575 > 0.433 > 0.4165 > 0.39993 per credit.
+    /// The 2026-09-21 ladder satisfies it at every step, entry rung included:
+    /// 0.598 > 0.49875 > 0.4575 > 0.4495 > 0.433 > 0.4165 per credit
+    /// (5 · 8 · 12 · 20 · 30 · 60). The final rung was 0.39993 while
+    /// `credits.150` existed; it was retired 2026-09-21 — see `all`.
     static func assertLadderImproves() {
         #if DEBUG
         for (a, b) in zip(all, all.dropFirst()) {
