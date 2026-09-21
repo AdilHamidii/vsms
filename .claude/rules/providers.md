@@ -143,6 +143,53 @@ it on purpose — the ban is load-bearing for the fresh-number guarantee.
 
 ## HeroSMS API — what cost us time (probed live 2026-07-30)
 
+🔴 **HeroSMS's DELIVERABILITY STATISTICS ARE NOT AVAILABLE TO US, AND THE
+REASON IS NOT THE KEY (settled by experiment 2026-09-21).** The website shows
+exactly what we would want — per-country and per-OPERATOR success rates at
+`hero-sms.com/statistics`, with a sample-size filter — and it is served over
+the same `/api/v1` prefix, so it looks like an API we could call. It is not.
+
+The two real routes, recovered from the site's own page bundle and confirmed
+live (`/api/v1/stats` alone 404s, so these are real routes, not a wildcard):
+
+```
+GET /api/v1/stats/deliverability
+      service, interval ("12"|"24" HOURS),
+      countries[] (numeric hero ids), successCount
+GET /api/v1/stats/deliverability/services/{service}/countries/{country}/operators
+      interval, operatorCodes=1   ← names operators in API form
+```
+`successCount` is a SAMPLE-SIZE floor, not a rate filter: `low` <50,
+`medium` ≥50, `high` ≥500, `very_high` ≥1000 successful activations. Rows
+carry `successRate` and `percent`.
+
+🔴 **`/stats/*` REFUSES API-KEY AUTH.** Proven by a CONTROL IN THE SAME
+REQUEST, which is the only way this is worth believing: with one
+`Authorization: ApiKey <key>` header, `/activations/offers` answered **200**
+while `/stats/deliverability` answered **401 "Unauthenticated."**. The key is
+valid; the endpoint does not accept it. The page bundle calls
+`/api/v1/csrf-cookie` first — Laravel Sanctum's SPA-session pattern — so this
+is a browser-session feature that merely shares the `/api/v1` prefix. Reaching
+it would mean driving a logged-in session with the owner's cookie, which is
+fragile and a terms question, not an integration.
+**Re-probe with `probe-herosms` before believing any of this changed; do not
+re-derive it by asking for another API key.** `scripts/`-free, read-only,
+cron-secret gated: `?service=tg&raw=1` and compare `control_offers.status`
+against `deliverability.status`.
+
+⚠️ **And if it ever DOES open up, the window is 12–24 HOURS.** That is the
+trap this repo already fell into: `pool_rate_pct` was 5sim's `rate24` until
+2026-08-05 and "misled users in both directions" — median |rate24 − rate720|
+is 9.6 points, 16.6% of pools differ by 30+. Never wire it in below
+`successCount=very_high`, and treat an empty or failed response as UNRATED,
+never as "delivers nothing".
+
+⚠️ **The motivating premise was also wrong.** Measured 2026-09-21 on settled,
+numbered, non-`from_default` orders: HeroSMS **38.7% (12/31)** against 5sim
+**35.6% (122/343)**. Three points on 31 orders — the interval on 12/31 swallows
+5sim whole. HeroSMS is not "much better"; the two never even compete on the
+same route, since it serves only the countries 5sim does not.
+
 ⚠️ **HeroSMS is no longer the primary SMS provider, but it is NOT retired**: it
 still owns 560 active SMS routes and the entire temp-EMAIL line, on one shared
 account and balance. Everything below still applies to both.

@@ -643,16 +643,24 @@ supabase functions deploy poll-active-orders sync-prices sync-5sim sync-herosms 
   --no-verify-jwt
 ```
 
-✅ **Verified exhaustive 2026-09-15**: 26 + 24 = 50 against 51 on disk. The one
-omission is **`probe-5sim`**, deliberately outside both lists — it is a
-diagnostic, not on a normal cadence, but it DOES carry a `config.toml`
-`verify_jwt = false` entry and must be deployed `--no-verify-jwt` by hand when
-`_shared/cors.ts` changes. **Re-run the count rather than trusting this line:
-a function in neither list is a function nobody redeploys, which is exactly how
-a stale bundle survives a fix.**
+✅ **Verified 2026-09-21**: 26 + 24 = 50 against **52** on disk. The two
+omissions are **`probe-5sim`** and **`probe-herosms`**, deliberately outside
+both lists — they are diagnostics, not on a normal cadence, but both DO carry
+a `config.toml` `verify_jwt = false` entry and must be deployed
+`--no-verify-jwt` by hand when `_shared/cors.ts` changes. **Re-run the count
+rather than trusting this line: a function in neither list is a function
+nobody redeploys, which is exactly how a stale bundle survives a fix.**
 
 `supabase/config.toml` carries a `verify_jwt = false` entry for all 24 plus
-`probe-5sim` (25 total).
+both probes (26 total).
+
+**`probe-herosms`** (added 2026-09-21) answers one question and is worth
+keeping for it: whether HeroSMS's per-country and per-operator deliverability
+statistics — the ones its website shows — are reachable with an API key. They
+are **not**; `/api/v1/stats/*` refuses key auth while `/activations/offers`
+accepts it in the same request. Detail, and the contract if it ever opens up,
+in `.claude/rules/providers.md`. **Re-probe rather than asking anyone for
+another API key.**
 
 🔴 **`_shared/*` is bundled PER FUNCTION at deploy time.** After touching
 `_shared/fivesim.ts`, redeploy `sync-5sim` AND `poll-active-orders` AND every
@@ -2903,7 +2911,7 @@ Each has been wrong within a day of being written at least once.
   2.12`. It has been wrong about the review state five versions running, and
   that is a decision error, not a typo: "still in review" is the argument for
   cutting another release.
-- **Backend**: 51 edge function dirs besides `_shared`, 241 migration files, 29
+- **Backend**: 52 edge function dirs besides `_shared`, 241 migration files, 29
   files in `_shared`, 139 Swift sources (re-counted 2026-09-15), 25 active
   cron jobs.
 - **Catalog**: 9,364 active routes (5sim 8,074 / HeroSMS 1,290), 468 services,

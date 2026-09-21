@@ -180,3 +180,6 @@ verify_jwt = false
 verify_jwt = false
 [functions.reddit-scan]
 verify_jwt = false
+
+[functions.probe-herosms]
+verify_jwt = false
