@@ -65,7 +65,12 @@ enum ScreenshotMode {
         // frame of its own the screen could be built-and-shipped without
         // anyone ever having SEEN it. Same reason the paywall cases exist.
         case deliveryInfo
-        case homeRouter      // the Home tab, no line: three need-cards
+        // The Home tab with no line. Since 2026-09-21 that is the service grid
+        // plus TWO need-cards (e-mail, number) — "a code for an app" was folded
+        // into the grid. Capture this frame after any change to Home's section
+        // order: the stacked-double-header bug that shipped in the first draft
+        // of that fold was invisible in the source and obvious here.
+        case homeRouter
         case homeLine        // the Home tab for a subscriber: line card on top
         case waiting         // waiting for a code
         case code            // the code arrived

@@ -56,6 +56,16 @@ struct AccountScreen: View {
     @State private var restoreNote: Note?
     @State private var restoreTask: Task<Void, Never>?
 
+    /// Seeded from UserDefaults once per `AccountScreen` init rather than read
+    /// in `body`: this screen redraws on every collection `AppState` publishes,
+    /// and a computed property would hit UserDefaults on each of them.
+    @State private var vroamDismissed =
+        UserDefaults.standard.bool(forKey: PrefKey.vroamCardDismissed)
+
+    /// vRoam's App Store page. The id is the owner's second app,
+    /// `com.adyl.vRoam`, read from Apple's lookup API on 2026-09-15.
+    private static let vroamAppStoreURL = "https://apps.apple.com/app/id6806653317"
+
     /// Whether the profile fetch has completed at least once this session.
     /// Without it, "nil profile" cannot be told apart from "still loading" —
     /// which is exactly how a slow fetch got rendered as a welcome message.
@@ -76,6 +86,7 @@ struct AccountScreen: View {
                 profileCard
                 balanceCard
                 invite
+                vroamCard
                 preferences(state: state)
                 support
                 legal
@@ -243,6 +254,109 @@ struct AccountScreen: View {
         .padding(.top, 14)
     }
 
+    // MARK: - vRoam cross-promotion
+
+    /// A card for **vRoam**, the owner's separate travel-eSIM app
+    /// (`id6806653317`). Owner decision 2026-09-15.
+    ///
+    /// ⚠️ **It lived on Home until 2026-09-21 and was moved here** (owner
+    /// decision) in the pass that cut Home down to the router it is supposed
+    /// to be. It had taken 17 taps from 8 users against 5 dismissals from 5,
+    /// out of 301 people who had ever seen Home — a permanent slot on the one
+    /// screen every cold launch opens, for ~4% interaction, a third of it
+    /// rejection. Expect the tap count to FALL here: Account is browsed, not
+    /// passed through. That is the trade, not a regression.
+    ///
+    /// 🔴 **This is a link OUT, and it must stay one.** The eSIM business is
+    /// permanently parked in vSMS and lives in a different app; this card
+    /// touches none of the parked `esim_*` infrastructure and must never grow
+    /// into an in-app plan list, a price fetch or a purchase. If it ever needs
+    /// to know anything about vRoam's catalogue, that is the signal it has
+    /// become the thing the park exists to prevent.
+    ///
+    /// 🔴 **`$0.99` is vRoam's PUBLISHED floor, copied from its own App Store
+    /// description on 2026-09-15 ("2,700+ plans across 170+ countries,
+    /// starting at $0.99"), and it is a constant this app cannot keep
+    /// honest.** vRoam can reprice without a vSMS release, and then this card
+    /// is a lie with our name on it — the same failure that made
+    /// `inviteJoinerCredits` a 150% overstatement and put a credit amount in
+    /// onboarding twice. It is here because the owner chose a concrete price
+    /// over "up to 70% cheaper", which had no substantiation at all; the
+    /// mitigation is that it is ONE literal in ONE place. **Re-check it
+    /// against vRoam's listing whenever either app ships.**
+    ///
+    /// ⚠️ Dismissal is device-global and permanent — see
+    /// `PrefKey.vroamCardDismissed`. The key is deliberately unchanged by the
+    /// move, so anyone who already dismissed this on Home is not shown it
+    /// again here; re-showing an advert to someone who declined it is exactly
+    /// what not versioning that key is for.
+    @ViewBuilder
+    private var vroamCard: some View {
+        if !vroamDismissed, let url = URL(string: Self.vroamAppStoreURL) {
+            VStack(alignment: .leading, spacing: 0) {
+                SectionHeader(label: String(localized: "Travelling?"))
+                Card {
+                    VStack(alignment: .leading, spacing: 14) {
+                        HStack(alignment: .top, spacing: 8) {
+                            Text("Our app vRoam has eSIM data plans for 170+ countries, **from $0.99**. No roaming bills, and your number keeps working.")
+                                .font(RFont.text(14))
+                                .lineSpacing(2)
+                                .foregroundStyle(theme.text2)
+                                .fixedSize(horizontal: false, vertical: true)
+
+                            Button {
+                                withAnimation(RMotion.content) {
+                                    UserDefaults.standard.set(true, forKey: PrefKey.vroamCardDismissed)
+                                    vroamDismissed = true
+                                }
+                                track("vroam_dismissed")
+                            } label: {
+                                Image(systemName: "xmark")
+                                    .font(.system(size: 11, weight: .bold))
+                                    .foregroundStyle(theme.text3)
+                                    // Same 44pt-target reasoning as the
+                                    // announcement banner's close control.
+                                    .frame(width: 28, height: 28)
+                                    .contentShape(.rect)
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel(Text("Dismiss"))
+                        }
+
+                        Link(destination: url) {
+                            HStack(spacing: 6) {
+                                Text("Get vRoam")
+                                    .font(RFont.display(14, weight: .semibold))
+                                    .tracking(-0.2)
+                                Image(systemName: "arrow.up.right")
+                                    .font(.system(size: 12, weight: .semibold))
+                            }
+                            .foregroundStyle(theme.onInk)
+                            .padding(.horizontal, 16)
+                            .frame(height: 46)
+                            .background(theme.ink, in: .rect(cornerRadius: RRadius.sm))
+                        }
+                        // `Link` owns its own tap, so the event rides alongside
+                        // it rather than replacing it — the same reason
+                        // `ShareLink` uses `simultaneousGesture`.
+                        .simultaneousGesture(TapGesture().onEnded {
+                            track("vroam")
+                        })
+                    }
+                }
+            }
+        }
+    }
+
+    /// ⚠️ Fires `home_card_tapped`, from the ACCOUNT tab. The event name is
+    /// kept so the `vroam` / `vroam_dismissed` series that began on Home on
+    /// 2026-09-15 continues across the 2026-09-21 move instead of restarting
+    /// at zero — the same documented compromise as `TempScreen`'s
+    /// `source: "home"`. See `HomeScreen.track` for the full vocabulary.
+    private func track(_ card: String) {
+        Analytics.shared.track("home_card_tapped", ["card": .string(card)])
+    }
+
     // MARK: - Invite
 
     private var invite: some View {
@@ -342,6 +456,15 @@ struct AccountScreen: View {
                         .frame(height: 46)
                         .background(theme.ink, in: .rect(cornerRadius: RRadius.sm))
                     }
+                    // Added 2026-09-21, when Home's invite card was removed and
+                    // this became the ONLY share surface. Without it the
+                    // `invite` arm of `home_card_tapped` would read as the
+                    // invite loop dying rather than moving. ShareLink owns its
+                    // own tap, so the event rides alongside it — a plain
+                    // `.onTapGesture` here would swallow the share.
+                    .simultaneousGesture(TapGesture().onEnded {
+                        track("invite")
+                    })
                 }
             }
         } else if !profileChecked {

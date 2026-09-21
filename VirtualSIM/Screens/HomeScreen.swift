@@ -58,17 +58,8 @@ struct HomeScreen: View {
     /// redraw and make the one number this event answers meaningless.
     @State private var tracked = false
     @State private var showNameSheet = false
-
-    /// Seeded from UserDefaults once per `HomeScreen` init rather than read in
-    /// `body`: this screen redraws on every collection `AppState` publishes,
-    /// and a computed property would hit UserDefaults on each of them — the
-    /// same reasoning as `productOrder` below.
-    @State private var vroamDismissed =
-        UserDefaults.standard.bool(forKey: PrefKey.vroamCardDismissed)
-
-    /// vRoam's App Store page. The id is the owner's second app,
-    /// `com.adyl.vRoam`, read from Apple's lookup API on 2026-09-15.
-    private static let vroamAppStoreURL = "https://apps.apple.com/app/id6806653317"
+    /// See `howItWorks` — a disclosure, deliberately not persisted.
+    @State private var howItWorksOpen = false
 
     /// The card order, resolved into a stored property when the view is
     /// initialised — once per `HomeScreen` init, not per body evaluation —
@@ -131,16 +122,28 @@ struct HomeScreen: View {
                         .riseIn(appeared, index: 1)
                 }
 
-                sectionHeader
-                    .padding(.horizontal, 20)
-                    .padding(.top, 26)
-                    .riseIn(appeared, index: 2)
-
-                VStack(spacing: 10) {
+                // 🔴 The GRID sits in the `.temp` slot where a separate "A code
+                // for an app" card used to, and that fold is the point of this
+                // screen's 2026-09-21 rewrite. Home asked the same question
+                // twice in two vocabularies — an outcome card ("A code for an
+                // app") immediately above a brand grid ("Get a code for" +
+                // logos) — and the user had to work out they were the same
+                // destination. Worse, the CARD was the poorer of the two: it
+                // landed on Temp with nothing selected, so the user still owed
+                // a `ServiceSheet` trip, while a tile pre-fills the service via
+                // `commitServicePick`. Folding removed a decision AND a step.
+                //
+                // ⚠️ `home_card_tapped{card:"sms"}` therefore STOPS being
+                // emitted from this release. The same intent is now
+                // `service_selected{source:"home"}` (a tile) or
+                // `home_card_tapped{card:"more_services"}`. Do not read the
+                // `sms` arm going to zero as the SMS product dying.
+                VStack(alignment: .leading, spacing: 10) {
                     ForEach(productOrder, id: \.self) { tab in
                         switch tab {
                         case .temp:
-                            smsCard
+                            serviceGrid
+                                .padding(.bottom, 6)
                             emailCard
                         case .line:
                             // Absent for a subscriber: the card above IS their
@@ -153,27 +156,15 @@ struct HomeScreen: View {
                     }
                 }
                 .padding(.horizontal, 16)
-                .riseIn(appeared, index: 3)
-
-                serviceGrid
-                    .padding(.horizontal, 16)
-                    .padding(.top, 26)
-                    .riseIn(appeared, index: 4)
+                // There is no header above this stack in either state now, so
+                // the stack itself owns the gap the header used to provide.
+                .padding(.top, 26)
+                .riseIn(appeared, index: 2)
 
                 recentOrHowItWorks
                     .padding(.horizontal, 16)
                     .padding(.top, 26)
-                    .riseIn(appeared, index: 5)
-
-                vroamCard
-                    .padding(.horizontal, 16)
-                    .padding(.top, 26)
-                    .riseIn(appeared, index: 6)
-
-                inviteCard
-                    .padding(.horizontal, 16)
-                    .padding(.top, 26)
-                    .riseIn(appeared, index: 7)
+                    .riseIn(appeared, index: 3)
             }
             .padding(.top, 8)
             // The tab bar floats over the content, as on every other tab.
@@ -344,15 +335,17 @@ struct HomeScreen: View {
         }
     }
 
-    /// Same reason as `headline`: two literals, not a ternary.
-    @ViewBuilder
-    private var sectionHeader: some View {
-        if hasLine {
-            SectionHeader(label: String(localized: "Need something else?"))
-        } else {
-            SectionHeader(label: String(localized: "Pick one"))
-        }
-    }
+    // ⚠️ There is no `sectionHeader` any more (2026-09-21). It rendered
+    // "Pick one" / "Need something else?" directly above the card stack —
+    // whose own first element is now the grid's "Get a code for" — so BOTH
+    // states drew two headers in a row with nothing between them. Caught in
+    // the simulator, not by reading the code, which is the argument for
+    // capturing a frame of any screen whose sections you reorder.
+    //
+    // "Get a code for" does the separating work on its own, and it is the more
+    // specific of the two. Do not reinstate an outer label: for a new user it
+    // restates the headline ("What do you need?"), and for a subscriber the
+    // tinted line card above is already a visual boundary.
 
     // MARK: - The line dashboard
 
@@ -426,15 +419,11 @@ struct HomeScreen: View {
 
     // MARK: - The need-cards
 
-    private var smsCard: some View {
-        needCard(icon: RIcon.message,
-                 title: Text("A code for an app"),
-                 sub: Text("A temporary number that receives one code.")) {
-            track("sms")
-            state.emailMode = false
-            state.tab = .temp
-        }
-    }
+    // ⚠️ There is no `smsCard` any more (2026-09-21). "A code for an app" was
+    // folded into `serviceGrid` — see the note in `body`. Do not restore it:
+    // a second route to Temp that selects no service is exactly the redundant
+    // decision the fold removed, and it sent the user on a `ServiceSheet` trip
+    // the tiles make unnecessary. The "my app isn't here" case is the More tile.
 
     private var emailCard: some View {
         needCard(icon: "envelope",
@@ -673,9 +662,46 @@ struct HomeScreen: View {
         if hasHistory { recent } else { howItWorks }
     }
 
+    /// Collapsed by default (owner decision, 2026-09-21).
+    ///
+    /// Three numbered steps explaining a flow the user has not started is the
+    /// same mistake `DeliveryInfoSheet` makes at the top of the Temp tab —
+    /// teaching before being asked. It stays on the screen because a first-run
+    /// user genuinely may not know what the app is for, but it stays SHUT, so
+    /// the cost of carrying it is one row rather than a third of the scroll.
+    ///
+    /// ⚠️ Deliberately NOT persisted. This is a disclosure, not a preference:
+    /// re-collapsing on the next launch is correct, because by then the user
+    /// has either read it or stopped needing it. A `PrefKey` here would be a
+    /// device-global flag to maintain forever for a row that costs one tap.
     private var howItWorks: some View {
         VStack(alignment: .leading, spacing: 0) {
-            SectionHeader(label: String(localized: "How it works"))
+            Button {
+                RHaptic.select()
+                withAnimation(RMotion.content) { howItWorksOpen.toggle() }
+            } label: {
+                HStack(spacing: 6) {
+                    SectionHeader(label: String(localized: "How it works"))
+                    Image(systemName: "chevron.down")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(theme.text3)
+                        .rotationEffect(.degrees(howItWorksOpen ? 0 : -90))
+                    Spacer(minLength: 0)
+                }
+                .contentShape(.rect)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(Text("How it works"))
+            .accessibilityHint(Text(howItWorksOpen ? "Collapse" : "Expand"))
+
+            if howItWorksOpen {
+                howItWorksSteps
+            }
+        }
+    }
+
+    private var howItWorksSteps: some View {
+        VStack(alignment: .leading, spacing: 0) {
             VStack(alignment: .leading, spacing: 14) {
                 HowStep(number: 1,
                         title: Text("Pick the app and a country."),
@@ -941,164 +967,21 @@ struct HomeScreen: View {
         }
     }
 
-    // MARK: - vRoam cross-promotion
-
-    /// A card for **vRoam**, the owner's separate travel-eSIM app
-    /// (`id6806653317`). Owner decision 2026-09-15.
-    ///
-    /// 🔴 **This is a link OUT, and it must stay one.** The eSIM business is
-    /// permanently parked in vSMS and lives in a different app; this card
-    /// touches none of the parked `esim_*` infrastructure and must never grow
-    /// into an in-app plan list, a price fetch or a purchase. If it ever needs
-    /// to know anything about vRoam's catalogue, that is the signal it has
-    /// become the thing the park exists to prevent.
-    ///
-    /// 🔴 **`$0.99` is vRoam's PUBLISHED floor, copied from its own App Store
-    /// description on 2026-09-15 ("2,700+ plans across 170+ countries,
-    /// starting at $0.99"), and it is a constant this app cannot keep
-    /// honest.** vRoam can reprice without a vSMS release, and then this card
-    /// is a lie with our name on it — the same failure that made
-    /// `inviteJoinerCredits` a 150% overstatement and put a credit amount in
-    /// onboarding twice. It is here because the owner chose a concrete price
-    /// over "up to 70% cheaper", which had no substantiation at all; the
-    /// mitigation is that it is ONE literal in ONE place. **Re-check it
-    /// against vRoam's listing whenever either app ships.**
-    ///
-    /// ⚠️ Dismissal is device-global and permanent — see
-    /// `PrefKey.vroamCardDismissed`.
-    @ViewBuilder
-    private var vroamCard: some View {
-        if !vroamDismissed, let url = URL(string: Self.vroamAppStoreURL) {
-            Card {
-                VStack(alignment: .leading, spacing: 12) {
-                    HStack(alignment: .firstTextBaseline) {
-                        Text("Travelling?")
-                            .font(RFont.text(16, weight: .bold))
-                            .foregroundStyle(theme.text)
-
-                        Spacer(minLength: 8)
-
-                        Button {
-                            withAnimation(RMotion.content) {
-                                UserDefaults.standard.set(true, forKey: PrefKey.vroamCardDismissed)
-                                vroamDismissed = true
-                            }
-                            track("vroam_dismissed")
-                        } label: {
-                            Image(systemName: "xmark")
-                                .font(.system(size: 11, weight: .bold))
-                                .foregroundStyle(theme.text3)
-                                // Same 44pt-target reasoning as the
-                                // announcement banner's close control.
-                                .frame(width: 28, height: 28)
-                                .contentShape(.rect)
-                        }
-                        .buttonStyle(.plain)
-                        .accessibilityLabel(Text("Dismiss"))
-                    }
-
-                    Text("Our app vRoam has eSIM data plans for 170+ countries, **from $0.99**. No roaming bills, and your number keeps working.")
-                        .font(RFont.text(14))
-                        .lineSpacing(2)
-                        .foregroundStyle(theme.text2)
-                        .fixedSize(horizontal: false, vertical: true)
-
-                    Link(destination: url) {
-                        HStack(spacing: 6) {
-                            Text("Get vRoam")
-                                .font(RFont.display(14, weight: .semibold))
-                                .tracking(-0.2)
-                            Image(systemName: "arrow.up.right")
-                                .font(.system(size: 12, weight: .semibold))
-                        }
-                        .foregroundStyle(theme.onInk)
-                        .padding(.horizontal, 16)
-                        .frame(height: 46)
-                        .background(theme.ink, in: .rect(cornerRadius: RRadius.sm))
-                    }
-                    // `Link` owns its own tap, so the event rides alongside it
-                    // rather than replacing it — the same reason `ShareLink`
-                    // below uses `simultaneousGesture`.
-                    .simultaneousGesture(TapGesture().onEnded {
-                        track("vroam")
-                    })
-                }
-                .padding(18)
-            }
-        }
-    }
-
-    // MARK: - Invite
-
-    /// Rendered only when there is genuinely a code to share.
-    ///
-    /// Both halves are checked because they fail independently: `inviteMessage`
-    /// is nil without a referral code, and a card showing a code with no way to
-    /// send it — or a Share button with nothing in it — is worse than no card.
-    /// `AccountScreen.codeBlock` carries the loading and error states; this is
-    /// a secondary surface and simply says nothing until the profile lands.
-    @ViewBuilder
-    private var inviteCard: some View {
-        if let message = state.inviteMessage, let code = state.profile?.referralCode {
-            Card {
-                VStack(alignment: .leading, spacing: 12) {
-                    Text("Invite a friend")
-                        .font(RFont.text(16, weight: .bold))
-                        .foregroundStyle(theme.text)
-                    // 🔴 Verbatim from `AccountScreen.invite` so both surfaces
-                    // resolve the SAME catalog key — and so the two credit
-                    // amounts stay server-derived in one place. Never retype
-                    // this sentence with the numerals in it.
-                    Text("Share your code. A friend who joins with it starts with **\(AppState.inviteJoinerCredits) free credits**, and you get **5 credits** when they buy their first pack.")
-                        .font(RFont.text(14))
-                        .lineSpacing(2)
-                        .foregroundStyle(theme.text2)
-                        .fixedSize(horizontal: false, vertical: true)
-
-                    HStack(spacing: 10) {
-                        Text(verbatim: code)
-                            .font(RFont.mono(16, weight: .semibold))
-                            .foregroundStyle(theme.text)
-                            .padding(.horizontal, 14)
-                            .frame(height: 46)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .background(theme.chipBg, in: .rect(cornerRadius: RRadius.sm))
-
-                        ShareLink(item: message) {
-                            HStack(spacing: 6) {
-                                Image(systemName: "square.and.arrow.up")
-                                    .font(.system(size: 14, weight: .semibold))
-                                Text("Share")
-                                    .font(RFont.display(14, weight: .semibold))
-                                    .tracking(-0.2)
-                            }
-                            .foregroundStyle(theme.onInk)
-                            .padding(.horizontal, 16)
-                            .frame(height: 46)
-                            .background(theme.ink, in: .rect(cornerRadius: RRadius.sm))
-                        }
-                        // ShareLink owns its own tap, so the event rides
-                        // alongside it rather than replacing it — a plain
-                        // `.onTapGesture` here would swallow the share.
-                        .simultaneousGesture(TapGesture().onEnded {
-                            track("invite")
-                        })
-                    }
-                }
-                .padding(18)
-            }
-        }
-    }
 
     /// One event, one prop, one vocabulary:
-    /// `sms | email | line | line_messages | line_call | credits |
-    ///  more_services | recent_sms | recent_email | invite | vroam |
-    ///  vroam_dismissed`.
+    /// `email | line | line_messages | line_call | credits | more_services |
+    ///  recent_sms | recent_email`.
     ///
-    /// ⚠️ `vroam_dismissed` is not a tap on a product, it is a REJECTION, and
-    /// it rides the same event so the two can be read against each other. Read
-    /// the ratio, not the raw `vroam` count: a card that is tapped 20 times and
-    /// dismissed 400 is costing more attention than it earns.
+    /// ⚠️ **Three arms left this screen on 2026-09-21 and the series is
+    /// deliberately NOT renamed.** `sms` is gone because its card was folded
+    /// into the grid — that intent now arrives as
+    /// `service_selected{source:"home"}` or `more_services`. `invite`, `vroam`
+    /// and `vroam_dismissed` still fire, from `AccountScreen`, under this same
+    /// event name so the existing series continues rather than restarting at
+    /// zero. So from this release those three arms mean the ACCOUNT tab, not
+    /// Home — the same kind of documented lie as `TempScreen`'s
+    /// `source: "home"`, which has meant the Temp tab since 2026-09-10. Read a
+    /// step change in any of the four as THIS, not as behaviour moving.
     private func track(_ card: String) {
         Analytics.shared.track("home_card_tapped", ["card": .string(card)])
     }

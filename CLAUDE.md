@@ -80,13 +80,53 @@ SMS + temp e-mail via `emailMode`). ⚠️ `TempScreen`'s analytics still fire
 `source: "home"` (`support_whatsapp_open`, `MailPaywallScreen`) — kept for
 series continuity; there, "home" means the TEMP tab, never the Home tab.
 
-**What Home holds, top to bottom.** A greeting by daypart and name; the
-headline ("What do you need?" / "Your number"); the need-cards in
-`AppTab.productOrder` (the Number card carries a Calls · Texts · App codes
-chip row and a price only StoreKit ever supplies); a **static seven-service
-logo grid** plus a More tile; **How it works** until the user has any order,
-then **Recent**; and an invite card. Three properties that reading the screen
-does not give you:
+**What Home holds, top to bottom (CUT DOWN 2026-09-21 — owner decision).** A
+greeting by daypart and name; the headline ("What do you need?" / "Your
+number"); then ONE stack in `AppTab.productOrder` holding the **static
+seven-service logo grid** plus a More tile under "Get a code for" (the
+`.temp` slot) and the **Number card** (the `.line` slot, absent for a
+subscriber, carrying a Calls · Texts · App codes chip row and a price only
+StoreKit ever supplies), with the **e-mail card** following the grid; then
+**How it works**, COLLAPSED, until the user has any order, then **Recent**.
+The whole screen now fits one iPhone 17 Pro viewport without scrolling.
+
+🔴 **Four things were REMOVED and none of them should come back without the
+owner.** Measured over the 301 users who had ever seen Home:
+
+- **The "A code for an app" need-card, folded INTO the grid.** Home asked the
+  same question twice in two vocabularies — an outcome card immediately above
+  a brand grid — and the card was the worse of the two, landing on Temp with
+  nothing selected so the user still owed a `ServiceSheet` trip, while a tile
+  pre-fills the service. The fold removed a decision AND a step. "My app isn't
+  here" is the More tile (50 taps / 39 users).
+- **The outer section header** ("Pick one" / "Need something else?"). It sat
+  directly above the grid's own "Get a code for" — two headers in a row, in
+  BOTH states. ⚠️ Caught in the simulator, never by reading the code: capture
+  `-screenshot homeRouter` and `homeLine` after any change to Home's section
+  order.
+- **The invite card → `AccountScreen`** (3 taps from 3 users, ever — 1%).
+  Account already owned the canonical copy, so nothing was lost; its Share
+  button gained the `invite` event it never had, or the arm would have read as
+  the invite loop dying rather than moving.
+- **The vRoam card → `AccountScreen`** (17 taps / 8 users against 5 dismissals
+  / 5 users). `PrefKey.vroamCardDismissed` is deliberately unchanged by the
+  move, so anyone who already dismissed it is not shown it again.
+
+⚠️ **Analytics consequence, and do not misread it.** `home_card_tapped`'s
+`sms` arm STOPS at this release — that intent now arrives as
+`service_selected{source:"home"}` or `more_services`. `invite`, `vroam` and
+`vroam_dismissed` keep firing under the same event name from the ACCOUNT tab,
+so the series continues rather than restarting at zero; from here those three
+arms mean Account, not Home. Same documented compromise as `TempScreen`'s
+`source: "home"`. A step change in any of the four is THIS, not behaviour
+moving.
+
+⚠️ **Card order still follows `/tabs`, so at `launch_tab = line` the Number
+card renders ABOVE the grid.** `AppTab.productOrder` is the one definition and
+Home may never hardcode an order; `/tabs temp` puts codes first. That is a
+config flip landing on the user's second cold launch, not a code change.
+
+Three properties that reading the screen does not give you:
 
 - 🔴 **A grid tap is the USER'S pick, not a pre-selection.** It goes through
   `AppState.commitServicePick` — the same path `ServiceSheet.onPick` uses — so
@@ -102,9 +142,13 @@ does not give you:
   both products merged newest-first, each opening through `AppState.openOrder`
   / `openEmailOrder` — the same openers the Orders tab uses, never a second
   copy of that routing.
-- **The invite card renders `AccountScreen.invite`'s sentence verbatim** so
-  both surfaces resolve ONE catalog key and the two credit amounts stay
-  derived in one place. Never retype it with the numerals in it.
+- **How it works is a COLLAPSED disclosure, and deliberately not persisted.**
+  Three numbered steps explaining a flow the user has not started is the same
+  "teaching before being asked" mistake `DeliveryInfoSheet` makes; it stays on
+  the screen because a first-run user may genuinely not know what the app is
+  for, but it stays SHUT. Re-collapsing next launch is correct — by then the
+  user has read it or stopped needing it — and a `PrefKey` here would be a
+  device-global flag maintained forever for a row that costs one tap.
 
 🔴 **The greeting name is NOT the `display_name` column.** `handle_new_user()`
 seeds it `coalesce(raw_user_meta_data->>'full_name', split_part(email,'@',1))`,
@@ -192,9 +236,13 @@ below the invite card so neither competes with the router:
   not hold.
 
 Home's own events are `home_view` (`has_line`, `has_orders`) and
-`home_card_tapped` (`card` ∈ sms · email · line · line_messages · line_call ·
-credits · more_services · recent_sms · recent_email · invite · vroam ·
-vroam_dismissed). ⚠️ `vroam_dismissed` is a REJECTION riding the same event so
+`home_card_tapped` (`card` ∈ email · line · line_messages · line_call ·
+credits · more_services · recent_sms · recent_email — plus invite · vroam ·
+vroam_dismissed, which fire from **`AccountScreen`** since 2026-09-21 under
+this same event name so their series survives the move). 🔴 **`sms` is
+retired**: that card was folded into the grid, so the intent is
+`service_selected{source:"home"}` or `more_services`. ⚠️ `vroam_dismissed` is a
+REJECTION riding the same event so
 the two can be read against each other — read the RATIO, since a card tapped
 20 times and dismissed 400 costs more attention than it earns. A grid tap fires
 `service_selected` with `source: "home"` instead — the picker sends `sheet` or
