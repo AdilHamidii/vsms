@@ -300,14 +300,24 @@ struct ContentView: View {
         // quitting) permanently abandoned a code the user had paid for: the
         // provider auto-cancels at ~21 min and the code is gone. Keyed on
         // "any waiting email order exists" so it costs nothing otherwise.
+        // 🔴 The cursor is LOCAL to this task and must stay local. It used to be
+        // `state.activeEmailOrder`, which is also what `EmailCodeScreen`
+        // renders — so the moment an order delivered (`received`, which
+        // `isTerminal` counts as finished) this loop moved on and dragged the
+        // screen with it, replacing a code the user was still reading. Never
+        // steer a presented screen from a background sweep.
+        //
+        // `!$0.hasCode` is the second half of the same rule: an order that has
+        // already delivered is done whatever its status says, per the standing
+        // `code is not null` authority.
         .task(id: state.emailOrders.contains { $0.status == .waiting }) {
-            guard state.emailOrders.contains(where: { $0.status == .waiting }) else { return }
+            var target: ServerEmailOrder?
             while !Task.isCancelled {
-                if state.activeEmailOrder == nil || state.activeEmailOrder?.status.isTerminal == true {
-                    state.activeEmailOrder = state.emailOrders.first { $0.status == .waiting }
+                if target == nil || target?.status.isTerminal == true || target?.hasCode == true {
+                    target = state.emailOrders.first { $0.status == .waiting && !$0.hasCode }
                 }
-                guard state.activeEmailOrder?.status == .waiting else { return }
-                await state.refreshEmailOrder(using: EmailAPI(client: api))
+                guard let current = target else { return }
+                target = await state.refreshEmailOrder(current, using: EmailAPI(client: api))
                 try? await Task.sleep(for: .seconds(10))
             }
         }

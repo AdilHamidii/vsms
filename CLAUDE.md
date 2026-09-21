@@ -1945,6 +1945,41 @@ monthly one refuses with `monthly_cap_reached` (429) and its copy must never
 say "resets at midnight" — it clears an address at a time as old orders age
 out, not all at once.
 
+🔴 **BOTH caps count DELIVERED addresses only, since 2026-09-21** (migration
+`20260921130000`, owner decision). The predicate is
+`(code is not null or status = 'waiting')`, not the `status <> 'failed'` it
+replaced — `failed` means only "never reached the provider", so an order that
+DID get a mailbox and then never received a code was `expired` and **ate a
+slot**. A paying `mail.monthly` subscriber who had ordered 8 a day for three
+days straight wrote in on 2026-09-21: he is sold 8 addresses a day and was
+receiving 8 *attempts*. Verified in a rolled-back transaction against live
+Postgres: his day counted 8 under the old rule and 7 under the new one, and
+`begin_email_order` still answers `daily_cap_reached` once all 8 genuinely
+deliver.
+
+- 🔴 **`status = 'waiting'` is LOAD-BEARING in that predicate — never drop it
+  as redundant.** In-flight orders must count, or a caller fires fifty
+  concurrent activations that each read the cap as zero-consumed. Counting
+  them is what holds concurrency at the cap and keeps the residual below
+  bounded.
+- ⚠️ **The residual, accepted knowingly by the owner:** someone who lets every
+  address expire now draws on the shared free outlook/hotmail pool with no
+  daily or monthly ceiling. That pool genuinely runs dry (one sweep measured
+  TWO addresses for discord.com). The bound is concurrency × window — at most
+  `email_sub_daily_cap` in flight against a ~22-minute window, so ~500/day
+  worst case for one account — and it yields the abuser nothing, since an
+  expired mailbox carries no code. **If the pool starts running dry the lever
+  is a separate ATTEMPT ceiling; do not quietly re-add failures to these
+  counts.**
+- ⚠️ **The non-subscriber LIFETIME grant is deliberately unchanged.**
+  Exempting failures there would be inert and misleading: `v_used` is
+  `greatest(v_free_ever, v_tombstoned, v_dev_used)` and both tombstones
+  increment on every ATTEMPT, so the tombstone would still say 1. Making them
+  conditional on delivery means writing them only after a code arrives, which
+  reopens the exact farm vector they close (one mailbox key farmed 75 times
+  from two phones). A first-time user whose single free address fails still
+  gets nothing — a separate owner decision with real farm risk attached.
+
 **Why the daily cap alone is the wrong SHAPE, not merely the wrong size.** It
 does not bound a month at all: at 8/day it permits 240 addresses, while a
 $2.99 subscriber nets $2.54 and blended wholesale is ~4.2c/address, so
@@ -2773,6 +2808,24 @@ is the missing piece.
   matching read path doesn't, the two disagree the moment the flow ends.** A
   mode switched *outside* a flow needs its own clear, because `flow`'s `didSet`
   never fires for it.
+- 🔴 **A BACKGROUND SWEEP MUST NEVER WRITE WHAT A SCREEN IS RENDERING.**
+  `ContentView`'s app-wide e-mail poll used `state.activeEmailOrder` as its
+  cursor — and that is also the single property `EmailCodeScreen` renders,
+  which holds no copy of its own. So the instant an order delivered, the sweep
+  called it finished (`received` satisfies `EmailStatus.isTerminal`), moved its
+  cursor to another waiting order, and **replaced a delivered code on screen
+  within ten seconds**. The cover never dismissed — the digits just turned back
+  into "Fetching the code…", which is exactly how the subscriber who reported
+  it on 2026-09-21 described it. It only bites when a second `waiting` row
+  exists locally, which for an 8-a-day subscriber is routine: `refreshEmailOrder`
+  updates one row and only `loadEmailOrders` re-reads the rest, so
+  server-expired orders sit in the client array as `waiting` all session.
+  Fixed by giving the sweep a LOCAL cursor and making `refreshEmailOrder` take
+  an explicit target that touches `activeEmailOrder`/`flow` only when it IS the
+  on-screen order. ⚠️ **This is also the `code is not null` rule breaking one
+  level up from where anyone looks for it**: rendering honoured it correctly
+  all along; the violation was the *poller's* "is this finished?" test asking
+  `status.isTerminal`. Build-verified only — never walked on a device.
 - **In e-mail mode the SMS route price and delivery record must NOT render.**
   Another product's evidence is not this product's.
 - **A snake_case property name is a decode FAILURE, not a no-op.**
@@ -2941,7 +2994,8 @@ Each has been wrong within a day of being written at least once.
   grace, 4 billing_retry, 2 expired).
 - **Config**: signup grant **0** (owner decision 2026-09-10 — see the grant
   section above; `app_config.signup_bonus_credits`), free e-mail cap
-  **1**/user/day, **subscriber e-mail cap 8/day AND 60 per rolling 30 days
+  **1**/user/day, **subscriber e-mail cap 8/day AND 60 per rolling 30 days,
+  both counting DELIVERED addresses only since 2026-09-21
   (the monthly one added 2026-09-21 because the 25 → 8 daily cut did not stop
   the TikTok farm — see the temp-e-mail section)**, swap **8**
   credits, `launch_tab` = `line` (order behind Home; Home always first from

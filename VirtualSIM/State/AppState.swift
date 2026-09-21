@@ -2717,14 +2717,28 @@ final class AppState {
 
     /// Poll one activation. `hasCode` — not `status` — decides we are done, the
     /// same rule the SMS side had to learn.
-    @MainActor
-    func refreshEmailOrder(using api: EmailAPI) async {
-        guard let cur = activeEmailOrder else { return }
-        guard let fresh = try? await api.check(orderId: cur.id) else { return }
-        activeEmailOrder = fresh
+    ///
+    /// 🔴 Writes `activeEmailOrder` and `flow` ONLY when `target` is the order
+    /// the user is currently looking at. `EmailCodeScreen` renders
+    /// `state.activeEmailOrder` and keeps no copy of its own, so whatever this
+    /// assigns IS what is on screen — and the app-wide sweep in `ContentView`
+    /// polls activations nobody is watching. Letting that sweep write here is
+    /// how a DELIVERED code got wiped off the screen within ten seconds of
+    /// landing (reported by a paying subscriber, 2026-09-21): the order turned
+    /// `received`, which `isTerminal` counts as finished, so the sweep moved
+    /// its cursor to a different waiting order and this function repointed the
+    /// screen at it. The cover never dismissed — the digits just turned back
+    /// into "Fetching the code…", which is exactly how he described it.
+    @MainActor @discardableResult
+    func refreshEmailOrder(_ target: ServerEmailOrder, using api: EmailAPI) async -> ServerEmailOrder? {
+        guard let fresh = try? await api.check(orderId: target.id) else { return nil }
         if let i = emailOrders.firstIndex(where: { $0.id == fresh.id }) {
             emailOrders[i] = fresh
         }
+        // The sweep's job ends here: the code is banked in `emailOrders` for an
+        // order nobody is watching. Only the on-screen order may move the UI.
+        guard activeEmailOrder?.id == fresh.id else { return fresh }
+        activeEmailOrder = fresh
         if fresh.hasCode, flow == .emailWaiting { flow = .emailCode }
         // Terminal without a code must EXIT, not spin forever. The server sweep
         // expires and refunds the order; before this branch existed the screen
@@ -2736,6 +2750,16 @@ final class AppState {
                 : String(localized: "No code arrived for that address.")
             flow = nil
         }
+        return fresh
+    }
+
+    /// Refresh whatever is on screen — `EmailWaitingScreen`'s own timer. Kept
+    /// as a forwarder so that screen needs no change and cannot accidentally
+    /// poll an order it is not showing.
+    @MainActor
+    func refreshEmailOrder(using api: EmailAPI) async {
+        guard let cur = activeEmailOrder else { return }
+        await refreshEmailOrder(cur, using: api)
     }
 
     func startEsimCheckout(_ plan: EsimPlan) {
