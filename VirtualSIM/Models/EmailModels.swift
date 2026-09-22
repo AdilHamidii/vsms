@@ -50,6 +50,55 @@ struct EmailDomainsResponse: Codable {
     /// free address, or a subscriber over their cap). Optional: a server
     /// predating the paid fallback omits it, and then nothing is offered.
     let creditPrice: Int?
+    /// The subscriber usage meter (`email_usage`). nil when the server omits
+    /// it — an older deploy, or a failed read, which it deliberately swallows.
+    let usage: EmailUsage?
+
+    private enum CodingKeys: String, CodingKey { case site, domains, creditPrice, usage }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        site = try c.decode(String.self, forKey: .site)
+        domains = try c.decode([EmailDomainOption].self, forKey: .domains)
+        creditPrice = try c.decodeIfPresent(Int.self, forKey: .creditPrice)
+        // `try?`, on purpose: the meter is a LABEL. A shape change in it must
+        // never take the domain list — and with it the whole e-mail CTA —
+        // down with it.
+        usage = (try? c.decodeIfPresent(EmailUsage.self, forKey: .usage)) ?? nil
+    }
+}
+
+/// How much of the Mail subscription's included allowance is used, from
+/// `email_usage` — which counts with the same helper `begin_email_order`
+/// refuses on, so the meter and the refusal cannot disagree.
+///
+/// Timestamps stay `String` and are parsed here: Postgres serialises a
+/// `timestamptz` inside `jsonb` with optional fractional seconds, which the
+/// decoder's plain `.iso8601` strategy rejects.
+struct EmailUsage: Codable, Hashable {
+    let subscribed: Bool
+    let dailyUsed: Int
+    let dailyCap: Int
+    let dailyResetsAt: String?
+    let monthlyUsed: Int
+    let monthlyCap: Int
+    let monthlyNextSlotAt: String?
+
+    var dailyFull: Bool { dailyUsed >= dailyCap }
+    var monthlyFull: Bool { monthlyUsed >= monthlyCap }
+    var dailyResetsDate: Date? { Self.parse(dailyResetsAt) }
+    var monthlyNextSlotDate: Date? { Self.parse(monthlyNextSlotAt) }
+
+    private static func parse(_ s: String?) -> Date? {
+        guard let s else { return nil }
+        return isoFractional.date(from: s) ?? iso.date(from: s)
+    }
+    private static let isoFractional: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return f
+    }()
+    private static let iso = ISO8601DateFormatter()
 }
 
 /// A row of `email_orders`, decoded with `.convertFromSnakeCase`.

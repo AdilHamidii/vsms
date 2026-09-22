@@ -2032,6 +2032,47 @@
         }
       }
     },
+    "%lld of %lld today · %lld of %lld in 30 days": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld von %lld heute · %lld von %lld in 30 Tagen"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld de %lld hoy · %lld de %lld en 30 días"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld sur %lld aujourd’hui · %lld sur %lld sur 30 jours"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld di %lld oggi · %lld di %lld in 30 giorni"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "本日 %lld/%lld件 · 30日間 %lld/%lld件"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld de %lld hoje · %lld de %lld em 30 dias"
+          }
+        }
+      }
+    },
     "%lld of the last %lld attempts got a code": {
       "extractionState": "stale",
       "localizations": {
@@ -3424,6 +3465,88 @@
           "stringUnit": {
             "state": "translated",
             "value": "2m"
+          }
+        }
+      }
+    },
+    "30-day limit reached.": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "30-Tage-Limit erreicht."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Límite de 30 días alcanzado."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Limite sur 30 jours atteinte."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Limite di 30 giorni raggiunto."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "30日間の上限に達しました。"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Limite de 30 dias atingido."
+          }
+        }
+      }
+    },
+    "30-day limit reached. Your next address frees on %@.": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "30-Tage-Limit erreicht. Deine nächste Adresse wird am %@ frei."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Límite de 30 días alcanzado. Tu próxima dirección se libera el %@."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Limite sur 30 jours atteinte. Votre prochaine adresse se libère le %@."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Limite di 30 giorni raggiunto. Il prossimo indirizzo si libera il %@."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "30日間の上限に達しました。次のアドレスは%@に利用可能になります。"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Limite de 30 dias atingido. Seu próximo endereço fica disponível em %@."
           }
         }
       }
@@ -36851,6 +36974,88 @@
           "stringUnit": {
             "state": "translated",
             "value": "Hoje"
+          }
+        }
+      }
+    },
+    "Today's limit reached.": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Heutiges Limit erreicht."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Límite de hoy alcanzado."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Limite du jour atteinte."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Limite di oggi raggiunto."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "本日の上限に達しました。"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Limite de hoje atingido."
+          }
+        }
+      }
+    },
+    "Today's limit reached. It resets %@.": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Heutiges Limit erreicht. Es wird %@ zurückgesetzt."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Límite de hoy alcanzado. Se restablece %@."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Limite du jour atteinte. Elle se réinitialise %@."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Limite di oggi raggiunto. Si azzera %@."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "本日の上限に達しました。%@にリセットされます。"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Limite de hoje atingido. Ele é redefinido %@."
           }
         }
       }

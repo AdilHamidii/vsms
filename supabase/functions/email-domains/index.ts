@@ -94,5 +94,18 @@ Deno.serve(async (req) => {
     available: bySite.get(name)?.count ?? 0,
   }));
 
-  return json({ site, domains, credit_price: EMAIL_PAID_CREDITS });
+  // The subscriber usage meter. `email_usage` counts with the SAME helper
+  // begin_email_order refuses on (`email_included_used`, which honours
+  // `profiles.email_cap_reset_at`), so the meter and the refusal cannot
+  // disagree. It is a LABEL: a failed read logs and omits `usage`, and must
+  // never fail the domain list. Old clients ignore the extra key.
+  const { data: usage, error: usageErr } = await sb.rpc("email_usage", { p_user: userId });
+  if (usageErr) {
+    console.error(`email-domains: email_usage failed user=${userId}: ${usageErr.message}`);
+  }
+
+  return json({
+    site, domains, credit_price: EMAIL_PAID_CREDITS,
+    ...(usageErr || usage == null ? {} : { usage }),
+  });
 });

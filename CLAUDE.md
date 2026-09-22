@@ -2117,6 +2117,18 @@ on domains that cost nothing and is still bounded by the daily cap. Refusing
 Sandbox would mean the App Store reviewer subscribes, gets nothing, and rejects
 the build.
 
+**Subscribers see a usage meter** under the Temp tab's e-mail CTA ("X of Y
+today · X of Y in 30 days", plus when a full limit frees: the daily one
+relative to UTC midnight, the 30-day one as a date from `monthly_next_slot_at`,
+never "midnight"). It comes from `email_usage(p_user)` via `email-domains`'
+`usage` key (omitted on a failed read — the meter must never fail the domain
+list), which counts with the same `email_included_used` helper
+`begin_email_order` refuses on, so the meter and the refusal cannot disagree.
+Both honour `profiles.email_cap_reset_at` (service-role only): the owner clears
+ONE subscriber's usage with `update profiles set email_cap_reset_at = now()
+where user_id = '…';` — orders and refunds are untouched. ⚠️ Build-verified
+only, never walked on a device.
+
 ⚠️ **A subscriber's addresses still depend on free-domain stock that runs dry,
 and the 1-credit fallback does NOT help there** — it buys from the same
 outlook/hotmail inventory. A dry domain refuses `email_out_of_stock` for

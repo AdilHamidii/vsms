@@ -649,6 +649,10 @@ final class AppState {
     /// carrying one). nil = the server offers no paid fallback, so nothing is
     /// offered. Never a literal — see `EmailPaidOffer`.
     var emailCreditPrice: Int?
+    /// The Mail subscription's usage meter, from `email-domains`' `usage`
+    /// (server `email_usage`). nil = not known, and the meter hides. Rendered
+    /// only when `subscribed` — see `TempScreen.emailUsageMeter`.
+    var emailUsage: EmailUsage?
     /// The pending "pay credits for this address instead" offer from a
     /// refusal. `subscription_required` renders it inside the Mail paywall;
     /// the three caps render it as ContentView's confirmation dialog.
@@ -2413,7 +2417,7 @@ final class AppState {
     func loadEmailDomains(using api: EmailAPI) async {
         let svc = configuringService
         guard !(svc.domain ?? "").isEmpty else {
-            emailDomains = []; emailDomain = nil; return
+            emailDomains = []; emailDomain = nil; emailUsage = nil; return
         }
         isLoadingEmailDomains = true
         defer { isLoadingEmailDomains = false }
@@ -2422,6 +2426,7 @@ final class AppState {
             emailDomains = res.domains
             // Server authority: absent means "no paid fallback offered".
             emailCreditPrice = res.creditPrice
+            emailUsage = res.usage
             // Keep the selection only if it is still buyable; otherwise fall to
             // the first in-stock option so the CTA is never armed on a dead one.
             if let cur = emailDomain,
@@ -2434,6 +2439,7 @@ final class AppState {
         } catch {
             emailDomains = []
             emailDomain = nil
+            emailUsage = nil
             if let apiErr = error as? APIError { showError(apiErr) } else { lastError = nil }
         }
     }
@@ -2781,6 +2787,9 @@ final class AppState {
             intent = .email
             flow = .emailWaiting
             await refreshWallet(using: wallet)
+            // An included address counts against the meter from the moment
+            // it is in flight; a paid one does not, but re-reading is harmless.
+            await refreshEmailUsage(using: api)
             return .started
         } catch let err as APIError {
             let code = err.businessCode
@@ -2830,6 +2839,23 @@ final class AppState {
             lastError = String(localized: "Couldn't get an address. Please try again.")
             return .other
         }
+    }
+
+    /// Re-read ONLY the usage meter, through the same `email-domains` call
+    /// that already feeds the picker — no new endpoint, no poller.
+    ///
+    /// Silent on purpose, and it deliberately leaves `emailDomains` /
+    /// `emailDomain` alone: it runs right after a successful order, under the
+    /// waiting screen, and `loadEmailDomains`' failure path would clear the
+    /// selection and raise an error banner over an order that worked. A failed
+    /// read keeps the previous meter rather than inventing one.
+    @MainActor
+    func refreshEmailUsage(using api: EmailAPI) async {
+        let svc = configuringService
+        guard !(svc.domain ?? "").isEmpty,
+              let res = try? await api.domains(serviceId: svc.id) else { return }
+        emailUsage = res.usage
+        emailCreditPrice = res.creditPrice
     }
 
     /// The server's `credit_price` on a "not covered" refusal, if present.

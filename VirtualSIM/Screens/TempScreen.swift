@@ -548,6 +548,8 @@ struct TempScreen: View {
                         .frame(maxWidth: .infinity)
                         .fixedSize(horizontal: false, vertical: true)
                         .padding(.top, 12)
+
+                    if state.emailMode { emailUsageMeter }
                 }
                 .padding(.horizontal, 16)
                 // Always 16 here, and `evidenceStrip` deliberately adds no
@@ -556,6 +558,50 @@ struct TempScreen: View {
                 .padding(.top, 16)
                 .padding(.bottom, 18)
             }
+        }
+    }
+
+    /// The Mail subscription's usage, SUBSCRIBERS ONLY, as a quiet note under
+    /// the refund line. Counts come from `email_usage`, which uses the same
+    /// helper `begin_email_order` refuses on, so "8 of 8 today" and the
+    /// refusal cannot disagree. Hidden entirely when the server sent no meter.
+    ///
+    /// When a limit is full it says when it frees, and the two limits free
+    /// differently: the DAILY one at UTC midnight (rendered relative — "in 5
+    /// hours" — because UTC midnight is not the user's midnight), the ROLLING
+    /// 30-day one only as the oldest counted address ages out, so it names a
+    /// date and never "midnight". The 30-day message wins when both are full:
+    /// the daily reset would not let the user order.
+    @ViewBuilder
+    private var emailUsageMeter: some View {
+        if let u = state.emailUsage, u.subscribed {
+            VStack(spacing: 3) {
+                Text("\(u.dailyUsed) of \(u.dailyCap) today · \(u.monthlyUsed) of \(u.monthlyCap) in 30 days")
+                    .foregroundStyle(theme.text3)
+                    .monospacedDigit()
+                if u.monthlyFull {
+                    if let next = u.monthlyNextSlotDate {
+                        Text("30-day limit reached. Your next address frees on \(next.formatted(date: .abbreviated, time: .omitted)).")
+                            .foregroundStyle(theme.warn)
+                    } else {
+                        Text("30-day limit reached.")
+                            .foregroundStyle(theme.warn)
+                    }
+                } else if u.dailyFull {
+                    if let reset = u.dailyResetsDate {
+                        Text("Today's limit reached. It resets \(reset.formatted(.relative(presentation: .named))).")
+                            .foregroundStyle(theme.warn)
+                    } else {
+                        Text("Today's limit reached.")
+                            .foregroundStyle(theme.warn)
+                    }
+                }
+            }
+            .font(RFont.text(12))
+            .multilineTextAlignment(.center)
+            .frame(maxWidth: .infinity)
+            .fixedSize(horizontal: false, vertical: true)
+            .padding(.top, 6)
         }
     }
 
