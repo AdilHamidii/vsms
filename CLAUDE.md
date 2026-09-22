@@ -744,7 +744,7 @@ create-order      no auth              -> 401   (auth still enforced)
 ⚠️ `telegram-setup` fails closed, and rotating `TELEGRAM_WEBHOOK_SECRET`
 requires re-running it.
 
-### Cron schedule (25 jobs re-verified live 2026-09-15, + `relay-insta-draft` once its migration is applied)
+### Cron schedule (26 active jobs — the 25 re-verified 2026-09-15 plus `relay-insta-draft`, scheduled 2026-09-22)
 
 ```
 relay-poll-active-orders  * * * * *     relay-telegram-notify   * * * * *
@@ -2760,7 +2760,11 @@ retried once, then the draft is recorded `failed` and the owner is told.
 ⚠️ The validator covers the TEXT only. **A screenshot uploaded to
 `insta/screens/` goes out as-is** — the raw Home capture shows "$3.99 first
 month", a credit balance and the owner's first name. Upload only frames that
-carry no price and no personal data.
+carry no price and no personal data. As of 2026-09-22 the bucket holds exactly
+two, both checked by eye: `03_lineInbox.png` and `04_thread.png` (demo 555
+numbers, sample codes). Of the 2026-09-10 raw set, `01_homeRouter`,
+`05_home` and `07_homeLine` show the greeting name and balance, `06_email`
+shows "$2.99/mo" and `02_lineStore` "only 8 credits" — all excluded.
 
 🔴 **The live Instagram token is in `app_config.instagram_token`
 (`{access_token, refreshed_at}`), NOT in a secret, and it must NEVER join the
