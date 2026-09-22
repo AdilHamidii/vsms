@@ -3109,16 +3109,19 @@ Each has been wrong within a day of being written at least once.
 
 **Verified 2026-09-09:**
 
-- **iOS**: **2.16 (build 67) is staged and NOT YET SUBMITTED** (version
-  `60e2459a-…`, created 2026-09-17). It carries the US/CA texting disclosure
-  (`LineStoreScreen.sendingNotice`, `LineCheckoutScreen.capabilityNote`), its
-  13 release-note locales are written and read back, build 67 is attached and
-  `VALID`, `asc-listing-check.py` reads 0 findings, and the 11 en-US
-  screenshots carried over from 2.15 unchanged. **The submit step is the only
-  thing left**: `python3 scripts/asc-release.py submit 2.16 --apply`.
-  ⚠️ Built on beta macOS, so the `BuildMachineOSBuild` → `25F84` patch was
-  applied and verified in the exported IPA (2.16/67, VoIP background modes
-  present).
+- **iOS**: **2.17 (build 68) is `WAITING_FOR_REVIEW`** (read from ASC
+  2026-09-22; version `0a058c80-…`, submission `c99cea28-…`, submitted
+  17:55Z). It carries the 1-credit e-mail fallback, the subscriber usage
+  meter, the correct `monthly_cap_reached` message, and the Home cut-down of
+  2026-09-21. 13 release-note locales written and read back (no numbers, no
+  prices); `asc-listing-check.py` 0 findings; `BuildMachineOSBuild` → `25F84`
+  patched and verified in the IPA with VoIP background modes present.
+- **2.16 (build 67) is `READY_FOR_SALE`** — submitted 2026-09-17 20:10Z and
+  approved; this block said "NOT YET SUBMITTED" for five days after that.
+  It carries the US/CA texting disclosure (`LineStoreScreen.sendingNotice`,
+  `LineCheckoutScreen.capabilityNote`) and NOT the e-mail cap copy: every
+  build ≤ 2.16 renders `monthly_cap_reached` as the generic 429 "You're going
+  a bit fast".
 - **2.15 (build 66) is `READY_FOR_SALE`** — approved (read from ASC
   2026-09-17); this block called it `WAITING_FOR_REVIEW` for two days.
   Historical: it was submitted 2026-09-15
