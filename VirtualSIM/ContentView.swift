@@ -95,13 +95,8 @@ struct ContentView: View {
                         openEmailDomains: { sheet = .emailDomain },
                         openCredits: { sheet = .credits },
                         onStart: { state.startCheckout() },
-                        onStartEmail: {
-                            Task {
-                                await state.confirmGetEmail(
-                                    using: EmailAPI(client: api),
-                                    wallet: WalletAPI(client: api))
-                            }
-                        },
+                        onStartEmail: { startEmailOrder() },
+                        onStartEmailPaid: { startEmailOrder(payCredits: true) },
                         onTapOrder: { o in
                             if o.status == .waiting {
                                 state.activeOrder = o
@@ -335,6 +330,11 @@ struct ContentView: View {
                 // third instance of the PurchaseIntent bug class).
                 state.emailDomain = nil
                 state.intent = .sms
+                // The paid-address drafts go with it — a declared e-mail
+                // shortfall or a pending offer must not size or prompt
+                // anything on the SMS side.
+                state.emailCreditsNeeded = nil
+                state.emailPaidOffer = nil
                 // The paywall is the fourth instance of this same bug class —
                 // reached and left entirely at flow == nil, from the domain
                 // sheet, so nothing else clears it when the user backs out of
@@ -500,11 +500,42 @@ struct ContentView: View {
         // `state.maintenance`, rather than something threaded through the
         // item-based sheet enum.
         .sheet(isPresented: $state.showMailPaywall) {
-            MailPaywallScreen(source: "refused")
+            // `paidOffer` is non-nil only when the refusal carried the
+            // server's `credit_price` — see `EmailPaidOffer`.
+            MailPaywallScreen(source: "refused",
+                              paidOffer: state.emailPaidOffer,
+                              onPayCredits: { _ in startEmailOrder(payCredits: true) })
                 .modifier(EnvBundle(theme: theme, state: state, api: api, push: push, session: session, iap: iap, subs: subs, mailStore: mailStore, calls: calls))
                 .presentationDetents([.large])
                 .presentationDragIndicator(.visible)
                 .presentationBackground(theme.bg)
+        }
+        // A "not covered" CAP refusal (daily, rolling 30-day, or the per-IP
+        // free limit): state the limit, offer this one address for credits.
+        // A system dialog rather than a new surface — the order is launched
+        // from the Temp tab at `flow == nil`, so the root can present it.
+        // `subscription_required` never lands here; it keeps its paywall.
+        .confirmationDialog(
+            Text(verbatim: state.emailPaidOffer?.message ?? ""),
+            isPresented: Binding(
+                get: { state.emailPaidOffer.map { !$0.isSubscriptionWall } ?? false },
+                set: { shown in
+                    if !shown, state.emailPaidOffer?.isSubscriptionWall == false {
+                        state.emailPaidOffer = nil
+                    }
+                }),
+            titleVisibility: .visible,
+            presenting: state.emailPaidOffer
+        ) { offer in
+            Button(String(localized: "Get this one for \(offer.credits) cr")) {
+                Analytics.shared.track("email_paid_offer_taken",
+                                       ["reason": .string(offer.reason),
+                                        "source": .string("refused")])
+                startEmailOrder(payCredits: true)
+            }
+            Button("Not now", role: .cancel) {}
+        } message: { _ in
+            Text("Refunded automatically if no code arrives.")
         }
         .fullScreenCover(item: $state.flow) { stage in
             flowContent(stage)
@@ -753,6 +784,21 @@ struct ContentView: View {
         }
     }
 
+    /// Place the configured e-mail order — included, or (`payCredits`) paid at
+    /// the server's `credit_price`. A paid retry the balance cannot cover
+    /// opens the credits sheet; `confirmGetEmail` has already declared
+    /// `intent = .email` and the amount, so the sheet preselects the right
+    /// pack. The user retries from the Temp tab once credits land.
+    private func startEmailOrder(payCredits: Bool = false) {
+        Task {
+            let outcome = await state.confirmGetEmail(
+                using: EmailAPI(client: api),
+                wallet: WalletAPI(client: api),
+                payCredits: payCredits)
+            if outcome == .needsCredits { sheet = .credits }
+        }
+    }
+
     @ViewBuilder
     private func sheetContent(_ which: ActiveSheet) -> some View {
         @Bindable var s = state
@@ -777,6 +823,9 @@ struct ContentView: View {
         case .emailDomain:
             EmailDomainSheet(onPick: { picked in
                 state.emailDomain = picked
+                // A declared paid-address shortfall was sized for the domain
+                // being replaced.
+                state.emailCreditsNeeded = nil
                 // Declare the intent here too: the credits pill can be opened
                 // from Home with flow == nil, and creditsShortfall must size for
                 // the email price rather than the SMS route behind it.

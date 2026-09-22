@@ -30,16 +30,27 @@ struct EmailAPI {
         )
     }
 
-    /// Buy one address. Free on outlook/hotmail, subject to the server's free
-    /// allowance and daily cap — icloud.com was removed 2026-07-31 and
-    /// gmail.com followed 2026-08-26 (its pool stopped delivering), so those
-    /// two free domains are the whole of what's sellable today. The server is
-    /// the authority on both the price and the allowance.
-    func create(serviceId: String, domain: String) async throws -> ServerEmailOrder {
-        struct Body: Encodable { let service_id: String; let domain: String }
+    /// Buy one address on outlook/hotmail. Included (0 credits) while the
+    /// user has their free lifetime address or the Mail subscription; with
+    /// `payCredits` it is charged the server's `credit_price` instead and
+    /// skips the free/subscription/cap checks — refunded if no code arrives.
+    /// The server is the authority on both the price and the allowance.
+    ///
+    /// `pay_credits` is sent ONLY when true, so an included request is
+    /// byte-for-byte what every earlier build sends.
+    func create(serviceId: String, domain: String,
+                payCredits: Bool = false) async throws -> ServerEmailOrder {
+        // Synthesized Encodable uses `encodeIfPresent` for an Optional, so a
+        // nil `pay_credits` is omitted from the JSON rather than sent as null.
+        struct Body: Encodable {
+            let service_id: String
+            let domain: String
+            let pay_credits: Bool?
+        }
         let env: OrderEnvelope = try await client.request(
             .post, path: "functions/v1/create-email-order",
-            body: Body(service_id: serviceId, domain: domain)
+            body: Body(service_id: serviceId, domain: domain,
+                       pay_credits: payCredits ? true : nil)
         )
         return env.order
     }

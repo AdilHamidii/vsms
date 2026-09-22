@@ -6,10 +6,22 @@
 // live and never trusts a cached catalog — there is no email catalog table by
 // design.
 //
-// Pricing (owner, 2026-07-31): gmail.com costs 1 credit; outlook.com and
-// hotmail.com are FREE and are the DEFAULT. The free tier is bounded server-side
-// by begin_email_order: the lifetime allowance keyed on mailbox AND device
-// (push token), plus a per-IP daily cap (`app_config.email_free_ip_daily_cap`).
+// Pricing: outlook.com and hotmail.com are the only domains sold (gmail.com was
+// removed 2026-08-26). An address is INCLUDED — `p_credits = 0` — when the user
+// still has their one free lifetime address or holds the Mail subscription
+// (under its daily and rolling 30-day caps). The free tier is bounded
+// server-side by begin_email_order: the lifetime allowance keyed on mailbox AND
+// device (push token), plus a per-IP daily cap (`app_config.email_free_ip_daily_cap`).
+//
+// PAID FALLBACK (owner, 2026-09-22): a user who is NOT covered — any of the
+// four refusals subscription_required / daily_cap_reached / monthly_cap_reached
+// / free_limit_reached — may instead pay `EMAIL_PAID_CREDITS` for that one
+// address by re-sending the same request with `pay_credits: true`. Every such
+// refusal carries `credit_price` so the client never hardcodes the number.
+// begin_email_order's `p_credits > 0` branch skips all free/subscription/cap
+// checks and charges in the same transaction; no code → automatic refund via
+// close_email_order_claim / expire_email_orders. A request WITHOUT the flag
+// (every build before this change) behaves exactly as it always did.
 // The IP is hashed HERE and passed as `p_ip_hash` — the function never sees a
 // raw address. Added 2026-09-01 against a farm that ran 75 signups from two
 // phones to harvest free facebook.com mailboxes (see migration 20260901100000).
@@ -19,8 +31,15 @@ import { admin, callerUserId } from "../_shared/supabaseAdmin.ts";
 import {
   listDomains, buyActivation, faultOf, CURRENCY_USD,
 } from "../_shared/heromail.ts";
+import { EMAIL_PAID_CREDITS } from "../_shared/emailPricing.ts";
 
-interface Body { service_id: string; domain: string; }
+interface Body {
+  service_id: string;
+  domain: string;
+  /** Opt in to paying `EMAIL_PAID_CREDITS` instead of the included price.
+   *  Only the literal `true` counts; absent (old builds) means included. */
+  pay_credits?: boolean;
+}
 
 /** The domains we resell, and what we charge. Anything else is refused
  *  outright: the provider also lists 19 Yandex TLDs that no Western site
@@ -87,10 +106,14 @@ Deno.serve(async (req) => {
   }
 
   const domain = body.domain.trim().toLowerCase();
-  const credits = PRICING[domain];
-  if (credits === undefined) {
+  const includedCredits = PRICING[domain];
+  if (includedCredits === undefined) {
     return json({ error: "domain_unavailable" }, { status: 400 });
   }
+  // Strict `=== true`: a truthy string or number must not opt anyone into a
+  // charge. Everything below reads `credits`, so the margin ceiling and the
+  // charge always describe the same price.
+  const credits = body.pay_credits === true ? EMAIL_PAID_CREDITS : includedCredits;
 
   const sb = admin();
 
@@ -141,7 +164,10 @@ Deno.serve(async (req) => {
     return json({ error: "margin_too_low" }, { status: 409 });
   }
 
-  // ── Charge (or, for the free tier, just claim a slot) ────────────────────
+  // ── Charge (or, for the included tier, just claim a slot) ────────────────
+  // `p_credits > 0` (a `pay_credits` request) skips every free/subscription/cap
+  // check inside begin_email_order and charges via wallet_spend in the same
+  // transaction; a short balance answers `insufficient` → 402 below.
   const { data: begun, error: beginErr } = await sb.rpc("begin_email_order", {
     p_user: userId, p_service: service.id, p_site: site,
     p_domain: domain, p_credits: credits,
@@ -159,15 +185,23 @@ Deno.serve(async (req) => {
 
   if (res?.reason === "insufficient")       return json({ error: "insufficient_credits" }, { status: 402 });
   if (res?.reason === "duplicate_request")  return json({ error: "duplicate_request" }, { status: 409 });
+  // The four "not covered" refusals below each carry `credit_price`: the
+  // client offers to buy that one address for credits instead of dead-ending.
+  // They can only fire on the INCLUDED path (`p_credits = 0`), so a
+  // `pay_credits` retry never lands here.
   if (res?.reason === "free_limit_reached") {
-    return json({ error: "free_limit_reached", cap: res.cap ?? 3 }, { status: 429 });
+    return json({
+      error: "free_limit_reached", cap: res.cap ?? 3, credit_price: EMAIL_PAID_CREDITS,
+    }, { status: 429 });
   }
   // Per-IP daily cap on FREE addresses (subscribers are exempt). Rendered with
   // the client's existing `free_limit_reached` copy ("used today's free
   // addresses… try again tomorrow, or subscribe"), which is exactly right, so
   // no client change is needed.
   if (res?.reason === "ip_limit_reached") {
-    return json({ error: "free_limit_reached", cap: res.cap ?? 3 }, { status: 429 });
+    return json({
+      error: "free_limit_reached", cap: res.cap ?? 3, credit_price: EMAIL_PAID_CREDITS,
+    }, { status: 429 });
   }
   // Lifetime free allowance used up, not subscribed. 402, not 429 — this is
   // "payment required", and waiting does not make it go away the way a rate
@@ -177,13 +211,16 @@ Deno.serve(async (req) => {
       error: "subscription_required",
       used: res.used ?? null,
       grants: res.grants ?? null,
+      credit_price: EMAIL_PAID_CREDITS,
     }, { status: 402 });
   }
   // Subscribed, but the SHARED free-domain inventory has a stated hard stop
   // per subscriber per day (`app_config.email_sub_daily_cap`) — one looping
   // subscriber must not be able to drain stock for everyone else.
   if (res?.reason === "daily_cap_reached") {
-    return json({ error: "daily_cap_reached", cap: res.cap ?? 25 }, { status: 429 });
+    return json({
+      error: "daily_cap_reached", cap: res.cap ?? 25, credit_price: EMAIL_PAID_CREDITS,
+    }, { status: 429 });
   }
   // And a ROLLING 30-day stop on top of it (`app_config.email_sub_monthly_cap`).
   // The daily cap does not bound a month — at 8/day it permits 240 addresses
@@ -192,7 +229,9 @@ Deno.serve(async (req) => {
   // `daily_cap_reached` on purpose: that one clears at midnight and this one
   // does not, so telling the user to come back tomorrow would be a lie.
   if (res?.reason === "monthly_cap_reached") {
-    return json({ error: "monthly_cap_reached", cap: res.cap ?? 60 }, { status: 429 });
+    return json({
+      error: "monthly_cap_reached", cap: res.cap ?? 60, credit_price: EMAIL_PAID_CREDITS,
+    }, { status: 429 });
   }
   const orderId = res?.order_id;
   if (!res?.ok || !orderId) {

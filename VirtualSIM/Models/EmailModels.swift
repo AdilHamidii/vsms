@@ -46,6 +46,10 @@ struct EmailDomainOption: Codable, Hashable, Identifiable {
 struct EmailDomainsResponse: Codable {
     let site: String
     let domains: [EmailDomainOption]
+    /// What ONE address costs a user the included tier does not cover (spent
+    /// free address, or a subscriber over their cap). Optional: a server
+    /// predating the paid fallback omits it, and then nothing is offered.
+    let creditPrice: Int?
 }
 
 /// A row of `email_orders`, decoded with `.convertFromSnakeCase`.

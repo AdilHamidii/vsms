@@ -50,6 +50,9 @@ struct TempScreen: View {
     var openCredits: () -> Void = {}
     var onStart: () -> Void = {}
     var onStartEmail: () -> Void = {}
+    /// The same order, paid at the server's `credit_price` instead of the
+    /// included tier — offered as the paywall's secondary action.
+    var onStartEmailPaid: () -> Void = {}
     var onTapOrder: (Order) -> Void = { _ in }
     var onSeeAllOrders: () -> Void = {}
 
@@ -177,7 +180,15 @@ struct TempScreen: View {
         // inherit @Observable environment objects — the reason `EnvBundle`
         // exists at all.
         .sheet(isPresented: $showMailPaywall) {
-            MailPaywallScreen(source: "home")
+            // Reached BEFORE any order is refused (the CTA sells the plan up
+            // front), so the price comes from `email-domains`' `credit_price`
+            // rather than a refusal body. nil there = nothing offered.
+            MailPaywallScreen(
+                source: "home",
+                paidOffer: state.emailCreditPrice.map {
+                    EmailPaidOffer(reason: "subscription_required", credits: $0, message: "")
+                },
+                onPayCredits: { _ in onStartEmailPaid() })
                 .environment(\.theme, theme)
                 .environment(state)
                 .environment(mailStore)

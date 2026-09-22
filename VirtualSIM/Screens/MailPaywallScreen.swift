@@ -50,11 +50,25 @@ import SwiftUI
 /// - An empty `store.products` almost always means the product is still
 ///   `MISSING_METADATA` in App Store Connect, not a client bug — say the
 ///   store is unavailable rather than rendering a live-looking disabled row.
+///
+/// ── The one-address alternative (owner decision 2026-09-22) ─────────────
+///
+/// When the presenter passes a `paidOffer`, a SECONDARY action offers this
+/// one address for the server's `credit_price`, refunded if no code arrives.
+/// The subscription stays the primary CTA in the bottom bar. The number comes
+/// from the offer (i.e. the server), never a literal. Only the two presenters
+/// that sit on an actual order draft pass one — the refused-order sheet and
+/// the Temp tab's CTA; the domain sheet and the code screen do not.
 struct MailPaywallScreen: View {
     /// Which surface raised it. There are four entry points and they mean
     /// different things — a refused order is not the same event as someone
     /// browsing the offer from Home.
     var source: String = "other"
+    /// Pay credits for this one address instead. nil = not offered.
+    var paidOffer: EmailPaidOffer? = nil
+    /// Runs AFTER this sheet dismisses; the presenter retries the same order
+    /// with `payCredits: true`.
+    var onPayCredits: ((EmailPaidOffer) -> Void)? = nil
 
     @Environment(AppState.self) private var state
     @Environment(MailSubscriptionStore.self) private var store
@@ -88,6 +102,10 @@ struct MailPaywallScreen: View {
                             .padding(.top, 12)
                     }
 
+                    if let offer = paidOffer, onPayCredits != nil {
+                        paidAlternative(offer).padding(.top, 18).riseIn(appeared, index: 3)
+                    }
+
                     restore.padding(.top, 14).riseIn(appeared, index: 3)
                     legal.padding(.top, 18).riseIn(appeared, index: 4)
                 }
@@ -104,6 +122,11 @@ struct MailPaywallScreen: View {
         .task {
             withAnimation(RMotion.content) { appeared = true }
             Analytics.shared.track("mail_paywall_shown", ["source": .string(source)])
+            if let offer = paidOffer, onPayCredits != nil {
+                Analytics.shared.track("email_paid_offer_shown",
+                                       ["reason": .string(offer.reason),
+                                        "source": .string(source)])
+            }
             await store.load()
         }
     }
@@ -313,6 +336,31 @@ struct MailPaywallScreen: View {
                 dismiss()
             }
         }
+    }
+
+    // MARK: - One address for credits
+
+    /// Secondary by construction: a ghost button under the plan, never in the
+    /// bottom bar. It still renders when StoreKit has no products — then it is
+    /// the only way forward on this sheet, which is better than a dead end.
+    private func paidAlternative(_ offer: EmailPaidOffer) -> some View {
+        VStack(spacing: 8) {
+            GhostButton(label: String(localized: "Get this one for \(offer.credits) cr"),
+                        icon: RIcon.bolt) {
+                RHaptic.select()
+                Analytics.shared.track("email_paid_offer_taken",
+                                       ["reason": .string(offer.reason),
+                                        "source": .string(source)])
+                dismiss()
+                onPayCredits?(offer)
+            }
+            Text("Refunded automatically if no code arrives.")
+                .font(RFont.text(12))
+                .foregroundStyle(theme.text2)
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .frame(maxWidth: .infinity)
     }
 
     // MARK: - Restore + legal

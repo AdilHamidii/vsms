@@ -6,11 +6,16 @@
 // discover the truth only after a user taps buy — and the free tier, which is
 // the scarcest inventory we sell, would look broken rather than empty.
 //
-// Prices are OURS and fixed (1 credit / free); only `available` is live.
+// Prices are OURS and fixed; only `available` is live. `credits` is the
+// INCLUDED price (0 = free / covered by the Mail subscription). `credit_price`
+// is what ONE address costs a user who is not covered (owner, 2026-09-22) —
+// quoted here so the paywall can offer it before any order is refused. It is
+// the same constant create-email-order charges and quotes on its refusals.
 
 import { handleCors, json } from "../_shared/cors.ts";
 import { admin, callerUserId } from "../_shared/supabaseAdmin.ts";
 import { listDomains, faultOf } from "../_shared/heromail.ts";
+import { EMAIL_PAID_CREDITS } from "../_shared/emailPricing.ts";
 
 interface Body { service_id: string; }
 
@@ -89,5 +94,5 @@ Deno.serve(async (req) => {
     available: bySite.get(name)?.count ?? 0,
   }));
 
-  return json({ site, domains });
+  return json({ site, domains, credit_price: EMAIL_PAID_CREDITS });
 });

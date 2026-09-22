@@ -14920,6 +14920,47 @@
         }
       }
     },
+    "Get this one for %lld cr": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Diese für %lld Cr holen"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Obtener esta por %lld cr"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Obtenir celle-ci pour %lld cr"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ottieni questo per %lld cr"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "このアドレスを%lld crで取得"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Obter este por %lld cr"
+          }
+        }
+      }
+    },
     "Get vRoam": {
       "localizations": {
         "de": {
@@ -27256,6 +27297,47 @@
           "stringUnit": {
             "state": "translated",
             "value": "Reembolsado"
+          }
+        }
+      }
+    },
+    "Refunded automatically if no code arrives.": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Wird automatisch erstattet, wenn kein Code ankommt."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Se reembolsa automáticamente si no llega ningún código."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Remboursé automatiquement si aucun code n’arrive."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Rimborsato automaticamente se non arriva nessun codice."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "コードが届かなかった場合は自動的に返金されます。"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Reembolsado automaticamente se nenhum código chegar."
           }
         }
       }
@@ -41946,6 +42028,47 @@
           "stringUnit": {
             "state": "translated",
             "value": "Você atingiu o máximo de números que pode ter ao mesmo tempo. Libere um para alugar outro."
+          }
+        }
+      }
+    },
+    "You've reached your address limit for the past 30 days. More become available as your earlier ones age out.": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Du hast dein Adresslimit für die letzten 30 Tage erreicht. Neue werden frei, sobald ältere aus dem Zeitraum fallen."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Alcanzaste tu límite de direcciones de los últimos 30 días. Habrá más disponibles a medida que las anteriores salgan del periodo."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vous avez atteint votre limite d’adresses sur les 30 derniers jours. D’autres se libèrent à mesure que les plus anciennes sortent de la période."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hai raggiunto il limite di indirizzi degli ultimi 30 giorni. Se ne liberano altri man mano che i precedenti escono dal periodo."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "過去30日間のアドレス上限に達しました。以前のアドレスが期間外になるにつれて、新しいアドレスを利用できるようになります。"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Você atingiu o limite de endereços dos últimos 30 dias. Mais ficam disponíveis à medida que os anteriores saem do período."
           }
         }
       }

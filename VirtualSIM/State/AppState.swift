@@ -147,6 +147,48 @@ enum PurchaseIntent: String, Hashable {
     case mailSubscription
 }
 
+/// A temp e-mail refusal the user may settle by paying credits for that ONE
+/// address instead (owner decision 2026-09-22).
+///
+/// Built only from a refusal body that carries the server's `credit_price`
+/// (or, for the pre-emptive paywall, from `email-domains`' copy of the same
+/// constant) — the amount is never a client literal. See "Copy rules — never
+/// quote a number the server owns" in CLAUDE.md.
+struct EmailPaidOffer: Identifiable, Equatable {
+    /// The refusal code: `subscription_required`, `daily_cap_reached`,
+    /// `monthly_cap_reached` or `free_limit_reached`. Also the analytics prop.
+    let reason: String
+    /// What one address costs, as the server stated it.
+    let credits: Int
+    /// The limit sentence for this refusal (`APIError.userMessage`), so the
+    /// cap dialog states the right reset rule — the monthly cap must never
+    /// say "midnight".
+    let message: String
+    var id: String { reason }
+
+    /// The four codes the server offers a paid fallback for.
+    static let reasons: Set<String> = [
+        "subscription_required", "daily_cap_reached",
+        "monthly_cap_reached", "free_limit_reached",
+    ]
+    /// The subscription refusal keeps its paywall; the other three are a
+    /// limit the user already hit, answered by a confirmation dialog.
+    var isSubscriptionWall: Bool { reason == "subscription_required" }
+}
+
+/// What `confirmGetEmail` ended in, for the presenter that owns the sheets.
+/// AppState cannot raise the root credits sheet itself (`ContentView` holds
+/// that state), so a short balance on a paid retry is RETURNED, not flagged.
+enum EmailOrderOutcome {
+    case started
+    /// A `pay_credits` retry was refused 402: open `CreditsSheet`. `intent`
+    /// and `emailCreditsNeeded` are already declared when this returns.
+    case needsCredits
+    /// Anything else — an error banner, the paywall, or the paid-offer dialog
+    /// has already been raised from state.
+    case other
+}
+
 /// What the post-failure recovery card needs to know. Stored on AppState
 /// (FlowStage is raw-value-backed, so cases can't carry payloads — same
 /// pattern as checkoutService/checkoutCountry).
@@ -505,6 +547,9 @@ final class AppState {
             if flow == nil {
                 checkoutEsimPlan = nil
                 emailDomain = nil
+                // Declared with `intent = .email` by a paid-address retry that
+                // came back 402; cleared with the domain it was sized for.
+                emailCreditsNeeded = nil
                 // The line's per-flow drafts. `lineReservation` is NOT cleared
                 // here on purpose — it belongs to the Number TAB and is read by
                 // `LineStoreScreen` at `flow == nil`, so clearing it on every
@@ -557,6 +602,11 @@ final class AppState {
             if !showMailPaywall, intent == .mailSubscription {
                 intent = emailMode ? .email : .sms
             }
+            // The paid-address offer rendered inside this paywall belongs to
+            // the refusal that raised it; it must not outlive the sheet.
+            if !showMailPaywall, emailPaidOffer?.isSubscriptionWall == true {
+                emailPaidOffer = nil
+            }
         }
     }
 
@@ -594,6 +644,22 @@ final class AppState {
     var emailDomain: EmailDomainOption?
     var activeEmailOrder: ServerEmailOrder?
     var isBuyingEmail = false
+    /// What ONE address costs a user who is not covered, as the server last
+    /// quoted it (`email-domains`' `credit_price`, refreshed by any refusal
+    /// carrying one). nil = the server offers no paid fallback, so nothing is
+    /// offered. Never a literal — see `EmailPaidOffer`.
+    var emailCreditPrice: Int?
+    /// The pending "pay credits for this address instead" offer from a
+    /// refusal. `subscription_required` renders it inside the Mail paywall;
+    /// the three caps render it as ContentView's confirmation dialog.
+    var emailPaidOffer: EmailPaidOffer?
+    /// Credits a PAID address needs, DECLARED alongside `intent = .email` when
+    /// a `pay_credits` retry comes back `insufficient_credits` — the included
+    /// domain's own price is 0, so without this `creditsShortfall` would size
+    /// the pack for nothing. Same rule as `callCreditsNeeded`: stated by the
+    /// path that knows it, cleared wherever the e-mail draft is (flow end,
+    /// leaving e-mail mode, a domain change, a successful order).
+    var emailCreditsNeeded: Int?
     /// A UI hint only, mirroring `begin_email_order`'s own predicate
     /// (`cost_credits = 0 and status <> 'failed'`) over the orders this device
     /// has loaded. The server is the actual authority — `emailOrders` may be
@@ -1860,6 +1926,9 @@ final class AppState {
             guard let c = checkoutEsimPlan?.retailCredits else { return 0 }
             return max(0, c - balance)
         case .email:
+            // A paid address the user chose over the included tier declares
+            // its own price; see `emailCreditsNeeded`.
+            if let need = emailCreditsNeeded { return max(0, need - balance) }
             // Free domains can never leave you short, so they contribute 0
             // rather than a spurious "buy credits" nudge.
             guard let c = emailDomain?.credits, c > 0 else { return 0 }
@@ -2351,6 +2420,8 @@ final class AppState {
         do {
             let res = try await api.domains(serviceId: svc.id)
             emailDomains = res.domains
+            // Server authority: absent means "no paid fallback offered".
+            emailCreditPrice = res.creditPrice
             // Keep the selection only if it is still buyable; otherwise fall to
             // the first in-stock option so the CTA is never armed on a dead one.
             if let cur = emailDomain,
@@ -2680,39 +2751,94 @@ final class AppState {
         return (try? JSONDecoder.relay.decode(Envelope.self, from: data))?.error
     }
 
-    /// Buy the selected address. Free domains move no credits, so the balance
-    /// refresh afterwards is still correct — it just does not change.
-    @MainActor
-    func confirmGetEmail(using api: EmailAPI, wallet: WalletAPI) async {
-        guard !isBuyingEmail, let dom = emailDomain, dom.inStock else { return }
+    /// Buy the selected address. Included addresses move no credits, so the
+    /// balance refresh afterwards is still correct — it just does not change.
+    ///
+    /// `payCredits` re-sends the SAME order (same service, same domain) with
+    /// `pay_credits: true`, which the server charges at `credit_price` and
+    /// refunds if no code arrives. It is only ever sent after the user tapped
+    /// an offer built from a refusal (or `email-domains`) quoting that price.
+    @MainActor @discardableResult
+    func confirmGetEmail(using api: EmailAPI, wallet: WalletAPI,
+                         payCredits: Bool = false) async -> EmailOrderOutcome {
+        guard !isBuyingEmail, let dom = emailDomain, dom.inStock else { return .other }
         let svc = configuringService
         isBuyingEmail = true
         defer { isBuyingEmail = false }
         Analytics.shared.track("email_order_submitted",
-                               ["domain": .string(dom.domain)])
+                               ["domain": .string(dom.domain),
+                                "paid": .bool(payCredits)])
+        // The price the user just agreed to, captured BEFORE the request: a
+        // 402 below sizes the credits pack from it.
+        let agreedPrice = emailCreditPrice
         do {
-            let order = try await api.create(serviceId: svc.id, domain: dom.domain)
+            let order = try await api.create(serviceId: svc.id, domain: dom.domain,
+                                             payCredits: payCredits)
+            emailPaidOffer = nil
+            emailCreditsNeeded = nil
             emailOrders.insert(order, at: 0)
             activeEmailOrder = order
             intent = .email
             flow = .emailWaiting
             await refreshWallet(using: wallet)
+            return .started
         } catch let err as APIError {
-            // The paywall, not an error banner — and ONLY for this code.
-            // `daily_cap_reached` and `monthly_cap_reached` are a SUBSCRIBER
-            // who hit their own daily or rolling-30-day limit; they are
-            // already paying and do not need to be sold anything, so both
-            // fall through to the ordinary `userMessage`.
-            if case .http(_, let body) = err, Self.errorCode(in: body) == "subscription_required" {
+            let code = err.businessCode
+            // A paid retry the balance cannot cover: the credits paywall,
+            // declared for THIS product and THIS amount — never inferred.
+            if payCredits, code == "insufficient_credits", let need = agreedPrice {
+                intent = .email
+                emailCreditsNeeded = need
+                return .needsCredits
+            }
+            if !payCredits, let code, EmailPaidOffer.reasons.contains(code),
+               case .http(_, let body) = err,
+               let price = Self.creditPrice(in: body) {
+                emailCreditPrice = price
+                let offer = EmailPaidOffer(reason: code, credits: price,
+                                           message: err.userMessage)
+                emailPaidOffer = offer
+                if offer.isSubscriptionWall {
+                    // The paywall stays primary; the offer renders inside it,
+                    // which is where `email_paid_offer_shown` fires.
+                    Analytics.shared.track("email_walled")
+                    intent = .mailSubscription
+                    showMailPaywall = true
+                } else {
+                    // A limit the user already hit: ContentView's dialog
+                    // states it and offers the paid address.
+                    Analytics.shared.track("email_paid_offer_shown",
+                                           ["reason": .string(code),
+                                            "source": .string("refused")])
+                }
+                return .other
+            }
+            // The paywall, not an error banner — for a server that sent no
+            // `credit_price` (an older deploy), exactly as before.
+            // `daily_cap_reached` and `monthly_cap_reached` then fall through
+            // to the ordinary `userMessage`: a subscriber at their own limit
+            // is already paying and is not sold the plan again.
+            if code == "subscription_required" {
                 Analytics.shared.track("email_walled")
                 intent = .mailSubscription
                 showMailPaywall = true
-                return
+                return .other
             }
             showError(err)
+            return .other
         } catch {
             lastError = String(localized: "Couldn't get an address. Please try again.")
+            return .other
         }
+    }
+
+    /// The server's `credit_price` on a "not covered" refusal, if present.
+    private static func creditPrice(in body: String?) -> Int? {
+        guard let data = body?.data(using: .utf8) else { return nil }
+        struct Envelope: Decodable { let creditPrice: Int? }
+        guard let p = (try? JSONDecoder.relay.decode(Envelope.self, from: data))?.creditPrice,
+              p > 0 else { return nil }
+        return p
     }
 
     /// Poll one activation. `hasCode` — not `status` — decides we are done, the

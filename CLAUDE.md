@@ -801,11 +801,12 @@ unreachable from the code that needs it.
 ### Backend layout
 
 - `supabase/migrations/` — chronological SQL, each phase ships its own file
-- `supabase/functions/_shared/` — **33 files** (`ls supabase/functions/_shared |
+- `supabase/functions/_shared/` — **34 files** (`ls supabase/functions/_shared |
   wc -l`; count, do not trust a list). The ones worth knowing:
   `providers.ts` (the unified router — order/poll functions call this, never a
   provider), `pricing.ts` (the ONE definition of SMS retail), `fivesim.ts`,
-  `herosms.ts`, `heromail.ts` (the temp-EMAIL line), `smspva.ts`, `smspool.ts`
+  `herosms.ts`, `heromail.ts` (the temp-EMAIL line), `emailPricing.ts`
+  (`EMAIL_PAID_CREDITS`, the one price of a paid e-mail address), `smspva.ts`, `smspool.ts`
   (eSIM + balance ONLY), `esimaccess.ts`, `iap.ts` (Apple receipt chain
   verification), `apns.ts`, `telnyx.ts` (the rented-line adapter),
   `lineCatalog.ts` (the fail-closed sellability gate every line seller calls),
@@ -1886,8 +1887,12 @@ highest-volume services for our own backlog.
 
 ## The temp-e-mail product
 
-Temp mailboxes on **outlook.com and hotmail.com, both FREE**. There is no paid
-tier on sale.
+Temp mailboxes on **outlook.com and hotmail.com** only. An address is
+**INCLUDED** (0 credits) while the user still has their one free lifetime
+address or holds the Mail subscription under its caps. **Anyone NOT covered
+may instead pay `EMAIL_PAID_CREDITS` (1 credit) for that one address, refunded
+automatically if no code arrives** (owner decision 2026-09-22) — see "The
+1-credit fallback" under the subscription section below.
 
 **gmail.com was REMOVED 2026-08-26** — its pool stopped delivering (1 code in
 its last 36 orders, 0 of the last 23, while the free pair delivered normally in
@@ -1905,8 +1910,9 @@ review risk. Both removals are enforced the same way: deleting the key from
 **`PRICING` is duplicated in `create-email-order` and `email-domains` — change
 both together.**
 
-**E-mail exists to acquire users, not to earn.** The subscription, not a
-per-address price, is its monetization.
+**E-mail exists to acquire users, not to earn.** The subscription is its
+monetization; the 1-credit fallback exists so a user who is not covered is
+never dead-ended, not as a revenue line.
 
 **It is a SECOND protocol on the same HeroSMS account**, sharing only the key and
 the balance:
@@ -2111,9 +2117,57 @@ on domains that cost nothing and is still bounded by the daily cap. Refusing
 Sandbox would mean the App Store reviewer subscribes, gets nothing, and rejects
 the build.
 
-⚠️ **A subscriber's "unlimited" addresses still depend on free-domain stock that
-runs dry, and there is now NO paid fallback at all.** A subscriber who hits a dry
-domain gets the same `domain_unavailable` refusal a non-subscriber gets.
+⚠️ **A subscriber's addresses still depend on free-domain stock that runs dry,
+and the 1-credit fallback does NOT help there** — it buys from the same
+outlook/hotmail inventory. A dry domain refuses `email_out_of_stock` for
+everyone, paying or not.
+
+### The 1-credit fallback (owner decision 2026-09-22)
+
+Whenever `create-email-order` refuses an INCLUDED address with one of the four
+"not covered" codes — `subscription_required` (free address spent, no
+subscription), `daily_cap_reached` / `monthly_cap_reached` (subscriber over a
+cap), or `free_limit_reached` (the per-IP free cap; the function returns that
+code for both `free_limit_reached` and `ip_limit_reached`) — the refusal body
+carries **`credit_price`**, status codes unchanged. The client offers that one
+address for those credits; accepting re-sends the SAME order with
+**`pay_credits: true`**.
+
+- **`EMAIL_PAID_CREDITS` lives ONCE, in `_shared/emailPricing.ts`**, read by
+  `create-email-order` (charges it, quotes it on the four refusals) and
+  `email-domains` (quotes it up front as `credit_price`, because the Temp tab
+  sells the plan BEFORE any order is refused and would otherwise never learn
+  the price). The client renders only the number it is sent — never a literal.
+  Change the constant → redeploy BOTH functions (`_shared` bundles per function).
+- **Only the literal `pay_credits === true` opts in.** Without it the request is
+  byte-for-byte the old one, so every build before this change behaves exactly
+  as before (it also ignores the extra `credit_price` field).
+- **`begin_email_order` with `p_credits > 0` skips EVERY free / subscription /
+  cap check** (they all sit inside `if p_credits = 0`), inserts and charges via
+  `wallet_spend` in one transaction, and answers `insufficient` → 402
+  `insufficient_credits` when the balance is short. The margin ceiling for a
+  paid address is the credit formula at 1 credit (~$0.167), not the free tier's
+  $1.00 glitch guard, so a quote above it refuses `margin_too_low`.
+- **Paid addresses never consume the included allowance** — both subscriber
+  caps and the free-lifetime/`hasUsedFreeEmail` predicates count
+  `cost_credits = 0` only.
+- **Refund on no code is the existing path**: `close_email_order_claim` (via
+  `failEmail` on a provider buy/persist failure, and from `check-email-order`) and
+  `expire_email_orders` refund `cost_credits` when `code is null`, atomically
+  and idempotently (partial unique refund index).
+- **Client UI:** `subscription_required` keeps the Mail paywall as the primary
+  CTA and gains a secondary "Get this one for N cr" (`MailPaywallScreen
+  .paidOffer`, passed only by the refused-order sheet and the Temp tab's CTA —
+  not by the domain sheet or the code screen). The three caps raise a system
+  confirmation dialog in `ContentView` titled with `APIError.userMessage` for
+  that code (the monthly copy never says "midnight"). A paid retry refused 402
+  declares `intent = .email` + `AppState.emailCreditsNeeded` and opens
+  `CreditsSheet`; the user retries by hand after buying. Events
+  `email_paid_offer_shown` / `email_paid_offer_taken` (`reason` = refusal code,
+  `source`), and `email_order_submitted` gained `paid`.
+- ⚠️ **Build- and `deno check`-verified only — never walked on a device, never
+  exercised against the deployed functions.** Ships only when BOTH functions are
+  deployed and a client build carries it.
 
 ## The rented line — invariants that stay loaded
 
