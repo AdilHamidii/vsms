@@ -685,7 +685,7 @@ instead — different auth path, unaffected.
 
 ### Deploying edge functions
 
-There are **51** function directories besides `_shared` (re-count with
+There are **53** function directories besides `_shared` (re-count with
 `ls supabase/functions | grep -v _shared | wc -l`). Two groups:
 
 ```bash
@@ -697,7 +697,7 @@ supabase functions deploy create-order check-order cancel-order register-push ia
   send-line-message line-thread-action mint-line-token begin-line-call report-line-call \
   record-attribution verify-email-subscription swap-line-number record-events
 
-# Cron-gated / webhooks (23) — MUST ship --no-verify-jwt: their pg_cron relays
+# Cron-gated / webhooks (25) — MUST ship --no-verify-jwt: their pg_cron relays
 # send only x-cron-secret, no Authorization header. `winback` lived in the JWT
 # group until 2026-07-21 and silently 401'd on every run — zero nudges ever
 # sent, invisible because pg_net purges response history within hours.
@@ -707,10 +707,11 @@ supabase functions deploy poll-active-orders sync-prices sync-5sim sync-herosms 
   telegram-notify telegram-webhook daily-credit telegram-setup goodwill-credit \
   broadcast-push telnyx-webhook apple-notifications release-lines sync-telnyx-cdr \
   sync-line-voice probe-telnyx-connection sync-line-countries rc-sync reddit-scan \
+  insta-draft \
   --no-verify-jwt
 ```
 
-✅ **Verified 2026-09-21**: 26 + 24 = 50 against **52** on disk. The two
+✅ **Verified 2026-09-22**: 26 + 25 = 51 against **53** on disk. The two
 omissions are **`probe-5sim`** and **`probe-herosms`**, deliberately outside
 both lists — they are diagnostics, not on a normal cadence, but both DO carry
 a `config.toml` `verify_jwt = false` entry and must be deployed
@@ -718,8 +719,8 @@ a `config.toml` `verify_jwt = false` entry and must be deployed
 rather than trusting this line: a function in neither list is a function
 nobody redeploys, which is exactly how a stale bundle survives a fix.**
 
-`supabase/config.toml` carries a `verify_jwt = false` entry for all 24 plus
-both probes (26 total).
+`supabase/config.toml` carries a `verify_jwt = false` entry for all 25 plus
+both probes (27 total).
 
 **`probe-herosms`** (added 2026-09-21) answers one question and is worth
 keeping for it: whether HeroSMS's per-country and per-operator deliverability
@@ -743,7 +744,7 @@ create-order      no auth              -> 401   (auth still enforced)
 ⚠️ `telegram-setup` fails closed, and rotating `TELEGRAM_WEBHOOK_SECRET`
 requires re-running it.
 
-### Cron schedule (25 jobs, all active — re-verified 2026-09-15)
+### Cron schedule (25 jobs re-verified live 2026-09-15, + `relay-insta-draft` once its migration is applied)
 
 ```
 relay-poll-active-orders  * * * * *     relay-telegram-notify   * * * * *
@@ -756,6 +757,7 @@ purge-job-run-details     7 3 * * *     telegram-events-prune   30 4 * * *
 app-events-prune          50 3 * * *
 relay-rc-sync             * * * * *     (RevenueCat mirror, read-only; sleeps 5s past :00 — see the herd gotcha)
 relay-reddit-scan         26 * * * *    (Reddit radar; READ-only, drafts never post — see below)
+relay-insta-draft         0 8 * * *     (ONE Instagram draft to Telegram; publishes only on the owner's Post tap — see below)
 ── rented lines ──
 reclaim-lapsed-lines      */15 * * * *  (PURE SQL, no HTTP hop — the claim must
                                          survive the edge layer dying)
@@ -799,7 +801,7 @@ unreachable from the code that needs it.
 ### Backend layout
 
 - `supabase/migrations/` — chronological SQL, each phase ships its own file
-- `supabase/functions/_shared/` — **29 files** (`ls supabase/functions/_shared |
+- `supabase/functions/_shared/` — **33 files** (`ls supabase/functions/_shared |
   wc -l`; count, do not trust a list). The ones worth knowing:
   `providers.ts` (the unified router — order/poll functions call this, never a
   provider), `pricing.ts` (the ONE definition of SMS retail), `fivesim.ts`,
@@ -813,7 +815,9 @@ unreachable from the code that needs it.
   top-of-minute herd; never a write), `nanp.ts`, `phone.ts`, `emailStatus.ts`,
   `cors.ts`, `telegram.ts`, `tgCommands.ts`, `tgHandlers.ts`, `tgFormat.ts`,
   `tgAlert.ts`, `opsFormat.ts`, `supabaseAdmin.ts`, `lines.ts`, `lineVoice.ts`,
-  `reddit.ts` (read-only Reddit search), `kimi.ts` (the lead classifier)
+  `reddit.ts` (read-only Reddit search), `kimi.ts` (the lead classifier),
+  `openrouter.ts` / `instaCopy.ts` / `instaImage.ts` / `instagram.ts` (the
+  Instagram drafts — caption+image generation, guardrails, composition, publish)
 - `supabase/functions/<name>/index.ts` — one per endpoint, all `Deno.serve`
 - `supabase/README.md` — deployment + secret setup walkthrough
 
@@ -2716,6 +2720,84 @@ deploy. `NOTIFY_MIN_RELEVANCE` (70) and the `buying`-only intent filter in
 2026-09-15 with no leads surfaced and no reply posted. Judge it on replies
 actually sent, never on leads surfaced — a radar that fills `/leads` with
 threads nobody answers is a cost, not a channel.
+
+### Instagram drafts — owner-approved, never auto-published (2026-09-22)
+
+`insta-draft` (cron `relay-insta-draft`, daily 08:00 UTC) generates ONE post —
+a 1080×1350 JPEG plus a caption — and sends it to the owner's Telegram as a
+photo with two buttons, **Post** and **Skip** (`insta:post:<uuid>` /
+`insta:skip:<uuid>`, handled in `telegram-webhook`). **Post** publishes it to
+the app's Instagram account through Meta's Instagram API with Instagram Login
+(container → poll `status_code` → `media_publish`, `_shared/instagram.ts`).
+Owner decision: Telegram approval, not auto-posting.
+
+🔴 **Nothing publishes without the owner's tap.** `insta-draft` does not import
+the publish path at all; `publishImage` has exactly one caller, the Post
+handler, and it runs only for the winner of an atomic
+`pending → publishing` claim (`.eq("status","pending")` + row count), so a
+double-tap, a Telegram retry or a stale button cannot publish twice. A row
+**stuck at `publishing`** means the worker died mid-call — the post MAY be
+live; check Instagram by hand, nothing retries it.
+
+Kinds alternate off the last row: `screenshot` (a real screenshot from the
+public `insta` bucket's `screens/*.png`, listed at runtime, with an AI headline
+drawn above it) and `ai` (a model-generated image, cover-cropped to 4:5).
+Themes rotate from `THEMES` in `_shared/instaCopy.ts`, avoiding the last four.
+A cron run within 20h of the last draft is a no-op; `{"force":true}` overrides.
+`{"probe":"image"}` composes one screenshot-kind image with a fixed headline,
+uploads it to `insta/probe/` and returns its URL — **no model, no Instagram,
+no credentials**; it exists to prove the image stack runs in the HOSTED runtime.
+
+🔴 **The caption guardrails are product rules, stated twice on purpose** — in
+the model prompt (`CAPTION_SYSTEM`) and in a code validator (`BANNED_PATTERNS`,
+one exported constant) that rejects the draft outright: no prices or currency
+of any kind (the storefront rule that binds every listing field), no supplier
+named or hinted, no delivery promise (no "guaranteed", "100%", "instant"), no
+outbound-texting promise, and **privacy framing only — never multiple/fake
+accounts, bypassing verification or bans**, because this is posted ON
+Instagram and Meta enforces against exactly that. A rejected caption is
+retried once, then the draft is recorded `failed` and the owner is told.
+⚠️ The validator covers the TEXT only. **A screenshot uploaded to
+`insta/screens/` goes out as-is** — the raw Home capture shows "$3.99 first
+month", a credit balance and the owner's first name. Upload only frames that
+carry no price and no personal data.
+
+🔴 **The live Instagram token is in `app_config.instagram_token`
+(`{access_token, refreshed_at}`), NOT in a secret, and it must NEVER join the
+`app_config` RLS whitelist** — it can post to the brand account. Supabase
+secrets cannot be written from an edge function and a long-lived token dies
+after 60 days unless refreshed, so the key is seeded once from the
+`INSTAGRAM_ACCESS_TOKEN` secret and refreshed in place when older than 7 days
+(`refresh_access_token`; a token must be ≥24h old to refresh). **After the seed,
+changing the secret does nothing** — delete the key to re-seed.
+
+Models are defaults (`anthropic/claude-sonnet-5` for captions,
+`google/gemini-2.5-flash-image` via OpenRouter's Image API for images),
+overridable without a deploy through service-role-only `app_config` keys
+`insta_caption_model` / `insta_image_model` (a JSON string). Graph API version
+is `GRAPH_VERSION` in `_shared/instagram.ts`.
+
+Secrets: `OPENROUTER_API_KEY` (missing = clean 200 no-op, so the cron does not
+flap), `INSTAGRAM_ACCESS_TOKEN` (seed only), `INSTAGRAM_USER_ID`. Image stack:
+`imagescript@1.3.0` from deno.land/x (1.3.0, not 1.4.0, because 1.4.0 imports
+its wasm as an ES module and 1.3.0 fetches it — the likelier shape to survive
+bundling) and Inter ExtraBold fetched from a pinned jsDelivr path at runtime.
+imagescript resizes nearest-neighbour only, so `instaImage.ts` carries its own
+box+bilinear resample.
+
+⚠️ **No watchdog check of its own — the same deliberate exception as
+`reddit-scan`.** The failure mode is "no draft today", which costs nothing and
+shows in the chat by its absence. Check by hand:
+```sql
+select status, count(*) from insta_posts group by 1;
+select created_at, error from insta_posts where status='failed' order by 1 desc limit 5;
+```
+
+⚠️ **Unproven end to end.** As written 2026-09-22 it has been type-checked and
+the image composition run LOCALLY only; no caption or image has been generated
+by a real model, nothing has been posted, and whether imagescript's wasm loads
+in the hosted runtime is unknown until `{"probe":"image"}` returns a URL. Judge
+the channel on what it does for installs, not on posts made.
 
 ### Support is WhatsApp, not in-app
 

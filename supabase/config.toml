@@ -183,3 +183,6 @@ verify_jwt = false
 
 [functions.probe-herosms]
 verify_jwt = false
+
+[functions.insta-draft]
+verify_jwt = false

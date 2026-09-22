@@ -62,6 +62,19 @@ what the owner already did by hand. The radar itself cannot post — its Reddit
 credential is app-only. See "The Reddit radar surfaces leads; it NEVER posts"
 in `CLAUDE.md`.
 
+🔴 **`insta:post:<uuid>` / `insta:skip:<uuid>` are the ONLY way anything is
+published to Instagram.** They ride on each `insta-draft` photo and are
+dispatched in `handleCallback` before `lead:` — owner chat id and secret token
+already checked by the caller. Both claim-gate on `insta_posts.status =
+'pending'` (Post → `publishing`, Skip → `skipped`) with a row-count check, so
+a double-tap or stale button answers "Already handled." and cannot publish
+twice. The buttons are then removed (`editReplyMarkup`) — cosmetic; the claim
+is the guard. Post answers the callback at once and runs the Instagram publish
+in `EdgeRuntime.waitUntil`, reporting the outcome as a follow-up message. See
+"Instagram drafts — owner-approved, never auto-published" in `CLAUDE.md`.
+`_shared/telegram.ts` gained `sendPhoto` (captions over Telegram's 1024-char
+photo limit are split, the rest following as messages) and `editReplyMarkup`.
+
 **`/tabs number|temp` decides the order of Number and Temp BEHIND Home** (Home
 always opens first since 2.13 — owner decision 2026-09-10; before that, from
 2026-09-09, it chose the landing tab). It writes `app_config.launch_tab`,

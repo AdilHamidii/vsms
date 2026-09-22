@@ -29,12 +29,17 @@ import { admin } from "../_shared/supabaseAdmin.ts";
 // complaint, so /balance THREW ReferenceError on every call in production while
 // every other command worked. Keep imports in lockstep with usage.
 import {
-  sendMessage, ownerChatId, esc, answerCallback,
+  sendMessage, ownerChatId, esc, answerCallback, editReplyMarkup,
 } from "../_shared/telegram.ts";
+// Instagram publishing. This is the ONLY caller of publishImage in the
+// codebase, reachable only from the owner's Post tap below.
+import { publishImage } from "../_shared/instagram.ts";
 import { runCommand } from "../_shared/tgHandlers.ts";
 // Support replies push to the user's device. Imported explicitly for the reason
 // in the note above — a free identifier here bundles fine and throws at runtime.
 import { sendPush } from "../_shared/apns.ts";
+
+declare const EdgeRuntime: { waitUntil(p: Promise<unknown>): void } | undefined;
 
 // Re-exported so a reader who comes looking for the dispatcher in the function
 // that used to own it finds the pointer rather than concluding it was deleted.
@@ -60,7 +65,7 @@ Deno.serve(async (req) => {
     callback_query?: {
       id?: string;
       data?: string;
-      message?: { chat?: { id?: number | string } };
+      message?: { chat?: { id?: number | string }; message_id?: number };
     };
   };
   try { update = await req.json(); } catch { return ok(); }
@@ -122,10 +127,15 @@ Deno.serve(async (req) => {
 
 /** [✅ Accept] on the first message of a thread. */
 async function handleCallback(
-  cb: { id?: string; data?: string },
+  cb: { id?: string; data?: string; message?: { message_id?: number } },
 ): Promise<Response> {
   const ok = () => json({ ok: true });
   const data = cb.data ?? "";
+
+  // Instagram draft decision (insta-draft). Gated like everything here on the
+  // secret token AND the owner chat id, checked by the caller.
+  const insta = /^insta:(post|skip):([0-9a-f-]{36})$/.exec(data);
+  if (insta) return await handleInstaDecision(cb, insta[1] as "post" | "skip", insta[2]);
 
   // Reddit radar triage. Both buttons only RECORD what the owner did on
   // Reddit by hand — neither posts anything, and nothing downstream reads
@@ -173,6 +183,111 @@ async function handleCallback(
     claimed?.length ? "You're on it — reply to the message to answer." : "Already handled.",
   );
   return ok();
+}
+
+/** [✅ Post] / [🚫 Skip] on an Instagram draft from insta-draft.
+ *
+ *  🔴 Atomic claim: the row moves pending → publishing|skipped with
+ *  `.eq("status","pending")` and a row-count check, so a double-tap, a
+ *  Telegram retry of the same update, or a stale button from an old draft can
+ *  never publish twice. Only the claim winner reaches Instagram.
+ *
+ *  Telegram must get its 200 promptly — container processing can take tens of
+ *  seconds — so the publish runs in EdgeRuntime.waitUntil and reports back with
+ *  a follow-up message. */
+async function handleInstaDecision(
+  cb: { id?: string; message?: { message_id?: number } },
+  verb: "post" | "skip",
+  id: string,
+): Promise<Response> {
+  const ok = () => json({ ok: true });
+  const sb = admin();
+
+  const { data: claimed, error } = await sb
+    .from("insta_posts")
+    .update({
+      status: verb === "post" ? "publishing" : "skipped",
+      decided_at: new Date().toISOString(),
+    })
+    .eq("id", id).eq("status", "pending")
+    .select("id, image_url, caption, headline, tg_message_id");
+  if (error) {
+    console.error(`insta ${verb} claim ${id}: ${error.message}`);
+    await answerCallback(cb.id ?? "", "Couldn't record that — try again.");
+    return ok();
+  }
+  const row = claimed?.[0];
+  if (!row) {
+    await answerCallback(cb.id ?? "", "Already handled.");
+    return ok();
+  }
+
+  // Take the buttons off so a decided draft cannot even be tapped again.
+  // Cosmetic — the claim above is what actually prevents a second action.
+  const msgId = cb.message?.message_id ??
+    (row.tg_message_id != null ? Number(row.tg_message_id) : null);
+  if (msgId != null) await editReplyMarkup(msgId, null);
+
+  if (verb === "skip") {
+    await answerCallback(cb.id ?? "", "Skipped.");
+    return ok();
+  }
+
+  await answerCallback(cb.id ?? "", "Publishing to Instagram…");
+  const work = publishInsta(
+    id, String(row.image_url ?? ""), String(row.caption ?? ""), String(row.headline ?? ""),
+  );
+  if (typeof EdgeRuntime !== "undefined") EdgeRuntime.waitUntil(work);
+  else await work;
+  return ok();
+}
+
+/** Runs off the response path. Every outcome is written to the row AND told to
+ *  the owner. A row stuck at `publishing` means this worker died mid-call — the
+ *  post MAY be live, so check Instagram by hand; nothing retries it. */
+async function publishInsta(
+  id: string, imageUrl: string, caption: string, headline: string,
+): Promise<void> {
+  const sb = admin();
+  try {
+    if (!imageUrl || !caption) throw new Error("draft_missing_image_or_caption");
+    const out = await publishImage(sb, imageUrl, caption);
+
+    if (out.mediaId) {
+      const { error } = await sb.from("insta_posts").update({
+        status: "published", ig_media_id: out.mediaId, ig_container_id: out.containerId,
+        published_at: new Date().toISOString(), error: null,
+      }).eq("id", id).eq("status", "publishing");
+      if (error) console.error(`insta publish ${id}: published-row write failed: ${error.message}`);
+      await sendMessage(
+        `✅ <b>Posted to Instagram</b> — ${esc(headline)}\n<i>media ${esc(out.mediaId)}</i>` +
+        (error
+          ? `\n⚠️ <i>The post IS live, but its row did not update: ${esc(error.message)}</i>`
+          : ""),
+      );
+      return;
+    }
+
+    const reason = (out.error ?? "unknown").slice(0, 1000);
+    const { error } = await sb.from("insta_posts").update({
+      status: "failed", ig_container_id: out.containerId, error: reason,
+    }).eq("id", id).eq("status", "publishing");
+    if (error) console.error(`insta publish ${id}: failed-row write failed: ${error.message}`);
+    await sendMessage(
+      `⚠️ <b>Instagram post failed</b> — ${esc(headline)}\n` +
+      `<code>${esc(reason.slice(0, 600))}</code>\n` +
+      (out.containerId
+        ? `<i>Check Instagram before retrying — a failure at the final step can still leave the post live.</i>`
+        : `<i>Nothing was published.</i>`),
+    );
+  } catch (e) {
+    const msg = String(e).slice(0, 600);
+    console.error(`insta publish ${id}: ${msg}`);
+    const { error } = await sb.from("insta_posts")
+      .update({ status: "failed", error: msg }).eq("id", id).eq("status", "publishing");
+    if (error) console.error(`insta publish ${id}: failed-row write failed: ${error.message}`);
+    await sendMessage(`⚠️ <b>Instagram post failed</b>\n<code>${esc(msg)}</code>`);
+  }
 }
 
 /** The owner replied to a relayed message. Route it back to that user.

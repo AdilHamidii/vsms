@@ -217,6 +217,84 @@ export async function sendMessageWithId(
   return id;
 }
 
+/** Telegram caps a PHOTO caption at 1024 characters (vs 4096 for a message)
+ *  and 400s the whole send past it. */
+const PHOTO_CAPTION_MAX = 1024;
+
+/** POST /sendPhoto by URL (Telegram fetches it), with an HTML caption and an
+ *  optional inline keyboard. Returns the PHOTO's message_id, or null on any
+ *  failure — never throws.
+ *
+ *  An over-long caption is split with the same tag-safe splitter as messages:
+ *  the first part rides on the photo (with the keyboard, so the buttons sit on
+ *  the thing being approved) and the rest follows as ordinary messages. A
+ *  failed follow-up is logged but does not null the id — the photo and its
+ *  buttons DID land, and a caller that stored nothing would orphan them. */
+export async function sendPhoto(
+  photoUrl: string,
+  captionHtml: string,
+  replyMarkup?: unknown,
+  chatId?: string,
+): Promise<number | null> {
+  const parts = splitForTelegram(captionHtml, PHOTO_CAPTION_MAX);
+  let id: number | null = null;
+  try {
+    const resp = await fetch(`${BASE}/bot${token()}/sendPhoto`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        chat_id: chatId ?? ownerChatId(),
+        photo: photoUrl,
+        caption: parts[0],
+        parse_mode: "HTML",
+        ...(replyMarkup ? { reply_markup: replyMarkup } : {}),
+      }),
+      // Telegram downloads the image before answering; allow for that.
+      signal: AbortSignal.timeout(20_000),
+    });
+    if (!resp.ok) {
+      console.error(`sendPhoto: HTTP ${resp.status} ${await resp.text()}`);
+      return null;
+    }
+    const body = await resp.json() as { result?: { message_id?: number } };
+    id = body.result?.message_id ?? null;
+  } catch (e) {
+    console.error(`sendPhoto: ${String(e)}`);
+    return null;
+  }
+  for (const rest of parts.slice(1)) {
+    const r = await sendOne(rest, chatId);
+    if (!r.ok) console.error(`sendPhoto: caption follow-up failed ${r.status} ${r.body}`);
+  }
+  return id;
+}
+
+/** Replace (or, with null, remove) the inline keyboard on a sent message —
+ *  used to take the Post/Skip buttons off a draft once it is decided, so a
+ *  stale button cannot even be tapped. Cosmetic: the claim in the database is
+ *  what actually prevents a second action. Never throws. */
+export async function editReplyMarkup(
+  messageId: number, replyMarkup: unknown | null, chatId?: string,
+): Promise<boolean> {
+  try {
+    const resp = await fetch(`${BASE}/bot${token()}/editMessageReplyMarkup`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        chat_id: chatId ?? ownerChatId(),
+        message_id: messageId,
+        reply_markup: replyMarkup ?? { inline_keyboard: [] },
+      }),
+      signal: AbortSignal.timeout(5000),
+    });
+    if (!resp.ok) console.error(`editReplyMarkup: HTTP ${resp.status} ${await resp.text()}`);
+    return resp.ok;
+  } catch (e) {
+    console.error(`editReplyMarkup: ${String(e)}`);
+    return false;
+  }
+}
+
 /** Acknowledge an inline-button tap. Telegram shows a spinner on the button
  *  until this is called, so skipping it makes the bot look hung. */
 export async function answerCallback(id: string, text?: string): Promise<void> {
