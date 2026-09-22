@@ -2732,7 +2732,11 @@ unanswered).
 
 ⚠️ **The bot has no way to CLOSE a support thread** — only `open → assigned` —
 so answered threads sit in `/support` reading as live work. A `/close` command
-is the missing piece.
+is the missing piece; until then close one by hand
+(`update support_threads set status='closed' where id=…`). 🔴 **The 6-hourly
+`support_waiting` re-page is REMOVED (2026-09-22, owner request) — do not
+re-add it**: with no way to close a thread, one stale pre-2.9 question paged
+~68 times in 17 days. New messages are still relayed once by `support-send`.
 
 ## Non-obvious gotchas (real bugs, do not re-introduce)
 
@@ -3193,7 +3197,8 @@ Genuinely open items only. Resolved history is in `docs/decisions-archive.md`.
 - ⚠️ **The App Privacy label for 2.6's analytics is owner-reported, not
   verified** — the API cannot read or write it. Check for an unpublished draft.
 - ⚠️ **The Telegram bot cannot close a support thread**, so answered threads
-  read as live work.
+  read as live work in `/support` (they no longer page — see "Support is
+  WhatsApp").
 
 **Correctness / hygiene**
 

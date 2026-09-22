@@ -177,7 +177,7 @@ export const handlers: Record<string, Handler> = {
     // here without a change to this function.
     const NAMED = [
       "watchdog", "low_balance_block", "provider_fault", "fail_streak",
-      "support_nag", "telegram_bot", "balance_alert_tier",
+      "telegram_bot", "balance_alert_tier",
     ];
     const { data: named, error } = await sb
       .from("app_config").select("key, value").in("key", NAMED);

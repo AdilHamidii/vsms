@@ -178,11 +178,16 @@ when auto-renew flips off), `route_fill` (🟠 ≥3 no-number orders on one
 (service,country) in 60 min, ref = `service|country|UTC-hour` so at most
 hourly), `line_consumption` (split from `line_refund` — the two shared
 `(kind, originalTx)` and whichever Apple sent first silently ate the other; refs
-now carry the notification UUID). Without a kind: `support_waiting` (🟠 a
-thread with `last_sender='user'` unanswered > 2h, re-nag every 6h via
-`app_config.support_nag`) and the **morning brief** (☀️ `/now` rendering, first
+now carry the notification UUID). Without a kind: the **morning brief** (☀️ `/now` rendering, first
 run at/after 09:00 Paris, once per Paris day via `telegram_bot.last_brief_on`
 — the `telegram_bot` write now MERGES so it cannot drop `last_digest_at`).
+
+🔴 **`support_waiting` is REMOVED (2026-09-22, owner request) — do not re-add
+it.** It re-paged every 6h while any thread held an unanswered user message
+> 2h, and since the bot cannot close a thread, ONE French referral question
+from 09-05 paged ~68 times over 17 days. Support is WhatsApp since 2.9; a
+pre-2.9 message is still relayed ONCE by `support-send`, which is enough.
+`app_config.support_nag` is no longer read or written.
 
 **New service-role-only `app_config` keys — never add them to the RLS
 whitelist:** `watchdog_since`, `support_nag`, `esim_alert_low_balance`,

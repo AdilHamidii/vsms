@@ -10,12 +10,12 @@
 //   3. Forward-looking money alerts the bot never had: a free trial about to
 //      CONVERT (trial_soon), a trial whose auto-renew was switched OFF
 //      (trial_off), a route swallowing orders without ever handing back a
-//      number (route_fill), and a support thread left waiting (support_waiting).
+//      number (route_fill).
 //   4. The 6-hourly digest, and once per Paris day a morning brief.
 //
 // Exactly-once for discrete events is a claim row in telegram_events written
 // BEFORE sending, so the instant path and this sweep can never double-send.
-// Recurring CONDITIONS (watchdog, support) use an app_config stamp instead, and
+// Recurring CONDITIONS (the watchdog) use an app_config stamp instead, and
 // that stamp is written ONLY after a confirmed send — stamping first means one
 // dropped Telegram message buys hours of silence during a live outage.
 
@@ -24,7 +24,7 @@ import { admin } from "../_shared/supabaseAdmin.ts";
 import { sendMessage, esc } from "../_shared/telegram.ts";
 import { formatDigest, formatNow } from "../_shared/opsFormat.ts";
 import { alertHtml, formatWatchdogPage, formatWatchdogRecovered, type Severity } from "../_shared/tgAlert.ts";
-import { parisFull, until, duration, n as plural } from "../_shared/tgFormat.ts";
+import { parisFull, until, n as plural } from "../_shared/tgFormat.ts";
 
 const DEV_USER = "825688de-6117-4251-9f90-93b83b41b572";
 // 24h, not 30 min: the claim rows make re-scans idempotent, so the only cost
@@ -36,9 +36,6 @@ const DIGEST_EVERY_MS = 6 * 60 * 60 * 1000;
 const WATCHDOG_REALERT_MS = 6 * 60 * 60 * 1000;
 /** A trial converting inside this window is worth waking up for. */
 const TRIAL_SOON_MS = 24 * 60 * 60 * 1000;
-/** A user waiting longer than this has stopped believing anyone is there. */
-const SUPPORT_WAIT_MS = 2 * 60 * 60 * 1000;
-const SUPPORT_RENAG_MS = 6 * 60 * 60 * 1000;
 /** route_fill: N failures on one (service, country) inside this window. */
 const ROUTE_FILL_WINDOW_MIN = 60;
 const ROUTE_FILL_AT = 3;
@@ -574,56 +571,11 @@ Deno.serve(async (req) => {
     console.error("route_fill alerting failed (sweep continues):", e);
   }
 
-  // ── support_waiting: someone asked a question and nobody answered.
-  //
-  //    A CONDITION, not an event, so it uses a stamp rather than a claim row —
-  //    the same shape as create-order's alertLowBalanceBlock, including the
-  //    rule that the stamp is written ONLY after a confirmed send. Stamping
-  //    first would mean one dropped message buys six hours of a customer
-  //    sitting unanswered.
-  try {
-    const cutoff = new Date(now.getTime() - SUPPORT_WAIT_MS).toISOString();
-    const { data: waiting, error } = await sb
-      .from("support_threads")
-      .select("id, user_id, status, last_message_at")
-      .in("status", ["open", "assigned"])
-      .eq("last_sender", "user")
-      .lt("last_message_at", cutoff)
-      .order("last_message_at", { ascending: true });
-    if (error) console.error("support_waiting scan failed:", error.message);
-
-    const threads = waiting ?? [];
-    if (threads.length > 0) {
-      const nag = (await readCfg<{ last_alert_at?: string }>("support_nag")) ?? {};
-      const dueNag = !nag.last_alert_at ||
-        now.getTime() - new Date(nag.last_alert_at).getTime() >= SUPPORT_RENAG_MS;
-      if (dueNag) {
-        const oldest = threads[0].last_message_at as string;
-        const waitS = (now.getTime() - new Date(oldest).getTime()) / 1000;
-        const rows = threads.slice(0, 5).map((t) => {
-          const w = (now.getTime() - new Date(t.last_message_at as string).getTime()) / 1000;
-          return ` • ${esc(String(t.status))} · waiting ${duration(w)}`;
-        });
-        const more = threads.length > 5 ? `\n … and ${threads.length - 5} more` : "";
-        const r = await sendMessage(alertHtml({
-          sev: "🟠",
-          title: `${plural("support thread", threads.length)} waiting on you`,
-          what: `oldest has waited <b>${duration(waitS)}</b> (since ${parisFull(oldest)})\n` +
-            rows.join("\n") + more,
-          why: "Impatience is what this product loses users to; a reply inside the wait is the whole point of the channel.",
-          action: "Reply to the relayed message in this chat, or run <code>/support</code>.",
-          at: now,
-        }));
-        if (r.ok) { sent++; await writeCfg("support_nag", { last_alert_at: now.toISOString() }); }
-        else {
-          failed++;
-          console.error("support_waiting page FAILED to send — not suppressing, will retry");
-        }
-      }
-    }
-  } catch (e) {
-    console.error("support_waiting alerting failed (sweep continues):", e);
-  }
+  // (support_waiting — a 6-hourly re-page for unanswered in-app support
+  //  threads — was REMOVED 2026-09-22, owner request. Support is WhatsApp since
+  //  2.9; only pre-2.9 builds still write threads, each is still relayed ONCE by
+  //  support-send, and the bot cannot close a thread, so one stale question
+  //  re-paged every 6 hours for 17 days.)
 
   // ── One-shot scheduled reminders (public.ops_reminders, 2026-08-29).
   //
