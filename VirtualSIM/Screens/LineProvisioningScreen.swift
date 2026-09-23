@@ -71,6 +71,7 @@ struct LineProvisioningScreen: View {
                     .background(theme.chipBg, in: .circle)
             }
             .buttonStyle(.plain)
+            .accessibilityLabel(Text("Close"))
         }
         .padding(.top, 12)
     }

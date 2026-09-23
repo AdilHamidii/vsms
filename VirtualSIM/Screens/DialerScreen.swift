@@ -171,6 +171,7 @@ struct DialerScreen: View {
                     .contentShape(.circle)
             }
             .pressable(0.9)
+            .accessibilityLabel(Text("Close"))
             Spacer()
             if let remaining {
                 StatusPill(
@@ -312,6 +313,7 @@ struct DialerScreen: View {
             }
             .pressable(0.92)
             .disabled(!canDial)
+            .accessibilityLabel(Text("Call"))
 
             Button {
                 RHaptic.select()
@@ -325,6 +327,10 @@ struct DialerScreen: View {
             }
             .pressable(0.9)
             .disabled(digits.isEmpty)
+            .accessibilityLabel(Text("Delete"))
+            // Invisible (clear glyph) while there is nothing to delete, so it
+            // must not be announced either.
+            .accessibilityHidden(digits.isEmpty)
         }
     }
 }

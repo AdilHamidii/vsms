@@ -389,6 +389,18 @@ it on `LineCheckoutScreen` (plan row, price block, CTA, 3.1.2 sentence) from
 not display it; 2.13 does.** Read it on `line_checkout_view`
 / `line_purchase_result` `props.intro` (true = the first-month price was on
 screen) against the pre-09-10 sheet→paid of 3 of 30.
+⚠️ **`line_checkout_view` usually fires TWICE per visit** (14 days to
+2026-09-23: 208 (user, second) pairs carry 2 rows, 75 carry 1) — count USERS
+or dedupe per (user, `client_ts`), never raw rows. Cause not traced; the
+likeliest is the cover's content being built twice (INFERRED, not verified).
+`line_checkout_exit` (2.18+, unread) fires once per visit when the user leaves
+WITHOUT tapping Subscribe: `how` ∈ `back` · `background` · `restore` (Restore
+found a live line — not an abandonment), `seconds`, `plan`, `intro`,
+`country`, `capability_note` (the uncollapsed US/PR sending warning was on
+screen) and `good_to_know_expanded`. The visit lives in a file-private static
+(`CheckoutVisit`), not `@State`, so a second instance cannot double-fire or
+restart the clock; an `onDisappear` while `flow` is still `.lineCheckout` is
+ignored for the same reason.
 
 🔴 **`Product.SubscriptionInfo.introductoryOffer` is the offer AS CONFIGURED,
 not eligibility.** StoreKit returns it to every user; eligibility is the
@@ -1344,15 +1356,20 @@ by `assertLadderImproves()` (0.598 > 0.49875 > 0.4575 > 0.4495 > 0.433 >
 
 ✅ **`credits.20` added 2026-09-21** (`scripts/asc-create-credits-20.py`,
 dry-run by default and idempotent; ASC id `6814392381`, submitted
-`WAITING_FOR_REVIEW`). It was placed by MEASUREMENT: over the 7 days to
-2026-09-21 the largest paywall shortfall after 4 credits was **24** — 76
-`paywall_shown` events across 40 distinct users — and nothing sat between
-$5.49 and $12.99, so everyone short ~24 credits was asked for the 30-pack.
-Packs are the only high-margin line in the product (that week: 91%
-contribution, against 42% for the line and 50% for mail), which is why the
-gap was worth closing. ⚠️ **Unread.** Judge it on `pack_selected` /
-`purchase_result` for `credits.20` against the `needed: 24` paywall arm, not
-on revenue in aggregate.
+`WAITING_FOR_REVIEW`). It was motivated by the 7 days to 2026-09-21, when the
+largest paywall shortfall after 4 credits was **24** (76 `paywall_shown`
+events across 40 distinct users) and nothing sat between $5.49 and $12.99.
+⚠️ **But it does NOT serve that 24-credit arm.** `CreditsSheet` preselects the
+smallest pack that COVERS the shortfall (`recommendedId` / `snapToAvailable`),
+so a user short 24 (WhatsApp/US at 24 credits on a 0 balance) is still
+pointed at the 30-pack; `credits.20` is the recommendation only for
+shortfalls of **13–20**. The owner reviewed this on 2026-09-23 and chose to
+keep it as is. (The comment on `credits.20` in `Models/CreditPack.swift`
+still says it serves the 24 arm — it does not.) Packs are the only
+high-margin line in the product (that week: 91% contribution, against 42%
+for the line and 50% for mail). ⚠️ **Unread.** Judge it on `pack_selected` /
+`purchase_result` for `credits.20` against paywalls with `needed` in 13–20,
+not against the `needed: 24` arm and not on revenue in aggregate.
 
 🔴 **`credits.150` is RETIRED FROM SALE — zero units sold, ever.** It is gone
 from `CreditPack.all` and from `Products.storekit`, and BEST VALUE moved to
@@ -1621,6 +1638,11 @@ covering a handful of routes and the top-10 scrape going stale between
 manual runs, the card's realistic fallback was the pool that had just failed.
 It renders the band WORD via `NetworkRateMeter`, hides the meter under
 `delivery_metrics_hidden`, and says in one sentence that it is not our record.
+Events (2.18+, unread): `recovery_shown` once per presentation and
+`recovery_action` (`action` ∈ `retry` · `not_now` · `close`), both carrying
+`offer` ∈ `own_record` · `pool_band` · `top10` · `retry_same` (the branch
+above), `service`, `failed_country`, `reason`, `to` (the named country) and
+`refunded`. Before 2.18 the card emitted nothing.
 
 ### Measured arrival timing
 
@@ -1896,6 +1918,23 @@ may instead pay `EMAIL_PAID_CREDITS` (1 credit) for that one address, refunded
 automatically if no code arrives** (owner decision 2026-09-22) — see "The
 1-credit fallback" under the subscription section below.
 
+**Services that register by PHONE get a warning in e-mail mode, not a block**
+(owner decision 2026-09-23, "option B" — the pre-selected service, WhatsApp
+for a first-run user, stays). `Service.phoneOnlySignupIds` is the ONE list
+(`whatsapp`, `google`, `signal`, `viber`, keyed on `Service.id`);
+e-mail codes delivered over 60 days to 2026-09-23 were whatsapp 2/48, google
+0/8, signal 0/7, viber 0/1. ⚠️ telegram is deliberately EXCLUDED: it
+registers by phone but measured **4/14** delivered, so the warning would be
+false there. When one is selected in e-mail
+mode, `TempScreen.phoneOnlyNote` sits in the hero directly above the e-mail
+CTA: "*{service}* signs you up with a phone number, not an e-mail." plus
+"Get a number for *{service}* instead", which calls `commitServicePick` (so
+it is the user's pick) and switches to SMS mode — `needsCountryChoice` is
+untouched, so the Country row still reads "Not selected". The e-mail CTA
+stays live. Events `email_phone_only_note_shown` / `email_phone_only_switch`
+(`service` = id); read switch/shown, and whether those users then order SMS.
+⚠️ Build-verified only, never walked on a device.
+
 **gmail.com was REMOVED 2026-08-26** — its pool stopped delivering (1 code in
 its last 36 orders, 0 of the last 23, while the free pair delivered normally in
 the same window, so it was the pool, not the users). It was the only paid tier
@@ -2131,6 +2170,16 @@ ONE subscriber's usage with `update profiles set email_cap_reset_at = now()
 where user_id = '…';` — orders and refunds are untouched. ⚠️ Build-verified
 only, never walked on a device.
 
+**Both caps are DISCLOSED live wherever the plan is sold** (2026-09-23):
+`MailPaywallScreen`'s headline ("Up to N addresses a day and M every 30
+days"), and `EmailCodeScreen`'s plan card and subscriber line, read
+`dailyCap`/`monthlyCap` from `state.emailUsage` — `email_usage` returns the
+caps to NON-subscribers too, so the pitch can quote them. Never a literal.
+With no `usage` (a failed read, or the domain list not yet fetched) they fall
+back to the daily figure from `app_config.email_sub_daily_cap`, then to no
+figure. 🔴 Only the DAILY limit is ever described as resetting at midnight
+UTC; the 30-day one "counts back from today". ⚠️ Build-verified only.
+
 ⚠️ **A subscriber's addresses still depend on free-domain stock that runs dry,
 and the 1-credit fallback does NOT help there** — it buys from the same
 outlook/hotmail inventory. A dry domain refuses `email_out_of_stock` for
@@ -2236,10 +2285,29 @@ line's `original_transaction_id` matches AND its status is usable
 (`provisioning`/`active`/`grace`/`past_due`), logging `line_verify_replay`.
 **A line bought by a DIFFERENT transaction still 409s and still pages** — that
 is the genuine paid-twice case the guard exists for. Server-side on purpose, so
-every shipped build is fixed without a release. ⚠️ Verified by `deno check`
-and by matching both victims' rows, NOT by a live double-verify — no real JWS
-can be minted from here. The proof is the first `line_verify_replay` log line
-with no `line_paid_but_exists` beside it.
+every shipped build is fixed without a release. ✅ Seen live: `line_verify_replay`
+for `e04f5e5c` on 2026-09-20 18:37:05Z, 200, no `line_paid_but_exists` beside it.
+
+🔴 **The server fix was NOT the whole bug — a paying buyer can still be told
+"failed" when the verify RESPONSE never arrives (read 2026-09-23 from edge
+logs + `app_events.client_ts`).** 6 of 26 new Production line subscriptions in
+the 14 days to 09-23 logged `line_purchase_result = failed` and never
+`success`, and all 6 lines went live within ~15s. Four (09-10 → 09-15) are the
+409 race above. The other two are transport failures on a request the server
+completed anyway: `e04f5e5c` (09-20, after the fix) — the provisioning call's
+execution created and activated the line but the gateway logged NO response
+for it, and the client wrote `failed` ~6s in; `37cd2b0b` — his `failed` carries
+a client clock of 06:39:45, 100 min after the charge and BEFORE the 06:41 409,
+so the app was suspended mid-verify (the 409 was a later retry, not what he
+saw first). **Client fix (2.18+, unshipped, build-verified only):**
+`SubscriptionStore.purchase` re-reads `my_line` (3 reads, 2s apart) whenever a
+StoreKit-VERIFIED `.success` comes back not-accepted; a line carrying the
+exact digits just reserved in `provisioning`/`active`/`grace`/`past_due` turns
+it into a success, logged `line_purchase_result{outcome: success, recovered:
+true, failure_code?}`. It changes only what is SHOWN — no `finish()`, no money
+— and a line with other digits still fails (the genuine paid-twice case).
+Read `recovered = true` as "verify failed, number fine"; a rise there is a
+transport/timeout problem to chase, not a win.
 
 **Every Swift enum mirroring a PG enum needs an `unknown` fallback in
 `init(from:)`, in the first client commit.** iOS `OrderStatus` has no unknown
@@ -2338,6 +2406,14 @@ because the row holds the only pointers to the Telnyx resources and cascades
 away a moment later. A released DID goes straight back to Telnyx's pool and
 **cannot be bought back**, so testing the signup flow on an account that owns
 a number you care about destroys that number.
+
+The user is told so before the tap (2026-09-23, Apple's account-deletion
+guidance): `AccountScreen`'s danger zone and its confirmation dialog add
+"Your number will be released and can't be recovered." for a live line, and
+"Your subscription keeps billing through Apple until you cancel it." plus a
+Manage subscriptions button for a paid line or `mailStore.isEntitled` —
+deleting the account cancels no Apple subscription. Nothing extra for anyone
+holding neither. ⚠️ Build-verified only.
 
 🔴 **The owner's own line `+14375243093` is hardcoded as the support WhatsApp
 contact in every build from 2.9 to 2.17.** WhatsApp banned that support account

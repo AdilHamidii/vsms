@@ -28,6 +28,7 @@ struct LineCheckoutScreen: View {
     @Environment(APIClient.self) private var api
     @Environment(SubscriptionStore.self) private var subs
     @Environment(IAPStore.self) private var iap
+    @Environment(\.scenePhase) private var scenePhase
 
     @State private var appeared = false
     @State private var now = Date()
@@ -106,6 +107,29 @@ struct LineCheckoutScreen: View {
                 BottomBar { cta }
             }
         }
+        .onAppear { CheckoutVisit.begin() }
+        .onDisappear {
+            // Only a REAL exit counts. `line_checkout_view` usually arrives in
+            // PAIRS per visit, which points at this cover's content being
+            // built twice (inferred, not traced) — so a disappear while the
+            // flow is still `.lineCheckout` is not a departure and must not
+            // read as one.
+            guard state.flow != .lineCheckout else { return }
+            logExit(how: CheckoutVisit.exitVia ?? "back")
+            CheckoutVisit.end()
+        }
+        .onChange(of: scenePhase) { _, phase in
+            switch phase {
+            case .background:
+                logExit(how: "background")
+            case .active where state.flow == .lineCheckout:
+                // Coming back is a new visit; the backgrounding already
+                // closed the last one. A no-op while a visit is still open.
+                CheckoutVisit.begin()
+            default:
+                break
+            }
+        }
         .task {
             // The middle of the line funnel, and until 2.8 the whole product
             // had exactly one event (`line_store_view`) — so "162 store views,
@@ -164,6 +188,7 @@ struct LineCheckoutScreen: View {
                     .background(theme.chipBg, in: .circle)
             }
             .pressable(0.92)
+            .accessibilityLabel("Close")
 
             Spacer()
 
@@ -184,6 +209,7 @@ struct LineCheckoutScreen: View {
                     // no number.
                     if state.line?.status.isLive == true {
                         RHaptic.success()
+                        CheckoutVisit.exitVia = "restore"
                         state.flow = nil
                     } else if let failure = subs.lastFailure {
                         // A restore that recovers nothing must SAY so. Silence
@@ -288,10 +314,17 @@ struct LineCheckoutScreen: View {
     /// already says what it receives — and an UNKNOWN capability says nothing,
     /// because a "calls only" warning over a number that texts perfectly well
     /// is a lie that costs the sale.
+    /// Whether the uncollapsed US/PR sending warning is on screen. One
+    /// definition, read by the view and by `line_checkout_exit`, so the event
+    /// can never describe a different screen from the one rendered.
+    private var sendingWarningShown: Bool {
+        guard numberSendsTexts != false, let iso = state.lineCountry else { return false }
+        return LineStoreScreen.unreliableSendingCountries.contains(iso)
+    }
+
     @ViewBuilder
     private var capabilityNote: some View {
-        if numberSendsTexts != false, let iso = state.lineCountry,
-           LineStoreScreen.unreliableSendingCountries.contains(iso) {
+        if sendingWarningShown {
             // 🔴 UNCOLLAPSED, and that is the point (2026-09-17). "Some
             // networks block texts sent from virtual numbers" already lived in
             // `goodToKnow`, which opens CLOSED — so the one limit this product
@@ -933,6 +966,9 @@ struct LineCheckoutScreen: View {
     /// `reserve-line-number`, before the paywall rather than after it.
     private func buy() {
         guard let offer = state.lineOffer, let city = state.lineCity else { return }
+        // Tapping Subscribe ends the "left without trying" question for this
+        // visit, whatever happens next — `line_purchase_result` owns the rest.
+        CheckoutVisit.purchaseStarted = true
         Task {
             isReserving = true
             let quote: LineReservationQuote?
@@ -982,5 +1018,62 @@ struct LineCheckoutScreen: View {
                 state.showError(failure)
             }
         }
+    }
+
+    // MARK: - Exit measurement
+
+    /// `line_checkout_exit` — the user left checkout WITHOUT tapping
+    /// Subscribe. At most once per visit.
+    ///
+    /// Why it exists: 111 of the 205 users who reached this screen in the 14
+    /// days to 2026-09-23 left without tapping buy, and the screen emitted only
+    /// `line_checkout_view` and `line_plan_selected` — nothing said how long
+    /// they read, what they saw, or how they went. `how` is `back` (the ✕),
+    /// `background` (the app left the foreground) or `restore` (Restore found
+    /// a live line and closed the screen — not an abandonment, and tagged so
+    /// it is never read as one).
+    private func logExit(how: String) {
+        guard let started = CheckoutVisit.startedAt, !CheckoutVisit.purchaseStarted else { return }
+        CheckoutVisit.startedAt = nil
+        var props: [String: AnalyticsValue] = [
+            "how": .string(how),
+            "seconds": .int(max(0, Int(Date().timeIntervalSince(started)))),
+            "plan": .string(subs.selectedPlan.rawValue),
+            "intro": .bool(subs.selectedIntroPriceDisplay != nil),
+            // The uncollapsed US/PR "texts often don't arrive" warning. It is
+            // not collapsible, so what matters is whether it was on screen.
+            "capability_note": .bool(sendingWarningShown),
+            "good_to_know_expanded": .bool(limitsShown),
+        ]
+        if let country = state.lineCountry { props["country"] = .string(country) }
+        Analytics.shared.track("line_checkout_exit", props)
+    }
+}
+
+/// One checkout visit, held OUTSIDE the view on purpose.
+///
+/// `@State` belongs to one view instance, and this cover's content can be
+/// built twice per visit (see the `onDisappear` note), so per-instance flags would
+/// both double-fire and restart the clock. Main-actor only; there is one
+/// checkout on screen at a time by construction (`state.flow` is single).
+@MainActor
+private enum CheckoutVisit {
+    static var startedAt: Date?
+    static var purchaseStarted = false
+    /// Set by a path that closes the screen for a reason other than the ✕.
+    static var exitVia: String?
+
+    /// Idempotent: a rebuilt instance must not restart an open visit.
+    static func begin() {
+        guard startedAt == nil else { return }
+        startedAt = Date()
+        purchaseStarted = false
+        exitVia = nil
+    }
+
+    static func end() {
+        startedAt = nil
+        purchaseStarted = false
+        exitVia = nil
     }
 }

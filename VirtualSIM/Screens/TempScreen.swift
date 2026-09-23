@@ -530,6 +530,10 @@ struct TempScreen: View {
                 VStack(spacing: 0) {
                     if needsExplainer { explainer.padding(.bottom, 16) }
 
+                    if state.emailMode, state.lastService.signsUpByPhone {
+                        phoneOnlyNote.padding(.bottom, 16)
+                    }
+
                     if state.emailMode { emailCTA } else { heroCTA }
 
                     // The ONE refund promise on this screen, and the sentence
@@ -1049,6 +1053,70 @@ struct TempScreen: View {
             PrimaryButton(label: "Choose a domain",
                           icon: "envelope.fill",
                           action: { RHaptic.select(); openEmailDomains() })
+        }
+    }
+
+    /// E-mail mode with a service that registers by PHONE (`Service
+    /// .signsUpByPhone`): an address bought for WhatsApp received a code 2
+    /// times in 48. Owner decision 2026-09-23 (option B): keep the
+    /// pre-selection and the e-mail CTA live — WARN, never block — and offer
+    /// the number product for the same service one tap away.
+    ///
+    /// The switch goes through `commitServicePick`, the same path Home's grid
+    /// and `ServiceSheet` use, so it counts as the user's own pick
+    /// (`needsServiceChoice` clears, the order is not `from_default`) while
+    /// `needsCountryChoice` is left alone — the Country row still reads "Not
+    /// selected" for anyone who has not chosen one.
+    private var phoneOnlyNote: some View {
+        let service = state.lastService
+        return VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .top, spacing: 10) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(theme.warn)
+                    .padding(.top, 1)
+                    .accessibilityHidden(true)
+                Text("\(service.name) signs you up with a phone number, not an e-mail.")
+                    .font(RFont.text(13, weight: .medium))
+                    .foregroundStyle(theme.text)
+                    .lineSpacing(2)
+                    .fixedSize(horizontal: false, vertical: true)
+                Spacer(minLength: 0)
+            }
+            Button {
+                RHaptic.select()
+                Analytics.shared.track("email_phone_only_switch",
+                                       ["service": .string(service.id)])
+                state.commitServicePick(service)
+                withAnimation(RMotion.content) { state.emailMode = false }
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: RIcon.phone)
+                        .font(.system(size: 12, weight: .semibold))
+                    Text("Get a number for \(service.name) instead")
+                        .font(RFont.text(13, weight: .semibold))
+                        .multilineTextAlignment(.leading)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .foregroundStyle(theme.ink)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .background(theme.ink.opacity(0.12), in: .capsule)
+                .contentShape(.capsule)
+            }
+            .pressable(0.96)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(theme.warnSoft, in: .rect(cornerRadius: RRadius.sm))
+        .overlay(RoundedRectangle(cornerRadius: RRadius.sm)
+            .strokeBorder(theme.warn.opacity(0.28), lineWidth: 0.5))
+        // Keyed on the service so a change of service while the note stays up
+        // counts as a new showing.
+        .task(id: service.id) {
+            Analytics.shared.track("email_phone_only_note_shown",
+                                   ["service": .string(service.id)])
         }
     }
 

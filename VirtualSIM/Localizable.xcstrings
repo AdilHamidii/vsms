@@ -1137,6 +1137,46 @@
         }
       }
     },
+    "%@ signs you up with a phone number, not an e-mail.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bei %@ melden Sie sich mit einer Telefonnummer an, nicht mit einer E-Mail."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ te registra con un número de teléfono, no con un correo."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sur %@, l'inscription se fait avec un numéro de téléphone, pas un e-mail."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Su %@ ci si registra con un numero di telefono, non con un'email."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@の登録にはメールアドレスではなく電話番号を使います。"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No %@, o cadastro é feito com um número de telefone, não com um e-mail."
+          }
+        }
+      }
+    },
     "%@ typical": {
       "extractionState": "stale",
       "localizations": {
@@ -4847,6 +4887,52 @@
           "stringUnit": {
             "state": "translated",
             "value": "Depois disso, mais endereços vêm com o plano vSMS Mail."
+          }
+        }
+      }
+    },
+    "After that, up to %lld addresses a day and %lld every 30 days is %@/mo.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Danach: bis zu %1$lld Adressen pro Tag und %2$lld alle 30 Tage für %3$@/Mon."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "new",
+            "value": "After that, up to %1$lld addresses a day and %2$lld every 30 days is %3$@/mo."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Después: hasta %1$lld direcciones al día y %2$lld cada 30 días por %3$@/mes."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ensuite : jusqu'à %1$lld adresses par jour et %2$lld tous les 30 jours pour %3$@/mois."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Poi: fino a %1$lld indirizzi al giorno e %2$lld ogni 30 giorni a %3$@/mese."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "それ以降は1日最大%1$lld件、30日間で最大%2$lld件のアドレスで%3$@/月です。"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Depois disso: até %1$lld endereços por dia e %2$lld a cada 30 dias por %3$@/mês."
           }
         }
       }
@@ -10777,6 +10863,46 @@
         }
       }
     },
+    "Couldn't open a mail app. We copied %@ for you.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mail-App konnte nicht geöffnet werden. Wir haben %@ für Sie kopiert."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No se pudo abrir una app de correo. Hemos copiado %@ para ti."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Impossible d'ouvrir une app de messagerie. Nous avons copié %@ pour vous."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Impossibile aprire un'app di posta. Abbiamo copiato %@ per te."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "メールアプリを開けませんでした。%@をコピーしました。"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Não foi possível abrir um app de e-mail. Copiamos %@ para você."
+          }
+        }
+      }
+    },
     "Couldn't reach the calling network.": {
       "localizations": {
         "de": {
@@ -12435,6 +12561,46 @@
           "stringUnit": {
             "state": "translated",
             "value": "País padrão"
+          }
+        }
+      }
+    },
+    "Delete": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Löschen"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Borrar"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Effacer"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cancella"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "削除"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Apagar"
           }
         }
       }
@@ -14422,6 +14588,46 @@
           "stringUnit": {
             "state": "translated",
             "value": "Obter um número para %@"
+          }
+        }
+      }
+    },
+    "Get a number for %@ instead": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Stattdessen Nummer für %@ holen"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Obtener un número para %@ en su lugar"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Obtenir plutôt un numéro pour %@"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ottieni invece un numero per %@"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "代わりに%@の番号を取得"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Obter um número para %@ em vez disso"
           }
         }
       }
@@ -19138,6 +19344,46 @@
         }
       }
     },
+    "Matches in other categories": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Treffer in anderen Kategorien"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Coincidencias en otras categorías"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Résultats dans d'autres catégories"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Risultati in altre categorie"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "他のカテゴリの結果"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Resultados em outras categorias"
+          }
+        }
+      }
+    },
     "Median across all services": {
       "localizations": {
         "de": {
@@ -19336,6 +19582,86 @@
           "stringUnit": {
             "state": "translated",
             "value": "Mensagem"
+          }
+        }
+      }
+    },
+    "Message delivered": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nachricht zugestellt"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mensaje entregado"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Message distribué"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Messaggio consegnato"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "メッセージ配信済み"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mensagem entregue"
+          }
+        }
+      }
+    },
+    "Message sent": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nachricht gesendet"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mensaje enviado"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Message envoyé"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Messaggio inviato"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "メッセージ送信済み"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mensagem enviada"
           }
         }
       }
@@ -23637,6 +23963,46 @@
           "stringUnit": {
             "state": "translated",
             "value": "Revelação do OTP"
+          }
+        }
+      }
+    },
+    "On outlook.com and hotmail.com, subject to availability. The daily limit resets at midnight UTC; the 30-day limit counts back from today.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bei outlook.com und hotmail.com, je nach Verfügbarkeit. Das Tageslimit wird um Mitternacht UTC zurückgesetzt; das 30-Tage-Limit zählt ab heute rückwärts."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "En outlook.com y hotmail.com, según disponibilidad. El límite diario se reinicia a medianoche UTC; el de 30 días cuenta hacia atrás desde hoy."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sur outlook.com et hotmail.com, selon disponibilité. La limite quotidienne est réinitialisée à minuit UTC ; celle sur 30 jours porte sur les 30 derniers jours."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Su outlook.com e hotmail.com, in base alla disponibilità. Il limite giornaliero si azzera a mezzanotte UTC; quello di 30 giorni conta a ritroso da oggi."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "outlook.comとhotmail.comで、在庫状況によります。1日の上限は協定世界時（UTC）の午前0時にリセットされ、30日間の上限は今日からさかのぼって数えます。"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Em outlook.com e hotmail.com, sujeito à disponibilidade. O limite diário é reiniciado à meia-noite UTC; o de 30 dias conta os últimos 30 dias a partir de hoje."
           }
         }
       }
@@ -29593,6 +29959,46 @@
           "stringUnit": {
             "state": "translated",
             "value": "No momento não é possível enviar mensagens deste número."
+          }
+        }
+      }
+    },
+    "Sending message": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nachricht wird gesendet"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Enviando mensaje"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Envoi du message"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Invio del messaggio"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "メッセージを送信中"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Enviando mensagem"
           }
         }
       }
@@ -36618,6 +37024,126 @@
         }
       }
     },
+    "This permanently deletes your account, balance, and order history. Pending orders are auto-canceled. Your number will be released and can't be recovered. This can't be undone.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dadurch werden Ihr Konto, Ihr Guthaben und Ihre Bestellhistorie dauerhaft gelöscht. Ausstehende Bestellungen werden automatisch storniert. Ihre Nummer wird freigegeben und kann nicht wiederhergestellt werden. Dies kann nicht rückgängig gemacht werden."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Esto elimina permanentemente tu cuenta, tu saldo y tu historial de pedidos. Los pedidos pendientes se cancelan automáticamente. Tu número se liberará y no se podrá recuperar. No se puede deshacer."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cette action supprime définitivement votre compte, votre solde et votre historique de commandes. Les commandes en cours sont automatiquement annulées. Votre numéro sera libéré et ne pourra pas être récupéré. C'est irréversible."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Questo elimina definitivamente il tuo account, il saldo e la cronologia degli ordini. Gli ordini in corso vengono annullati automaticamente. Il tuo numero verrà rilasciato e non potrà essere recuperato. Non può essere annullato."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "アカウント、残高、注文履歴が完全に削除されます。進行中の注文は自動的にキャンセルされます。お使いの番号は解放され、元に戻すことはできません。この操作は取り消せません。"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Isso exclui permanentemente sua conta, saldo e histórico de pedidos. Pedidos pendentes são cancelados automaticamente. Seu número será liberado e não poderá ser recuperado. Não é possível desfazer."
+          }
+        }
+      }
+    },
+    "This permanently deletes your account, balance, and order history. Pending orders are auto-canceled. Your number will be released and can't be recovered. Your subscription keeps billing through Apple until you cancel it. This can't be undone.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dadurch werden Ihr Konto, Ihr Guthaben und Ihre Bestellhistorie dauerhaft gelöscht. Ausstehende Bestellungen werden automatisch storniert. Ihre Nummer wird freigegeben und kann nicht wiederhergestellt werden. Ihr Abo wird weiterhin über Apple abgerechnet, bis Sie es kündigen. Dies kann nicht rückgängig gemacht werden."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Esto elimina permanentemente tu cuenta, tu saldo y tu historial de pedidos. Los pedidos pendientes se cancelan automáticamente. Tu número se liberará y no se podrá recuperar. Tu suscripción se sigue cobrando a través de Apple hasta que la canceles. No se puede deshacer."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cette action supprime définitivement votre compte, votre solde et votre historique de commandes. Les commandes en cours sont automatiquement annulées. Votre numéro sera libéré et ne pourra pas être récupéré. Votre abonnement reste facturé par Apple jusqu'à ce que vous le résiliiez. C'est irréversible."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Questo elimina definitivamente il tuo account, il saldo e la cronologia degli ordini. Gli ordini in corso vengono annullati automaticamente. Il tuo numero verrà rilasciato e non potrà essere recuperato. Il tuo abbonamento continua a essere addebitato tramite Apple finché non lo annulli. Non può essere annullato."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "アカウント、残高、注文履歴が完全に削除されます。進行中の注文は自動的にキャンセルされます。お使いの番号は解放され、元に戻すことはできません。サブスクリプションは解約するまでAppleを通じて請求され続けます。この操作は取り消せません。"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Isso exclui permanentemente sua conta, saldo e histórico de pedidos. Pedidos pendentes são cancelados automaticamente. Seu número será liberado e não poderá ser recuperado. Sua assinatura continua sendo cobrada pela Apple até você cancelá-la. Não é possível desfazer."
+          }
+        }
+      }
+    },
+    "This permanently deletes your account, balance, and order history. Pending orders are auto-canceled. Your subscription keeps billing through Apple until you cancel it. This can't be undone.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dadurch werden Ihr Konto, Ihr Guthaben und Ihre Bestellhistorie dauerhaft gelöscht. Ausstehende Bestellungen werden automatisch storniert. Ihr Abo wird weiterhin über Apple abgerechnet, bis Sie es kündigen. Dies kann nicht rückgängig gemacht werden."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Esto elimina permanentemente tu cuenta, tu saldo y tu historial de pedidos. Los pedidos pendientes se cancelan automáticamente. Tu suscripción se sigue cobrando a través de Apple hasta que la canceles. No se puede deshacer."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cette action supprime définitivement votre compte, votre solde et votre historique de commandes. Les commandes en cours sont automatiquement annulées. Votre abonnement reste facturé par Apple jusqu'à ce que vous le résiliiez. C'est irréversible."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Questo elimina definitivamente il tuo account, il saldo e la cronologia degli ordini. Gli ordini in corso vengono annullati automaticamente. Il tuo abbonamento continua a essere addebitato tramite Apple finché non lo annulli. Non può essere annullato."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "アカウント、残高、注文履歴が完全に削除されます。進行中の注文は自動的にキャンセルされます。サブスクリプションは解約するまでAppleを通じて請求され続けます。この操作は取り消せません。"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Isso exclui permanentemente sua conta, saldo e histórico de pedidos. Pedidos pendentes são cancelados automaticamente. Sua assinatura continua sendo cobrada pela Apple até você cancelá-la. Não é possível desfazer."
+          }
+        }
+      }
+    },
     "This plan's validity period has ended. Buy another to get back online.": {
       "localizations": {
         "de": {
@@ -38084,6 +38610,52 @@
         }
       }
     },
+    "Up to %lld addresses a day and %lld every 30 days.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bis zu %1$lld Adressen pro Tag und %2$lld alle 30 Tage."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "new",
+            "value": "Up to %1$lld addresses a day and %2$lld every 30 days."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hasta %1$lld direcciones al día y %2$lld cada 30 días."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Jusqu’à %1$lld adresses par jour et %2$lld tous les 30 jours."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Fino a %1$lld indirizzi al giorno e %2$lld ogni 30 giorni."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "1日あたり最大%1$lld件、30日間で最大%2$lld件のアドレス。"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Até %1$lld endereços por dia e %2$lld a cada 30 dias."
+          }
+        }
+      }
+    },
     "Up to %lld addresses a day.": {
       "localizations": {
         "de": {
@@ -39173,6 +39745,46 @@
           "stringUnit": {
             "state": "translated",
             "value": "Não conseguimos configurar novos números agora. Tente mais tarde. Você não foi cobrado."
+          }
+        }
+      }
+    },
+    "We copied %@ in case your mail app isn't set up.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Wir haben %@ kopiert, falls Ihre Mail-App nicht eingerichtet ist."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hemos copiado %@ por si tu app de correo no está configurada."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nous avons copié %@ au cas où votre app de messagerie ne serait pas configurée."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Abbiamo copiato %@ nel caso la tua app di posta non sia configurata."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "メールアプリが未設定の場合に備えて、%@をコピーしました。"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Copiamos %@ caso seu app de e-mail não esteja configurado."
           }
         }
       }
@@ -43738,6 +44350,46 @@
         }
       }
     },
+    "Your number will be released and can't be recovered.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ihre Nummer wird freigegeben und kann nicht wiederhergestellt werden."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tu número se liberará y no se podrá recuperar."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Votre numéro sera libéré et ne pourra pas être récupéré."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Il tuo numero verrà rilasciato e non potrà essere recuperato."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "お使いの番号は解放され、元に戻すことはできません。"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Seu número será liberado e não poderá ser recuperado."
+          }
+        }
+      }
+    },
     "Your numbers and codes, in one place": {
       "extractionState": "stale",
       "localizations": {
@@ -44217,6 +44869,46 @@
           "stringUnit": {
             "state": "translated",
             "value": "Sua assinatura está ativa, mas nenhum número foi atribuído. Já fomos avisados e vamos resolver. Por favor, não assine de novo."
+          }
+        }
+      }
+    },
+    "Your subscription keeps billing through Apple until you cancel it.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ihr Abo wird weiterhin über Apple abgerechnet, bis Sie es kündigen."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tu suscripción se sigue cobrando a través de Apple hasta que la canceles."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Votre abonnement reste facturé par Apple jusqu'à ce que vous le résiliiez."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Il tuo abbonamento continua a essere addebitato tramite Apple finché non lo annulli."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "サブスクリプションは解約するまでAppleを通じて請求され続けます。"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sua assinatura continua sendo cobrada pela Apple até você cancelá-la."
           }
         }
       }
@@ -46133,6 +46825,52 @@
           "stringUnit": {
             "state": "translated",
             "value": "vSMS Mail · até %lld endereços por dia"
+          }
+        }
+      }
+    },
+    "vSMS Mail · up to %lld addresses a day, %lld every 30 days": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "vSMS Mail · bis zu %1$lld Adressen pro Tag, %2$lld alle 30 Tage"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "new",
+            "value": "vSMS Mail · up to %1$lld addresses a day, %2$lld every 30 days"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "vSMS Mail · hasta %1$lld direcciones al día, %2$lld cada 30 días"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "vSMS Mail · jusqu'à %1$lld adresses par jour, %2$lld tous les 30 jours"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "vSMS Mail · fino a %1$lld indirizzi al giorno, %2$lld ogni 30 giorni"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "vSMS Mail · 1日最大%1$lld件、30日間で最大%2$lld件のアドレス"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "vSMS Mail · até %1$lld endereços por dia, %2$lld a cada 30 dias"
           }
         }
       }

@@ -412,9 +412,11 @@ final class SubscriptionStore {
         // and it cannot be recovered afterwards, because a successful buy
         // ends the user's eligibility.
         let intro = selectedIntroPriceDisplay != nil
-        func note(_ outcome: String) {
-            Analytics.shared.track("line_purchase_result", [
-                "outcome": .string(outcome), "plan": .string(plan), "intro": .bool(intro)])
+        func note(_ outcome: String, _ extra: [String: AnalyticsValue] = [:]) {
+            var props: [String: AnalyticsValue] = [
+                "outcome": .string(outcome), "plan": .string(plan), "intro": .bool(intro)]
+            props.merge(extra) { _, new in new }
+            Analytics.shared.track("line_purchase_result", props)
         }
         guard let product = selectedProduct else {
             note("failed")
@@ -436,8 +438,30 @@ final class SubscriptionStore {
                 // a paywall shown again this session must not promise it.
                 monthlyIntroOffer = nil
                 yearlyIntroOffer = nil
-                note(accepted ? "success" : "failed")
-                return accepted
+                if accepted {
+                    note("success")
+                    return true
+                }
+                // 🔴 Apple has CHARGED at this point, and a false from
+                // `handle` does not mean the number failed — see
+                // `lineFromThisPurchase`. Ask the server before saying so.
+                // Only for a StoreKit-verified transaction: an unverified one
+                // is not evidence that anything was bought.
+                if case .verified = verification,
+                   let line = await lineFromThisPurchase(phoneNumber: phoneNumber) {
+                    // `failure_code` keeps the series honest about WHY the
+                    // verify came back non-success: a code is a server
+                    // refusal (e.g. the pre-2026-09-16 `line_exists` replay),
+                    // none means the response never arrived.
+                    var extra: [String: AnalyticsValue] = ["recovered": .bool(true)]
+                    if let code = lastFailure?.code { extra["failure_code"] = .string(code) }
+                    lastFailure = nil
+                    provisionedE164 = line.e164
+                    note("success", extra)
+                    return true
+                }
+                note("failed")
+                return false
             case .userCancelled:
                 note("cancelled")
                 pending = nil
@@ -473,6 +497,61 @@ final class SubscriptionStore {
                 : String(localized: "That purchase didn't complete. Please try again.")
             return false
         }
+    }
+
+    /// The line THIS purchase produced, read from `my_line` — or nil when there
+    /// is none, and nil keeps the purchase reported as failed.
+    ///
+    /// 🔴 **Why a false from `handle` is not proof of failure.** Six of 26 new
+    /// Production line subscribers in the 14 days to 2026-09-23 were told their
+    /// purchase failed while their number went live within seconds. Two
+    /// mechanisms, both read from the edge logs:
+    ///
+    /// - **The second concurrent verify won the race** (4 users, 2026-09-10
+    ///   to 09-15). `handle` runs from both `product.purchase()` and the
+    ///   shared `Transaction.updates` listener; the replay answered 409
+    ///   `line_paid_but_exists` within ~2s of the charge while the call that
+    ///   actually provisioned answered 200 ~10s later, and the 409 landed on
+    ///   this path. The server answers that replay 200 since 2026-09-16,
+    ///   which fixes new cases only.
+    /// - **The response never arrived** (2 users). `e04f5e5c` (2026-09-20,
+    ///   after the server fix): the provisioning call created the row and
+    ///   activated the line, the gateway logged NO response for it, and the
+    ///   client recorded `failed` ~6s in. `37cd2b0b` (09-16): the event's
+    ///   client clock is 100 minutes after Apple's charge — the app was
+    ///   suspended mid-verify. Both are transport failures on a request the
+    ///   server completed anyway.
+    ///
+    /// Matched on the DIGITS the user just reserved, never on "any live line":
+    /// `reserve-line-number` refuses someone who already holds one, so a line
+    /// carrying these exact digits in a usable state can only be this
+    /// purchase's. A line bought by a different transaction still reads as a
+    /// failure — that is the genuine paid-twice case, and the server pages it.
+    ///
+    /// ⚠️ This decides only what is SHOWN. It finishes no transaction and
+    /// moves no money: an unfinished transaction is swept by the listener's
+    /// no-`pending` branch or by Restore, exactly as before.
+    ///
+    /// Three reads, 2s apart — the row exists from `begin_line_rental`, before
+    /// the provider call, so it normally answers on the first read; the
+    /// retries cover a read that lands in the top-of-minute PostgREST herd.
+    private func lineFromThisPurchase(phoneNumber: String) async -> Line? {
+        guard let api = apiClient else { return nil }
+        let wanted = phoneNumber.filter(\.isNumber)
+        guard !wanted.isEmpty else { return nil }
+        // The server's own replay list (`verify-line-subscription`): a line
+        // that is suspended or being released is not one to call a success.
+        let usable: Set<LineStatus> = [.provisioning, .active, .grace, .pastDue]
+        for attempt in 0..<3 {
+            if attempt > 0 { try? await Task.sleep(for: .seconds(2)) }
+            guard let lines = try? await LineAPI(client: api).fetchAll() else { continue }
+            if let hit = lines.first(where: {
+                $0.e164.filter(\.isNumber) == wanted && usable.contains($0.status)
+            }) {
+                return hit
+            }
+        }
+        return nil
     }
 
     /// Does this Apple ID already hold one of our subscriptions?

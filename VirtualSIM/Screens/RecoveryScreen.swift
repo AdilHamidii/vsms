@@ -13,6 +13,10 @@ struct RecoveryScreen: View {
 
     let context: RecoveryContext
 
+    /// One `recovery_shown` per presentation, not per layout pass — the same
+    /// guard `CheckoutScreen.steerLogged` carries for the same reason.
+    @State private var shownLogged = false
+
     private var suggestion: (country: Country, rate: Int)? {
         state.bestMeasuredCountry(for: context.service)
     }
@@ -52,6 +56,40 @@ struct RecoveryScreen: View {
         poolSuggestion?.country ?? rankedSuggestion?.country
     }
 
+    /// Which branch of the offer ladder this card rendered, named for the
+    /// analytics read-out: our own record ≥ 40% → a High-band pool → the
+    /// vendor's weekly top-10 → the same route on a fresh number.
+    private var offerKind: String {
+        if suggestion != nil { return "own_record" }
+        if poolSuggestion != nil { return "pool_band" }
+        if rankedSuggestion != nil { return "top10" }
+        return "retry_same"
+    }
+
+    /// Shared by `recovery_shown` and `recovery_action` so the two read as one
+    /// funnel. `to` is the country the primary button names, when it names
+    /// one; the measured branch resolves its own inside `retryFromRecovery`.
+    private func recoveryProps() -> [String: AnalyticsValue] {
+        var props: [String: AnalyticsValue] = [
+            "offer": .string(offerKind),
+            "service": .string(context.service.id),
+            "failed_country": .string(context.failedCountry.id),
+            "reason": .string(context.reason == .expired ? "expired" : "canceled"),
+        ]
+        if let to = suggestion?.country ?? offeredCountry { props["to"] = .string(to.id) }
+        if let credits = context.refundedCredits { props["refunded"] = .int(credits) }
+        return props
+    }
+
+    /// `action` ∈ `retry` (the primary button, whatever country it named) ·
+    /// `not_now` · `close` (the ✕). Both dismissals are kept apart because
+    /// one is a labelled choice and the other a reflex.
+    private func logAction(_ action: String) {
+        var props = recoveryProps()
+        props["action"] = .string(action)
+        Analytics.shared.track("recovery_action", props)
+    }
+
     private var headline: String {
         switch context.reason {
         case .expired:  String(localized: "No code arrived")
@@ -69,6 +107,11 @@ struct RecoveryScreen: View {
                 Spacer()
             }
         }
+        .onAppear {
+            guard !shownLogged else { return }
+            shownLogged = true
+            Analytics.shared.track("recovery_shown", recoveryProps())
+        }
     }
 
     private var topBar: some View {
@@ -76,6 +119,7 @@ struct RecoveryScreen: View {
             Color.clear.frame(width: 36, height: 36)
             Spacer()
             Button {
+                logAction("close")
                 state.dismissRecovery()
             } label: {
                 Image(systemName: RIcon.close)
@@ -85,6 +129,7 @@ struct RecoveryScreen: View {
                     .background(theme.chipBg, in: .circle)
             }
             .pressable()
+            .accessibilityLabel("Close")
         }
         .padding(.horizontal, 16)
         .padding(.bottom, 8)
@@ -225,6 +270,7 @@ struct RecoveryScreen: View {
                     icon: RIcon.refresh
                 ) {
                     RHaptic.select()
+                    logAction("retry")
                     // 🔴 PASS THE COUNTRY THE BUTTON JUST NAMED.
                     //
                     // This used to assign `state.lastCountry` and then call
@@ -244,6 +290,7 @@ struct RecoveryScreen: View {
                 .padding(.horizontal, 20)
 
                 Button {
+                    logAction("not_now")
                     state.dismissRecovery()
                 } label: {
                     Text("Not now")

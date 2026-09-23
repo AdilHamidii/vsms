@@ -13,6 +13,9 @@ struct SectionHeader: View {
                 .font(RFont.display(13, weight: .semibold))
                 .tracking(0.3)
                 .foregroundStyle(theme.text2)
+                // VoiceOver's rotor navigates by headers; without the trait
+                // every section title read as body text.
+                .accessibilityAddTraits(.isHeader)
             Spacer()
             if let action {
                 Button(action: { onAction?() }) {

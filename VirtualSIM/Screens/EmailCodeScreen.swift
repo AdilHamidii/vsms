@@ -153,6 +153,11 @@ struct EmailCodeScreen: View {
                     Group {
                         if spent {
                             Text("The next one needs the vSMS Mail plan.")
+                        } else if let price = monthlyPrice, let u = state.emailUsage {
+                            // Both caps, live from `email_usage` — the 30-day
+                            // one exists since 2026-09-21 and quoting only the
+                            // daily figure sold 30× it a month.
+                            Text("After that, up to \(u.dailyCap) addresses a day and \(u.monthlyCap) every 30 days is \(price)/mo.")
                         } else if let price = monthlyPrice, let cap = state.appStatus.mailDailyCap {
                             Text("After that, up to \(cap) addresses a day is \(price)/mo.")
                         } else if let price = monthlyPrice {
@@ -198,7 +203,10 @@ struct EmailCodeScreen: View {
         HStack(spacing: 7) {
             Image(systemName: RIcon.check)
                 .font(.system(size: 11, weight: .bold))
-            if let cap = state.appStatus.mailDailyCap {
+            if let u = state.emailUsage {
+                Text("vSMS Mail · up to \(u.dailyCap) addresses a day, \(u.monthlyCap) every 30 days")
+                    .font(RFont.text(12, weight: .medium))
+            } else if let cap = state.appStatus.mailDailyCap {
                 Text("vSMS Mail · up to \(cap) addresses a day")
                     .font(RFont.text(12, weight: .medium))
             } else {

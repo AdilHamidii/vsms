@@ -219,6 +219,7 @@ struct CheckoutScreen: View {
                     .background(theme.chipBg, in: .circle)
             }
             .pressable(0.92)
+            .accessibilityLabel(Text("Back"))
             Spacer()
             CreditPill(value: state.balance, action: openCredits)
         }

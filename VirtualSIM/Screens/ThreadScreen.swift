@@ -138,6 +138,7 @@ struct ThreadScreen: View {
                     .background(theme.chipBg, in: .circle)
             }
             .buttonStyle(.plain)
+            .accessibilityLabel(Text("Close"))
 
             // The identity is one tap target — avatar and name together, the
             // way every phone app opens a contact from its thread header.
@@ -200,6 +201,7 @@ struct ThreadScreen: View {
                     .background(theme.chipBg, in: .circle)
             }
             .buttonStyle(.plain)
+            .accessibilityLabel(Text("Options"))
         }
         .padding(.horizontal, 16)
         .padding(.top, 12)
@@ -243,6 +245,18 @@ struct ThreadScreen: View {
             : .dateTime.day().month(.abbreviated).year())
     }
 
+    /// Whether the line this message went out on is a US/PR number — the
+    /// countries whose outbound texts are refused for want of 10DLC
+    /// registration (`LineStoreScreen.unreliableSendingCountries`, the ONE
+    /// list the store and checkout also read). Resolved per message through
+    /// its own `lineId`, so a user with two numbers gets the right answer.
+    private func sendsFromUnreliableCountry(_ message: LineMessage) -> Bool {
+        guard message.isOutbound,
+              let iso = state.lines.first(where: { $0.id == message.lineId })?.countryCode
+        else { return false }
+        return LineStoreScreen.unreliableSendingCountries.contains(iso.uppercased())
+    }
+
     private var transcript: some View {
         ScrollViewReader { proxy in
             ScrollView {
@@ -251,7 +265,10 @@ struct ThreadScreen: View {
                         if let day = row.daySeparator {
                             DaySeparator(label: day)
                         }
-                        MessageBubble(message: row.message).id(row.id)
+                        MessageBubble(
+                            message: row.message,
+                            sentFromUnreliableCountry: sendsFromUnreliableCountry(row.message))
+                            .id(row.id)
                     }
                     // Anchor for the scroll-to-bottom, so a new message does
                     // not require the user to chase it.
@@ -438,6 +455,9 @@ private struct DaySeparator: View {
 struct MessageBubble: View {
     @Environment(\.theme) private var theme
     let message: LineMessage
+    /// The number it went out on is American (US/PR). A carrier refusal there
+    /// is the 10DLC rule, not this recipient — see `failureCopy`.
+    var sentFromUnreliableCountry: Bool = false
     @State private var copiedCode = false
 
     var body: some View {
@@ -526,6 +546,14 @@ struct MessageBubble: View {
     private var failureCopy: LocalizedStringKey? {
         switch message.failureReason {
         case .carrierBlocked:
+            // From a US/PR number the refusal is systematic (the number is not
+            // 10DLC-registered), so "the recipient's network" would send the
+            // user retrying other recipients. Reuses the store's own sentence
+            // — same catalog key, same translations, so the buyer reads here
+            // exactly what they were told before buying.
+            if sentFromUnreliableCountry {
+                return "Texts you send from an American number often don't arrive — most US networks block them. Receiving codes and calling work normally. A Canadian number sends texts reliably."
+            }
             return "The recipient's network refused this message."
         case .badNumber:
             return "That number couldn't be reached."
@@ -542,14 +570,20 @@ struct MessageBubble: View {
     @ViewBuilder
     private var statusMark: some View {
         switch message.status {
+        // Each glyph carries a VoiceOver label: a bare clock or tick reads as
+        // nothing at all, and the difference between them is the whole point.
+        // "Message …" rather than the bare "Delivered" key, which is already
+        // taken by a plural order count ("Reçus", "Entregados").
         case .queued, .sending:
             Image(systemName: "clock")
                 .font(.system(size: 9))
                 .foregroundStyle(theme.text3)
+                .accessibilityLabel(Text("Sending message"))
         case .sent:
             Image(systemName: RIcon.check)
                 .font(.system(size: 9, weight: .bold))
                 .foregroundStyle(theme.text3)
+                .accessibilityLabel(Text("Message sent"))
         case .delivered:
             HStack(spacing: -3) {
                 Image(systemName: RIcon.check)
@@ -557,9 +591,12 @@ struct MessageBubble: View {
             }
             .font(.system(size: 9, weight: .bold))
             .foregroundStyle(theme.live)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(Text("Message delivered"))
         case .failed:
             HStack(spacing: 3) {
                 Image(systemName: "exclamationmark.triangle.fill")
+                    .accessibilityHidden(true)
                 Text("Not sent")
             }
             .font(.system(size: 9, weight: .semibold))

@@ -133,7 +133,7 @@ struct MailPaywallScreen: View {
 
     // MARK: - What this buys
 
-    /// Names the two free domains and states the daily limit. Never a bare
+    /// Names the two free domains and states both limits. Never a bare
     /// "unlimited e-mails" — see the file header. No gmail mention: it was
     /// removed from sale 2026-08-26 and isn't part of this product anymore.
     ///
@@ -142,25 +142,38 @@ struct MailPaywallScreen: View {
     private var intro: some View {
         VStack(alignment: .leading, spacing: 8) {
             MicroLabel("Temporary e-mail")
-            // The cap is read live from `app_config.email_sub_daily_cap`; with
-            // no confirmed value the headline states the benefit without a
-            // figure rather than promising a number on a paywall.
-            if let cap = state.appStatus.mailDailyCap {
-                Text("Up to \(cap) addresses a day.")
-                    .displayType(26)
-                    .foregroundStyle(theme.text)
-                    .fixedSize(horizontal: false, vertical: true)
-            } else {
-                Text("A fresh address whenever you need one.")
-                    .displayType(26)
-                    .foregroundStyle(theme.text)
-                    .fixedSize(horizontal: false, vertical: true)
+            // BOTH caps, read live from `email_usage` (via `email-domains`'
+            // `usage`, which carries the caps for non-subscribers too) — since
+            // 2026-09-21 a subscriber is capped per day AND per rolling 30
+            // days, and selling "N a day" alone promised 30×N a month. Without
+            // usage it falls back to the daily figure from `app_config`, then
+            // to no figure at all rather than promising a number on a paywall.
+            Group {
+                if let u = state.emailUsage {
+                    Text("Up to \(u.dailyCap) addresses a day and \(u.monthlyCap) every 30 days.")
+                } else if let cap = state.appStatus.mailDailyCap {
+                    Text("Up to \(cap) addresses a day.")
+                } else {
+                    Text("A fresh address whenever you need one.")
+                }
             }
-            Text("On outlook.com and hotmail.com, subject to availability. Your allowance resets at midnight UTC.")
-                .font(RFont.text(15))
-                .foregroundStyle(theme.text2)
-                .lineSpacing(3)
-                .fixedSize(horizontal: false, vertical: true)
+            .displayType(26)
+            .foregroundStyle(theme.text)
+            .fixedSize(horizontal: false, vertical: true)
+            // 🔴 The 30-day limit is ROLLING — it frees an address at a time as
+            // old ones age out — so it must never be described as resetting at
+            // midnight. Only the daily one does.
+            Group {
+                if state.emailUsage != nil {
+                    Text("On outlook.com and hotmail.com, subject to availability. The daily limit resets at midnight UTC; the 30-day limit counts back from today.")
+                } else {
+                    Text("On outlook.com and hotmail.com, subject to availability. Your allowance resets at midnight UTC.")
+                }
+            }
+            .font(RFont.text(15))
+            .foregroundStyle(theme.text2)
+            .lineSpacing(3)
+            .fixedSize(horizontal: false, vertical: true)
         }
     }
 

@@ -26,6 +26,7 @@ struct SheetHeader: View {
                     .contentShape(.circle)
             }
             .pressable(0.9)
+            .accessibilityLabel(Text("Close"))
         }
         .padding(.horizontal, 16)
         .padding(.top, 10)

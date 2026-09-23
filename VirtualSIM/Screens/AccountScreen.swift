@@ -1,3 +1,4 @@
+import MessageUI
 import StoreKit
 import SwiftUI
 
@@ -42,6 +43,7 @@ struct AccountScreen: View {
     @Environment(Session.self) private var session
     @Environment(APIClient.self) private var api
     @Environment(IAPStore.self) private var iap
+    @Environment(MailSubscriptionStore.self) private var mailStore
 
     var openCredits: () -> Void
 
@@ -55,6 +57,10 @@ struct AccountScreen: View {
     @State private var codeCopied = false
     @State private var restoreNote: Note?
     @State private var restoreTask: Task<Void, Never>?
+    /// "We copied the address" under Contact support, when `mailto:` could
+    /// not reach a working mail app. Already localized at the source.
+    @State private var mailNote: String?
+    @State private var mailNoteTask: Task<Void, Never>?
 
     /// Seeded from UserDefaults once per `AccountScreen` init rather than read
     /// in `body`: this screen redraws on every collection `AppState` publishes,
@@ -106,7 +112,7 @@ struct AccountScreen: View {
             }
             profileChecked = true
         }
-        .onDisappear { restoreTask?.cancel() }
+        .onDisappear { restoreTask?.cancel(); mailNoteTask?.cancel() }
         // A sheet rather than a `FlowStage`: changing a password is a settings
         // errand, not one of the app's product flows, and it has no business
         // in the enum that drives the full-screen cover.
@@ -122,9 +128,17 @@ struct AccountScreen: View {
             Button("Delete account", role: .destructive) {
                 Task { await deleteAccount() }
             }
+            // Deleting the account does not cancel an Apple subscription —
+            // only Apple can — so the dialog offers Apple's own sheet rather
+            // than leaving the user to discover the charge next month.
+            if holdsSubscription {
+                Button("Manage subscriptions") {
+                    Task { await openManageSubscriptions() }
+                }
+            }
             Button("Cancel", role: .cancel) { }
         } message: {
-            Text("This permanently deletes your account, balance, and order history. Pending orders are auto-canceled. This can't be undone.")
+            deleteDialogMessage
         }
     }
 
@@ -708,6 +722,10 @@ struct AccountScreen: View {
                                detailTint: restoreTint,
                                onTap: restore)
                     SettingRow(label: "Contact support", icon: "envelope",
+                               // Localized at the source, so the lookup misses
+                               // and it renders verbatim — same as `restoreDetail`.
+                               detail: mailNote.map { LocalizedStringKey($0) },
+                               detailTint: mailNote == nil ? nil : theme.live,
                                onTap: { openMail() })
                     // The ONLY route to Apple's manage-subscriptions sheet
                     // since 2026-09-01: every plan/renewal/cancel affordance
@@ -805,9 +823,73 @@ struct AccountScreen: View {
                 .fixedSize(horizontal: false, vertical: true)
                 .padding(.horizontal, 18)
                 .padding(.top, 10)
+
+            // Apple's account-deletion guidance: say what deleting does to a
+            // paid product BEFORE the tap. Nothing extra for anyone holding
+            // neither a number nor a subscription.
+            if holdsLiveLine || holdsSubscription {
+                VStack(alignment: .leading, spacing: 6) {
+                    if holdsLiveLine {
+                        Text("Your number will be released and can't be recovered.")
+                    }
+                    if holdsSubscription {
+                        Text("Your subscription keeps billing through Apple until you cancel it.")
+                    }
+                }
+                .font(RFont.text(13, weight: .medium))
+                .foregroundStyle(theme.text)
+                .lineSpacing(2)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.horizontal, 18)
+                .padding(.top, 8)
+
+                if holdsSubscription {
+                    GhostButton(label: "Manage subscriptions", icon: "creditcard",
+                                fillsWidth: false) {
+                        Task { await openManageSubscriptions() }
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.top, 10)
+                }
+            }
         }
         .padding(.horizontal, 16)
         .padding(.top, 22)
+    }
+
+    /// `delete-account` releases every number the user holds at the provider,
+    /// irreversibly — a released number goes back to the pool and cannot be
+    /// bought back. `isLive` is the set that occupies the user's line slot.
+    private var holdsLiveLine: Bool {
+        state.lines.contains { $0.status.isLive }
+    }
+
+    /// An Apple subscription outlives the account: deleting it cancels
+    /// nothing. A line in a paid state IS a subscription (the credits-billed
+    /// line is an owner-only path) — `suspended`/`releasing` mean it already
+    /// lapsed, so they do not count here. `mailStore.isEntitled` is StoreKit's
+    /// current entitlement for the mail group — a UI hint, which is all a
+    /// warning needs.
+    private var holdsSubscription: Bool {
+        let paidLine = state.lines.contains {
+            [.provisioning, .active, .grace, .pastDue].contains($0.status)
+        }
+        return paidLine || mailStore.isEntitled
+    }
+
+    /// Complete sentences per case rather than stitched fragments, so every
+    /// locale reads naturally.
+    @ViewBuilder
+    private var deleteDialogMessage: some View {
+        if holdsLiveLine && holdsSubscription {
+            Text("This permanently deletes your account, balance, and order history. Pending orders are auto-canceled. Your number will be released and can't be recovered. Your subscription keeps billing through Apple until you cancel it. This can't be undone.")
+        } else if holdsLiveLine {
+            Text("This permanently deletes your account, balance, and order history. Pending orders are auto-canceled. Your number will be released and can't be recovered. This can't be undone.")
+        } else if holdsSubscription {
+            Text("This permanently deletes your account, balance, and order history. Pending orders are auto-canceled. Your subscription keeps billing through Apple until you cancel it. This can't be undone.")
+        } else {
+            Text("This permanently deletes your account, balance, and order history. Pending orders are auto-canceled. This can't be undone.")
+        }
     }
 
     // MARK: - Actions
@@ -894,9 +976,36 @@ struct AccountScreen: View {
         }
     }
 
+    /// Opens a `mailto:`, and never lets the tap do nothing.
+    ///
+    /// `open` reports failure when no app handles `mailto:` (Mail deleted, no
+    /// default mail app), and it reports SUCCESS when Mail opens with no
+    /// account set up — which `canSendMail()` is the only way to see. Either
+    /// way the address goes on the pasteboard and the row says so, so the user
+    /// can paste it into whatever they do use. `canSendMail()` is also false
+    /// when a third-party client is the default, so that branch's copy claims
+    /// only "in case", never that anything failed.
     private func openMail() {
-        if let url = URL(string: "mailto:\(LegalLinks.supportEmail)?subject=vSMS%20support") {
-            UIApplication.shared.open(url)
+        let address = LegalLinks.supportEmail
+        guard let url = URL(string: "mailto:\(address)?subject=vSMS%20support") else { return }
+        UIApplication.shared.open(url) { opened in
+            let note: String
+            if !opened {
+                note = String(localized: "Couldn't open a mail app. We copied \(address) for you.")
+            } else if !MFMailComposeViewController.canSendMail() {
+                note = String(localized: "We copied \(address) in case your mail app isn't set up.")
+            } else {
+                return
+            }
+            UIPasteboard.general.string = address
+            RHaptic.copied()
+            mailNoteTask?.cancel()
+            mailNoteTask = Task {
+                withAnimation(RMotion.content) { mailNote = note }
+                try? await Task.sleep(for: .seconds(8))
+                guard !Task.isCancelled else { return }
+                withAnimation(RMotion.content) { mailNote = nil }
+            }
         }
     }
 

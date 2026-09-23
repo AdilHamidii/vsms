@@ -241,6 +241,7 @@ private struct RecentRow: View {
                         }
                         .buttonStyle(.plain)
                         .pressable(0.9)
+                        .accessibilityLabel(Text("Call back"))
                     }
                 }
                 .padding(14)

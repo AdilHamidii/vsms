@@ -72,12 +72,12 @@ extension CreditPack {
               credits: 8,   priceUsd: 3.99,  badge: nil, optional: true),
         .init(id: "md", productId: "com.anthersystems.VirtualSIM.credits.12",
               credits: 12,  priceUsd: 5.49,  badge: "MOST POPULAR"),
-        // 2.17: `credits.20` fills the ladder's widest gap, and it was placed
-        // by MEASUREMENT rather than by symmetry. In the 7 days to 2026-09-21
-        // the single largest paywall shortfall after 4 credits was **24**
-        // (76 `paywall_shown` events across 40 distinct users) — people short
-        // 24 credits had to buy the 30-pack at $12.99, because nothing existed
-        // between 12 ($5.49) and 30. $8.99/20 is 0.4495 per credit, which sits
+        // 2.17: `credits.20` fills the ladder's widest gap (nothing sat between
+        // 12 at $5.49 and 30 at $12.99). ⚠️ It was placed for the 24-credit
+        // shortfall arm, but `CreditsSheet.recommendedId` picks the smallest
+        // pack COVERING the shortfall, so a user short 24 is still pointed at
+        // the 30-pack; this pack is the pick only for shortfalls of 13–20.
+        // Owner reviewed that on 2026-09-23 and kept it. $8.99/20 is 0.4495 per credit, which sits
         // strictly between the 12-pack's 0.4575 and the 30-pack's 0.433, so
         // `assertLadderImproves()` still holds at every rung.
         .init(id: "ml", productId: "com.anthersystems.VirtualSIM.credits.20",

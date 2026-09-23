@@ -97,6 +97,26 @@ struct Service: Identifiable, Hashable, Codable {
         return a >= Self.minEvidenceSample && Double(c) / Double(a) < 0.20
     }
 
+    /// Services that sign a new account up with a PHONE NUMBER, not an e-mail
+    /// address — so a temp e-mail bought "for" them almost never receives a
+    /// code. `TempScreen` warns on the e-mail card (and offers a number for the
+    /// same service) when one of these is selected in e-mail mode; it WARNS and
+    /// never blocks — the owner kept the pre-selection (2026-09-23, option B).
+    ///
+    /// Keyed on `Service.id` (the catalog slug, `services.id`). Evidence,
+    /// e-mail codes delivered over the 60 days to 2026-09-23 (`email_orders`,
+    /// `code is not null`): whatsapp **2 of 48**, google **0 of 8**, signal
+    /// **0 of 7**, viber 0 of 1 — against ~49% for temp e-mail overall.
+    /// ⚠️ telegram is deliberately NOT here: it registers by phone, but it
+    /// measured **4 of 14** delivered (it can send login codes to an e-mail
+    /// added later), so warning that e-mail won't work would be false.
+    /// Extend with measured cases, never by guess.
+    static let phoneOnlySignupIds: Set<String> = [
+        "whatsapp", "google", "signal", "viber",
+    ]
+
+    var signsUpByPhone: Bool { Self.phoneOnlySignupIds.contains(id) }
+
     /// Cascading list of logo sources, in priority order.
     /// Source 1 (DuckDuckGo ip3): apple-touch-icon quality, no API key, reliable.
     /// Source 2 (Google FaviconV2): any domain with a favicon, up to 128px.

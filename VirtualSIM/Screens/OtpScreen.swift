@@ -143,6 +143,7 @@ struct OtpScreen: View {
                     .background(theme.chipBg, in: .circle)
             }
             .pressable()
+            .accessibilityLabel(Text("Close"))
         }
         .padding(.horizontal, 16)
     }

@@ -78,12 +78,29 @@ struct ServiceSheet: View {
     }
 
     private var filtered: [Service] {
+        matching(ignoringCategory: false)
+    }
+
+    /// A typed query that finds nothing inside the active category chip, but
+    /// DOES match elsewhere — "whatsapp" typed under "Social". Those matches
+    /// are shown under their own header instead of the empty state (258
+    /// `service_search_empty` events in the 30 days to 2026-09-23 — how many
+    /// were a chip hiding a service we carry is not measured). Empty unless
+    /// the chip is what hid them, so a true no-match still reaches the empty
+    /// state and its event.
+    private var otherCategoryMatches: [Service] {
+        guard !trimmedQuery.isEmpty, category != "All", filtered.isEmpty else { return [] }
+        return matching(ignoringCategory: true)
+    }
+
+    private func matching(ignoringCategory: Bool) -> [Service] {
         let q = trimmedQuery
         return state.services.filter { s in
             let matchesQuery = q.isEmpty
                 || s.name.lowercased().contains(q)
                 || s.category.lowercased().contains(q)
-            let matchesCategory = (category == "All") || (s.category == category)
+            let matchesCategory = ignoringCategory
+                || (category == "All") || (s.category == category)
             return matchesQuery && matchesCategory && matchesAffordable(s)
         }
     }
@@ -140,6 +157,12 @@ struct ServiceSheet: View {
     private var sections: [ServiceGroup] {
         let all = filtered
         guard !filtersActive else {
+            let elsewhere = otherCategoryMatches
+            if !elsewhere.isEmpty {
+                return [ServiceGroup(id: "elsewhere",
+                                     title: "Matches in other categories",
+                                     services: elsewhere)]
+            }
             return [ServiceGroup(id: "results", title: "Results", services: all)]
         }
 
@@ -221,7 +244,7 @@ struct ServiceSheet: View {
     private var list: some View {
         ScrollViewReader { proxy in
             ScrollView {
-                if filtered.isEmpty {
+                if filtered.isEmpty && otherCategoryMatches.isEmpty {
                     emptyState
                         .padding(.top, 12)
                         // The ONE event that can answer "did they come for
@@ -274,7 +297,7 @@ struct ServiceSheet: View {
     private func sectionView(_ section: ServiceGroup) -> some View {
         MicroLabel(section.title)
             .padding(.horizontal, 20)
-            .padding(.top, section.id == "results" ? 4 : 16)
+            .padding(.top, section.id == "results" || section.id == "elsewhere" ? 4 : 16)
             .padding(.bottom, 8)
 
         // `.flat` for the long section: a real shadow on a card as tall as the
