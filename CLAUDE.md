@@ -3283,6 +3283,17 @@ Each has been wrong within a day of being written at least once.
   on the China App Store, and we ship CallKit). Re-adding China requires gating
   CallKit off by storefront first — do not re-tick it casually.
 - **Supabase project is on the FREE plan (no backups).** Owner action.
+- 🔴 **E-mail sign-up depends on the IONOS domain `vsmsapp.com`, and nothing
+  monitors it.** Supabase Auth sends confirmation codes through Resend from
+  `mail.vsmsapp.com`. IONOS put the domain on `clientHold` on 2026-09-02 —
+  exactly 15 days after registration, the ICANN unverified-contact deadline —
+  which removed it from DNS; Resend then refused every send and **every e-mail
+  `/signup` returned 500 for three weeks** (45 in the last 22h before the fix)
+  while Apple sign-in hid it. Fixed 2026-09-23 (registry hold dropped 10:54Z,
+  Resend re-verified). Check: `whois -h whois.verisign-grs.com vsmsapp.com`
+  must show no `clientHold`, and `auth_logs` `/signup` must not be 500 with
+  "domain is not verified". A watchdog check on auth `/signup` 5xx is the
+  missing guard.
 
 ## Known-open
 
