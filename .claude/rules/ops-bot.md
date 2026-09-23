@@ -50,7 +50,7 @@ expiry in Paris and its price normalised to a MONTH), `/lines` (no arg now LISTS
 and real rent; `on|off` unchanged), `/support` (threads waiting, oldest first),
 `/alerts` (what is firing + ladder/cooldown states), `/funnel`, `/config`
 (read-only: grant, e-mail caps, pause switches, swap price), `/announce`,
-`/esim`, `/metrics`, `/leads` (Reddit threads worth answering, best first),
+`/esim`, `/metrics`, `/tabs`, `/supportlink`, `/leads` (Reddit threads worth answering, best first),
 `/help`.
 
 🔴 **`/leads` is READ-ONLY and carries no `mutates` flag, deliberately.** Its
@@ -81,6 +81,19 @@ always opens first since 2.13 — owner decision 2026-09-10; before that, from
 read at launch from UserDefaults, effective on the user's SECOND cold launch;
 the same value orders the need-cards on Home. Full account in CLAUDE.md
 "Home leads the app".
+
+**`/supportlink [url]` (2026-09-23) decides where every Support button in the
+app opens**, by upserting `app_config.support_url` (a jsonb string, published
+through the RLS whitelist). No argument reports the stored value (or the
+compiled default, `https://t.me/vSMSAPP`, when absent or invalid). With a URL
+it reads the RAW body (the parser lowercases), accepts only `https` on host
+`t.me` or `wa.me` with a non-empty path, strips any query/fragment, and stores
+the bare link — `supportBase` in `tgHandlers.ts`, which 🔴 MIRRORS the client's
+`LegalLinks.validSupportBase`; keep the two in step. Unlike `/tabs` it lands on
+the app's NEXT status fetch (launch or foreground) and is used at once. Builds
+≤ 2.17 ignore it and open the banned WhatsApp number. Full account in
+CLAUDE.md "Support is a server-controlled chat link". ⚠️ Adding it needs
+`telegram-setup` re-run or the `/` menu keeps the old list.
 
 **`/metrics on|off` (2026-09-03) hides the ONLY delivery figure users see** —
 the vendor network rate rendered as High/Medium/Low — by writing
@@ -167,7 +180,7 @@ cannot tell you:
 (same `x-cron-secret` gate, trigger via `net.http_post` + `private_cron_secret()`)
 returns the rendered HTML WITHOUT sending it — this is how every command is
 verified without the owner's phone. Commands whose registry entry carries
-`mutates` (`/announce`, `/esim`, `/lines`, `/metrics`, `/tabs`) are REFUSED in
+`mutates` (`/announce`, `/esim`, `/lines`, `/metrics`, `/tabs`, `/supportlink`) are REFUSED in
 preview with
 `preview_refused_mutating` — without that, the cron secret alone could post a
 banner to every user, where from the chat it takes the bot token AND the owner
@@ -198,7 +211,7 @@ run at/after 09:00 Paris, once per Paris day via `telegram_bot.last_brief_on`
 🔴 **`support_waiting` is REMOVED (2026-09-22, owner request) — do not re-add
 it.** It re-paged every 6h while any thread held an unanswered user message
 > 2h, and since the bot cannot close a thread, ONE French referral question
-from 09-05 paged ~68 times over 17 days. Support is WhatsApp since 2.9; a
+from 09-05 paged ~68 times over 17 days. Support is an external chat link since 2.9 (`/supportlink`); a
 pre-2.9 message is still relayed ONCE by `support-send`, which is enough.
 `app_config.support_nag` is no longer read or written.
 

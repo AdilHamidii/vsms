@@ -229,7 +229,9 @@ struct LineStoreScreen: View {
                 // WhatsApp, named first and on its own line (owner decision
                 // 2026-09-05): it is the service these numbers verify most
                 // reliably — real codes in `line_messages`, and the owner's
-                // own WhatsApp Business runs on one. `live` green because that
+                // own WhatsApp Business ran on one until WhatsApp banned that
+                // account on 2026-09-23 (reason not known — re-check this claim
+                // if it was the number type). `live` green because that
                 // is the claim: this works. It is the one service singled out;
                 // anything else added here needs the same evidence.
                 HStack(spacing: 6) {

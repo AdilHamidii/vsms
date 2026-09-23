@@ -1010,9 +1010,11 @@ commit:**
 
 ### `app_config` is RLS-restricted to an explicit key WHITELIST
 
-**EIGHT keys** (verified live 2026-09-09): `maintenance`, `announcement`,
-`esim_paused`, `lines_paused`, `line_swap_credits`, `delivery_metrics_hidden`,
-`email_sub_daily_cap`, `launch_tab`.
+**NINE keys** once migration `20260923100000_support_url.sql` is applied:
+`maintenance`, `announcement`, `esim_paused`, `lines_paused`,
+`line_swap_credits`, `delivery_metrics_hidden`, `email_sub_daily_cap`,
+`launch_tab`, `support_url` (the first eight verified live 2026-09-23;
+`support_url` is added by that migration — confirm it applied).
 
 🔴 **Never replace that with `using (true)`** — the same table holds provider
 balances, the watchdog verdict, and every sync cursor, and `routes` has a
@@ -2337,11 +2339,14 @@ away a moment later. A released DID goes straight back to Telnyx's pool and
 **cannot be bought back**, so testing the signup flow on an account that owns
 a number you care about destroys that number.
 
-🔴 **The owner's own line `+14375243093` is ALSO the support WhatsApp contact
-hardcoded in `VirtualSIM/LegalLinks.swift` and shipped in every build since
-2.9.** Losing it would point the Support button in every installed copy of the
-app at a number nobody owns. Treat any delete-account test on the owner's
-account as a number-losing operation until the line is protected.
+🔴 **The owner's own line `+14375243093` is hardcoded as the support WhatsApp
+contact in every build from 2.9 to 2.17.** WhatsApp banned that support account
+on 2026-09-23 and support moved to a server-controlled link (see "Support is a
+server-controlled chat link"), so it is no longer the support channel — but it
+is still the owner's own line, and a released DID would repoint those old
+builds' Support button at a number someone else may then buy. Treat any
+delete-account test on the owner's account as a number-losing operation until
+the line is protected.
 
 **The safe procedure (walked 2026-09-13, number verified still held after):**
 
@@ -2869,12 +2874,46 @@ by a real model, nothing has been posted, and whether imagescript's wasm loads
 in the hosted runtime is unknown until `{"probe":"image"}` returns a URL. Judge
 the channel on what it does for installs, not on posts made.
 
-### Support is WhatsApp, not in-app
+### Support is a server-controlled chat link, not in-app
 
-🔴 **The in-app chat is GONE from the client (2.9).** Support is a `wa.me` deep
-link to `LegalLinks.supportWhatsAppE164` (`+14375243093` — the owner's own
-rented vSMS line). The prefilled message carries the build and the first 8 chars
-of the user id.
+🔴 **The in-app chat is GONE from the client (2.9).** Support is an external
+chat link, `LegalLinks.supportURL`, opened from Account ("Chat with support"),
+the Temp tab's "Have any questions?" card and `DeliveryInfoSheet`. **The
+destination is `app_config.support_url`** (migration `20260923100000`, set from
+the ops bot with `/supportlink <url>`), default **`https://t.me/vSMSAPP`** — the
+owner's Telegram support account. The prefilled draft is exactly `Hi vSMS
+Support`, in every locale (owner decision 2026-09-23: no build, no account id).
+
+🔴 **WhatsApp Business BANNED the support account `+14375243093` on
+2026-09-23**, and that is why the link is server-controlled. Builds 2.9–2.17
+hardcode a `wa.me` link to that number, so **every Support button in every
+build ≤ 2.17 still dead-ends at the banned WhatsApp account** and nothing
+server-side can move them — only adoption of a build that reads the key fixes
+it. From that build on, the next ban is one `/supportlink` command, not a
+release.
+
+Three properties that reading the code does not give you:
+
+- **Only `https` links on host `t.me` or `wa.me` are accepted — by BOTH the
+  client (`LegalLinks.validSupportBase`) and the bot (`supportBase` in
+  `_shared/tgHandlers.ts`). Keep them in step.** Anything else falls back to
+  the compiled default on the client, and is refused by the bot, so a stored
+  value the app rejects cannot silently send everyone to the default. Any
+  query/fragment on the stored link is dropped; the client appends its own
+  `?text=`.
+- **Unlike `launch_tab`, a fetched value is used IMMEDIATELY** — `supportURL`
+  reads `PrefKey.supportURL` at tap time, and `refreshAppStatus` runs on every
+  launch AND every foreground. It is persisted only so a launch whose status
+  fetch fails keeps the last destination; an absent or rejected server value
+  CLEARS it, returning the app to the compiled default.
+- ⚠️ **`support_whatsapp_open` keeps its name for series continuity** (the
+  Temp-tab card; `source: "home"` there means the TEMP tab — see "Home leads the
+  app"). From the build after 2.17 it and `delivery_info_support_tapped` carry
+  `dest` = the link's host (`t.me` / `wa.me`); read the event as "support
+  opened", never as "WhatsApp opened".
+
+⚠️ Build-verified only — the link has never been tapped on a device, so
+whether Telegram honours the `?text=` draft from this app is unverified.
 
 **Everything server-side stays deployed** — `support_threads`,
 `support-send`, the Telegram relay, `/support` — because 2.8 and older still

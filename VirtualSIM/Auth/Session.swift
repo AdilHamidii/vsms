@@ -22,8 +22,8 @@ final class Session {
     var isEmailUser: Bool { providers.contains("email") }
 
     /// The signed-in user's id, nil otherwise. For surfaces that want to
-    /// mention the account without owning the status enum (the WhatsApp
-    /// support prefill).
+    /// mention the account without owning the status enum (the StoreKit
+    /// `PurchaseOptions.forUser` calls, `NameSheet`'s write).
     var userId: String? {
         if case .signedIn(let id) = status { return id }
         return nil

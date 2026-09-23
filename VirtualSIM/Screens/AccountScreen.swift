@@ -690,13 +690,13 @@ struct AccountScreen: View {
                     // actually have, and it is asked at the exact moment they
                     // are about to cancel a working order.
                     //
-                    // WhatsApp since 2.9 (owner decision 2026-09-05). The
-                    // in-app chat relayed to Telegram and sat unanswered; a
-                    // `wa.me` link lands in the inbox the owner actually
-                    // reads. The prefilled text carries the build and a short
-                    // account id — see `LegalLinks.supportWhatsApp`.
-                    SettingRow(label: "Message us on WhatsApp", icon: "message.fill",
-                               onTap: { open(LegalLinks.supportWhatsApp(userId: session.userId)) })
+                    // The destination is server-controlled
+                    // (`app_config.support_url`, default @vSMSAPP on Telegram)
+                    // since WhatsApp banned the old support number on
+                    // 2026-09-23, so the label names no platform — see
+                    // `LegalLinks.supportURL`.
+                    SettingRow(label: "Chat with support", icon: "message.fill",
+                               onTap: { open(LegalLinks.supportURL) })
                     SettingRow(label: "Help center", icon: "questionmark.circle",
                                onTap: { open(LegalLinks.help) })
                     // A user-triggerable recovery for a purchase whose

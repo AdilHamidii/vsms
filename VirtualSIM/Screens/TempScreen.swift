@@ -148,7 +148,7 @@ struct TempScreen: View {
                 // 2026-09-05): the question people have is "is my code
                 // coming?", and it is asked here, in the first session, at
                 // the moment they are about to give up. The row opens the
-                // WhatsApp Business inbox the owner actually reads.
+                // server-controlled support chat (`LegalLinks.supportURL`).
                 supportRow
                     .padding(.horizontal, 16)
                     .padding(.top, 26)
@@ -1078,16 +1078,22 @@ struct TempScreen: View {
         }
     }
 
-    /// "Have any questions?" → WhatsApp. The last card on this screen, and
-    /// since the eSIM teaser was removed with its tab (2026-09-08) the only
+    /// "Have any questions?" → the support chat. The last card on this screen,
+    /// and since the eSIM teaser was removed with its tab (2026-09-08) the only
     /// one, so it reads as one more thing the app offers rather than an alert.
-    /// The prefilled message carries the build and a short account id
-    /// (`LegalLinks.supportWhatsApp`), so the owner never has to ask.
+    /// The destination is server-controlled (`LegalLinks.supportURL`).
+    ///
+    /// ⚠️ The event keeps its `support_whatsapp_open` name for series
+    /// continuity; `dest` (the link's host, `t.me` or `wa.me`) says where it
+    /// actually went.
     private var supportRow: some View {
         Button {
             RHaptic.select()
-            Analytics.shared.track("support_whatsapp_open", ["source": .string("home")])
-            UIApplication.shared.open(LegalLinks.supportWhatsApp(userId: session.userId))
+            let url = LegalLinks.supportURL
+            Analytics.shared.track("support_whatsapp_open",
+                                   ["source": .string("home"),
+                                    "dest": .string(url.host ?? "")])
+            UIApplication.shared.open(url)
         } label: {
             HStack(spacing: 12) {
                 Image(systemName: "message.fill")
@@ -1100,7 +1106,7 @@ struct TempScreen: View {
                         .font(RFont.display(15, weight: .semibold))
                         .tracking(-0.2)
                         .foregroundStyle(theme.text)
-                    Text("Contact support on WhatsApp")
+                    Text("Chat with our support team")
                         .font(RFont.text(12))
                         .foregroundStyle(theme.text2)
                 }

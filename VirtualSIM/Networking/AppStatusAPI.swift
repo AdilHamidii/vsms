@@ -28,10 +28,10 @@ struct Announcement: Codable, Hashable {
 /// Public, deliberately-published slice of `app_config`.
 ///
 /// The table also holds provider balances and the watchdog verdict, so it is
-/// RLS-restricted to an explicit key whitelist — EIGHT keys as of 2026-09-09
-/// (`maintenance`, `announcement`, `esim_paused`, `lines_paused`,
-/// `line_swap_credits`, `delivery_metrics_hidden`, `email_sub_daily_cap`,
-/// `launch_tab`). Never widen that policy to `using (true)` — the same table
+/// RLS-restricted to an explicit key whitelist — NINE keys since migration
+/// `20260923100000` (`maintenance`, `announcement`, `esim_paused`,
+/// `lines_paused`, `line_swap_credits`, `delivery_metrics_hidden`,
+/// `email_sub_daily_cap`, `launch_tab`, `support_url`). Never widen that policy to `using (true)` — the same table
 /// holds provider balances, the watchdog verdict and every sync cursor.
 /// Re-read the live policy rather than trusting this list:
 /// `select qual from pg_policies where tablename='app_config';`
@@ -70,6 +70,11 @@ struct AppStatus: Equatable {
     /// the reveal in `coldStart`, so a live read would reorder the tab bar a
     /// beat after it had already drawn.
     var launchTab: String?
+    /// Where Support opens, from `app_config.support_url` — the owner's
+    /// `/supportlink` switch. Raw and unvalidated here: `AppState` persists it
+    /// only if `LegalLinks.validSupportBase` accepts it, and
+    /// `LegalLinks.supportURL` falls back to its compiled default otherwise.
+    var supportURL: String?
 
     static let unknown = AppStatus(announcement: nil, esimPaused: false,
                                    lineSwapCredits: nil)
@@ -106,7 +111,7 @@ struct AppStatusAPI {
             .get, path: "rest/v1/app_config",
             query: [
                 URLQueryItem(name: "key",
-                             value: "in.(announcement,esim_paused,line_swap_credits,delivery_metrics_hidden,email_sub_daily_cap,launch_tab)"),
+                             value: "in.(announcement,esim_paused,line_swap_credits,delivery_metrics_hidden,email_sub_daily_cap,launch_tab,support_url)"),
                 URLQueryItem(name: "select", value: "key,value"),
             ]
         )
@@ -120,7 +125,8 @@ struct AppStatusAPI {
             // No `?? 25`. An absent cap drops the figure from the paywall copy
             // rather than promising a number the server has not confirmed.
             mailDailyCap: rows.first(where: { $0.key == "email_sub_daily_cap" })?.number,
-            launchTab: rows.first(where: { $0.key == "launch_tab" })?.text
+            launchTab: rows.first(where: { $0.key == "launch_tab" })?.text,
+            supportURL: rows.first(where: { $0.key == "support_url" })?.text
         )
     }
 }

@@ -85,6 +85,30 @@ const stamped = (html: string): HandlerReply => ({ html, stamped: true });
  *  poller produce confident "all is well" digests. */
 const readFail = (what: string) => `⚠️ Couldn't read ${what} right now.`;
 
+/** The client's compiled fallback for `/supportlink` — `LegalLinks.supportDefault`. */
+const SUPPORT_DEFAULT = "https://t.me/vSMSAPP";
+const SUPPORT_HOSTS = new Set(["t.me", "wa.me"]);
+
+/** A support link reduced to bare `https://<host>/<path>`, or null when the
+ *  app would refuse it. 🔴 MIRRORS `LegalLinks.validSupportBase` in the iOS
+ *  client — keep the two in step: https only, host `t.me` or `wa.me`, no
+ *  credentials or port, a non-empty path; query and fragment dropped because
+ *  the app appends its own `?text=` draft. Storing something the client then
+ *  rejects would silently send every user to the compiled default. */
+function supportBase(raw: string): string | null {
+  let u: URL;
+  try {
+    u = new URL(raw.trim());
+  } catch {
+    return null;
+  }
+  if (u.protocol !== "https:") return null;
+  if (!SUPPORT_HOSTS.has(u.hostname.toLowerCase())) return null;
+  if (u.username || u.password || u.port) return null;
+  if (u.pathname.replace(/\//g, "") === "") return null;
+  return `https://${u.hostname.toLowerCase()}${u.pathname}`;
+}
+
 // ── handlers ────────────────────────────────────────────────────────────────
 
 /** /revenue and /profit share a body: same snapshot, same subscription read,
@@ -610,6 +634,49 @@ export const handlers: Record<string, Handler> = {
     return error
       ? `⚠️ Couldn't change it: ${esc(error.message)}`
       : `📱 Home still opens first. Behind it: <b>${LABEL[want]}</b>.` + CAVEAT;
+  },
+
+  supportlink: async ({ sb, rawBody }) => {
+    // Where every Support button in the app opens — `app_config.support_url`,
+    // a jsonb STRING like `launch_tab`. Exists because WhatsApp banned the
+    // support number on 2026-09-23 and every shipped build had it hardcoded,
+    // so moving support needed a release; for every build after 2.17 it is
+    // this command.
+    //
+    // Reads the RAW body: the parser lowercases, and while t.me usernames are
+    // case-insensitive, what is stored should be what the owner typed.
+    const body = rawBody.trim();
+    if (body === "") {
+      const { data: p, error } = await sb
+        .from("app_config").select("value").eq("key", "support_url").maybeSingle();
+      if (error) {
+        console.error("support_url read failed:", error.message);
+        return readFail("the support link");
+      }
+      const cur = typeof p?.value === "string" ? p.value : null;
+      const shown = cur && supportBase(cur)
+        ? `<b>${esc(cur)}</b>`
+        : `the app's built-in default, <b>${esc(SUPPORT_DEFAULT)}</b>` +
+          (cur ? ` (the stored value <code>${esc(cur)}</code> is not a valid link)` : "");
+      return `💬 Support opens ${shown}.\n\n` +
+        `<code>/supportlink https://t.me/username</code>`;
+    }
+    const base = supportBase(body);
+    if (!base) {
+      return `⚠️ Not changed. <code>${esc(body)}</code> is not a support link the ` +
+        `app will open — it must be <b>https</b> with host <code>t.me</code> or ` +
+        `<code>wa.me</code> and a name or number after it, e.g. ` +
+        `<code>/supportlink https://t.me/vSMSAPP</code>.`;
+    }
+    const { error } = await sb.from("app_config")
+      .upsert({ key: "support_url", value: base }, { onConflict: "key" });
+    return error
+      ? `⚠️ Couldn't change it: ${esc(error.message)}`
+      : `💬 Support now opens <b>${esc(base)}</b>.\n\n` +
+        `<i>The app picks it up on its next status fetch (every launch and every ` +
+        `return to the foreground) and ` +
+        `uses it straight away, with "Hi vSMS Support" prefilled. Builds 2.17 and ` +
+        `older ignore it and still open the old WhatsApp link.</i>`;
   },
 
   help: () => Promise.resolve(helpText()),

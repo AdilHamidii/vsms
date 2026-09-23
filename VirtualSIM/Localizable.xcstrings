@@ -8185,6 +8185,86 @@
         }
       }
     },
+    "Chat with our support team": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mit unserem Support-Team chatten"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Chatea con nuestro equipo de soporte"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Discutez avec notre équipe de support"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Chatta con il nostro team di supporto"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "サポートチームとチャット"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Converse com nossa equipe de suporte"
+          }
+        }
+      }
+    },
+    "Chat with support": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mit dem Support chatten"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Chatea con soporte"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Discuter avec le support"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Chatta con il supporto"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "サポートとチャット"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Converse com o suporte"
+          }
+        }
+      }
+    },
     "Chat with us": {
       "extractionState": "stale",
       "localizations": {
@@ -9801,46 +9881,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Contatar suporte"
-          }
-        }
-      }
-    },
-    "Contact support on WhatsApp": {
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Support über WhatsApp kontaktieren"
-          }
-        },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Contacta con soporte por WhatsApp"
-          }
-        },
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Contactez le support sur WhatsApp"
-          }
-        },
-        "it": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Contatta il supporto su WhatsApp"
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "WhatsAppでサポートに連絡"
-          }
-        },
-        "pt-BR": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Fale com o suporte no WhatsApp"
           }
         }
       }
@@ -19296,46 +19336,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Mensagem"
-          }
-        }
-      }
-    },
-    "Message us on WhatsApp": {
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Schreib uns auf WhatsApp"
-          }
-        },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Escríbenos por WhatsApp"
-          }
-        },
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Écrivez-nous sur WhatsApp"
-          }
-        },
-        "it": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Scrivici su WhatsApp"
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "WhatsAppで問い合わせる"
-          }
-        },
-        "pt-BR": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Fale conosco no WhatsApp"
           }
         }
       }

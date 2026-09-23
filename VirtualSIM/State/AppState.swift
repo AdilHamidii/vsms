@@ -354,6 +354,13 @@ enum PrefKey {
     /// So: the fetch STORES it, and the next launch READS it. The cost is that
     /// a flip lands on the user's second cold launch, and `/tabs` says so.
     static let launchTab = "tabs.launchTab"
+
+    /// The owner's `/supportlink` destination (`app_config.support_url`), as
+    /// last seen from the server. Unlike `launchTab` it is read LIVE, at tap
+    /// time, by `LegalLinks.supportURL` — persisted only so a launch whose
+    /// status fetch fails still opens the last destination the owner set
+    /// rather than the compiled default.
+    static let supportURL = "support.url"
 }
 
 @Observable
@@ -528,6 +535,15 @@ final class AppState {
                 UserDefaults.standard.set(t, forKey: PrefKey.launchTab)
             } else {
                 UserDefaults.standard.removeObject(forKey: PrefKey.launchTab)
+            }
+            // The support destination IS used this session — `LegalLinks
+            // .supportURL` reads it at tap time. Same clearing rule: an absent
+            // or unacceptable value returns the app to its compiled default
+            // rather than pinning the last link the owner set.
+            if let u = s.supportURL, LegalLinks.validSupportBase(u) != nil {
+                UserDefaults.standard.set(u, forKey: PrefKey.supportURL)
+            } else {
+                UserDefaults.standard.removeObject(forKey: PrefKey.supportURL)
             }
         }
     }

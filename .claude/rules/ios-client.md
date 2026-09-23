@@ -65,10 +65,11 @@ VirtualSIM/
                                  SplashScreen (cold-launch cover — see below),
                                  EmailWaiting/EmailCode (temp email).
                                  SupportChatScreen (live chat) was DELETED
-                                 2026-09-05 — support is a `wa.me` link to
-                                 the owner's WhatsApp Business
-                                 (`LegalLinks.supportWhatsApp`), from the Temp
-                                 tab and Account
+                                 2026-09-05 — support is an external chat link,
+                                 `LegalLinks.supportURL` (server-controlled via
+                                 `app_config.support_url`, default @vSMSAPP on
+                                 Telegram), from the Temp tab, Account and
+                                 `DeliveryInfoSheet`
   Sheets/                        EmailDomainSheet (4 domains, live stock,
                                  Free/1cr), ServiceSheet (search + categories + per-route
                                  price; a service with no route in the SELECTED

@@ -52,7 +52,6 @@ import SwiftUI
 struct DeliveryInfoSheet: View {
     @Environment(\.theme) private var theme
     @Environment(AppState.self) private var state
-    @Environment(Session.self) private var session
     @Environment(\.dismiss) private var dismiss
 
     /// "auto" when the Temp tab opened it, "button" from ⓘ. Read the two apart
@@ -264,9 +263,11 @@ struct DeliveryInfoSheet: View {
             SectionHeader(label: "Stuck?")
             Button {
                 RHaptic.select()
+                let url = LegalLinks.supportURL
                 Analytics.shared.track("delivery_info_support_tapped",
-                                       ["source": .string(source)])
-                UIApplication.shared.open(LegalLinks.supportWhatsApp(userId: session.userId))
+                                       ["source": .string(source),
+                                        "dest": .string(url.host ?? "")])
+                UIApplication.shared.open(url)
             } label: {
                 Card {
                     HStack(spacing: 12) {
@@ -274,7 +275,7 @@ struct DeliveryInfoSheet: View {
                             .font(.system(size: 17, weight: .semibold))
                             .foregroundStyle(theme.accent2)
                         VStack(alignment: .leading, spacing: 3) {
-                            Text("Message us on WhatsApp")
+                            Text("Chat with support")
                                 .font(RFont.text(15, weight: .semibold))
                                 .foregroundStyle(theme.text)
                             Text("If a code won't come through, tell us which app and country and we'll help you land it.")

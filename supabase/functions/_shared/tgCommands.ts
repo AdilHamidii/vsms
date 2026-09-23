@@ -260,6 +260,18 @@ export const COMMANDS: CommandSpec[] = [
     group: "Controls",
   },
   {
+    name: "supportlink",
+    mutates: true,
+    args: "url",
+    summary: "Where the app's Support buttons open",
+    help: "<code>/supportlink https://t.me/username</code> or " +
+      "<code>/supportlink https://wa.me/15551234567</code> repoints every Support " +
+      "button · <code>/supportlink</code> alone reports it. https only, host " +
+      "<code>t.me</code> or <code>wa.me</code>. Picked up on the app's next status " +
+      "fetch; builds 2.17 and older always open the old WhatsApp link.",
+    group: "Controls",
+  },
+  {
     name: "help",
     summary: "Every command, grouped",
     group: "Other",
