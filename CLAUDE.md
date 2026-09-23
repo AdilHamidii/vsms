@@ -3224,17 +3224,20 @@ Each has been wrong within a day of being written at least once.
 
 **Verified 2026-09-09:**
 
-- **iOS**: **2.18 (build 69) is BUILT, UPLOADED, `VALID` and ATTACHED, but
-  NOT SUBMITTED** (2026-09-23; version `5e0ecfd7-…`). It carries the Telegram
-  support link (`app_config.support_url`) — the only fix for the dead WhatsApp
-  support button in every build ≤ 2.17. Release notes are written in all 13
-  locales and `asc-listing-check.py` reads 0 findings. Submitting hit HTTP 500
-  from Apple twice, leaving an EMPTY staged submission `d9485c31-…`
-  (`READY_FOR_REVIEW`, never submitted, no items); the owner then asked to look
-  for improvements before sending it. To submit: POST a `reviewSubmissionItems`
-  row linking `d9485c31-…` to version `5e0ecfd7-…`, then PATCH it
-  `submitted: true` (or re-run `asc-release.py submit 2.18 --apply` once the
-  staged one is used).
+- **iOS**: **2.18 (build 70) is `WAITING_FOR_REVIEW`** (submitted
+  2026-09-23 12:08Z; version `5e0ecfd7-…`, submission `d9485c31-…`). It
+  carries the Telegram support link (`app_config.support_url`) — the only fix
+  for the dead WhatsApp support button in every build ≤ 2.17 — plus the
+  pre-review audit fixes: the recovered line-purchase state, the phone-only
+  e-mail warning, the Delete Account warning, the 30-day mail limit
+  disclosure, the US texting failure copy, cross-category search, the mailto
+  fallback, VoiceOver labels, and five new events. Build 69 (support link
+  only) was uploaded and superseded before submission. ⚠️ `asc-release.py
+  submit` hit HTTP 500 at `POST /v1/reviewSubmissionItems` twice, leaving an
+  empty staged submission; it was finished by adding the item to THAT
+  submission and PATCHing `submitted: true` — do not create a second one.
+  Release notes (13 locales) mention Telegram support; `asc-listing-check.py`
+  0 findings. All of it build-verified only, never walked on a device.
 - **2.17 (build 68) is `READY_FOR_SALE`** (approved 2026-09-23; version
   `0a058c80-…`, submission `c99cea28-…`, submitted 2026-09-22 17:55Z). It carries the 1-credit e-mail fallback, the subscriber usage
   meter, the correct `monthly_cap_reached` message, and the Home cut-down of
