@@ -44,6 +44,7 @@ struct TempScreen: View {
     // whose one free address was already spent, and the tap was refused into a
     // paywall.
     @Environment(MailSubscriptionStore.self) private var mailStore
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var openServices: () -> Void = {}
     var openCountries: () -> Void = {}
@@ -457,17 +458,28 @@ struct TempScreen: View {
                     // The domain replaces the country: an e-mail address has no
                     // country, and showing one would imply a choice that does
                     // not exist.
-                    ReceiptRow(label: "Domain", onTap: openEmailDomains, leading: {
-                        Image(systemName: "envelope.fill")
-                            .font(.system(size: 15, weight: .semibold))
-                            .foregroundStyle(theme.accent2)
-                            .frame(width: 32, height: 32)
-                            .background(theme.inkSoft, in: .rect(cornerRadius: 9))
-                    }, trailing: {
-                        ReceiptValue(primary: state.emailDomain?.displayName
-                                         ?? String(localized: "Choose one"),
-                                     chev: true)
-                    })
+                    Group {
+                        if emailQuoteFailed {
+                            emailRetryRow
+                        } else {
+                            ReceiptRow(label: "Domain", onTap: openEmailDomains, leading: {
+                                Image(systemName: "envelope.fill")
+                                    .font(.system(size: 15, weight: .semibold))
+                                    .foregroundStyle(theme.accent2)
+                                    .frame(width: 32, height: 32)
+                                    .background(theme.inkSoft, in: .rect(cornerRadius: 9))
+                            }, trailing: {
+                                if emailQuotePending {
+                                    domainPlaceholder
+                                } else {
+                                    ReceiptValue(primary: state.emailDomain?.displayName
+                                                     ?? String(localized: "Choose one"),
+                                                 chev: true)
+                                }
+                            })
+                        }
+                    }
+                    .animation(emailQuoteAnimation, value: emailQuoteKey)
                 } else {
                     ReceiptRow(label: "Country", onTap: openCountries, leading: {
                         // Same rule as the service row: a flag is a claim.
@@ -498,6 +510,7 @@ struct TempScreen: View {
                 }, trailing: {
                     priceValue
                 })
+                .animation(emailQuoteAnimation, value: emailQuoteKey)
 
                 evidenceStrip
 
@@ -522,17 +535,15 @@ struct TempScreen: View {
                     // metrics row no longer carries a "No code → Refunded"
                     // cell: a refund POLICY formatted identically to a
                     // MEASUREMENT makes the row assert that the policy is one.
-                    Text(refundPromise)
-                        .font(RFont.text(13, weight: .medium))
-                        .tracking(-0.1)
-                        .foregroundStyle(theme.text2)
-                        .multilineTextAlignment(.center)
-                        .frame(maxWidth: .infinity)
-                        .fixedSize(horizontal: false, vertical: true)
+                    refundLine
                         .padding(.top, 12)
 
                     if state.emailMode { emailUsageMeter }
                 }
+                // Scoped to this block, the Domain row and the Cost row — the
+                // parts that change when a quote lands — and never to the
+                // ScrollView. nil in Number mode and under Reduce Motion.
+                .animation(emailQuoteAnimation, value: emailQuoteKey)
                 .padding(.horizontal, 16)
                 // Always 16 here, and `evidenceStrip` deliberately adds no
                 // bottom padding of its own — otherwise the gap above the CTA
@@ -556,7 +567,19 @@ struct TempScreen: View {
     /// the daily reset would not let the user order.
     @ViewBuilder
     private var emailUsageMeter: some View {
-        if let u = state.emailUsage, u.subscribed {
+        if emailQuotePending, mailStore.isEntitled {
+            // The meter's line, reserved while the quote is pending. The
+            // entitlement is known locally before the fetch, so a subscriber's
+            // card does not grow when the counts land. Redacted, so the zeros
+            // are never read as counts.
+            Text("\(0) of \(0) today · \(0) of \(0) in 30 days")
+                .font(RFont.text(12))
+                .foregroundStyle(theme.text3)
+                .redacted(reason: .placeholder)
+                .frame(maxWidth: .infinity)
+                .padding(.top, 6)
+                .accessibilityHidden(true)
+        } else if let u = state.emailUsage, u.subscribed {
             VStack(spacing: 3) {
                 Text("\(u.dailyUsed) of \(u.dailyCap) today · \(u.monthlyUsed) of \(u.monthlyCap) in 30 days")
                     .foregroundStyle(theme.text3)
@@ -585,6 +608,149 @@ struct TempScreen: View {
             .fixedSize(horizontal: false, vertical: true)
             .padding(.top, 6)
         }
+    }
+
+    // MARK: - The e-mail quote while it loads
+    //
+    // `email-domains` takes ~1.4 s at p50 (2.4 s p90, edge logs 2026-09-24),
+    // and every e-mail value on this card — domain, price, CTA, refund line,
+    // usage meter — comes from it. Before 2026-09-24 the card rendered real,
+    // tappable placeholder UI for that whole time ("Choose one", a 22pt "—", a
+    // live "Choose a domain" button, the 20-minute refund sentence even for a
+    // free domain) and then SNAPPED to the answer, with the card changing
+    // height twice. Now a pending quote holds the answered layout's geometry
+    // with redacted content, and the answer crossfades in.
+
+    /// A quote for the service on screen is on its way and there is nothing
+    /// for it to show yet: placeholders, never "Choose one".
+    private var emailQuotePending: Bool {
+        guard state.emailMode, state.emailSupported else { return false }
+        switch state.emailQuotePresentation {
+        case .pending: return true
+        case .showing(let settled): return !settled && state.emailDomain == nil
+        case .failed: return false
+        }
+    }
+
+    /// The fresh answer for this service is in. Nothing is sold before it:
+    /// a recent quote shown during the refresh keeps the CTA disabled.
+    private var emailQuoteSettled: Bool {
+        state.emailQuotePresentation == .showing(settled: true)
+    }
+
+    private var emailQuoteFailed: Bool {
+        state.emailMode && state.emailSupported && state.emailQuotePresentation == .failed
+    }
+
+    /// Everything a landing quote changes on this card. The crossfade keys on
+    /// it, so only a quote's arrival animates this way.
+    private struct EmailQuoteKey: Equatable {
+        let presentation: EmailQuotePresentation
+        let domain: EmailDomainOption?
+        let usage: EmailUsage?
+        let access: FreeEmailAccess
+    }
+
+    private var emailQuoteKey: EmailQuoteKey {
+        EmailQuoteKey(presentation: state.emailQuotePresentation,
+                      domain: state.emailDomain,
+                      usage: state.emailUsage,
+                      access: freeEmailAccess)
+    }
+
+    private var emailQuoteAnimation: Animation? {
+        state.emailMode ? RMotion.unlessReduced(RMotion.content, reduceMotion) : nil
+    }
+
+    private func retryEmailQuote() {
+        state.requestEmailQuote(using: EmailAPI(client: api))
+    }
+
+    /// The Domain row's value while the quote is pending: a fixed-width
+    /// redacted domain where the answer will go, with the row's chevron.
+    private var domainPlaceholder: some View {
+        HStack(spacing: 8) {
+            Text(verbatim: "mail.com")
+                .font(RFont.display(15, weight: .semibold))
+                .tracking(-0.2)
+                .foregroundStyle(theme.text)
+                .redacted(reason: .placeholder)
+                .shimmer()
+                // The shimmer band travels past its content; keep it on the
+                // placeholder.
+                .clipShape(.rect(cornerRadius: 4))
+            Image(systemName: RIcon.chev)
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundStyle(theme.text3)
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(Text("Checking availability"))
+    }
+
+    /// In place of the Domain row when the quote failed. Not a placeholder:
+    /// a card that looks unconfigured-but-working is what this replaced (the
+    /// failure used to leave "Choose one" up under an error banner).
+    private var emailRetryRow: some View {
+        ReceiptRow(label: "Domain", onTap: retryEmailQuote, leading: {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(theme.warn)
+                .frame(width: 32, height: 32)
+                .background(theme.warnSoft, in: .rect(cornerRadius: 9))
+        }, trailing: {
+            VStack(alignment: .trailing, spacing: 1) {
+                Text("Couldn't load domains")
+                    .font(RFont.display(15, weight: .semibold))
+                    .tracking(-0.2)
+                    .foregroundStyle(theme.text)
+                    .multilineTextAlignment(.trailing)
+                    .fixedSize(horizontal: false, vertical: true)
+                HStack(spacing: 4) {
+                    Image(systemName: "arrow.clockwise")
+                        .font(.system(size: 10, weight: .bold))
+                    Text("Try again")
+                        .font(RFont.text(12, weight: .semibold))
+                }
+                .foregroundStyle(theme.ink)
+            }
+        })
+    }
+
+    /// The refund promise. In e-mail mode it always holds TWO lines of height,
+    /// so the answered sentence (one or two lines, depending on the access
+    /// tier) never grows the card; while the quote is pending the slot holds
+    /// the likeliest sentence redacted, so no wrong copy is ever readable —
+    /// the old placeholder promised a refund on a FREE address.
+    @ViewBuilder
+    private var refundLine: some View {
+        if state.emailMode {
+            ZStack(alignment: .top) {
+                Text(verbatim: "X\nX")
+                    .font(RFont.text(13, weight: .medium))
+                    .hidden()
+                    .accessibilityHidden(true)
+                if emailQuotePending {
+                    refundText(String(localized: "Free addresses cost you nothing if no code arrives."))
+                        .redacted(reason: .placeholder)
+                        .accessibilityHidden(true)
+                } else if !emailQuoteFailed {
+                    refundText(refundPromise)
+                }
+            }
+            .frame(maxWidth: .infinity)
+        } else {
+            refundText(refundPromise)
+        }
+    }
+
+    private func refundText(_ text: String) -> some View {
+        Text(text)
+            .font(RFont.text(13, weight: .medium))
+            .tracking(-0.1)
+            .foregroundStyle(theme.text2)
+            .multilineTextAlignment(.center)
+            .frame(maxWidth: .infinity)
+            .fixedSize(horizontal: false, vertical: true)
     }
 
     /// The 8-minute window is the SMS order's. An e-mail activation runs
@@ -931,7 +1097,23 @@ struct TempScreen: View {
     /// the account actually still has its one free address.
     @ViewBuilder
     private var emailHeroPrice: some View {
-        if let dom = state.emailDomain {
+        if emailQuotePending {
+            // The answered label's font and size, redacted — not the 22pt
+            // "—" below, which changed size and colour when the quote landed.
+            Text("Free")
+                .font(RFont.display(19, weight: .bold))
+                .tracking(-0.4)
+                .foregroundStyle(theme.text)
+                .redacted(reason: .placeholder)
+                .shimmer()
+                .clipShape(.rect(cornerRadius: 4))
+                .accessibilityLabel(Text("Checking availability"))
+        } else if emailQuoteFailed {
+            // Unknown, and said so plainly; the retry row above explains.
+            Text("—")
+                .font(RFont.display(19, weight: .bold))
+                .foregroundStyle(theme.text3)
+        } else if let dom = state.emailDomain {
             if dom.isFree {
                 Text(freeEmailAccess.label)
                     .font(RFont.display(19, weight: .bold))
@@ -978,11 +1160,28 @@ struct TempScreen: View {
                           sub: String(localized: "No e-mail here"),
                           icon: RIcon.search,
                           action: { RHaptic.select(); openServices() })
+        } else if emailQuoteFailed {
+            // The retry row above is the action; this only keeps the card's
+            // shape and says nothing can be bought yet.
+            PrimaryButton(label: "Get email address", icon: RIcon.bolt,
+                          disabled: true, action: {})
+        } else if emailQuotePending {
+            // The answered CTA's geometry, disabled, with a spinner where the
+            // subtitle goes — never the live "Choose a domain" button, which
+            // this used to be for the whole fetch.
+            PrimaryButton(label: "Get email address", icon: RIcon.bolt,
+                          disabled: true, loading: true, action: {})
         } else if let dom = state.emailDomain, dom.inStock {
+            // A recent quote shown while its refresh runs renders the SAME
+            // button it will settle on, disabled with a spinner: stale stock
+            // is shown, never sold.
+            let refreshing = !emailQuoteSettled
             if dom.credits > 0 && state.balance < dom.credits {
                 PrimaryButton(label: "Buy credits",
                               sub: String(localized: "Need \(dom.credits - state.balance) more"),
                               icon: RIcon.plus,
+                              disabled: refreshing,
+                              loading: refreshing,
                               action: { RHaptic.select(); openCredits() })
             } else if dom.isFree && freeEmailAccess == .subscription {
                 // The paywall's ONLY entry point used to be a refused order:
@@ -997,6 +1196,8 @@ struct TempScreen: View {
                     // credit ladder.
                     sub: mailPlanSub,
                     icon: RIcon.inbox,
+                    disabled: refreshing,
+                    loading: refreshing,
                     action: {
                         RHaptic.select()
                         // Declare the product first, exactly as the refused-
@@ -1020,17 +1221,24 @@ struct TempScreen: View {
                     // then refused with `subscription_required`.
                     sub: dom.isFree ? freeEmailAccess.subtitle : "\(dom.credits) cr",
                     icon: RIcon.bolt,
-                    disabled: state.isBuyingEmail,
+                    disabled: state.isBuyingEmail || refreshing,
+                    loading: refreshing,
                     action: { RHaptic.select(); onStartEmail() }
                 )
             }
-        } else {
+        } else if emailQuoteSettled {
+            // The fresh answer holds nothing in stock to pre-select.
             // No `sub`. "Pick where it lives" wrapped to two mono lines on a
             // narrow phone and squeezed the label it was meant to support —
             // and the label already says what the tap does.
             PrimaryButton(label: "Choose a domain",
                           icon: "envelope.fill",
                           action: { RHaptic.select(); openEmailDomains() })
+        } else {
+            // A recent quote with nothing in stock, still refreshing: wait
+            // for the answer rather than send the user to a stale list.
+            PrimaryButton(label: "Get email address", icon: RIcon.bolt,
+                          disabled: true, loading: true, action: {})
         }
     }
 

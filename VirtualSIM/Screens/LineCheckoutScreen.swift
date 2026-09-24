@@ -65,7 +65,12 @@ struct LineCheckoutScreen: View {
                     // sentence therefore renders whenever a plan does.
                     if subs.hasMonthly || subs.isLoadingProduct {
                         priceSentence.padding(.top, RSpace.md).riseIn(appeared, index: 3)
-                        rentalLine.padding(.top, RSpace.sm).riseIn(appeared, index: 3)
+                        // Monthly only: "the month you paid for" is false of a
+                        // yearly purchase, which pays for twelve.
+                        if subs.selectedPlan == .monthly {
+                            rentalLine.padding(.top, RSpace.sm).riseIn(appeared, index: 3)
+                                .transition(.opacity)
+                        }
                     }
                     // What this number does NOT do, collapsed. It stays ON the
                     // purchase screen (3.1.2(a): the limitations are terms the

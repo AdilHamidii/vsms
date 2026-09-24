@@ -37,6 +37,29 @@ enum LineRoute: Hashable {
     case compose
 }
 
+/// Where the e-mail line's live domain quote (`email-domains`) stands. Each
+/// case names the service it is about, so a status for one service is never
+/// read as the answer for another.
+enum EmailQuoteStatus: Equatable {
+    /// Nothing asked, or the last answer was discarded as stale.
+    case idle
+    case loading(serviceId: String)
+    case loaded(serviceId: String)
+    case failed(serviceId: String)
+}
+
+/// What `TempScreen`'s e-mail hero may render for the service on screen.
+enum EmailQuotePresentation: Equatable {
+    /// Asked, and nothing for this service is showable yet: placeholders.
+    case pending
+    /// The last ask for this service failed: a retry row, no placeholder.
+    case failed
+    /// Data for this service is on screen. `settled` = it is the fresh
+    /// answer; until then it is a recent quote shown while the refresh runs,
+    /// and nothing may be sold from it.
+    case showing(settled: Bool)
+}
+
 enum FlowStage: String, Hashable, Identifiable {
     case checkout, waiting, otp, recovery, esimCheckout, esimDetail
     case emailWaiting, emailCode
@@ -622,9 +645,37 @@ final class AppState {
     /// Live domain options for the service being configured. Refetched whenever
     /// the service changes — stock is per (service, domain) and moves.
     var emailDomains: [EmailDomainOption] = []
-    var isLoadingEmailDomains = false
+    /// A quote for the service on screen is in flight. Derived from
+    /// `emailQuote` rather than stored: with overlapping requests a stored
+    /// flag was cleared by whichever request finished first.
+    var isLoadingEmailDomains: Bool {
+        emailQuote == .loading(serviceId: configuringService.id)
+    }
     /// The domain chosen in the picker; drives price and the CTA.
+    ///
+    /// It survives leaving e-mail mode (since 2026-09-24). Clearing it there
+    /// is what made every re-entry open on "Choose one" / a live "Choose a
+    /// domain" button; it is re-validated against the fresh list instead
+    /// (`applyEmailQuote`). `flow`'s didSet still clears it on a flow exit.
     var emailDomain: EmailDomainOption?
+    /// Where the live domain quote for the e-mail line stands, per service.
+    /// Set SYNCHRONOUSLY by `requestEmailQuote`, before any await, so the
+    /// first e-mail frame after the tap already knows a quote is pending.
+    var emailQuote: EmailQuoteStatus = .idle
+    /// Which service the data in `emailDomains` / `emailDomain` /
+    /// `emailUsage` answers, and when that answer arrived. Separate from
+    /// `emailQuote` because a request in flight for service B still holds
+    /// service A's list until B lands.
+    private(set) var emailQuoteServiceId: String?
+    private(set) var emailQuoteAnsweredAt: Date?
+    /// Bumped by every request that goes to the network. A response applies
+    /// only while its generation is still current, so the last request ASKED
+    /// wins, never the last to land.
+    @ObservationIgnored private var emailQuoteGeneration = 0
+    /// How old a quote may be and still be SHOWN while its refresh runs.
+    /// Showing is not selling: the CTA stays disabled until the fresh answer
+    /// lands (CLAUDE.md, "There is no catalog to sync … Never cache it").
+    static let emailQuoteDisplayWindow: TimeInterval = 60
     var activeEmailOrder: ServerEmailOrder?
     var isBuyingEmail = false
     /// What ONE address costs a user who is not covered, as the server last
@@ -1344,11 +1395,11 @@ final class AppState {
             }
             await loadEsimCatalog(using: EsimPlansAPI(client: api))
             await loadEsimOrders(using: EsimOrdersAPI(client: api))
-            // Behind the reveal like the eSIM loads: history is not needed to render
-            // a correct Home screen. It WAS missing entirely — loadEmailOrders
-            // existed and had no caller, so email activations never appeared in
-            // history at all.
-            await loadEmailOrders(using: EmailAPI(client: api))
+            // (`loadEmailOrders` ran here, last behind the parked eSIM loads,
+            // so `hasUsedFreeEmail` read false for seconds after the reveal
+            // and the e-mail price flipped "Free" → "Subscription". It is
+            // started unawaited from `loadAccount` now — see
+            // `prefetchEmail`.)
 
             // Also behind the reveal, and last: attribution is a MEASUREMENT, and
             // no measurement may lengthen the boot critical path. It is also the
@@ -1380,6 +1431,10 @@ final class AppState {
         await refreshWallet(using: WalletAPI(client: api));   progress()
         await refreshProfile(using: ProfileAPI(client: api)); progress()
         await loadOrders(using: OrdersAPI(client: api));      progress()
+        // Straight after the orders, because they decide which service the
+        // store opens on. UNAWAITED: it overlaps the line reads and the
+        // splash fade, and nothing on the reveal path waits for it.
+        prefetchEmail(api: api)
         // The rented line, BEFORE the reveal (owner decision 2026-09-06): one
         // RLS-scoped row, and without it the Number tab rendered the store for
         // a frame before a subscriber's own number replaced it. Swallows its
@@ -1977,6 +2032,17 @@ final class AppState {
         return max(0, c - balance)
     }
 
+    /// The service the store opens on — the rule `applyStartupSelection`
+    /// applies, stated once so the e-mail prefetch asks for the same one:
+    /// the most recent order's service, else `lastService` as it stands
+    /// (the seed/catalog value a first-run user's E-mail mode shows, since
+    /// `isSuggestion` is false there). Once the selection is seeded it is
+    /// simply `lastService`.
+    var startupService: Service {
+        guard !didSeedStartupSelection, let recent = orders.first else { return lastService }
+        return services.first { $0.id == recent.service.id } ?? recent.service
+    }
+
     /// Point the Home hero at something the user can actually act on, once per
     /// launch, after catalog + wallet + orders have loaded:
     ///  • returning user → mirror their most recent order as "Last used";
@@ -1987,7 +2053,7 @@ final class AppState {
         didSeedStartupSelection = true
 
         if let recent = orders.first {
-            lastService = services.first { $0.id == recent.service.id } ?? recent.service
+            lastService = startupService
             lastCountry = countries.first { $0.id == recent.country.id } ?? recent.country
             needsServiceChoice = false
             needsCountryChoice = false
@@ -2418,41 +2484,164 @@ final class AppState {
 
     var emailSupported: Bool { !(configuringService.domain ?? "").isEmpty }
 
-    /// Refresh the live domain list for whatever service is selected.
+    /// One ask of `email-domains`, remembered so its answer can be judged
+    /// against what is on screen when it lands.
+    private struct EmailQuoteRequest {
+        let generation: Int
+        let serviceId: String
+        /// The cold-start prefetch, which may land while the user is still in
+        /// Number mode — and should, so the quote is there when they switch.
+        let prefetch: Bool
+    }
+
+    /// Ask for a fresh domain quote for `service` (default: the service being
+    /// configured). Always refetched, never cached: stock is per (service,
+    /// domain) and genuinely moves — hotmail.com measured 1,028 for google.com
+    /// and 2 for discord.com in one sweep. A stale "available" is a promise we
+    /// break at the moment the user taps buy.
     ///
-    /// Always refetched, never cached: stock is per (service, domain) and
-    /// genuinely moves — hotmail.com measured 1,028 for google.com and 2 for
-    /// discord.com in one sweep. A stale "available" is a promise we break at
-    /// the moment the user taps buy.
-    @MainActor
-    func loadEmailDomains(using api: EmailAPI) async {
-        let svc = configuringService
+    /// SYNCHRONOUS up to the network call, on purpose: `emailQuote` is
+    /// `.loading` before this returns, so the first e-mail frame after a tap
+    /// renders the pending layout instead of a "Choose one" placeholder that
+    /// looks like a working screen. Callers never wrap it in their own `Task`.
+    ///
+    /// A request for a service that already has one in flight JOINS it (the
+    /// tap landing while the launch prefetch is still out, a second Try
+    /// again): that answer is the fresh one.
+    @discardableResult
+    func requestEmailQuote(using api: EmailAPI, for service: Service? = nil,
+                           prefetch: Bool = false) -> Task<Void, Never>? {
+        let svc = service ?? configuringService
         guard !(svc.domain ?? "").isEmpty else {
-            emailDomains = []; emailDomain = nil; emailUsage = nil; return
+            // No site to ask the provider about (11 of 265 services): answered
+            // here, and it supersedes anything still in flight.
+            emailQuoteGeneration += 1
+            emailDomains = []; emailDomain = nil; emailUsage = nil
+            emailQuoteServiceId = svc.id
+            emailQuoteAnsweredAt = Date()
+            emailQuote = .loaded(serviceId: svc.id)
+            return nil
         }
-        isLoadingEmailDomains = true
-        defer { isLoadingEmailDomains = false }
+        if emailQuote == .loading(serviceId: svc.id) { return nil }
+        emailQuoteGeneration += 1
+        let request = EmailQuoteRequest(generation: emailQuoteGeneration,
+                                        serviceId: svc.id, prefetch: prefetch)
+        emailQuote = .loading(serviceId: svc.id)
+        #if DEBUG
+        // Screenshot frames seed their quote (`applyEmailQuote`) or hold it
+        // pending (`emailLoading`). The real fetch cannot authenticate under
+        // `simctl`, and its failure used to wipe the seeded list.
+        if ScreenshotMode.isActive { return nil }
+        #endif
+        return Task { await self.fetchEmailQuote(request, using: api) }
+    }
+
+    /// The same request, awaited — for the domain sheet's Try again.
+    func loadEmailDomains(using api: EmailAPI) async {
+        await requestEmailQuote(using: api)?.value
+    }
+
+    private func fetchEmailQuote(_ request: EmailQuoteRequest, using api: EmailAPI) async {
         do {
-            let res = try await api.domains(serviceId: svc.id)
-            emailDomains = res.domains
-            // Server authority: absent means "no paid fallback offered".
-            emailCreditPrice = res.creditPrice
-            emailUsage = res.usage
-            // Keep the selection only if it is still buyable; otherwise fall to
-            // the first in-stock option so the CTA is never armed on a dead one.
-            if let cur = emailDomain,
-               let same = res.domains.first(where: { $0.domain == cur.domain }),
-               same.inStock {
-                emailDomain = same
-            } else {
-                emailDomain = res.domains.first(where: { $0.inStock })
-            }
+            let res = try await api.domains(serviceId: request.serviceId)
+            guard acceptsEmailQuote(request) else { return }
+            applyEmailQuote(res.domains, creditPrice: res.creditPrice,
+                            usage: res.usage, for: request.serviceId)
         } catch {
+            guard acceptsEmailQuote(request) else { return }
             emailDomains = []
             emailDomain = nil
             emailUsage = nil
+            emailQuoteServiceId = request.serviceId
+            emailQuoteAnsweredAt = nil
+            emailQuote = .failed(serviceId: request.serviceId)
+            // The prefetch fails SILENTLY: nobody asked to see e-mail yet, and
+            // a banner over the first screen for a request the user never made
+            // would read as the app being broken. Entering the mode asks again.
+            guard !request.prefetch else { return }
             if let apiErr = error as? APIError { showError(apiErr) } else { lastError = nil }
         }
+    }
+
+    /// The staleness guard. An answer applies only if it is still the latest
+    /// request ASKED (generation), the user is still in e-mail mode or it is
+    /// the prefetch, and it is about the service on screen. Without it,
+    /// toggling E-mail → Number → E-mail or changing service let whichever
+    /// response landed LAST win, including one for a service no longer shown.
+    private func acceptsEmailQuote(_ request: EmailQuoteRequest) -> Bool {
+        // Superseded: the later request owns `emailQuote`; touch nothing.
+        guard request.generation == emailQuoteGeneration else { return false }
+        // Before `applyStartupSelection` has run (a prefetch that beat the
+        // line reads), `lastService` is not yet the service the store opens
+        // on; `startupService` is.
+        let onScreen = didSeedStartupSelection ? configuringService.id : startupService.id
+        if (emailMode || request.prefetch) && onScreen == request.serviceId { return true }
+        // Still the latest ask, but about nothing on screen any more: forget
+        // it, so the next entry asks again rather than joining a dead request.
+        emailQuote = .idle
+        return false
+    }
+
+    /// Install an answered quote for `serviceId`. The ONE writer of a quote,
+    /// shared by the fetch and the screenshot fixtures.
+    ///
+    /// Re-validates the selection rather than resetting it: the domain the
+    /// user had (picked in the sheet, or kept from before they left e-mail
+    /// mode) survives if it is still in stock; otherwise the first in-stock
+    /// option, so the CTA is never armed on a dead one.
+    func applyEmailQuote(_ domains: [EmailDomainOption], creditPrice: Int?,
+                         usage: EmailUsage?, for serviceId: String) {
+        emailDomains = domains
+        // Server authority: absent means "no paid fallback offered".
+        emailCreditPrice = creditPrice
+        emailUsage = usage
+        if let cur = emailDomain,
+           let same = domains.first(where: { $0.domain == cur.domain }),
+           same.inStock {
+            emailDomain = same
+        } else {
+            emailDomain = domains.first(where: { $0.inStock })
+        }
+        emailQuoteServiceId = serviceId
+        emailQuoteAnsweredAt = Date()
+        emailQuote = .loaded(serviceId: serviceId)
+    }
+
+    /// What the e-mail hero may render for the service on screen. A quote
+    /// held for this service and younger than `emailQuoteDisplayWindow` is
+    /// SHOWN while its refresh runs; `settled` is false until the fresh
+    /// answer lands, and nothing is sold before then.
+    var emailQuotePresentation: EmailQuotePresentation {
+        let id = configuringService.id
+        switch emailQuote {
+        case .loaded(let s) where s == id:
+            return .showing(settled: true)
+        case .failed(let s) where s == id:
+            return .failed
+        case .loading(let s) where s == id:
+            if emailQuoteServiceId == id, let at = emailQuoteAnsweredAt,
+               Date().timeIntervalSince(at) < Self.emailQuoteDisplayWindow {
+                return .showing(settled: false)
+            }
+            return .pending
+        default:
+            // Idle, or a status about another service: nothing for this one.
+            return .pending
+        }
+    }
+
+    /// Cold start's e-mail prefetch, started from `loadAccount` and NEVER
+    /// awaited: the domain quote for the service the store opens on, and the
+    /// e-mail history `hasUsedFreeEmail` reads. Both are labels on a screen
+    /// the user has not opened yet, so neither may hold the reveal
+    /// (CLAUDE.md: label-only round-trips never hold the first screen). Both
+    /// run on the main actor and interleave at their awaits — the same
+    /// shape as ContentView's own Tasks, not the `async let` race the rules
+    /// warn about.
+    private func prefetchEmail(api: APIClient) {
+        let email = EmailAPI(client: api)
+        requestEmailQuote(using: email, for: startupService, prefetch: true)
+        Task { await self.loadEmailOrders(using: email) }
     }
 
     @MainActor

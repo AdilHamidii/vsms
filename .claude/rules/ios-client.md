@@ -236,6 +236,17 @@ expensive here specifically, because activation is a single-session event
 - **Readiness is NOT "the chain finished".** The two eSIM fetches are read only
   by the eSIM screens, so they run *after* `bootPhase = .ready`, behind the
   revealed UI, instead of holding a correct first screen behind them.
+- **The e-mail data is PREFETCHED, never awaited** (branch `design-overhaul`,
+  2026-09-24). `loadAccount` calls `prefetchEmail` right after `loadOrders`:
+  two unstructured main-actor `Task`s (the domain quote for `startupService`,
+  and `loadEmailOrders`) that overlap the line reads and the splash fade.
+  Nothing on the reveal path awaits them, so boot is not longer. They
+  interleave with the chain only at `await`s on the main actor — not the
+  `async let` race below — and the quote's staleness guard
+  (`AppState.acceptsEmailQuote`: a generation counter plus a service check) decides whether a late answer
+  still applies. The mail plan's StoreKit price warms on
+  `bootPhase == .ready` (`mailStore.load(reportingFailure: false)`). Detail
+  in CLAUDE.md, "The temp-e-mail product".
 - **`loadCatalog` returns `Bool`.** It used to be `-> Void` with a bare
   `catch { /* keep current state */ }`, so an offline launch silently kept the
   30-service seed stub and rendered a full Temp screen on which every service

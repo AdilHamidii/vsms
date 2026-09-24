@@ -39,6 +39,10 @@ struct PrimaryButton: View {
     var sub: String? = nil
     var icon: String? = nil
     var disabled: Bool = false
+    /// A small spinner where the subtitle goes, for a button whose terms are
+    /// still being fetched (the e-mail CTA while its quote loads). Pair it
+    /// with `disabled`; it does not block the tap by itself.
+    var loading: Bool = false
     let action: () -> Void
 
     var body: some View {
@@ -51,7 +55,15 @@ struct PrimaryButton: View {
                 Text(LocalizedStringKey(label))
                     .font(RFont.display(17, weight: .semibold))
                     .tracking(-0.3)
-                if let sub {
+                if loading {
+                    Rectangle()
+                        .fill(Color.white.opacity(disabled ? 0 : 0.2))
+                        .frame(width: 1, height: 18)
+                        .padding(.leading, 4)
+                    ProgressView()
+                        .controlSize(.small)
+                        .tint(disabled ? theme.text3 : theme.onInk)
+                } else if let sub {
                     Rectangle()
                         .fill(Color.white.opacity(disabled ? 0 : 0.2))
                         .frame(width: 1, height: 18)

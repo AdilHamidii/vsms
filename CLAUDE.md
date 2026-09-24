@@ -88,8 +88,10 @@ is gone and that root is the first screen of every cold launch; main's "do not
 re-add it to `TempScreen`" rule below describes main.
 Fixtures on this branch: `verify`, `verifyLine`, `activity`, `waitingClosed`,
 `account`, `splash`, `announcement` (the root with a synthetic warning
-banner); `home` is an alias of `verify` (`homeRouter` / `homeLine` below are
-main's names). My number: `lineIntro`, `lineStore`, `lineStoreError`,
+banner), `emailLoading` / `emailReady` (the E-mail segment with its domain
+quote pending / answered — same geometry; see "The temp-e-mail product",
+which also covers the cold-start e-mail prefetch); `home` is an alias of
+`verify` (`homeRouter` / `homeLine` below are main's names). My number: `lineIntro`, `lineStore`, `lineStoreError`,
 `linePaywall` / `linePaywallYearly` (a Canadian number, Toronto),
 `linePaywallUS`, `lineInbox`, `lineInboxEmpty`, `lineInboxMulti`,
 `lineCalls`, `lineNumber`, `lineBanner`, `lineSwapConfirm`, `lineDialer`,
@@ -940,8 +942,9 @@ picker and the order-state reconcile invariant live in
 
 **iOS minimum is 18.0.** Anything guarded by `if #available(iOS 26, *)` must
 keep a working 18.0 path. The project has **3** SwiftPM dependencies (TelnyxRTC
-4.1.2, WebRTC 139.0.0, Starscream 4.0.8) and **138** Swift sources — re-count
-with `find VirtualSIM -name '*.swift' | wc -l`; this said 116 for a month.
+4.1.2, WebRTC 139.0.0, Starscream 4.0.8) and **143** Swift sources on branch
+`design-overhaul` (counted 2026-09-24) — re-count with
+`find VirtualSIM -name '*.swift' | wc -l`; this said 116 for a month.
 
 ## Money and safety invariants
 
@@ -2090,6 +2093,50 @@ broke eSIM refunds. **`code is not null` is the authority**, never
 **There is no catalog to sync.** `site` is required and stock is per (site,
 domain) and genuinely runs dry — one sweep measured 1,028 available for
 google.com and **TWO** for discord.com. Never cache it.
+
+**Branch `design-overhaul` (2026-09-24): the domain quote is PREFETCHED and
+has an explicit pending state.** Owner report: the E-mail segment "glitched"
+— for the whole `email-domains` round-trip (p50 1.4 s, p90 2.4 s, edge logs)
+it rendered live placeholder UI ("Choose one", a 22pt "—", a live "Choose a
+domain" button, the 20-minute refund line even for a free domain) and then
+snapped to the answer, growing the card twice. What is true now:
+- **Prefetched at cold start, UNAWAITED.** `loadAccount` calls
+  `AppState.prefetchEmail` straight after `loadOrders`: the quote for
+  `startupService` (the rule `applyStartupSelection` applies — the last
+  order's service, else `lastService`, which is what a first-run user's
+  E-mail mode shows) plus `loadEmailOrders`, which no longer waits behind the
+  eSIM loads, so `hasUsedFreeEmail` is right before the first e-mail frame.
+  Nothing on the reveal path awaits either; a failed prefetch is SILENT (no
+  banner). `mailStore.load(reportingFailure: false)` warms the mail plan's
+  StoreKit price on `bootPhase == .ready`.
+- **`AppState.emailQuote`** (`idle` / `loading` / `loaded` / `failed`, each
+  naming its service) is set SYNCHRONOUSLY by `requestEmailQuote` — mode
+  entry, service change, Try again — before any await. While a quote is
+  pending with nothing to show, `TempScreen` keeps the answered layout's
+  geometry with redacted content (domain, cost, the refund line's fixed
+  two-line slot, a subscriber's meter line) and a disabled "Get email
+  address" with a spinner; the answer crossfades in (`RMotion.content`, nil
+  under Reduce Motion, scoped to the hero rows). A failure shows a
+  "Couldn't load domains · Try again" row in place of the Domain row.
+- **Showing is not selling.** A quote for the same service under 60 s old
+  (`emailQuoteDisplayWindow`) stays on screen on re-entry while it is
+  refetched, but every e-mail CTA stays disabled until the fresh answer
+  lands. A quote older than that is not shown at all — so the launch prefetch
+  only removes the wait for a user who opens E-mail within a minute.
+- **Staleness guard:** an answer applies only if it is still the latest
+  request asked (a generation counter), the user is in e-mail mode or it is
+  the prefetch, and its service is the one on screen. A second request for a
+  service already in flight joins it.
+- **The domain SELECTION now survives leaving e-mail mode**; `applyEmailQuote`
+  re-validates it against the fresh list. The exit branch still clears
+  `intent`, `emailCreditsNeeded`, `emailPaidOffer` and `showMailPaywall`.
+  `flow`'s didSet still clears `emailDomain` on every `flow = nil`, so
+  ContentView re-quotes when the selection is cleared under a settled,
+  in-stock quote in e-mail mode.
+- Fixtures: `emailLoading` (pending; screenshot mode skips the fetch) and
+  `emailReady` (= `emailStore`, seeded through `applyEmailQuote`, which the
+  fetch no longer wipes). ⚠️ Build- and screenshot-verified only; the
+  prefetch timing and the crossfade have never been walked on a device.
 
 **`expire_email_orders()` has two traps** that would make a copied
 `expire_esim_orders()` look like a working deploy while matching nothing:

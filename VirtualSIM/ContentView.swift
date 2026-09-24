@@ -355,7 +355,14 @@ struct ContentView: View {
                 // .email intent made creditsShortfall size the pack for a
                 // 1-credit address instead of the SMS route on screen (the
                 // third instance of the PurchaseIntent bug class).
-                state.emailDomain = nil
+                //
+                // The domain SELECTION is deliberately kept (2026-09-24).
+                // Clearing it here made every re-entry open on "Choose one" and
+                // a live "Choose a domain" button until the quote landed; it
+                // is re-validated against the fresh list on entry instead
+                // (`AppState.applyEmailQuote`). Nothing sizes or sells from it
+                // outside e-mail mode: `intent` below is what says the user is
+                // no longer buying an address.
                 state.intent = .sms
                 // The paid-address drafts go with it — a declared e-mail
                 // shortfall or a pending offer must not size or prompt
@@ -383,11 +390,37 @@ struct ContentView: View {
             // branch below — this all happens at flow == nil, so flow's didSet
             // never runs.
             state.intent = .email
-            Task { await state.loadEmailDomains(using: EmailAPI(client: api)) }
+            // Synchronous: the quote is marked pending in THIS update, so the
+            // first e-mail frame renders the pending layout. A quote for this
+            // service under a minute old (the launch prefetch, or the last
+            // visit) stays on screen while the refresh runs, and nothing is
+            // sold from it until the refresh lands.
+            state.requestEmailQuote(using: EmailAPI(client: api))
         }
         .onChange(of: state.lastService.id) { _, _ in
             guard state.emailMode else { return }
-            Task { await state.loadEmailDomains(using: EmailAPI(client: api)) }
+            state.requestEmailQuote(using: EmailAPI(client: api))
+        }
+        // `flow`'s didSet clears `emailDomain` with the rest of the draft on
+        // EVERY `flow = nil` — the code screen's Done, but also a nil → nil
+        // assignment such as `openLineThread`'s. In e-mail mode that left a
+        // settled quote with no selection, i.e. "Choose one" over a live
+        // "Choose a domain" button. Re-quote instead: stock moves, and an
+        // address may just have been bought. Keyed on the selection, not on
+        // `flow`, because `onChange` never sees a nil → nil assignment.
+        .onChange(of: state.emailDomain == nil) { _, cleared in
+            guard cleared, state.emailMode,
+                  state.emailQuote == .loaded(serviceId: state.configuringService.id),
+                  state.emailDomains.contains(where: \.inStock) else { return }
+            state.requestEmailQuote(using: EmailAPI(client: api))
+        }
+        // Warm the mail plan's StoreKit price behind the reveal, so "Get more
+        // addresses" carries it on first render; it had one caller, the mail
+        // paywall, so the subtitle popped in after the user opened that once.
+        // Unawaited, and quiet on failure: the paywall reloads and reports.
+        .onChange(of: state.bootPhase) { _, phase in
+            guard phase == .ready, !ScreenshotMode.isActive else { return }
+            Task { await mailStore.load(reportingFailure: false) }
         }
         // The Number tab owns the held number and the quote behind it, and both
         // are read at `flow == nil` — so `flow`'s didSet cannot clear them
@@ -1300,27 +1333,37 @@ extension ContentView {
             mailStore.screenshotPricing = .init()
             state.flow = .emailCode
 
-        case .emailStore:
+        case .emailStore, .emailReady, .emailLoading:
             // The e-mail line's own screen, not its code screen. The delivered
             // code frame is nearly identical to the SMS one — same big digits,
             // same Done button — so on its own it does not show that a second
             // product exists at all.
+            //
+            // `emailReady` (= `emailStore`) is the answered quote and
+            // `emailLoading` the SAME screen with the quote still pending: the
+            // two frames must differ in content only, never in geometry. In
+            // screenshot mode `requestEmailQuote` marks the quote pending and
+            // skips the fetch (it cannot authenticate under `simctl`, and its
+            // failure used to wipe this fixture's seeded list), so
+            // `emailLoading` simply never seeds.
             state.openCodeStore()
             state.emailMode = true
-            state.emailDomains = ScreenshotMode.sampleEmailDomains
-            state.emailDomain = ScreenshotMode.sampleEmailDomains.first
             Task { @MainActor in
                 await state.loadCatalog(using: CatalogAPI(client: api))
                 if let svc = state.services.first(where: { $0.id == "leboncoin" }) {
                     state.lastService = svc
                 }
+                guard shot != .emailLoading else { return }
+                // After the service change's own `onChange` has marked the
+                // quote pending, or that would re-mark this answer unsettled.
+                try? await Task.sleep(for: .milliseconds(400))
+                state.applyEmailQuote(ScreenshotMode.sampleEmailDomains, creditPrice: nil,
+                                      usage: nil, for: state.configuringService.id)
             }
 
         case .emailDomains:
-            // The domain sheet over the e-mail store. Entering e-mail mode
-            // fires `loadEmailDomains`, which `simctl` cannot authenticate and
-            // which clears the list when it fails — so the sample list is
-            // written AFTER that settles, and the sheet opens on it.
+            // The domain sheet over the e-mail store, on the same seeded
+            // quote as `emailReady`, written through the same path.
             state.openCodeStore()
             state.emailMode = true
             Task { @MainActor in
@@ -1328,10 +1371,9 @@ extension ContentView {
                 if let svc = state.services.first(where: { $0.id == "leboncoin" }) {
                     state.lastService = svc
                 }
-                try? await Task.sleep(for: .seconds(2))
-                state.lastError = nil
-                state.emailDomains = ScreenshotMode.sampleEmailDomains
-                state.emailDomain = ScreenshotMode.sampleEmailDomains.first
+                try? await Task.sleep(for: .milliseconds(400))
+                state.applyEmailQuote(ScreenshotMode.sampleEmailDomains, creditPrice: nil,
+                                      usage: nil, for: state.configuringService.id)
                 sheet = .emailDomain
             }
         }

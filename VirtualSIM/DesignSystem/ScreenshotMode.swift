@@ -52,7 +52,14 @@ enum ScreenshotMode {
         // button must be clear of ResumeBar too.
         case composeResume
         case email           // temp e-mail, code delivered
-        case emailStore      // temp e-mail, choosing a free domain
+        case emailStore      // temp e-mail, choosing a free domain (= `emailReady`)
+        // The e-mail store with its live domain quote ANSWERED (seeded through
+        // `AppState.applyEmailQuote`; the fetch is skipped in screenshot mode).
+        case emailReady
+        // The same screen with the quote still PENDING: redacted domain and
+        // cost, a disabled CTA with a spinner, the refund line's two-line
+        // slot. Must match `emailReady`'s geometry frame for frame.
+        case emailLoading
         // The domain picker sheet itself, over the e-mail store. Reachable
         // otherwise only by a tap, so without a frame its height and stock
         // labels could ship unseen.

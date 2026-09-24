@@ -218,7 +218,11 @@ final class MailSubscriptionStore {
         }
     }
 
-    func load() async {
+    /// `reportingFailure: false` is the launch warm-up (`ContentView`, behind
+    /// the reveal): a failure there must not leave "The App Store isn't
+    /// reachable" standing for a paywall that later loads fine, because
+    /// nothing else clears `lastError` on a successful load.
+    func load(reportingFailure: Bool = true) async {
         #if DEBUG
         // The harness supplies every figure this screen renders. A real
         // `Product.products(for:)` here would come back empty under `simctl`
@@ -241,7 +245,9 @@ final class MailSubscriptionStore {
         } catch {
             // A load failure is not "you are not subscribed" — leave the hint
             // untouched and let the paywall say the store is unreachable.
-            lastError = String(localized: "The App Store isn't reachable right now.")
+            if reportingFailure {
+                lastError = String(localized: "The App Store isn't reachable right now.")
+            }
         }
         await refreshEntitlement()
     }
