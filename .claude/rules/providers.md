@@ -831,18 +831,27 @@ migration that edits `pg_attribute` while the table grant still wins. **Read the
 value back; do not trust the 200.** Enabling international messaging is an
 account-level capability that needs Telnyx to grant it, not an API call.
 
-**The P2P lane is a DEAD END — settled 2026-08-05, do not re-probe.** The
-number advertises `eligible_messaging_products: ["A2P", "P2P"]`, which reads
-like an unregistered person-to-person route and is exactly what a
-rent-a-number product wants. It is not available:
-`PATCH /v2/phone_numbers/{id}/messaging` with `{"messaging_product":"P2P"}`
-returns **200 with no error and changes nothing** — `messaging_product` stays
-`A2P` on read-back. Same silent-no-op as the international flag above, in the
-same session, on the same endpoint. **"Eligible" describes the number, not your
-account.** US carriers closed the unregistered P2P lane to CPaaS traffic;
-10DLC registration is genuinely unavoidable for outbound, with any provider,
-because it is a carrier rule rather than a Telnyx one.
-(`/v2/10dlc/brand` currently reports `totalRecords: 0` — nothing registered.)
+**The P2P lane is CLOSED TO OUR ACCOUNT, on BOTH endpoints (re-tested
+2026-09-24).** P2P is Telnyx's conversational traffic type and needs no 10DLC
+([traffic-type doc](https://developers.telnyx.com/docs/messaging/messages/traffic-type)).
+US numbers advertise `eligible_messaging_products: ["A2P", "P2P"]`; Canadian
+longcodes list `["A2P"]` only.
+- 2026-08-05: `PATCH /v2/phone_numbers/{id}/messaging` `{"messaging_product":"P2P"}`
+  → 200, read-back `A2P`.
+- 2026-09-24: the DOCUMENTED resource,
+  `PATCH /v2/messaging_phone_numbers/{+E164}` → accepted on **all 28** live
+  US numbers, read-back `A2P` on every one, still `A2P` two minutes later.
+  So the August no-op was NOT a wrong endpoint.
+**"Eligible" describes the number, not the account.** The docs say eligible
+numbers "can be switched via API or portal" — for this account they cannot.
+Whether Telnyx will enable P2P for a consumer second-number product is an
+UNASKED question to Telnyx support, not a refusal. Until then 10DLC is the
+only documented route for US outbound, and it is a carrier rule, so no other
+provider escapes it. (`/v2/10dlc/brand` reports `totalRecords: 0`.)
+`ensureP2P` in `_shared/telnyx.ts` is wired (purchase, swap, and an hourly
+sweep in `sync-line-voice` gated OFF by `app_config.line_p2p_sweep_enabled`)
+so the day Telnyx enables it, flipping that key switches every live line.
+Test one number with `probe-telnyx-connection {"probe":"p2p","e164":…}`.
 
 **What that means for who this line is for.** It is a **US product**, and that
 is fine: measured over all 39 Production purchases, **USA is 53.8% of purchases

@@ -543,6 +543,14 @@ fail inside three minutes and turned auto-renew off six minutes later. Fixing
 it is an owner decision (register a 10DLC campaign — a consumer "second
 number" is a hard campaign to get approved — or stop promising texting to US
 numbers; leading with Canadian numbers does NOT help, see below).
+⚠️ **The only registration-free route is Telnyx's P2P traffic type, and it is
+closed to our account (2026-09-24).** US numbers list P2P as eligible; switching
+all 28 live ones was accepted and read back `A2P` on every one. It needs Telnyx
+to enable P2P on the account — an unasked support question, owner action. The
+code is ready: `ensureP2P` runs at purchase and swap, and the hourly sweep in
+`sync-line-voice` switches every live line once
+`app_config.line_p2p_sweep_enabled` is set `true` (absent = off). Detail in
+`.claude/rules/providers.md`.
 
 ✅ **DECIDED 2026-09-17: KEEP SELLING US/PR AND DISCLOSE IT.** US and PR were
 `force_block`ed for about an hour (migration `20260917090000`) and unblocked
@@ -3527,9 +3535,12 @@ Genuinely open items only. Resolved history is in `docs/decisions-archive.md`.
   *refutation* saying it was read in `CreditsSheet.swift`; that was true when
   written and is no longer, which is exactly why a "this is fine" note needs
   re-verifying like any other claim. It costs memory on every launch.
-- ⚠️ **`probe-telnyx-connection` has 17 modes, not the 16 documented** — the
-  undocumented one is `messaging_profile` (it reads back the messaging profile,
-  including `daily_spend_limit`, currently $20.00/day account-wide).
+- ⚠️ **`probe-telnyx-connection` has 18 modes, not the 16 documented** — the
+  two missing from the telephony rules are `messaging_profile` (reads back the
+  messaging profile, including `daily_spend_limit`, $20.00/day account-wide)
+  and `p2p` (WRITES: switches one number to P2P via `ensureP2P`, 2026-09-24).
+  Re-count with `grep -c 'body.probe ===' supabase/functions/probe-telnyx-connection/index.ts`
+  (17 on 2026-09-24) plus the default `connection_id=` read.
 - ⚠️ **`countries.observed_*` is NOT provider-scoped** and still counts orders
   from retired providers. Third element of the steering key, so the blast radius
   is small — but it will recur wherever that column is read.

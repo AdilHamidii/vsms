@@ -168,12 +168,23 @@ Deno.serve(async (req) => {
   // needs no 10DLC; the A2P default is refused `40010` by US carriers (see
   // `ensureP2P`). Steady state is one GET per line. Eligibility is Telnyx's
   // call and can arrive later, so a `not_eligible` is re-checked every run.
-  const { data: live } = await sb
-    .from("phone_lines")
-    .select("id, e164")
-    .in("status", ["active", "grace", "past_due"])
-    .not("e164", "is", null)
-    .limit(MAX_PATCH);
+  //
+  // 🔴 GATED on `app_config.line_p2p_sweep_enabled` = true, OFF by default.
+  // First run 2026-09-24: all 28 eligible US numbers came back `no_effect`
+  // (PATCH accepted, read-back A2P, still A2P two minutes later) — P2P needs
+  // enabling on the Telnyx ACCOUNT. Until then the sweep is ~3 calls per line
+  // per hour for nothing, and it drew a 429 on the key `send-line-message`
+  // shares. Flip the key once Telnyx confirms P2P is enabled.
+  const { data: p2pFlag } = await sb.from("app_config")
+    .select("value").eq("key", "line_p2p_sweep_enabled").maybeSingle();
+  const { data: live } = p2pFlag?.value === true
+    ? await sb
+      .from("phone_lines")
+      .select("id, e164")
+      .in("status", ["active", "grace", "past_due"])
+      .not("e164", "is", null)
+      .limit(MAX_PATCH)
+    : { data: [] as { id: string; e164: string | null }[] };
   const p2p = { switched: 0, already: 0, not_eligible: 0, no_effect: 0 };
   const p2pFaults: unknown[] = [];
   for (const line of live ?? []) {
