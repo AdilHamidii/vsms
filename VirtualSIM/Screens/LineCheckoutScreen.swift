@@ -187,9 +187,24 @@ struct LineCheckoutScreen: View {
                     .font(RFont.text(17, weight: .semibold))
                     .foregroundStyle(theme.text)
                     .lineLimit(1)
-                Color.clear.frame(width: 0, height: 0)
+                Color.clear.frame(width: 0)
             }
-            .padding(.horizontal, titleInset)
+            .padding(.horizontal, titleInset ?? 0)
+            // Hidden until Restore has been measured: before that the inset
+            // is unknown and a title that will not fit could flash for a
+            // frame.
+            .opacity(titleInset == nil ? 0 : 1)
+            .accessibilityHidden(true)
+            // ONE header element, independent of which candidate won, so
+            // VoiceOver names the screen even when the visible title is
+            // dropped. Its own view: an element hung on the dropped
+            // candidate (zero width) is pruned from the tree.
+            Color.clear
+                .contentShape(.rect)
+                .padding(.horizontal, titleInset ?? 0)
+                .accessibilityElement()
+                .accessibilityLabel(Text("Your own number"))
+                .accessibilityAddTraits(.isHeader)
             HStack {
                 Button { state.flow = nil } label: {
                     Image(systemName: RIcon.close)
@@ -223,14 +238,16 @@ struct LineCheckoutScreen: View {
         }
     }
 
-    /// The header Restore button's measured width (its label is localized).
-    @State private var restoreWidth: CGFloat = 0
+    /// The header Restore button's measured width (its label is localized);
+    /// nil until the first layout pass has measured it.
+    @State private var restoreWidth: CGFloat?
 
     /// What each side of the header title must keep clear: the wider of the
     /// ✕ (a 44pt frame pulled 4pt into the gutter) and Restore (plus the
-    /// gutter), and a small gap.
-    private var titleInset: CGFloat {
-        max(44 + RSpace.gutter - 4, restoreWidth + RSpace.gutter) + RSpace.sm
+    /// gutter), and a small gap. nil until Restore is measured.
+    private var titleInset: CGFloat? {
+        guard let restoreWidth else { return nil }
+        return max(44 + RSpace.gutter - 4, restoreWidth + RSpace.gutter) + RSpace.sm
     }
 
     private var restoreButton: some View {

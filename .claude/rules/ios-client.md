@@ -177,24 +177,29 @@ pushed thread) are in `.claude/rules/telephony.md` and CLAUDE.md.
    `openLineThread` sets `flow = nil`, which closes a Waiting cover raised
    first; `resumeInFlightOrder` raises the cover only while `flow == nil`, so
    it lands over a thread pushed first.
-7. **ResumeBar is HIDDEN while a thread or the compose page is on top of
-   `linePath`** (`resumeBarInset(yieldsToLineComposer:)`, the My number tab
-   only). The bar rides the tab root's `safeAreaInset` (`TabChrome`), and that
-   inset does not reach a page pushed on the stack: measured 2026-09-24, a
-   pushed `ThreadScreen` read `safeAreaInsets.bottom` 83 with the bar up and
-   without it, and the bar drew over the composer. Re-hosting the bar inside
-   the page was rejected because it would sit between the composer and the
-   keyboard while typing. The bar returns when the page pops. Proof frames:
-   `threadResume`, and `composeResume` (the To field focuses on appear, so
-   that frame also shows Send clear of the keyboard).
-   - **Two German-width rules found by the same capture.** The paywall header
-     title gets only the width the ✕ and Restore leave, and is DROPPED rather
-     than overlapping ("Wiederherstellen"). `CapsuleSegmentedControl` reports
-     an ideal width of widest label × count (`EqualWidthRow`), so the store's
-     `ViewThatFits` falls back to the country menu instead of truncating
-     "Vereinigte Staaten" in an equal third. The number card's area code never
-     truncates; the country name gives way first.
-8. **Screenshot fixtures:** `lineIntro` (loading, no price shim), `lineStore`,
+7. **ResumeBar is HIDDEN while ANY page is pushed on `linePath` and the My
+   number tab is showing** (`resumeBarInset(yieldsToPushedLinePages:)`, that
+   tab only; the hide and return are eased with `RMotion.content`, skipped
+   under Reduce Motion). The bar rides the tab root's `safeAreaInset`
+   (`TabChrome`), and that inset does not reach a page pushed on the stack:
+   measured 2026-09-24, a pushed `ThreadScreen` read `safeAreaInsets.bottom`
+   83 with the bar up and without it. So the bar drew over the thread's
+   composer, compose's Send button and the store's country / city pages'
+   bottom rows. Re-hosting the bar inside each page was rejected because it
+   would sit between the composer and the keyboard while typing. Every pushed
+   page is one pop from the bar. Proof frames: `threadResume`, and
+   `composeResume` (the To field focuses on appear, so that frame also shows
+   Send clear of the keyboard).
+8. **German-width rules found by the same capture.** The paywall header title
+   gets only the width the ✕ and Restore leave, and is DROPPED rather than
+   overlapping ("Wiederherstellen"); it stays hidden until Restore has been
+   measured, and ONE accessibility header element carries the screen name
+   either way. `CapsuleSegmentedControl` reports an ideal width of widest
+   label × count (`EqualWidthRow`), so the store's `ViewThatFits` falls back
+   to the country menu instead of truncating "Vereinigte Staaten" in an equal
+   third. The number card's area code never truncates; the country name gives
+   way first.
+9. **Screenshot fixtures:** `lineIntro` (loading, no price shim), `lineStore`,
    `lineStoreError`, `linePaywall` / `linePaywallYearly` (a Canadian number:
    `lineCountry = "CA"`, scrolled to the plans), `linePaywallUS` (the top of
    the paywall with the US/PR note), `lineInbox`, `lineInboxEmpty`,

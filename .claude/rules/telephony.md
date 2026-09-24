@@ -39,16 +39,8 @@ Number tab's Calls segment), **call history**, the **allowance gate**
 (`begin-line-call`), **session reporting** (`report-line-call`) and **CDR
 settlement** (`sync-telnyx-cdr`, on cron).
 
-On `design-overhaul` the dialer is reached from the Calls segment's keypad
-button in the header (hidden without a voice client); there is no FAB. The
-thread and compose are PUSHED on the My number `NavigationStack`, not covers,
-so the ROOT `InCallOverlay` (scoped to `flow == nil`) covers them; the cover
-copy still covers the dialer, paywall and provisioning. Verified with
-`-screenshot lineInCall` (a DEBUG-only `CallController.screenshotLiveCall(peer:)`
-fakes the answered call). Because the keyboard lives in its own window above
-that overlay, `ThreadScreen` and `ComposeScreen` drop their text-field focus
-when a call goes live (code-verified only: no fixture combines a focused
-field with a live call).
+On `design-overhaul`: how the dialer is reached and why the call screen covers
+a pushed thread is under trap 5 below.
 
 ✅ **SUPERSEDED 2026-09-07: OUTBOUND CALLING IS PROVEN AT VOLUME.** Read
 from `line_calls` that morning: **131 completed outbound calls settled from
@@ -594,8 +586,12 @@ Number segment; both are `LineSwitchNumberButton` and fire
 `line_swap_open{from: home | number_segment}`. The gear and
 `LineSettingsScreen` are gone (the Number segment holds usage, Switch
 number…, Rent another number and the 911 card). The line reload after a swap
-moved from `LineSwapSheet.perform` to the button's sheet `onDismiss`, so the
-card's number rolls visibly; `onSwapped` fires at the moment of success. The
+moved out of `LineSwapSheet.perform`: the sheet's callback (the button's
+`swapLanded`) fires at the moment of success, and the button's `onSwapped`
+plus the line reload fire on the sheet's `onDismiss` — so the card's number
+rolls visibly once the sheet has gone — or IMMEDIATELY if the sheet had
+already closed when the swap landed (a swipe-dismiss mid-request, or a live
+call closing it). The
 dial/compose FAB is gone too: compose and keypad are the header's trailing
 button (the keypad stays HIDDEN without a voice client). The Calls footer
 shows no reset date — it is the renewal date.

@@ -3591,13 +3591,38 @@ Genuinely open items only. Resolved history is in `docs/decisions-archive.md`.
   is no maximum call duration, by design. At $5/day the ceiling is about
   $150 per line per month. Read every profile's `daily_spend_limit` before
   relying on it.
-- ⚠️ **A metered NANP minute costs about $0.029, not the $0.007 (US) / $0.011
-  (CA) headline** (measured 2026-09-24 from `line_calls.provider_cost_usd`,
-  90 days). Telnyx bills each call in 60-second blocks while our meter counts
-  talk seconds, and the median outbound call lasts 2 s. All calling (in and
-  out) cost about $3 in the 30 days to 2026-09-24; number rent is far larger.
-  **Nobody has used more than 60 metered outbound minutes in a month**
-  (maximum 59.9, which includes 120 s backstop reservations). Re-derive:
+- ⚠️ **An outbound NANP minute of CDR TALK time costs about $0.028–0.029,
+  not the $0.007 (US) / $0.011 (CA) per-block headline** (measured 2026-09-24
+  from `line_calls.provider_cost_usd`: $0.0281 over 90 days, 251 CDR-settled
+  calls, 88.9 talk-minutes; $0.0287 over 30 days). Telnyx bills each call in
+  60-second blocks, and the median outbound call lasts 2 s. That is per
+  TALK-minute from detail records; the allowance's METERED minutes also
+  include the 120 s reservations billed by the no-CDR backstop, so they are
+  not the same unit. All calling cost about $3.25 in the 30 days to
+  2026-09-24 ($2.42 outbound NANP, $0.72 inbound, $0.11 international);
+  number rent is far larger. Re-derive both (queries run 2026-09-24):
+  ```sql
+  -- $ per CDR talk-minute, outbound NANP, 90 days (backstop rows excluded)
+  select count(*) calls, round(sum(billed_seconds)/60.0, 1) talk_min,
+         round(sum(provider_cost_usd)::numeric, 3) cost_usd,
+         round((sum(provider_cost_usd)/nullif(sum(billed_seconds)/60.0,0))::numeric, 4) usd_per_talk_min,
+         percentile_cont(0.5) within group (order by billed_seconds) p50_seconds
+  from line_calls
+  where direction = 'outbound' and credits_reserved = 0
+    and provider_cost_usd is not null
+    and coalesce(hangup_cause, '') not like 'no_cdr%'
+    and created_at > now() - interval '90 days';
+  -- 30-day calling cost and CDR talk-minutes, by direction, NANP vs international
+  select direction, credits_reserved > 0 as intl,
+         round(sum(provider_cost_usd)::numeric, 3) cost_usd,
+         round(sum(billed_seconds) filter
+               (where coalesce(hangup_cause,'') not like 'no_cdr%')/60.0, 1) cdr_talk_min
+  from line_calls where created_at > now() - interval '30 days'
+  group by 1, 2 order by 1, 2;
+  ```
+  **As of 2026-09-24 nobody had exceeded 60 metered minutes in a month; the
+  top line was at 59.9 about 6 days into its period** (that figure includes
+  backstop reservations). Re-derive the metered minutes per (user, month):
   ```sql
   select date_trunc('month', created_at)::date month, user_id,
          round(sum(billed_seconds)/60.0, 1) metered_min,
@@ -3683,12 +3708,14 @@ Genuinely open items only. Resolved history is in `docs/decisions-archive.md`.
 
 - ⚠️ **Guam, the Northern Mariana Islands and American Samoa (+1671, +1670,
   +1684) are labelled "Included in your minutes" but likely cannot be
-  dialled** (found 2026-09-24; the carrier refusal is INFERRED, never
-  tested). They have no override row in `voice_rates`, so `voice_rate_for()`
-  resolves them to the covered `'1'` "United States & Canada" row and the
-  dialer says they are included. The Telnyx outbound voice profiles whitelist
-  only US, CA, PR and VI (`voice_dial_destinations()`), so the call most
-  likely fails at the carrier after we reserve 120 s. The fix is three
+  dialled** (found 2026-09-24). CHECKED: they have no override row in
+  `voice_rates`, and `voice_rate_for()` resolves them to the covered `'1'`
+  "United States & Canada" row, so the dialer says they are included.
+  INFERRED, never tested: the Telnyx refusal. The outbound voice profiles
+  whitelist US, CA, PR and VI as their only +1 (NANP) destinations — 53 ISO
+  codes in all (`voice_dial_destinations()`), the rest being the
+  credits-priced international list — so the call most likely fails at the
+  carrier after we reserve 120 s. The fix is three
   `voice_rates` override rows with `enabled = false` (a migration). Not done.
 
 - ⚠️ **The Real SIM tier does not exist on ANY 5sim-owned route** — 0 of 8,065

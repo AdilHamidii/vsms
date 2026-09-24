@@ -46,7 +46,7 @@ enum ScreenshotMode {
         case linePushThread  // a line-SMS push tapped over an open cover: tab .line, thread pushed
         // `thread` with a temp-SMS order in flight. ResumeBar must be HIDDEN
         // here: it drew over the composer until 2026-09-24 (see
-        // `resumeBarInset(yieldsToLineComposer:)`).
+        // `resumeBarInset(yieldsToPushedLinePages:)`).
         case threadResume
         // The compose page, pushed, with the same order in flight: the Send
         // button must be clear of ResumeBar too.
