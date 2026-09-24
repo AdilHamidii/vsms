@@ -25,7 +25,20 @@ VirtualSIM/
                                  the Verify tab's NavigationStack ROOT
                                  (`AppState.openCodeStore` selects tab +
                                  mode, pushes nothing); `ResumeBar` rides a
-                                 bottom `safeAreaInset` on every tab
+                                 bottom `safeAreaInset` on every tab;
+                                 the My number tab is `LineScreen`, a
+                                 `NavigationStack(path: $state.linePath)`
+                                 whose destinations are `LineRoute`
+                                 (`countries`, `cities`, `thread(id)`,
+                                 `compose`), registered by
+                                 `.lineRouteDestinations()`;
+                                 `AppState.openLineThread(_:)` is how a
+                                 line-SMS push opens a conversation (closes
+                                 any cover, selects `.line`, pushes). Covers
+                                 left on the line: `lineCheckout`,
+                                 `lineProvisioning`, `dialer`,
+                                 `lineStoreMore` (→ `LineStoreCover`, its own
+                                 stack)
                                  + fullScreenCover for Checkout/Waiting/OTP
                                  + the parked eSIM flow; EnvBundle
                                  ViewModifier re-injects every @Observable env
@@ -53,6 +66,15 @@ VirtualSIM/
                                  `VerifyTile` it replaced were deleted
                                  2026-09-24. `HomeScreen` is main's Home tab
                                  — see CLAUDE.md "Home leads the app"),
+                                 `LineStoreScreen` (inline store:
+                                 `CapsuleSegmentedControl` country choice,
+                                 ✓/✗ `LineLedger`, three inline numbers
+                                 searched on appear behind a session guard,
+                                 StoreKit price row) + `LineStorePages`
+                                 (`LineStoreSearch`, `LineCountriesPage`,
+                                 `LineCitiesPage`, `LineStoreCover`);
+                                 `LineNumberSegment` (replaced
+                                 `LineSettingsScreen`, deleted 2026-09-24),
                                  Checkout, Waiting (+ WaitingAnimations),
                                  OTP (⚠️ fires NO review prompt — see "The
                                  review prompt" below; it did until 2026-08-19
@@ -98,12 +120,19 @@ VirtualSIM/
                                  the splash also the loading indicator);
                                  CodeFlag (flag from a bare ISO2 — the eSIM
                                  catalog has no `Country`); DataRing/DataBar
-                                 (usage gauges, show REMAINING not used)
+                                 (usage gauges, show REMAINING not used);
+                                 `LineNumberCard` (+ `LiveDot`), `LineLedger`,
+                                 `CapsuleSegmentedControl`; `LineOfferList` in
+                                 `LinePickerRows`; `PeerAvatar(neutral:)`
   Push/, IAP/, Onboarding/       Self-explanatory
   DesignSystem/                  Theme, Typography, Icons + **Motion.swift**
                                  (`RMotion`: one animation vocabulary named by
                                  what moves — select/panel/content/value/camera
-                                 + `stagger`. Use these, not inline curves)
+                                 + `stagger`. Use these, not inline curves;
+                                 `RMotion.unlessReduced(_:_:)` — every My
+                                 number animation goes through it; `riseIn`
+                                 now honours Reduce Motion app-wide (no
+                                 offset, no animation))
                                  + **Glass.swift** (`.glassPanel(shape:)` —
                                  Liquid Glass on iOS 26, frosted material below.
                                  See the note below: the availability guard
@@ -112,6 +141,62 @@ VirtualSIM/
   Products.storekit              Local IAP test config (enable via scheme)
   VirtualSIM.entitlements        Sign in with Apple + aps-environment
 ```
+
+## The My number tab (branch `design-overhaul`, 2026-09-24)
+
+What the code does not tell you. The tab's layout is in the source-layout
+block above; its line-product rules (US/PR list, Switch, calling over a
+pushed thread) are in `.claude/rules/telephony.md` and CLAUDE.md.
+
+1. **`openThreadId` is set by `ThreadScreen` on appear and before every send,
+   and is no longer cleared by `flow.didSet`.** `sendLineMessage` takes the
+   sending line from the open thread, and a dialer cover raised over a thread
+   would otherwise wipe it, so the reply would go out from the wrong line.
+   `ComposeScreen` clears it on appear for the opposite reason: a new message
+   must not inherit the last thread's line.
+2. **The inline store's skeleton shows while `lineOffers` is empty AND
+   `lineUnavailableReason` is nil** ("not answered yet"), so the error state
+   never flashes before the first search lands.
+3. **`line_numbers_shown` changed meaning** (see CLAUDE.md, "Behavioural
+   analytics"): it now fires on every inline search with `source:
+   "store_inline"`, so it is not comparable with `main`'s "opened the picker".
+4. **The number on `LineNumberCard` is 24 pt beside the Switch capsule and
+   28 pt without it** (no Switch offered, or an accessibility text size, where
+   the capsule wraps to its own row). This is a deliberate deviation from spec
+   §4.3, which said 28: the capsule has to share the row. The size is set
+   explicitly (`numberSize`); `minimumScaleFactor(0.7)` is only a safety net.
+5. **A line-SMS push loads the line BEFORE it pushes the thread**
+   (`ContentView`'s `pendingLineThreadId` handler: `loadLine`, then
+   `loadLineThreads`, then `openLineThread`). `LineScreen` empties `linePath`
+   whenever the line's liveness changes, so a `my_line` read landing after the
+   push would pop the thread just opened. ⚠️ The guard is incomplete: if that
+   `loadLine` fails, a later read can still flip liveness and pop the thread.
+   A thread id that did not load is never pushed; the tab opens instead.
+6. **A cold launch from a line push races `resumeInFlightOrder`'s Waiting
+   cover, and whichever finishes last wins** (read from code, not observed).
+   `openLineThread` sets `flow = nil`, which closes a Waiting cover raised
+   first; `resumeInFlightOrder` raises the cover only while `flow == nil`, so
+   it lands over a thread pushed first.
+7. **ResumeBar covers a pushed thread's composer** (open; observed in
+   `-screenshot threadResume`, cause inferred). The bar rides the tab root's
+   `safeAreaInset` (`TabChrome`), and that inset does not lift pages pushed on
+   the My number stack. See CLAUDE.md Known-open.
+8. **Screenshot fixtures:** `lineIntro` (loading, no price shim), `lineStore`,
+   `lineStoreError`, `linePaywall` / `linePaywallYearly` (a Canadian number:
+   `lineCountry = "CA"`, scrolled to the plans), `linePaywallUS` (the top of
+   the paywall with the US/PR note), `lineInbox`, `lineInboxEmpty`,
+   `lineInboxMulti`, `lineCalls`, `lineNumber`, `lineBanner`,
+   `lineSwapConfirm`, `lineDialer`, `thread`, `threadResume` (a thread with a
+   temp-SMS order in flight), `lineInCall` (a DEBUG-only
+   `CallController.screenshotLiveCall(peer:)` fakes the answered call),
+   `linePushThread` (sets `pendingLineThreadId` from `ContentView`'s `.task`,
+   so it exercises the handler's CHANGE path, not the `initial: true`
+   cold-launch path), and `lineSwitchGlow` (a DEBUG-only hook in
+   `LineNumberCard` lands a Switch 4 s in through the real `swappedTo` path, so
+   a still at about 5–6 s catches the card's glow mid-fade; the card keeps the
+   old number because the fixture's line does not change). In screenshot mode
+   DEBUG builds echo every analytics event to NSLog as `[analytics] <name>
+   <props>`; capture it with `simctl launch --stderr=<file>`.
 
 ## Cold launch — the splash, and why readiness is not a timer
 

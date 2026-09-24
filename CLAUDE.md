@@ -89,7 +89,14 @@ re-add it to `TempScreen`" rule below describes main.
 Fixtures on this branch: `verify`, `verifyLine`, `activity`, `waitingClosed`,
 `account`, `splash`, `announcement` (the root with a synthetic warning
 banner); `home` is an alias of `verify` (`homeRouter` / `homeLine` below are
-main's names).
+main's names). My number: `lineIntro`, `lineStore`, `lineStoreError`,
+`linePaywall` / `linePaywallYearly` (a Canadian number, Toronto),
+`linePaywallUS`, `lineInbox`, `lineInboxEmpty`, `lineInboxMulti`,
+`lineCalls`, `lineNumber`, `lineBanner`, `lineSwapConfirm`, `lineDialer`,
+`thread`, `threadResume` (a thread with ResumeBar showing), `lineInCall`,
+`linePushThread`, and `lineSwitchGlow` (its Switch lands through a
+DEBUG-only hook, so the frame catches the card's glow mid-fade). Detail in
+`.claude/rules/ios-client.md`, "The My number tab".
 The text below describes `main`.
 
 `AppTab` order is `home · line · temp · account` and the app opens on
@@ -563,7 +570,8 @@ went to a Canadian number. All-time, **CA→US is 0 of 8, every failure
 `40010`** (2 lines, 2026-08-17 → 09-24), while CA→CA is 7 of 10. So
 `LineStoreScreen`'s green "Texts you send from a Canadian number arrive
 normally" is FALSE for the commonest case — texting a US number — and a
-Canadian number is NOT a workaround. Re-derive by grouping `line_messages`
+Canadian number is NOT a workaround. (Fixed on branch `design-overhaul`,
+2026-09-24: no screen claims Canadian sending works.) Re-derive by grouping `line_messages`
 outbound on sender AND recipient area code, never sender alone.
 Nothing in this repo registers a 10DLC brand or campaign. The 2026-09-08
 "proven" row was ONE successful send — the same best-case generalisation the
@@ -594,6 +602,17 @@ picker is where the choice is still free) and `LineCheckoutScreen`'s
 `capabilityNote`, which is **uncollapsed** on a US/PR purchase. The country
 list is ONE constant, `LineStoreScreen.unreliableSendingCountries` = {US, PR},
 so the two screens cannot disagree about who is warned.
+**On branch `design-overhaul` (2026-09-24):** `LineStoreScreen.sendingNotice`
+and its green Canada line are GONE. The store shows a ✓/✗ ledger
+(`Components/LineLedger.swift`) whose ✗ row, 'Texts you send to US numbers
+usually don't arrive.', renders for EVERY country, because the recipient's
+network enforces 10DLC (CA→US 0 of 8). Checkout's `capabilityNote` stays
+UNCOLLAPSED on US/PR with its Canada sentence removed; the thread's
+failed-send copy likewise; the swap sheet's confirm page gains the ✗ row when
+the target country is US/PR. `LineStoreScreen.unreliableSendingCountries` is
+still the one list (checkout, thread, swap). The force_block rule below covers
+the ledger ✗ row and the checkout note on this branch. The rest of this
+paragraph describes `main`.
 🔴 **That warning is the only thing standing between a US buyer and a refund
 request. If it is ever removed, `force_block` US and PR in the same commit** —
 the migration carries the exact SQL. Conversely, if the US ever gets a 10DLC
@@ -2838,6 +2857,14 @@ accounting: money stays in the money tables. The client fires-and-forgets, and
 the server never surfaces analytics failures to the app — measuring the product
 must never degrade it.
 
+**Line events on branch `design-overhaul` (2026-09-24):**
+`line_choose_number_tapped` is RETIRED (the store lists three numbers inline;
+no button). `line_numbers_shown` now fires whenever the store renders a fresh
+inline search — every visit that searches — with `source: "store_inline"`; on
+`main` it meant 'opened the picker', so the two series are NOT comparable.
+`line_swap_open` gains `from` ∈ `home` · `number_segment`. Every other line
+event keeps its name and props.
+
 🔴 **THE APP PRIVACY LABEL IS WEB-UI ONLY and cannot be verified from here.**
 Eight candidate ASC API paths all return 404. The owner reports Product
 Interaction and Search History were added on 2026-09-08; **record that as a
@@ -3549,6 +3576,40 @@ Genuinely open items only. Resolved history is in `docs/decisions-archive.md`.
   gate is NOT met**: `select=*` still arrives on `/email_orders` (84 distinct
   IPs) and `/orders` (34) in a 24h window. Re-run that edge-log query before
   revoking; revoking today breaks those clients.
+- ⚠️ **The monthly voice allowance is enforced by one request the client
+  chooses to make** (read from code 2026-09-24; live Telnyx values NOT read).
+  The 100 minutes are checked only in `begin-line-call`
+  (`consume_line_allowance`, 409 `allowance_exhausted`). That function places
+  no call: `mint-line-token` hands the device the connection's SIP username
+  and password, so a modified client can dial from any SIP client without the
+  gate. The real backstop is the Telnyx per-voice-profile daily spend limit,
+  **$5.00/day as the code default** (`_shared/telnyx.ts`, and its one caller
+  in `_shared/lineVoice.ts` passes no override). **The live per-profile values
+  were never read**, and whether the limit also covers the WebRTC leg is
+  unknown. `channel_limit` is null (one profile, probed 2026-09-08) and there
+  is no maximum call duration, by design. At $5/day the ceiling is about
+  $150 per line per month. Read every profile's `daily_spend_limit` before
+  relying on it.
+- ⚠️ **A metered NANP minute costs about $0.029, not the $0.007 (US) / $0.011
+  (CA) headline** (measured 2026-09-24 from `line_calls.provider_cost_usd`,
+  90 days). Telnyx bills each call in 60-second blocks while our meter counts
+  talk seconds, and the median outbound call lasts 2 s. All calling (in and
+  out) cost about $3 in the 30 days to 2026-09-24; number rent is far larger.
+  **Nobody has used more than 60 metered outbound minutes in a month**
+  (maximum 59.9, which includes 120 s backstop reservations). Re-derive:
+  ```sql
+  select date_trunc('month', created_at)::date month, user_id,
+         round(sum(billed_seconds)/60.0, 1) metered_min,
+         round(sum(provider_cost_usd)::numeric, 3) cost_usd
+  from line_calls
+  where direction = 'outbound' and credits_reserved = 0 and allowance_settled
+    and billed_seconds is not null
+  group by 1, 2 order by 3 desc limit 5;
+  ```
+- ✅ **Owner decision 2026-09-24: unlimited US/Canada calling was considered
+  and DECLINED; the 100-minute allowance stays.** The two items above and the
+  Guam / Northern Mariana Islands / American Samoa row under "Correctness /
+  hygiene" are what that research left open.
 
 **Unproven claims**
 
@@ -3602,8 +3663,51 @@ Genuinely open items only. Resolved history is in `docs/decisions-archive.md`.
 - ⚠️ **The Telegram bot cannot close a support thread**, so answered threads
   read as live work in `/support` (they no longer page — see "Support is
   WhatsApp").
+- ⚠️ **No server-sourced allowance exists before purchase** (verified
+  2026-09-24 on branch `design-overhaul`): `line_country_menu` and
+  `search-line-numbers` carry none, and the paywall's minutes figure is
+  `LineProduct.voiceAllowanceMinutes`, a client mirror of the `phone_lines`
+  schema default. The redesigned store (spec §4.1) therefore shows NO
+  allowance. Showing one needs the owner to decide whether to publish it
+  server-side.
+- ⚠️ **The My number overhaul (branch `design-overhaul`) is build- and
+  screenshot-verified only.** Tap automation is unavailable; a device walk
+  (store → paywall → Apple sheet, Switch → confirm, thread push from a real
+  notification, a real call over a pushed thread) is required before merge.
+- ⚠️ **The store names the monthly price again on branch `design-overhaul`**
+  (StoreKit only, hidden until it loads), reversing the 2026-09-09 'no price
+  on the store' decision by the approved 2026-09-24 design.
+- ⚠️ **Four defects on branch `design-overhaul`, found by the 2026-09-24
+  capture and NOT fixed:**
+  1. **ResumeBar covers a pushed thread's composer.** With a temp-SMS order
+     in flight, `-screenshot threadResume` shows the bar exactly where the
+     composer sits; the "Message" field is in the accessibility tree but not
+     on screen. Observed. The cause is INFERRED: the tab root's
+     `.safeAreaInset` (`TabChrome` in `ContentView`) does not lift a page
+     pushed on the My number stack. `ComposeScreen`'s Send button is the
+     likely second case (not captured). The keyboard + ResumeBar case needs a
+     device.
+  2. **German: the paywall header's title and "Wiederherstellen" overlap.**
+     `LineCheckoutScreen.header` centres the title in a `ZStack` with no
+     room reserved for the trailing Restore button.
+  3. **German: the store's selected country segment truncates to
+     "Vereinigte Staat…"** instead of falling back to the menu. Likely cause
+     (not verified): `ViewThatFits` measures the ideal width of the labels,
+     but the segments are laid out in equal thirds.
+  4. **German: the number card's meta row truncates to "Vereinigte Staat…"**
+     and drops the area code.
 
 **Correctness / hygiene**
+
+- ⚠️ **Guam, the Northern Mariana Islands and American Samoa (+1671, +1670,
+  +1684) are labelled "Included in your minutes" but likely cannot be
+  dialled** (found 2026-09-24; the carrier refusal is INFERRED, never
+  tested). They have no override row in `voice_rates`, so `voice_rate_for()`
+  resolves them to the covered `'1'` "United States & Canada" row and the
+  dialer says they are included. The Telnyx outbound voice profiles whitelist
+  only US, CA, PR and VI (`voice_dial_destinations()`), so the call most
+  likely fails at the carrier after we reserve 120 s. The fix is three
+  `voice_rates` override rows with `enabled = false` (a migration). Not done.
 
 - ⚠️ **The Real SIM tier does not exist on ANY 5sim-owned route** — 0 of 8,065
   carry `premium_credits` (2026-09-10; `select provider, count(*) filter (where

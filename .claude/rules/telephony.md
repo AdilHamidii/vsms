@@ -39,6 +39,16 @@ Number tab's Calls segment), **call history**, the **allowance gate**
 (`begin-line-call`), **session reporting** (`report-line-call`) and **CDR
 settlement** (`sync-telnyx-cdr`, on cron).
 
+On `design-overhaul` the dialer is reached from the Calls segment's keypad
+button in the header (hidden without a voice client); there is no FAB. The
+thread and compose are PUSHED on the My number `NavigationStack`, not covers,
+so the ROOT `InCallOverlay` (scoped to `flow == nil`) covers them; the cover
+copy still covers the dialer, paywall and provisioning. Verified with
+`-screenshot lineInCall` (a DEBUG-only `CallController.screenshotLiveCall(peer:)`
+fakes the answered call). Because the keyboard lives in its own window above
+that overlay, `ThreadScreen` and `ComposeScreen` drop their text-field focus
+when a call goes live (code-verified only: `simctl` cannot focus a field).
+
 ✅ **SUPERSEDED 2026-09-07: OUTBOUND CALLING IS PROVEN AT VOLUME.** Read
 from `line_calls` that morning: **131 completed outbound calls settled from
 Telnyx detail records** (`hangup_cause = 'NORMAL_CLEARING'`, `billed_seconds`
@@ -355,6 +365,15 @@ repo, so they are kept here — losing them costs a device-only debugging sessio
    dismissed — sheets are detented, so a call screen hosted in one would draw
    at sheet height. **In this app, "above everything" cannot be a root
    overlay.**
+   On `design-overhaul` the dialer is reached from the Calls segment's keypad
+   button in the header (hidden without a voice client); there is no FAB. The
+   thread and compose are PUSHED on the My number `NavigationStack`, not covers,
+   so the ROOT `InCallOverlay` (scoped to `flow == nil`) covers them; the cover
+   copy still covers the dialer, paywall and provisioning. Verified with
+   `-screenshot lineInCall` (a DEBUG-only `CallController.screenshotLiveCall(peer:)`
+   fakes the answered call). Because the keyboard lives in its own window above
+   that overlay, `ThreadScreen` and `ComposeScreen` drop their text-field focus
+   when a call goes live (code-verified only: `simctl` cannot focus a field).
 
 7. 🔴 **LONG-PRESSING 0 TYPED `+0` THROUGH TWO SHIPPED FIXES (1725a73,
    7a65606 — both in 2.7 build 48, and the owner's phone still did it).**
@@ -566,13 +585,18 @@ from **Account → Support** only. Calling stays, demoted to one secondary row.
 `LineSwitchNumberButton` is the single entry point; since 2026-09-05 it reads
 **"Change number"** with NO price and opens `LineSwapSheet` — see "Swapping a
 line's number" for the choose-first-pay-last flow and why. **On branch
-`design-overhaul` (2026-09-24)** it has two styles: a compact **"Switch"**
-capsule right of the number on `LineNumberCard` (`line_swap_open{from:
-"home"}`) and a **"Switch number…"** row in the Number segment
-(`LineNumberSegment`, `from: "number_segment"`); the gear's
-`LineSettingsScreen` and the dial/compose FAB are gone (compose and keypad
-are the header's trailing button; the keypad stays HIDDEN without a voice
-client). The Calls footer shows no reset date — it is the renewal date.
+`design-overhaul` (2026-09-24):** the swap is a compact **'Switch'** capsule
+on the number card, right of the number (neutral fill, 1 pt accent border,
+accessibility label 'Switch number'), plus a 'Switch number…' row in the
+Number segment; both are `LineSwitchNumberButton` and fire
+`line_swap_open{from: home | number_segment}`. The gear and
+`LineSettingsScreen` are gone (the Number segment holds usage, Switch
+number…, Rent another number and the 911 card). The line reload after a swap
+moved from `LineSwapSheet.perform` to the button's sheet `onDismiss`, so the
+card's number rolls visibly; `onSwapped` fires at the moment of success. The
+dial/compose FAB is gone too: compose and keypad are the header's trailing
+button (the keypad stays HIDDEN without a voice client). The Calls footer
+shows no reset date — it is the renewal date.
 
 ### International calling — credits, not minutes (2026-08-17)
 
@@ -637,10 +661,13 @@ never read the wallet — so a user with 6 credits was invited to tap an
 8-credit button and got 402 `insufficient_credits`. That was the first real
 swap complaint ("changing my number doesn't work", user `d580…`, 03:15Z; the
 swap then succeeded at 03:17Z after they freed 2 credits). Now:
-- `LineSwitchNumberButton` reads **"Change number"** ("Switch" / "Switch
-  number…" on branch `design-overhaul`; no figure; still hidden
+- `LineSwitchNumberButton` reads **"Change number"** (no figure; still hidden
   when `lineSwapCredits` is nil — a sheet that cannot quote a price cannot ask
   for money) and opens **`LineSwapSheet`**.
+  - On `design-overhaul`: it reads 'Switch' (capsule) / 'Switch number…'
+    (row); still no figure, still hidden when `lineSwapCredits` is nil or the
+    line is not `.active`. The confirm page adds the ledger ✗ row when the
+    target country is US/PR.
 - The sheet walks country → city → number using the SAME rows as the store
   (`Components/LinePickerRows.swift` — `LineCountryRow`, `LineCityRow`,
   `LineCountryWideRow`, `LineOfferRow`, skeletons, `LineUnavailableCopy`,
