@@ -727,8 +727,7 @@ struct ContentView: View {
             // The same store, presented as a cover so it inherits EnvBundle —
             // covers do NOT reliably inherit @Observable env objects, which is
             // the trap this app wraps every cover for.
-            LineStoreScreen(onOpenSms: { state.flow = nil; state.openCodeStore() },
-                            onClose: { state.flow = nil })
+            LineStoreCover()
         case .lineCheckout:
             LineCheckoutScreen()
         case .lineProvisioning:
@@ -882,16 +881,27 @@ extension ContentView {
         case .onboarding:
             break                              // handled before the gate
 
-        case .lineIntro, .lineStore, .linePaywall, .linePaywallYearly:
+        case .lineIntro, .lineStore, .lineStoreError, .linePaywall, .linePaywallYearly:
             state.tab = .line
             state.lines = []                   // not yet a subscriber
             // The pitch prices the switch from `app_config.line_swap_credits`,
             // which `simctl` never fetches. Fixture only — the LIVE value is
             // the server's; 8 is what it read on 2026-09-01.
             state.appStatus = AppStatus(announcement: nil, esimPaused: false, lineSwapCredits: 8)
+            if shot == .lineIntro {
+                // No pricing shim: the price row must be HIDDEN until
+                // StoreKit answers (Review Focus 5).
+                state.isLoadingLineNumbers = true
+            }
+            if shot == .lineStoreError {
+                subs.screenshotPricing = .init()
+                state.lineCountry = "US"
+                state.lineOffers = []
+                state.lineUnavailableReason = .unknown
+            }
             if shot == .lineStore {
                 // The store prints the monthly price (see
-                // `LineStoreScreen.priceNote`), and it renders NOTHING until
+                // `LineStoreScreen.priceRow`), and it renders NOTHING until
                 // StoreKit answers — which `simctl` never makes it do, because
                 // it does not apply the scheme's StoreKit configuration. Same
                 // shim, same reason, as the paywall frames below.
@@ -899,7 +909,7 @@ extension ContentView {
                 // The store is ONE screen as of 2026-09-03, so this frame is
                 // the numbers themselves rather than a city list — and the
                 // search that would fill them is skipped in screenshot mode
-                // (see `LineStoreScreen`'s root task), so the offers are
+                // (see `LineStoreScreen.searchIfNeeded()`), so the offers are
                 // seeded here or the frame renders its empty state.
                 //
                 // ⚠️ 555 numbers, as everywhere in this harness: a screenshot
@@ -910,8 +920,8 @@ extension ContentView {
                 // so the frame shows the state a real reader lands in. No city
                 // — the US has no curated localities and sells country-wide.
                 state.lineCountry = "US"
-                // The three sellable countries, so the chip row above the
-                // numbers renders all three; `simctl` never fetches the menu.
+                // The three sellable countries, so the country control above
+                // the numbers renders all three; `simctl` never fetches the menu.
                 state.lineCountries = LineCountry.seeded + [
                     .init(countryCode: "PR", countryName: "Puerto Rico",
                           supportsVoice: true, supportsSms: true, supportsMms: true,

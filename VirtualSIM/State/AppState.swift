@@ -23,6 +23,16 @@ enum AppTab: String, Hashable, CaseIterable {
     static let order: [AppTab] = [.verify, .line, .activity, .account]
 }
 
+/// Pages pushed inside the My number tab (spec §4.4). One enum for the tab's
+/// stack AND the "Rent another number" cover's own stack, so a place page is
+/// one definition wherever the store is shown.
+enum LineRoute: Hashable {
+    /// Every catalog country, sellable first (the store's "Try another country").
+    case countries
+    /// The current country's localities ("Other city").
+    case cities
+}
+
 enum FlowStage: String, Hashable, Identifiable {
     case checkout, waiting, otp, recovery, esimCheckout, esimDetail
     case emailWaiting, emailCode
@@ -324,6 +334,10 @@ final class AppState {
     /// front of everyone. Verify leads because it names the need rather than
     /// a product. See CLAUDE.md, "Home leads the app".
     var tab: AppTab = .verify
+
+    /// Navigation inside the My number tab. Not persisted. Emptied when the
+    /// tab's ROOT changes (store ↔ live line) — see `LineScreen`.
+    var linePath: [LineRoute] = []
 
     /// Open the temp code store (SMS, or e-mail when `email`), from anywhere.
     /// The ONE replacement for the old `tab = .temp`, so every entry point —

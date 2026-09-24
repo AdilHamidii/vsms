@@ -141,49 +141,6 @@ extension Array where Element == LineCountry {
     }
 }
 
-// MARK: - Country chips
-
-/// One sellable country as a chip — its flag where `ChipButton` would put an
-/// SF symbol, otherwise the same capsule, type and active treatment.
-///
-/// The store renders every sellable country as a row of these ABOVE the
-/// numbers (owner decision 2026-09-06). Until then the country picker lived
-/// one tap behind "Change", and a reader who landed on the US default could
-/// not see that Canada and Puerto Rico were a choice at all — the owner's own
-/// words were "I can't choose". Sellable countries only: the grayed "not yet"
-/// rows stay in the sheet, where a wall of "no" is not standing between the
-/// reader and the three things they can buy.
-struct LineCountryChip: View {
-    @Environment(\.theme) private var theme
-    let country: LineCountry
-    let active: Bool
-    let action: () -> Void
-
-    var body: some View {
-        Button {
-            RHaptic.select()
-            action()
-        } label: {
-            HStack(spacing: 7) {
-                CodeFlag(code: country.countryCode, size: 20)
-                Text(verbatim: country.displayName)
-                    .font(RFont.text(13, weight: .medium))
-                    .tracking(-0.2)
-                    .lineLimit(1)
-            }
-            .foregroundStyle(active ? theme.onInk : theme.text2)
-            .padding(.leading, 6)
-            .padding(.trailing, 12)
-            .padding(.vertical, 5)
-            .background(active ? theme.ink : theme.chipBg, in: .capsule)
-            .fixedSize(horizontal: true, vertical: false)
-            .contentShape(.capsule)
-        }
-        .pressable(0.94)
-        .accessibilityAddTraits(active ? .isSelected : [])
-    }
-}
-
 // MARK: - Cities
 
 /// Cities, never area codes.
@@ -306,101 +263,80 @@ struct LinePickerRowSkeleton: View {
 
 // MARK: - Numbers
 
-/// One candidate number, presented as a contact card.
+/// One candidate number: flag, the number in the number voice (compact form,
+/// spec §3 rule 3), its place beneath. A flat row inside `LineOfferList`.
 ///
-/// `PeerAvatar` is the same deterministic circle the recents and thread
-/// rows use, keyed on the E.164 — so the colour a user sees beside a number
-/// here is the colour it keeps on the checkout hero and, once bought,
-/// everywhere in the tab. That continuity is the whole reason to spend the
-/// leading slot on it: it makes the number feel like a thing being adopted
-/// rather than a row in a stock list.
-///
-/// ⚠️ **No price is rendered here, deliberately.** `monthlyCents` /
-/// `upfrontCents` on this model are the WHOLESALE quote — the cost book,
-/// which the app never shows a user — and the retail figure is the same on
-/// every row, so printing it would be noise on top of a leak. The price is
-/// stated once by the caller, on the screen immediately before payment.
+/// ⚠️ No price here, deliberately: `monthlyCents`/`upfrontCents` are the
+/// WHOLESALE quote, and the retail price is stated once by the caller.
 struct LineOfferRow: View {
     @Environment(\.theme) private var theme
     let offer: LineNumberOffer
-    /// The country the search ran in, for the flag when the offer itself
-    /// carries none (older server bundles omit `country_code`).
+    /// The country the search ran in, when the offer carries none.
     var country: String? = nil
+    /// Shown when the offer names no region (older server bundles).
+    var placeFallback: String? = nil
     let action: () -> Void
+
+    private var place: String? {
+        if let r = offer.region, !r.isEmpty { return r }
+        return placeFallback
+    }
 
     var body: some View {
         Button(action: action) {
-            Card(radius: RRadius.group, elevation: .flat) {
-                HStack(spacing: 13) {
-                    leading
-                    VStack(alignment: .leading, spacing: 5) {
-                        Text(PhoneFormat.national(offer.phoneNumber))
-                            .numberStyle(size: 18, weight: .medium, color: theme.text)
-                            .minimumScaleFactor(0.8)
-                            .lineLimit(1)
-                        capabilities
-                    }
-                    Spacer(minLength: 0)
-                    Image(systemName: RIcon.chev)
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundStyle(theme.text3)
+            HStack(spacing: RSpace.md) {
+                if let code = offer.countryCode ?? country {
+                    CodeFlag(code: code, size: 34)
+                } else {
+                    PeerAvatar(e164: offer.phoneNumber, size: 34)
                 }
-                .padding(.horizontal, 14)
-                .padding(.vertical, 14)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .contentShape(.rect)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(verbatim: PhoneFormat.compact(offer.phoneNumber))
+                        .numberStyle(size: 20, color: theme.text)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
+                    if let place {
+                        Text(verbatim: place)
+                            .font(RFont.text(13))
+                            .foregroundStyle(theme.text2)
+                            .lineLimit(1)
+                    }
+                }
+                Spacer(minLength: RSpace.sm)
+                Image(systemName: RIcon.chev)
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(theme.text3)
             }
+            .padding(.horizontal, RSpace.lg)
+            .padding(.vertical, RSpace.md)
+            .frame(minHeight: 64)
+            .contentShape(.rect)
         }
         .buttonStyle(PressScaleStyle(scale: 0.98, dim: true))
+        .accessibilityElement(children: .combine)
     }
+}
 
-    /// The country's flag, not a contact avatar (owner decision 2026-09-06).
-    ///
-    /// A candidate number is not a person: `PeerAvatar`'s hashed colour and
-    /// person glyph said "contact" about a row that is a thing to buy, and
-    /// carried no information. The flag answers the one question a list of
-    /// three look-alike numbers raises — which country is this — and matches
-    /// the leading slot of the country picker it came from. Same cascade as
-    /// every other flag in the app (bundled PNG → flagcdn → emoji), so US,
-    /// CA and PR render offline. The avatar survives only for an offer whose
-    /// country nobody knows, which no current server produces.
-    @ViewBuilder
-    private var leading: some View {
-        if let code = offer.countryCode ?? country {
-            CodeFlag(code: code, size: 42)
-        } else {
-            PeerAvatar(e164: offer.phoneNumber, size: 42)
-        }
-    }
+/// The candidate numbers as ONE grouped list (spec §4.1) — the store's three
+/// and the swap sheet's full search.
+struct LineOfferList: View {
+    @Environment(\.theme) private var theme
+    let offers: [LineNumberOffer]
+    var country: String? = nil
+    var placeFallback: String? = nil
+    let onPick: (LineNumberOffer) -> Void
 
-    /// What THIS number can do, when Telnyx told us.
-    ///
-    /// `features` is optional on the model because the deployed server does not
-    /// always send it, and an absent list means "we do not know" — never "it
-    /// cannot". So the strip renders nothing at all rather than four gray
-    /// glyphs, which would read as a number that does nothing. When the list IS
-    /// present the same rule as the country strip applies: green means
-    /// supported, gray means not, never red. The region, when the search names
-    /// one, stands in when there are no features to show.
-    @ViewBuilder
-    private var capabilities: some View {
-        if offer.features != nil {
-            HStack(spacing: 9) {
-                LineCapabilityIcon(symbol: "phone.fill", on: offer.supports("voice") == true,
-                                   label: String(localized: "Calls"))
-                LineCapabilityIcon(symbol: "message.fill", on: offer.supports("sms") == true,
-                                   label: String(localized: "Texts"))
-                LineCapabilityIcon(symbol: "photo.fill", on: offer.supports("mms") == true,
-                                   label: String(localized: "Picture messages"))
-                LineCapabilityIcon(symbol: "cross.case.fill", on: offer.supports("emergency") == true,
-                                   label: String(localized: "Emergency calls"))
+    var body: some View {
+        VStack(spacing: 0) {
+            ForEach(offers) { offer in
+                if offer.id != offers.first?.id {
+                    RowRule(inset: RSpace.lg + 34 + RSpace.md)
+                }
+                LineOfferRow(offer: offer, country: country,
+                             placeFallback: placeFallback) { onPick(offer) }
             }
-        } else if let region = offer.region, !region.isEmpty {
-            Text(verbatim: region)
-                .font(RFont.text(12))
-                .foregroundStyle(theme.text2)
-                .lineLimit(1)
         }
+        .background(theme.elev, in: .rect(cornerRadius: RRadius.group, style: .continuous))
     }
 }
 
@@ -413,32 +349,23 @@ struct LineOfferSkeleton: View {
     var rows: Int = 3
 
     var body: some View {
-        VStack(spacing: 8) {
+        VStack(spacing: 0) {
             ForEach(0..<max(rows, 1), id: \.self) { i in
-                RoundedRectangle(cornerRadius: RRadius.group, style: .continuous)
-                    .fill(theme.elev)
-                    // Matches the contact card exactly — 42pt avatar plus 14+14
-                    // of padding — so the list does not jump as it fills.
-                    .frame(height: 70)
-                    .overlay(alignment: .leading) {
-                        HStack(spacing: 13) {
-                            Circle()
-                                .fill(theme.chipBg)
-                                .frame(width: 42, height: 42)
-                            VStack(alignment: .leading, spacing: 7) {
-                                RoundedRectangle(cornerRadius: 4)
-                                    .fill(theme.chipBg)
-                                    .frame(width: 140, height: 15)
-                                RoundedRectangle(cornerRadius: 3)
-                                    .fill(theme.chipBg)
-                                    .frame(width: 72, height: 10)
-                            }
-                        }
-                        .padding(.leading, 14)
+                if i > 0 { RowRule(inset: RSpace.lg + 34 + RSpace.md) }
+                HStack(spacing: RSpace.md) {
+                    Circle().fill(theme.chipBg).frame(width: 34, height: 34)
+                    VStack(alignment: .leading, spacing: 7) {
+                        RoundedRectangle(cornerRadius: 4).fill(theme.chipBg).frame(width: 150, height: 16)
+                        RoundedRectangle(cornerRadius: 3).fill(theme.chipBg).frame(width: 80, height: 10)
                     }
-                    .opacity(1 - Double(i) * 0.15)
+                    Spacer(minLength: 0)
+                }
+                .padding(.horizontal, RSpace.lg)
+                .frame(height: 64)
             }
         }
+        .background(theme.elev, in: .rect(cornerRadius: RRadius.group, style: .continuous))
+        .accessibilityHidden(true)
         .transition(.opacity)
     }
 }

@@ -43,18 +43,37 @@ enum RMotion {
         .spring(response: 0.42, dampingFraction: 0.85)
         .delay(Double(min(index, cap)) * step)
     }
+
+    /// nil under Reduce Motion, so `withAnimation(RMotion.unlessReduced(…))`
+    /// and `.animation(RMotion.unlessReduced(…), value:)` change instantly.
+    /// Every animation added by the My number overhaul goes through this
+    /// (spec §3a: "every one is skipped under Reduce Motion").
+    static func unlessReduced(_ animation: Animation, _ reduceMotion: Bool) -> Animation? {
+        reduceMotion ? nil : animation
+    }
 }
 
 extension View {
     /// Fade + rise entrance, driven by an external "has appeared" flag.
     ///
     /// Takes the flag rather than owning `@State` so a parent can replay the
-    /// entrance when its content changes identity — a self-owned flag fires
-    /// once per view lifetime and then never again, which is wrong for a list
-    /// whose contents swap under it.
+    /// entrance when its content changes identity. Under Reduce Motion the
+    /// content simply appears: no offset, no animation.
     func riseIn(_ shown: Bool, index: Int = 0, distance: CGFloat = 10) -> some View {
-        opacity(shown ? 1 : 0)
-            .offset(y: shown ? 0 : distance)
-            .animation(RMotion.stagger(index), value: shown)
+        modifier(RiseIn(shown: shown, index: index, distance: distance))
+    }
+}
+
+private struct RiseIn: ViewModifier {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    let shown: Bool
+    let index: Int
+    let distance: CGFloat
+
+    func body(content: Content) -> some View {
+        content
+            .opacity(shown ? 1 : 0)
+            .offset(y: shown || reduceMotion ? 0 : distance)
+            .animation(reduceMotion ? nil : RMotion.stagger(index), value: shown)
     }
 }

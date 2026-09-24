@@ -34,8 +34,9 @@ enum ScreenshotMode {
     /// Which screen to open. One launch per value.
     enum Screen: String {
         case onboarding      // page 1, the product pitch
-        case lineIntro       // the store's first page — what a second number is
-        case lineStore       // the store with real numbers and the price on it
+        case lineIntro       // the store while its numbers load (skeleton, no price)
+        case lineStore       // the store with three inline numbers and the StoreKit price
+        case lineStoreError  // the store after a failed search: fail-tinted empty state, Try again
         case thread          // a real conversation on a rented number
         case email           // temp e-mail, code delivered
         case emailStore      // temp e-mail, choosing a free domain

@@ -172,18 +172,15 @@ struct LineSwapSheet: View {
             } else if state.lineOffers.isEmpty {
                 unavailable
             } else {
-                VStack(spacing: 8) {
-                    ForEach(state.lineOffers, id: \.id) { offer in
-                        LineOfferRow(offer: offer, country: state.lineCountry) { pick(offer) }
-                    }
-                    GhostButton(label: "Show different numbers",
-                                icon: RIcon.refresh,
-                                fillsWidth: false) {
+                VStack(spacing: RSpace.sm) {
+                    LineOfferList(offers: state.lineOffers, country: state.lineCountry,
+                                  placeFallback: state.linePlaceLabel) { pick($0) }
+                    GhostButton(label: "Show different numbers", icon: RIcon.refresh, fillsWidth: false) {
                         Task { await reload() }
                     }
                     .disabled(state.isLoadingLineNumbers)
                     .opacity(state.isLoadingLineNumbers ? 0.5 : 1)
-                    .padding(.top, 6)
+                    .padding(.top, RSpace.xs)
                 }
             }
         }

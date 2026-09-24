@@ -1218,6 +1218,46 @@
         }
       }
     },
+    "%@ your first month · new subscribers": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ im ersten Monat · für Neuabonnenten"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ el primer mes · nuevos suscriptores"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ le premier mois · nouveaux abonnés"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ il primo mese · nuovi abbonati"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "初月%@・新規登録の方"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ no primeiro mês · novos assinantes"
+          }
+        }
+      }
+    },
     "%@ · %@": {
       "localizations": {
         "en": {
@@ -1286,6 +1326,46 @@
           "stringUnit": {
             "state": "translated",
             "value": "%@/Mon."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@/mes"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@/mois"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@/mese"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@/月"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@/mês"
+          }
+        }
+      }
+    },
+    "%@/month": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@/Monat"
           }
         },
         "es": {
@@ -3997,6 +4077,46 @@
           "stringUnit": {
             "state": "translated",
             "value": "Um número seu continua recebendo códigos e mensagens de remetentes dos EUA e do Canadá enquanto você o mantiver."
+          }
+        }
+      }
+    },
+    "A number that stays yours. Receive codes, texts and calls here.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Eine Nummer, die Ihnen bleibt. Empfangen Sie hier Codes, SMS und Anrufe."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Un número que sigue siendo tuyo. Recibe aquí códigos, SMS y llamadas."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Un numéro qui reste le vôtre. Recevez ici codes, SMS et appels."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Un numero che resta tuo. Ricevi qui codici, SMS e chiamate."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ずっと使えるあなたの番号。コード、SMS、通話をここで受け取れます。"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Um número que continua seu. Receba códigos, SMS e ligações aqui."
           }
         }
       }
@@ -18371,6 +18491,46 @@
         }
       }
     },
+    "Just need a one-off code?": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Brauchen Sie nur einen einmaligen Code?"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "¿Solo necesitas un código puntual?"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Besoin d'un seul code ponctuel ?"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ti serve solo un codice una tantum?"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "1回だけコードが必要ですか？"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Só precisa de um código avulso?"
+          }
+        }
+      }
+    },
     "Just need a one-off verification code?": {
       "extractionState": "stale",
       "localizations": {
@@ -25130,6 +25290,46 @@
           "stringUnit": {
             "state": "translated",
             "value": "Os pedidos aguardando código aparecem aqui enquanto estão em andamento."
+          }
+        }
+      }
+    },
+    "Other city": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Andere Stadt"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Otra ciudad"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Autre ville"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Altra città"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "別の都市"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Outra cidade"
           }
         }
       }

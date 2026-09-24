@@ -14,29 +14,61 @@ struct LineScreen: View {
     var onOpenSms: () -> Void
 
     var body: some View {
-        Group {
-            if let line = state.line, line.status.isLive {
-                LiveLineView(line: line)
-            } else if !state.linesLoaded {
-                // Not asked yet. Rendering the store here is the one-frame
-                // flash a subscriber saw before their number appeared: an
-                // empty `lines` is not "no line" until the first read has
-                // answered. `coldStart` answers it before the reveal, so this
-                // branch is normally never on screen; it exists so the store
-                // can only ever mean "we asked, and there is none".
-                theme.bg.ignoresSafeArea()
-            } else {
-                // A RELEASED line falls here on purpose: the number is gone and
-                // cannot come back, so the honest next step is the store. Its
-                // history is still readable once a new line exists.
-                LineStoreScreen(onOpenSms: onOpenSms)
-            }
+        @Bindable var state = state
+        NavigationStack(path: $state.linePath) {
+            root
+                .containerBackground(theme.bg, for: .navigation)
+                .toolbar(.hidden, for: .navigationBar)
+                .lineRouteDestinations()
         }
         .task {
             // Cheap (one row, RLS-scoped) and it must run on every visit: the
             // subscription can change state — renew, lapse, be refunded —
             // entirely outside the app.
             await state.loadLine(using: LineAPI(client: api))
+        }
+        // A purchase (store → live line) or a lapse (live line → store)
+        // replaces the stack's ROOT; a page pushed over the old root means
+        // nothing over the new one.
+        .onChange(of: state.line?.status.isLive ?? false) { _, _ in
+            state.linePath = []
+        }
+    }
+
+    @ViewBuilder
+    private var root: some View {
+        if let line = state.line, line.status.isLive {
+            LiveLineView(line: line)
+                // The back-button label on pushed pages; the bar itself is hidden here.
+                .navigationTitle(Text("My number"))
+        } else if !state.linesLoaded {
+            // Not asked yet. Rendering the store here is the one-frame
+            // flash a subscriber saw before their number appeared: an
+            // empty `lines` is not "no line" until the first read has
+            // answered. `coldStart` answers it before the reveal, so this
+            // branch is normally never on screen; it exists so the store
+            // can only ever mean "we asked, and there is none".
+            theme.bg.ignoresSafeArea()
+        } else {
+            // A RELEASED line falls here on purpose: the number is gone and
+            // cannot come back, so the honest next step is the store. Its
+            // history is still readable once a new line exists.
+            LineStoreScreen(onOpenSms: onOpenSms,
+                            push: { state.linePath.append($0) })
+                .navigationTitle(Text("Your own number"))
+        }
+    }
+}
+
+extension View {
+    /// Registers every `LineRoute` destination on the enclosing
+    /// `NavigationStack` — the tab's and `LineStoreCover`'s.
+    func lineRouteDestinations() -> some View {
+        navigationDestination(for: LineRoute.self) { route in
+            switch route {
+            case .countries: LineCountriesPage()
+            case .cities:    LineCitiesPage()
+            }
         }
     }
 }
