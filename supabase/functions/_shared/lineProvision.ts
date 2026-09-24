@@ -25,7 +25,7 @@
 
 import { admin } from "./supabaseAdmin.ts";
 import {
-  orderNumber, getOrder, findNumberId, attachMessagingProfile,
+  orderNumber, getOrder, findNumberId, attachMessagingProfile, ensureP2P,
   releaseNumber, searchNumbers, faultOf, type AvailableNumber,
 } from "./telnyx.ts";
 import { provisionLineVoice } from "./lineVoice.ts";
@@ -169,6 +169,16 @@ export async function completeLineProvision(
       // SMS goes nowhere, so it pages.
       console.error(JSON.stringify({
         alert: "line_msg_profile_failed", line: o.lineId, detail: attached.detail,
+      }));
+    } else {
+      // P2P texting needs no 10DLC; A2P (the default) is refused `40010` by
+      // US carriers. AFTER the profile attach — `/messaging_phone_numbers`
+      // lists only numbers with messaging configured. Best-effort: the hourly
+      // `sync-line-voice` sweep retries anything this misses.
+      const p2p = await ensureP2P(e164);
+      console.log(JSON.stringify({
+        event: "line_p2p", line: o.lineId, e164,
+        result: faultOf(p2p) ? { fault: p2p.detail ?? p2p.type } : p2p,
       }));
     }
   }

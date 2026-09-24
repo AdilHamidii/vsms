@@ -595,6 +595,55 @@ export async function attachMessagingProfile(
   return faultOf(r) ? r : true;
 }
 
+/**
+ * P2P (person-to-person) is Telnyx's conversational traffic type, and it needs
+ * NO 10DLC registration — A2P, the default for every new number, is what US
+ * carriers refuse with `40010` while no brand/campaign exists.
+ *
+ * 🔴 THE RESOURCE IS `/messaging_phone_numbers/{+E164}`, NOT
+ * `/phone_numbers/{id}/messaging`. The 2026-08-05 attempt PATCHed
+ * `messaging_product` on the latter, got 200, and read back A2P — the silent
+ * no-op this adapter keeps meeting — and the lane was wrongly recorded as a
+ * dead end. Read-back decides success here, never the PATCH status.
+ *
+ * Only switches a number whose `eligible_messaging_products` lists P2P (Telnyx
+ * decides that from the number's traffic; our Canadian longcodes list A2P only
+ * as of 2026-09-08). Switching drops MMS, which this product never sends.
+ */
+export type P2POutcome =
+  | { outcome: "already" | "switched" }
+  | { outcome: "not_eligible"; product: string | null; eligible: string[] }
+  | { outcome: "no_effect"; product: string | null };
+
+export async function ensureP2P(e164: string): Promise<P2POutcome | TelnyxFault> {
+  const path = `/messaging_phone_numbers/${encodeURIComponent(e164)}`;
+  const read = async () => {
+    const r = await call<Record<string, unknown>>("GET", path);
+    if (faultOf(r)) return r;
+    return {
+      product: (r.messaging_product as string | null) ?? null,
+      eligible: Array.isArray(r.eligible_messaging_products)
+        ? (r.eligible_messaging_products as unknown[]).map(String) : [],
+    };
+  };
+
+  const before = await read();
+  if (faultOf(before)) return before;
+  if (before.product === "P2P") return { outcome: "already" };
+  if (!before.eligible.includes("P2P")) {
+    return { outcome: "not_eligible", product: before.product, eligible: before.eligible };
+  }
+
+  const patched = await call("PATCH", path, { messaging_product: "P2P" });
+  if (faultOf(patched)) return patched;
+
+  const after = await read();
+  if (faultOf(after)) return after;
+  return after.product === "P2P"
+    ? { outcome: "switched" }
+    : { outcome: "no_effect", product: after.product };
+}
+
 /** Stops the monthly charge. The number returns to Telnyx's pool and WILL be
  *  re-sold, so the UI must say the number is genuinely gone. */
 export async function releaseNumber(numberId: string): Promise<true | TelnyxFault> {

@@ -51,7 +51,7 @@ import { handleCors, json } from "../_shared/cors.ts";
 import { admin, callerUserId } from "../_shared/supabaseAdmin.ts";
 import {
   searchNumbers, orderNumber, getOrder, findNumberId,
-  attachMessagingProfile, releaseNumber, getBalance, faultOf,
+  attachMessagingProfile, releaseNumber, getBalance, faultOf, ensureP2P,
   type AvailableNumber,
 } from "../_shared/telnyx.ts";
 import { provisionLineVoice } from "../_shared/lineVoice.ts";
@@ -399,6 +399,13 @@ Deno.serve(async (req) => {
       }));
       return await refund("msg_profile_failed", 502, "provider_unreachable");
     }
+    // Best-effort, never a refund reason: see `ensureP2P`. The hourly
+    // `sync-line-voice` sweep retries a miss.
+    const p2p = await ensureP2P(newE164);
+    console.log(JSON.stringify({
+      event: "line_p2p", swap: swapId, line: lineId, e164: newE164,
+      result: faultOf(p2p) ? { fault: p2p.detail ?? p2p.type } : p2p,
+    }));
   }
 
   // ── Cut over ─────────────────────────────────────────────────────────────

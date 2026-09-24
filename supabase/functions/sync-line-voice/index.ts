@@ -31,7 +31,9 @@
 
 import { handleCors, json } from "../_shared/cors.ts";
 import { admin } from "../_shared/supabaseAdmin.ts";
-import { updateOutboundVoiceProfile, attachOutboundProfile, faultOf } from "../_shared/telnyx.ts";
+import {
+  updateOutboundVoiceProfile, attachOutboundProfile, ensureP2P, faultOf,
+} from "../_shared/telnyx.ts";
 import { provisionLineVoice, type LineVoiceRow } from "../_shared/lineVoice.ts";
 
 /** Bounded for the ~150s edge kill. One PATCH per profile; hourly, so a backlog
@@ -160,6 +162,33 @@ Deno.serve(async (req) => {
     }
   }
 
+  // ── 3. P2P messaging on every live number ───────────────────────────────
+  // Not voice, but the same shape of job — per-line Telnyx config that must
+  // hold on lines already sold — and this is the hourly per-line sweep. P2P
+  // needs no 10DLC; the A2P default is refused `40010` by US carriers (see
+  // `ensureP2P`). Steady state is one GET per line. Eligibility is Telnyx's
+  // call and can arrive later, so a `not_eligible` is re-checked every run.
+  const { data: live } = await sb
+    .from("phone_lines")
+    .select("id, e164")
+    .in("status", ["active", "grace", "past_due"])
+    .not("e164", "is", null)
+    .limit(MAX_PATCH);
+  const p2p = { switched: 0, already: 0, not_eligible: 0, no_effect: 0 };
+  const p2pFaults: unknown[] = [];
+  for (const line of live ?? []) {
+    const r = await ensureP2P(String(line.e164));
+    if (faultOf(r)) {
+      p2pFaults.push({ line: line.id, e164: line.e164, fault: r });
+      continue;
+    }
+    p2p[r.outcome]++;
+    if (r.outcome === "no_effect") {
+      // The 2026-08-05 failure shape: PATCH accepted, read-back unchanged.
+      p2pFaults.push({ line: line.id, e164: line.e164, fault: r });
+    }
+  }
+
   // Still unprovisioned AFTER the repair pass — the number that says whether
   // this sweep is winning. Non-zero for more than a couple of runs means repair
   // is failing rather than catching up, which the faults will name.
@@ -175,6 +204,8 @@ Deno.serve(async (req) => {
         "provider_credential_id.is.null,provider_voice_attached.is.null," +
         "provider_voice_attached.is.false");
 
+  // `ok` stays about VOICE: the watchdog reads this row, and a P2P miss is a
+  // texting degradation to read from `p2p_faults`, not a calling outage.
   const ok = repairFaults.length === 0 && patchFaults.length === 0 && attachFaults.length === 0;
   await sb.from("app_config").upsert({
     key: "line_voice_sync",
@@ -182,15 +213,18 @@ Deno.serve(async (req) => {
       at, ok, repaired, patched, attached_verified: attachedVerified,
       destinations: destinations.length,
       unprovisioned: unprovisioned ?? 0,
+      p2p,
       repair_faults: repairFaults.length ? repairFaults.slice(0, 5) : undefined,
       patch_faults: patchFaults.length ? patchFaults.slice(0, 5) : undefined,
       attach_faults: attachFaults.length ? attachFaults.slice(0, 5) : undefined,
+      p2p_faults: p2pFaults.length ? p2pFaults.slice(0, 5) : undefined,
     },
   });
 
   return json({
     ok, repaired, patched, attached_verified: attachedVerified, destinations,
-    unprovisioned: unprovisioned ?? 0,
+    unprovisioned: unprovisioned ?? 0, p2p,
     repair_faults: repairFaults, patch_faults: patchFaults, attach_faults: attachFaults,
+    p2p_faults: p2pFaults,
   });
 });

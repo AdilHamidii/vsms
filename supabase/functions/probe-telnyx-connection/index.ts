@@ -123,6 +123,7 @@
 // nobody can read is not a probe. Same shape as `telnyx_cdr_probe`.
 import { corsHeaders } from "../_shared/cors.ts";
 import { admin } from "../_shared/supabaseAdmin.ts";
+import { ensureP2P } from "../_shared/telnyx.ts";
 
 const TELNYX = "https://api.telnyx.com/v2";
 
@@ -468,6 +469,19 @@ Deno.serve(async (req) => {
     await sb.from("app_config").upsert(
       { key: "telnyx_test_number_probe", value: result }, { onConflict: "key" });
     return Response.json(result);
+  }
+
+  // Switch ONE number we own to P2P messaging (no 10DLC) and read it back.
+  // 🔴 WRITING MODE. `ensureP2P` refuses a number Telnyx does not list as
+  // P2P-eligible and reports read-back, never the PATCH status. The same call
+  // runs hourly in `sync-line-voice` for every live line; this is for a
+  // one-number test.
+  if (body.probe === "p2p") {
+    const e164 = String(body.e164 ?? "");
+    if (!/^\+[1-9]\d{6,15}$/.test(e164)) {
+      return Response.json({ error: "e164 required" }, { status: 400 });
+    }
+    return Response.json({ mode: "p2p", e164, result: await ensureP2P(e164) });
   }
 
   // Attach a messaging profile to a number we already own. Split out from

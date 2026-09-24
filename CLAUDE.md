@@ -518,22 +518,31 @@ app must never sell.
 | **outbound calling** | ✅ proven at volume |
 | **inbound calling** | ✅ proven 2026-09-08 on a device, app open AND closed |
 | **inbound SMS** | ✅ works |
-| **outbound SMS from a CANADIAN number** | ✅ every send delivered (30d to 2026-09-17) |
-| **outbound SMS from a US number** | 🔴 **mostly BLOCKED** — US numbers are not 10DLC-registered |
+| **outbound SMS to a CANADIAN recipient** | ✅ mostly works — CA→CA 7 of 10 delivered (3 spam-flagged `40002`) |
+| **outbound SMS to a US recipient, from ANY of our numbers** | 🔴 **mostly BLOCKED** — our numbers are not 10DLC-registered; CA→US 0 of 8, US→US 3 of 28 (all-time, 2026-09-24) |
 | **outbound SMS outside NANP** | ❌ **genuinely blocked** — settled by experiment |
 
 🔴 **US-number texting fails `40010: The sending number is not 10DLC-registered
 but is required to be by the carrier`** (found 2026-09-17). Over the 30 days
 to then, 16 of 24 outbound sends failed on 9 lines, every one from a US number
-to a US number; the Canadian 437/604 numbers delivered every send, and the 3 US
-sends that did land reached carriers that still accept unregistered senders.
+to a US number, and the 3 US sends that did land reached carriers that still
+accept unregistered senders.
+🔴 **It is the RECIPIENT's network that enforces 10DLC, not the sender's
+country (corrected 2026-09-24).** This file said "the Canadian numbers
+delivered every send" — true only because every Canadian send in that window
+went to a Canadian number. All-time, **CA→US is 0 of 8, every failure
+`40010`** (2 lines, 2026-08-17 → 09-24), while CA→CA is 7 of 10. So
+`LineStoreScreen`'s green "Texts you send from a Canadian number arrive
+normally" is FALSE for the commonest case — texting a US number — and a
+Canadian number is NOT a workaround. Re-derive by grouping `line_messages`
+outbound on sender AND recipient area code, never sender alone.
 Nothing in this repo registers a 10DLC brand or campaign. The 2026-09-08
 "proven" row was ONE successful send — the same best-case generalisation the
 note below warns about. It costs subscribers: `4c132957` had three test texts
 fail inside three minutes and turned auto-renew off six minutes later. Fixing
 it is an owner decision (register a 10DLC campaign — a consumer "second
-number" is a hard campaign to get approved — lead with Canadian numbers, or
-stop promising texting on US numbers).
+number" is a hard campaign to get approved — or stop promising texting to US
+numbers; leading with Canadian numbers does NOT help, see below).
 
 ✅ **DECIDED 2026-09-17: KEEP SELLING US/PR AND DISCLOSE IT.** US and PR were
 `force_block`ed for about an hour (migration `20260917090000`) and unblocked
