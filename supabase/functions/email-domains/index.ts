@@ -1,4 +1,4 @@
-// The four mail domains we sell for one service, with LIVE stock.
+// The mail domains we sell for one service, with LIVE stock.
 //
 // Exists because stock is per (site, domain) and genuinely runs dry: measured
 // 2026-07-30, hotmail.com had 1,028 available for google.com and TWO for
@@ -24,7 +24,14 @@ interface Body { service_id: string; }
 // gmail.com REMOVED 2026-08-26 (owner decision) — its HeroSMS pool delivered
 // 1 code in 36 orders since ~08-10 while the free pair delivered normally.
 // See create-email-order's copy for the full note; change both together.
+// mail.com, gmx.com and email.com ADDED 2026-09-24 (owner decision): the provider
+// lists them at ~$0.003 with 570k–740k in stock, while outlook.com was down to
+// 20. They are INCLUDED the same way as outlook/hotmail. Delivery was unproven
+// when added — the per-domain watchdog (`email-domain-<domain>`) covers them.
 const PRICING: Record<string, number> = {
+  "mail.com": 0,
+  "gmx.com": 0,
+  "email.com": 0,
   "outlook.com": 0,
   "hotmail.com": 0,
 };
@@ -46,7 +53,9 @@ const PRICING: Record<string, number> = {
  *  store, is an avoidable review risk for a tier that earned nothing. Removing
  *  it from PRICING is also the enforcement: create-email-order rejects any
  *  domain missing from its own copy of the map with `domain_unavailable`. */
-const ORDER = ["outlook.com", "hotmail.com"];
+// mail.com FIRST (owner, 2026-09-24): the client defaults to the first domain
+// in stock, so the head of this list IS the default for every shipped build.
+const ORDER = ["mail.com", "gmx.com", "email.com", "outlook.com", "hotmail.com"];
 
 Deno.serve(async (req) => {
   const cors = handleCors(req); if (cors) return cors;

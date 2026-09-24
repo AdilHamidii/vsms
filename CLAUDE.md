@@ -1932,7 +1932,15 @@ highest-volume services for our own backlog.
 
 ## The temp-e-mail product
 
-Temp mailboxes on **outlook.com and hotmail.com** only. An address is
+Temp mailboxes on **mail.com, gmx.com, email.com, outlook.com and hotmail.com**
+(the first three added 2026-09-24, owner decision: ~$0.003 each with 570k–740k in
+stock, while outlook.com was down to 20). **mail.com is the default**, because
+`email-domains`' `ORDER` puts it first and the client picks the first domain in
+stock, so the order is the default for every shipped build. ⚠️ The three new
+domains' delivery was unproven when they were added; the per-domain watchdog
+covers them. Read their first days with the query under "Per-domain delivery IS
+monitored" before trusting them. ⚠️ Builds ≤ 2.18 still say "On outlook.com and
+hotmail.com" on the Mail paywall. An address is
 **INCLUDED** (0 credits) while the user still has their one free lifetime
 address or holds the Mail subscription under its caps. **Anyone NOT covered
 may instead pay `EMAIL_PAID_CREDITS` (1 credit) for that one address, refunded

@@ -6,8 +6,8 @@
 // live and never trusts a cached catalog — there is no email catalog table by
 // design.
 //
-// Pricing: outlook.com and hotmail.com are the only domains sold (gmail.com was
-// removed 2026-08-26). An address is INCLUDED — `p_credits = 0` — when the user
+// Pricing: mail.com, gmx.com, email.com, outlook.com and hotmail.com are sold
+// (the first three added 2026-09-24; gmail.com was removed 2026-08-26). An address is INCLUDED — `p_credits = 0` — when the user
 // still has their one free lifetime address or holds the Mail subscription
 // (under its daily and rolling 30-day caps). The free tier is bounded
 // server-side by begin_email_order: the lifetime allowance keyed on mailbox AND
@@ -57,7 +57,14 @@ interface Body {
 // failed, retried. Re-add the key when the `email-domain-gmail.com` watchdog
 // evidence says the pool delivers again — the removal IS the enforcement, same
 // as icloud. Keep in lockstep with email-domains' copy.
+// mail.com, gmx.com and email.com ADDED 2026-09-24 (owner decision): the provider
+// lists them at ~$0.003 with 570k–740k in stock, while outlook.com was down to
+// 20. They are INCLUDED the same way as outlook/hotmail. Delivery was unproven
+// when added — the per-domain watchdog (`email-domain-<domain>`) covers them.
 const PRICING: Record<string, number> = {
+  "mail.com": 0,
+  "gmx.com": 0,
+  "email.com": 0,
   "outlook.com": 0,
   "hotmail.com": 0,
 };
