@@ -43,7 +43,7 @@ struct LineSettingsScreen: View {
                     rentAnotherSection
                     emergencySection
                 }
-                .padding(.horizontal, 20)
+                .padding(.horizontal, RSpace.gutter)
                 .padding(.bottom, 40)
             }
         }
@@ -55,7 +55,7 @@ struct LineSettingsScreen: View {
     private var numberCard: some View {
         VStack(alignment: .leading, spacing: 0) {
             SectionHeader(label: String(localized: "Your number"))
-            Card {
+            Card(radius: RRadius.group, elevation: .flat) {
                 VStack(spacing: 0) {
                     row(label: "Number", value: PhoneFormat.national(line.e164))
                     divider
@@ -102,9 +102,9 @@ struct LineSettingsScreen: View {
                 Text("Rent another number")
                     .font(RFont.text(15, weight: .medium))
             }
-            .foregroundStyle(theme.ink)
+            .foregroundStyle(theme.text)
             .frame(maxWidth: .infinity, minHeight: 48)
-            .background(theme.inkSoft.opacity(0.5), in: Capsule())
+            .background(theme.chipBg, in: Capsule())
         }
         .buttonStyle(.plain)
         .padding(.top, 12)
@@ -113,7 +113,7 @@ struct LineSettingsScreen: View {
     private var emergencySection: some View {
         VStack(alignment: .leading, spacing: 0) {
             SectionHeader(label: String(localized: "Important")).padding(.top, 24)
-            Card {
+            Card(radius: RRadius.group, elevation: .flat) {
                 HStack(alignment: .top, spacing: 10) {
                     Image(systemName: "exclamationmark.triangle")
                         .font(.system(size: 13, weight: .semibold))

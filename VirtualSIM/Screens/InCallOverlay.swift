@@ -86,14 +86,12 @@ struct InCallOverlay: View {
                         .minimumScaleFactor(0.6)
                         .lineLimit(1)
                     Text(verbatim: PhoneFormat.national(calls.peer))
-                        .font(RFont.mono(14))
-                        .foregroundStyle(theme.text3)
+                        .numberStyle(size: 14, weight: .regular, color: theme.text3)
                         .minimumScaleFactor(0.6)
                         .lineLimit(1)
                 } else {
                     Text(verbatim: PhoneFormat.national(calls.peer))
-                        .font(RFont.mono(27, weight: .semibold))
-                        .foregroundStyle(theme.text)
+                        .numberStyle(size: 27, color: theme.text)
                         .minimumScaleFactor(0.6)
                         .lineLimit(1)
                 }

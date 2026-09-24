@@ -57,7 +57,7 @@ struct PrimaryButton: View {
                         .frame(width: 1, height: 18)
                         .padding(.leading, 4)
                     Text(LocalizedStringKey(sub))
-                        .font(RFont.mono(15, weight: .medium))
+                        .font(RFont.text(15, weight: .medium)).monospacedDigit()
                         .opacity(0.9)
                 }
             }

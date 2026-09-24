@@ -22,8 +22,7 @@ struct PeerNameSheet: View {
             VStack(spacing: 14) {
                 PeerAvatar(e164: e164, name: name.isEmpty ? nil : name, size: 64)
                 Text(verbatim: PhoneFormat.national(e164))
-                    .font(RFont.mono(15))
-                    .foregroundStyle(theme.text2)
+                    .numberStyle(size: 15, weight: .regular, color: theme.text2)
             }
 
             TextField("Name", text: $name)
@@ -33,7 +32,7 @@ struct PeerNameSheet: View {
                 .padding(.horizontal, 16)
                 .frame(height: 52)
                 .background(theme.chipBg, in: .rect(cornerRadius: RRadius.md))
-                .padding(.horizontal, 20)
+                .padding(.horizontal, RSpace.gutter)
 
             PrimaryButton(label: name.trimmingCharacters(in: .whitespaces).isEmpty
                           && state.contactName(for: e164) != nil
@@ -41,7 +40,7 @@ struct PeerNameSheet: View {
                 state.setContactName(name, for: e164)
                 dismiss()
             }
-            .padding(.horizontal, 20)
+            .padding(.horizontal, RSpace.gutter)
 
             Spacer(minLength: 0)
         }

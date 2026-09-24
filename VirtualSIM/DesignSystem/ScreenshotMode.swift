@@ -62,7 +62,10 @@ enum ScreenshotMode {
         // CTA and the trial line all follow the selection.
         case mailPaywallYearly
         case lineInbox       // an owned number, with conversations
-        case home            // the temp-SMS store
+        // The keypad over a live line, with a number typed. The dialer is a
+        // cover reached only by a tap, so without a frame it ships unseen.
+        case lineDialer
+        case home         // the temp-SMS store
         // The delivery explainer, opened over the temp-SMS store. It exists
         // because `DeliveryInfoSheet` is otherwise reachable only by a TAP,
         // and tap automation is not available on this machine — so without a

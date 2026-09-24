@@ -211,11 +211,9 @@ struct DialerScreen: View {
             Text(digits.isEmpty
                  ? String(localized: "Enter a number")
                  : (digits.hasPrefix("+") ? digits : PhoneFormat.national(digits)))
-                .font(RFont.mono(30, weight: .semibold))
-                .foregroundStyle(digits.isEmpty ? theme.text3 : theme.text)
+                .numberStyle(size: 30, color: digits.isEmpty ? theme.text3 : theme.text)
                 .minimumScaleFactor(0.5)
                 .lineLimit(1)
-                .contentTransition(.numericText())
                 .animation(RMotion.value, value: digits)
 
             // What this call will cost, the moment the country is unambiguous.
@@ -308,7 +306,7 @@ struct DialerScreen: View {
                     }
                 }
                     .frame(width: 68, height: 68)
-                    .background(canDial || calls.isStarting ? theme.live : theme.chipBg, in: .circle)
+                    .background(canDial || calls.isStarting ? theme.ink : theme.chipBg, in: .circle)
                     .contentShape(.circle)
             }
             .pressable(0.92)

@@ -244,7 +244,7 @@ struct LineCountryWideRow: View {
     let action: () -> Void
 
     var body: some View {
-        Card(elevation: .flat) {
+        Card(radius: RRadius.group, elevation: .flat) {
             Button(action: action) {
                 HStack(spacing: 12) {
                     LinePickerTile(symbol: RIcon.globe)
@@ -294,7 +294,7 @@ struct LinePickerRowSkeleton: View {
     var body: some View {
         VStack(spacing: 8) {
             ForEach(0..<4, id: \.self) { i in
-                RoundedRectangle(cornerRadius: RRadius.md, style: .continuous)
+                RoundedRectangle(cornerRadius: RRadius.group, style: .continuous)
                     .fill(theme.elev)
                     .frame(height: 56)
                     .opacity(1 - Double(i) * 0.18)
@@ -330,13 +330,12 @@ struct LineOfferRow: View {
 
     var body: some View {
         Button(action: action) {
-            Card(radius: RRadius.md, elevation: .raised) {
+            Card(radius: RRadius.group, elevation: .flat) {
                 HStack(spacing: 13) {
                     leading
                     VStack(alignment: .leading, spacing: 5) {
                         Text(PhoneFormat.national(offer.phoneNumber))
-                            .font(RFont.mono(18, weight: .medium))
-                            .foregroundStyle(theme.text)
+                            .numberStyle(size: 18, weight: .medium, color: theme.text)
                             .minimumScaleFactor(0.8)
                             .lineLimit(1)
                         capabilities
@@ -416,7 +415,7 @@ struct LineOfferSkeleton: View {
     var body: some View {
         VStack(spacing: 8) {
             ForEach(0..<max(rows, 1), id: \.self) { i in
-                RoundedRectangle(cornerRadius: RRadius.md, style: .continuous)
+                RoundedRectangle(cornerRadius: RRadius.group, style: .continuous)
                     .fill(theme.elev)
                     // Matches the contact card exactly — 42pt avatar plus 14+14
                     // of padding — so the list does not jump as it fills.

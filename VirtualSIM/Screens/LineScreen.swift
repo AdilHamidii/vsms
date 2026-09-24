@@ -110,13 +110,13 @@ private struct LiveLineView: View {
                 // active line with a live price — see the button's own doc.
                 if !line.status.isSettingUp {
                     LineSwitchNumberButton(line: line, style: .primary)
-                        .padding(.horizontal, 20)
+                        .padding(.horizontal, RSpace.gutter)
                         .padding(.top, 10)
                 }
                 LineStatusBanner(line: line)
-                    .padding(.horizontal, 20)
+                    .padding(.horizontal, RSpace.gutter)
                 VoiceReadinessNotice(readiness: calling.readiness)
-                    .padding(.horizontal, 20)
+                    .padding(.horizontal, RSpace.gutter)
 
                 if line.status.isSettingUp {
                     provisioning
@@ -245,8 +245,7 @@ private struct LiveLineView: View {
                         HStack(spacing: 7) {
                             Circle().fill(statusTint).frame(width: 7, height: 7)
                             Text(verbatim: PhoneFormat.national(line.e164))
-                                .font(RFont.mono(17, weight: .semibold))
-                                .foregroundStyle(theme.text)
+                                .numberStyle(size: 17, color: theme.text)
                                 .lineLimit(1)
                                 .minimumScaleFactor(0.7)
                         }
@@ -291,7 +290,7 @@ private struct LiveLineView: View {
             .pressable(0.9)
             .accessibilityLabel(Text("Number settings"))
         }
-        .padding(.horizontal, 20)
+        .padding(.horizontal, RSpace.gutter)
         .padding(.top, 8)
         .padding(.bottom, 4)
     }
@@ -454,7 +453,7 @@ private struct LiveLineView: View {
         .buttonStyle(.plain)
         .pressable(0.94)
         .accessibilityLabel(label)
-        .padding(.trailing, 20)
+        .padding(.trailing, RSpace.gutter)
         // 108 until 2026-09-24, sized to clear the old floating custom tab
         // bar; the native bar sits below the safe area, so only a gap remains.
         .padding(.bottom, LineScreen.fabBottomInset)
@@ -516,7 +515,7 @@ private struct LiveLineView: View {
             // reveal, so this is normally never blank on screen.
             if state.lineThreadsLoaded {
                 proofOfLife
-                    .padding(.horizontal, 20)
+                    .padding(.horizontal, RSpace.gutter)
                     .padding(.top, 24)
             }
         } else {
@@ -535,7 +534,7 @@ private struct LiveLineView: View {
                             })
                     }
                 }
-                .padding(.horizontal, 20)
+                .padding(.horizontal, RSpace.gutter)
                 // Clears the FAB in the same corner (the native tab bar
                 // insets the scroll view itself).
                 .padding(.bottom, LineScreen.fabClearance)
@@ -550,7 +549,7 @@ private struct LiveLineView: View {
     /// reading that gets this product cancelled. This is an instruction, so it
     /// is left-aligned, raised, and reads as something to act on.
     private var proofOfLife: some View {
-        Card(elevation: .raised) {
+        Card(radius: RRadius.card, elevation: .flat) {
             VStack(alignment: .leading, spacing: 10) {
                 HStack(spacing: 8) {
                     // The live dot is the same grammar as the header's status
@@ -651,7 +650,7 @@ struct LineStatusBanner: View {
             }
             .padding(.horizontal, 14)
             .padding(.vertical, 11)
-            .background(copy.tint.opacity(0.12), in: .rect(cornerRadius: 14))
+            .background(copy.tint.opacity(0.12), in: .rect(cornerRadius: RRadius.group))
             .padding(.top, 10)
         }
     }
@@ -758,8 +757,7 @@ struct ThreadRow: View {
                     HStack(spacing: 6) {
                         if let code = ThreadRow.code(in: thread.lastPreview) {
                             Text(verbatim: code)
-                                .font(RFont.mono(13, weight: .bold))
-                                .foregroundStyle(theme.text)
+                                .numberStyle(size: 13, weight: .bold, color: theme.text)
                                 .padding(.horizontal, 6).padding(.vertical, 2)
                                 .background(theme.chipBg, in: .rect(cornerRadius: 6))
                         }
@@ -778,12 +776,12 @@ struct ThreadRow: View {
                             .lineLimit(1)
                     }
                     if unread {
-                        Circle().fill(theme.ink).frame(width: 8, height: 8)
+                        Circle().fill(theme.text).frame(width: 8, height: 8)
                     }
                 }
             }
             .padding(14)
-            .background(theme.elev, in: .rect(cornerRadius: 16))
+            .background(theme.elev, in: .rect(cornerRadius: RRadius.group))
             .contentShape(.rect)
         }
         .buttonStyle(.plain)
@@ -860,7 +858,7 @@ struct VoiceReadinessNotice: View {
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 11)
-        .background(tint.opacity(0.12), in: .rect(cornerRadius: 14))
+        .background(tint.opacity(0.12), in: .rect(cornerRadius: RRadius.group))
         .padding(.top, 10)
     }
 }

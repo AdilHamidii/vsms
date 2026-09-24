@@ -98,7 +98,7 @@ struct LineStoreScreen: View {
 
                     smsEscape.padding(.top, 12).riseIn(appeared, index: 4)
                 }
-                .padding(.horizontal, 20)
+                .padding(.horizontal, RSpace.gutter)
                 // 🔴 THE BOTTOM CLEARANCE MUST SIT OUTSIDE THE MIN-HEIGHT
                 // FRAME. (It was 120, sized for the old floating custom tab
                 // bar; the native bar is below the safe area `proxy` measures,
@@ -226,7 +226,7 @@ struct LineStoreScreen: View {
     /// acted on. The same rule governs calling, which was a fourth row and is
     /// now checkout's alone: it works, it is not why anyone buys.
     private var pitch: some View {
-        Card(elevation: .raised) {
+        Card(radius: RRadius.card, elevation: .flat) {
             VStack(alignment: .leading, spacing: 0) {
                 // WhatsApp, named first and on its own line (owner decision
                 // 2026-09-05): it is the service these numbers verify most
@@ -307,6 +307,7 @@ struct LineStoreScreen: View {
                 //  public.voice_rates where enabled;`
                 BenefitRow(icon: RIcon.phone,
                            label: "Call over 50 countries, straight from the app",
+                           tint: theme.text2,
                            dense: true)
                 RowRule(inset: 54)
                 // The `live` tint stays on THIS row wherever it sits in the
@@ -339,10 +340,12 @@ struct LineStoreScreen: View {
                 if let cost = state.appStatus.lineSwapCredits {
                     BenefitRow(icon: "arrow.triangle.2.circlepath",
                                label: "Switch to a new number for only \(cost) credits — any time, as many times as you want",
+                               tint: theme.text2,
                                dense: true)
                 } else {
                     BenefitRow(icon: "arrow.triangle.2.circlepath",
                                label: "Switch to a new number any time, as many times as you want",
+                               tint: theme.text2,
                                dense: true)
                 }
                 RowRule(inset: 54)
@@ -351,6 +354,7 @@ struct LineStoreScreen: View {
                 // problem rather than a feature.
                 BenefitRow(icon: RIcon.shield,
                            label: "Keep your own number private",
+                           tint: theme.text2,
                            dense: true)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -521,7 +525,7 @@ struct LineStoreScreen: View {
         // treatment to `LineCheckoutScreen`'s own copy of this notice and to
         // its emergency block, so a caution looks like a caution everywhere in
         // the funnel instead of three hand-rolled backgrounds drifting apart.
-        Card(radius: RRadius.md, elevation: .flat,
+        Card(radius: RRadius.group, elevation: .flat,
              fill: theme.warnSoft, border: theme.warn.opacity(0.28)) {
             HStack(alignment: .top, spacing: 10) {
                 Image(systemName: "exclamationmark.triangle.fill")
@@ -565,7 +569,7 @@ struct LineStoreScreen: View {
             if Self.unreliableSendingCountries.contains(iso) {
                 // Same amber caution surface as `voiceOnlyNotice` — a caution
                 // must look like every other caution in this funnel.
-                Card(radius: RRadius.md, elevation: .flat,
+                Card(radius: RRadius.group, elevation: .flat,
                      fill: theme.warnSoft, border: theme.warn.opacity(0.28)) {
                     HStack(alignment: .top, spacing: 10) {
                         Image(systemName: "exclamationmark.triangle.fill")
@@ -682,7 +686,7 @@ struct LineStoreScreen: View {
                         numbersPage
                     }
                 }
-                .padding(.horizontal, 20)
+                .padding(.horizontal, RSpace.gutter)
                 .padding(.bottom, 24)
             }
             .scrollIndicators(.hidden)
@@ -707,7 +711,7 @@ struct LineStoreScreen: View {
     private var sortedCountries: [LineCountry] { state.lineCountries.pickerOrder }
 
     private var countryList: some View {
-        Card(elevation: .flat) {
+        Card(radius: RRadius.group, elevation: .flat) {
             VStack(spacing: 0) {
                 ForEach(Array(sortedCountries.enumerated()), id: \.element.id) { i, country in
                     LineCountryRow(country: country) { select(country) }
@@ -748,7 +752,7 @@ struct LineStoreScreen: View {
     /// `RowRule`, the shape every other list in this app uses. The rows are
     /// `LineCityRow`, shared with the swap picker.
     private var cityList: some View {
-        Card(elevation: .flat) {
+        Card(radius: RRadius.group, elevation: .flat) {
             VStack(spacing: 0) {
                 ForEach(Array(state.lineCities.enumerated()), id: \.element.id) { i, city in
                     LineCityRow(city: city) {
@@ -809,8 +813,8 @@ struct LineStoreScreen: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(kicker).font(RFont.text(13)).foregroundStyle(theme.text2)
                 Text(title)
-                    .font(RFont.display(28, weight: .bold))
-                    .tracking(-0.7).foregroundStyle(theme.text)
+                    .displayType(30)
+                    .foregroundStyle(theme.text)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             if let onClose {
@@ -880,7 +884,7 @@ struct LineStoreScreen: View {
         // amber — this is a statement of reach, not a warning, and the two must
         // not look alike. Giving it a surface at all is what stops a
         // load-bearing honesty line reading as a stray caption.
-        Card(radius: RRadius.md, elevation: .flat,
+        Card(radius: RRadius.group, elevation: .flat,
              fill: theme.chipBg, border: nil) {
         HStack(alignment: .top, spacing: 9) {
             Image(systemName: "flag")

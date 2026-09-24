@@ -76,7 +76,7 @@ struct LineSwapSheet: View {
                     }
                     content
                 }
-                .padding(.horizontal, 20)
+                .padding(.horizontal, RSpace.gutter)
                 .padding(.bottom, 28)
             }
             .scrollIndicators(.hidden)
@@ -192,7 +192,7 @@ struct LineSwapSheet: View {
 
     private var countriesPage: some View {
         let rows = state.lineCountries.pickerOrder
-        return Card(elevation: .flat) {
+        return Card(radius: RRadius.group, elevation: .flat) {
             VStack(spacing: 0) {
                 ForEach(Array(rows.enumerated()), id: \.element.id) { i, country in
                     LineCountryRow(country: country) { select(country) }
@@ -216,7 +216,7 @@ struct LineSwapSheet: View {
                 }
             }
         } else {
-            Card(elevation: .flat) {
+            Card(radius: RRadius.group, elevation: .flat) {
                 VStack(spacing: 0) {
                     ForEach(Array(state.lineCities.enumerated()), id: \.element.id) { i, city in
                         LineCityRow(city: city) {
@@ -249,7 +249,7 @@ struct LineSwapSheet: View {
 
     private func confirmPage(_ offer: LineNumberOffer) -> some View {
         VStack(alignment: .leading, spacing: 14) {
-            Card(elevation: .raised) {
+            Card(radius: RRadius.card, elevation: .flat) {
                 VStack(spacing: 0) {
                     numberLine(label: String(localized: "Current"),
                                e164: line.e164, muted: true)
@@ -261,7 +261,7 @@ struct LineSwapSheet: View {
 
             // The paywall, last. Both figures come from the server: the price
             // is `app_config.line_swap_credits` and the balance is the wallet.
-            Card(radius: RRadius.md, elevation: .flat) {
+            Card(radius: RRadius.group, elevation: .flat) {
                 VStack(spacing: 0) {
                     figureRow(label: String(localized: "Price"),
                               value: String(localized: "\(cost) credits"))
@@ -321,8 +321,7 @@ struct LineSwapSheet: View {
                     .foregroundStyle(theme.text3)
                     .textCase(.uppercase)
                 Text(PhoneFormat.national(e164))
-                    .font(RFont.mono(18, weight: .medium))
-                    .foregroundStyle(muted ? theme.text2 : theme.text)
+                    .numberStyle(size: 18, weight: .medium, color: muted ? theme.text2 : theme.text)
                     .strikethrough(muted, color: theme.text3)
                     .minimumScaleFactor(0.8)
                     .lineLimit(1)
@@ -353,7 +352,7 @@ struct LineSwapSheet: View {
     /// BEFORE they tap, not after. Same amber caution surface as the store's
     /// voice-only notice and checkout's emergency block.
     private var warning: some View {
-        Card(radius: RRadius.md, elevation: .flat,
+        Card(radius: RRadius.group, elevation: .flat,
              fill: theme.warnSoft, border: theme.warn.opacity(0.28)) {
             HStack(alignment: .top, spacing: 10) {
                 Image(systemName: "exclamationmark.triangle.fill")
@@ -373,7 +372,7 @@ struct LineSwapSheet: View {
     }
 
     private func inlineError(_ text: String) -> some View {
-        Card(radius: RRadius.md, elevation: .flat,
+        Card(radius: RRadius.group, elevation: .flat,
              fill: theme.failSoft, border: theme.fail.opacity(0.28)) {
             HStack(alignment: .top, spacing: 10) {
                 Image(systemName: "exclamationmark.circle.fill")
@@ -396,13 +395,12 @@ struct LineSwapSheet: View {
 
     private func donePage(_ number: String) -> some View {
         VStack(alignment: .leading, spacing: 16) {
-            Card(elevation: .raised) {
+            Card(radius: RRadius.card, elevation: .flat) {
                 VStack(alignment: .leading, spacing: 10) {
                     HStack(spacing: 13) {
                         PeerAvatar(e164: number, size: 42)
                         Text(PhoneFormat.national(number))
-                            .font(RFont.mono(20, weight: .medium))
-                            .foregroundStyle(theme.text)
+                            .numberStyle(size: 20, weight: .medium, color: theme.text)
                             .minimumScaleFactor(0.8)
                             .lineLimit(1)
                     }

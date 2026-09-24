@@ -82,7 +82,7 @@ struct LineCheckoutScreen: View {
                             emergency.padding(.top, 18).riseIn(appeared, index: 4)
                             legal.padding(.top, 14).riseIn(appeared, index: 5)
                         }
-                        .padding(.horizontal, 20)
+                        .padding(.horizontal, RSpace.gutter)
                         .padding(.bottom, 20)
                     }
                     .scrollIndicators(.hidden)
@@ -233,7 +233,7 @@ struct LineCheckoutScreen: View {
             .pressable(0.94)
             .disabled(isRestoring)
         }
-        .padding(.horizontal, 20)
+        .padding(.horizontal, RSpace.gutter)
         .padding(.top, 12)
         .padding(.bottom, 4)
     }
@@ -249,7 +249,7 @@ struct LineCheckoutScreen: View {
             // appear on the screen confirming it.
             Text(cityLabel.map { "Your \($0) number, ready now." }
                  ?? String(localized: "Your new number, ready now."))
-                .displayType(29)
+                .displayType(30)
                 .foregroundStyle(theme.text)
                 .fixedSize(horizontal: false, vertical: true)
                 .padding(.top, 8)
@@ -339,7 +339,7 @@ struct LineCheckoutScreen: View {
             //
             // It names Canada because the remedy has to be actionable at the
             // moment it is read: the country picker is two taps back.
-            Card(radius: RRadius.md, elevation: .flat,
+            Card(radius: RRadius.group, elevation: .flat,
                  fill: theme.warnSoft, border: theme.warn.opacity(0.28)) {
                 HStack(alignment: .top, spacing: 10) {
                     Image(systemName: "exclamationmark.triangle.fill")
@@ -362,7 +362,7 @@ struct LineCheckoutScreen: View {
             // emergency block below and to `LineStoreScreen.voiceOnlyNotice`:
             // one caution surface across the whole funnel rather than three
             // hand-rolled backgrounds free to drift apart.
-            Card(radius: RRadius.md, elevation: .flat,
+            Card(radius: RRadius.group, elevation: .flat,
                  fill: theme.warnSoft, border: theme.warn.opacity(0.28)) {
                 HStack(alignment: .top, spacing: 10) {
                     Image(systemName: "phone.fill")
@@ -401,7 +401,7 @@ struct LineCheckoutScreen: View {
     /// purchase rendered as a flat white rectangle indistinguishable from a
     /// settings row.
     private var numberCard: some View {
-        HeroCard {
+        Card(radius: RRadius.card, elevation: .flat) {
             VStack(spacing: 12) {
                 // The SAME deterministic circle the number wore on the picker
                 // row it was chosen from, keyed on the E.164 — so the thing
@@ -426,8 +426,7 @@ struct LineCheckoutScreen: View {
                 }
 
                 Text(PhoneFormat.national(state.lineOffer?.phoneNumber ?? ""))
-                    .font(RFont.mono(31, weight: .semibold))
-                    .foregroundStyle(theme.text)
+                    .numberStyle(size: 31, color: theme.text)
                     .minimumScaleFactor(0.6)
                     .lineLimit(1)
 
@@ -485,7 +484,7 @@ struct LineCheckoutScreen: View {
             MicroLabel("What you get")
                 .padding(.bottom, 10)
 
-            Card(elevation: .raised) {
+            Card(radius: RRadius.card, elevation: .flat) {
                 VStack(spacing: 0) {
                     // 🔴 A "200 texts a month, in and out" row lived here and is
                     // GONE, not relabelled. A texts-per-month FIGURE is a
@@ -598,7 +597,7 @@ struct LineCheckoutScreen: View {
             .accessibilityAddTraits(.isButton)
 
             if limitsShown {
-                Card(elevation: .raised) {
+                Card(radius: RRadius.card, elevation: .flat) {
                     VStack(spacing: 0) {
                         // Muted tint + "Not yet" hint keeps each one a ledger
                         // line rather than an alarm.
@@ -727,7 +726,7 @@ struct LineCheckoutScreen: View {
             // for. The old hand-rolled `.background(RoundedRectangle)` +
             // `.overlay(stroke)` pair drew the same thing twice with two
             // radius literals free to drift; this is one shape.
-            Card(radius: RRadius.md, elevation: .flat,
+            Card(radius: RRadius.group, elevation: .flat,
                  fill: active ? theme.inkSoft.opacity(0.5) : theme.elev,
                  border: active ? theme.ink.opacity(0.5) : theme.sep) {
             HStack(spacing: 12) {
@@ -783,7 +782,7 @@ struct LineCheckoutScreen: View {
     }
 
     private var priceBlock: some View {
-        Card(radius: RRadius.md, elevation: .flat,
+        Card(radius: RRadius.group, elevation: .flat,
              fill: theme.inkSoft.opacity(0.5), border: theme.ink.opacity(0.28)) {
             VStack(alignment: .leading, spacing: 4) {
                 HStack(alignment: .firstTextBaseline, spacing: 6) {
@@ -856,7 +855,7 @@ struct LineCheckoutScreen: View {
     /// on the store screen, which was rendered with identical weight and
     /// spacing: a safety warning and a "coming soon" should not look alike.
     private var emergency: some View {
-        Card(radius: RRadius.md, elevation: .flat,
+        Card(radius: RRadius.group, elevation: .flat,
              fill: theme.warnSoft, border: theme.warn.opacity(0.28)) {
             HStack(alignment: .top, spacing: 10) {
                 Image(systemName: "exclamationmark.triangle.fill")

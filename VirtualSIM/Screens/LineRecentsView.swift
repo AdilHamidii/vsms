@@ -34,7 +34,7 @@ struct LineRecentsView: View {
         Group {
             if calls.isEmpty {
                 VStack(spacing: 0) {
-                    strip
+                    strip.padding(.horizontal, RSpace.gutter)
                     EmptyState(
                         icon: RIcon.phone,
                         title: "No calls yet",
@@ -65,7 +65,7 @@ struct LineRecentsView: View {
                             }
                         }
                     }
-                    .padding(.horizontal, 20)
+                    .padding(.horizontal, RSpace.gutter)
                     // Clears the dial FAB, which sits over the bottom-trailing
                     // corner of this list (the native tab bar insets the
                     // scroll view itself).
@@ -88,7 +88,6 @@ struct LineRecentsView: View {
         // resets on renewal, so the strip's own copy of it would print the same
         // date twice on one screen.
         AllowanceStrip(line: line, showsResetDate: false)
-            .padding(.horizontal, 20)
             .padding(.bottom, 14)
     }
 
@@ -235,7 +234,7 @@ private struct RecentRow: View {
                         Button(action: onCallBack) {
                             Image(systemName: RIcon.phone)
                                 .font(.system(size: 14, weight: .semibold))
-                                .foregroundStyle(theme.ink)
+                                .foregroundStyle(theme.text2)
                                 .frame(width: 34, height: 34)
                                 .background(theme.chipBg, in: .circle)
                                 .contentShape(.circle)
@@ -258,7 +257,7 @@ private struct RecentRow: View {
                         .foregroundStyle(theme.text2)
                     HStack(spacing: 8) {
                         if canCall {
-                            action(icon: RIcon.phone, label: "Call back", tint: theme.ink,
+                            action(icon: RIcon.phone, label: "Call back", tint: theme.text,
                                    run: onCallBack)
                         }
                         if thread != nil {
@@ -278,7 +277,7 @@ private struct RecentRow: View {
                 .transition(.opacity.combined(with: .move(edge: .top)))
             }
         }
-        .background(theme.elev, in: .rect(cornerRadius: 16))
+        .background(theme.elev, in: .rect(cornerRadius: RRadius.group))
     }
 
     private func action(icon: String, label: LocalizedStringKey, tint: Color,
@@ -294,7 +293,7 @@ private struct RecentRow: View {
             .foregroundStyle(tint)
             .frame(maxWidth: .infinity)
             .frame(height: 54)
-            .background(theme.chipBg, in: .rect(cornerRadius: 12))
+            .background(theme.chipBg, in: .rect(cornerRadius: RRadius.xs))
             .contentShape(.rect)
         }
         .buttonStyle(.plain)

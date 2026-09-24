@@ -84,7 +84,7 @@ struct ComposeScreen: View {
                         bodyField
                         if let note { notice(note, warning: isWarning) }
                     }
-                    .padding(.horizontal, 20)
+                    .padding(.horizontal, RSpace.gutter)
                     .padding(.top, 8)
                 }
                 PrimaryButton(
@@ -92,7 +92,7 @@ struct ComposeScreen: View {
                     disabled: !canSend,
                     action: send
                 )
-                .padding(.horizontal, 20)
+                .padding(.horizontal, RSpace.gutter)
                 .padding(.bottom, 12)
             }
         }
@@ -134,20 +134,20 @@ struct ComposeScreen: View {
             }
             Spacer(minLength: 0)
         }
-        .padding(.horizontal, 20)
+        .padding(.horizontal, RSpace.gutter)
         .padding(.top, 8)
         .padding(.bottom, 12)
     }
 
     private var toField: some View {
-        Card(elevation: .flat) {
+        Card(radius: RRadius.group, elevation: .flat) {
             HStack(spacing: 12) {
                 Text("To")
                     .font(RFont.text(14))
                     .foregroundStyle(theme.text2)
                     .frame(width: 30, alignment: .leading)
                 TextField("Phone number", text: $to)
-                    .font(RFont.mono(16, weight: .medium))
+                    .font(RFont.text(16, weight: .medium)).monospacedDigit()
                     .foregroundStyle(theme.text)
                     .keyboardType(.phonePad)
                     .textContentType(.telephoneNumber)
@@ -159,7 +159,7 @@ struct ComposeScreen: View {
     }
 
     private var bodyField: some View {
-        Card(elevation: .flat) {
+        Card(radius: RRadius.group, elevation: .flat) {
             TextField("Message", text: $text, axis: .vertical)
                 .onChange(of: text) { _, _ in clampBody() }
                 .font(RFont.text(16))

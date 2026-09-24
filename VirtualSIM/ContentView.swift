@@ -985,6 +985,14 @@ extension ContentView {
             // see the `.lineIntro` note above.
             state.appStatus = AppStatus(announcement: nil, esimPaused: false, lineSwapCredits: 8)
 
+        case .lineDialer:
+            state.tab = .line
+            state.lines = [ScreenshotMode.sampleLine]
+            state.lineThreads = ScreenshotMode.sampleThreads
+            // 555 range, like every fixture. Read AND cleared by the dialer.
+            state.dialerPrefill = "+13105550199"
+            state.flow = .dialer
+
         case .thread:
             state.tab = .line
             state.lines = [ScreenshotMode.sampleLine]

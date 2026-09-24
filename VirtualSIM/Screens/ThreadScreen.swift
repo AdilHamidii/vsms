@@ -164,8 +164,7 @@ struct ThreadScreen: View {
                                 .lineLimit(1)
                         } else if peerName != nil {
                             Text(verbatim: PhoneFormat.national(peer))
-                                .font(RFont.mono(11))
-                                .foregroundStyle(theme.text3)
+                                .numberStyle(size: 11, weight: .regular, color: theme.text3)
                                 .lineLimit(1)
                         }
                     }
@@ -202,7 +201,7 @@ struct ThreadScreen: View {
             .buttonStyle(.plain)
             .accessibilityLabel(Text("Options"))
         }
-        .padding(.horizontal, 16)
+        .padding(.horizontal, RSpace.gutter)
         .padding(.top, 12)
         .padding(.bottom, 10)
     }
@@ -273,7 +272,7 @@ struct ThreadScreen: View {
                     // not require the user to chase it.
                     Color.clear.frame(height: 1).id("bottom")
                 }
-                .padding(.horizontal, 16)
+                .padding(.horizontal, RSpace.gutter)
                 .padding(.vertical, 14)
             }
             .onChange(of: messages.count) { _, _ in
@@ -345,7 +344,7 @@ struct ThreadScreen: View {
                     .padding(.horizontal, 4)
             }
         }
-        .padding(.horizontal, 16)
+        .padding(.horizontal, RSpace.gutter)
         .padding(.top, 8)
         .padding(.bottom, 12)
         .background(theme.bg)
@@ -494,11 +493,11 @@ struct MessageBubble: View {
                             Text(copiedCode ? "Copied" : "Copy \(code)")
                                 .font(RFont.text(11, weight: .semibold))
                         }
-                        .foregroundStyle(copiedCode ? theme.live : theme.ink)
+                        .foregroundStyle(copiedCode ? theme.live : theme.text)
                         .padding(.horizontal, 10)
                         .padding(.vertical, 6)
                         .background(
-                            (copiedCode ? theme.live : theme.ink).opacity(0.12),
+                            copiedCode ? theme.liveSoft : theme.chipBg,
                             in: .rect(cornerRadius: 10))
                     }
                     .buttonStyle(.plain)

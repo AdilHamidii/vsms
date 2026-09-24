@@ -112,8 +112,7 @@ struct LineProvisioningScreen: View {
                     .multilineTextAlignment(.center)
                 if let e164 = provisionedNumber {
                     Text(PhoneFormat.national(e164))
-                        .font(RFont.mono(19, weight: .medium))
-                        .foregroundStyle(theme.text2)
+                        .numberStyle(size: 19, weight: .medium, color: theme.text2)
                 }
             }
             // Only after the wait stops feeling instant. A healthy provision
