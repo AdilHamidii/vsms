@@ -1317,11 +1317,12 @@ final class AppState {
     /// mutate `self` would be a data race, not a speed-up. Doing that safely
     /// means making the API calls return values instead of mutating, which is a
     /// separate change with its own risk.
-    func coldStart(api: APIClient) async {
+    func coldStart(api: APIClient, signedIn: Bool = true) async {
         bootPhase = .loading
         bootProgress = 0
 
-        let total = 6.0
+        // Guests have no account reads, so their bar has 2 real steps, not 6.
+        let total = signedIn ? 6.0 : 2.0
         var done = 0.0
         func step() {
             done += 1
@@ -1342,29 +1343,16 @@ final class AppState {
         }
         step()
 
-        // Must precede applyStartupSelection below, which is what picks the
-        // country a first-run user lands on — the single decision this data
-        // exists to improve. ~390 rows / ~25 KB against the catalog's 3.5 MB,
-        // so this is one more round-trip's latency, not payload, on a chain
-        // that already has six. It swallows its own failure, so a slow or dead
-        // response costs the ranking and nothing else.
-        await loadCountryRanks(using: CatalogAPI(client: api))
-
-        await refreshWallet(using: WalletAPI(client: api));   step()
-        await refreshProfile(using: ProfileAPI(client: api)); step()
-        await loadOrders(using: OrdersAPI(client: api));      step()
-        // The rented line, BEFORE the reveal (owner decision 2026-09-06): one
-        // RLS-scoped row, and without it the Number tab rendered the store for
-        // a frame before a subscriber's own number replaced it. Swallows its
-        // own failure and sets `linesLoaded` regardless — see that flag.
-        await loadLine(using: LineAPI(client: api))
-        // And its conversations, for the same reason: the Messages segment is
-        // the tab's opening view, and on an empty list it renders the
-        // "your number is live" card — which is a lie for a beat to anyone
-        // who already has threads. Only when a line exists; one RLS-scoped
-        // read, folded into the same progress step.
-        if line != nil { await loadLineThreads(using: LineAPI(client: api)) }
-        step()
+        if signedIn {
+            await loadAccount(api: api, progress: step)
+        } else {
+            // No line can exist without an account; say so, so nothing waits
+            // on a read that will never run.
+            linesLoaded = true
+            // `loadCountryRanks` is skipped too, not merely deferred:
+            // `service_country_ranks` is not readable without a session, so a
+            // guest's read would only fail. `loadAccount` runs it after sign-in.
+        }
 
         // Both must run before the reveal — they decide WHICH screen and which
         // service/country the user lands on.
@@ -1377,32 +1365,64 @@ final class AppState {
         // trade `coldStart` exists to avoid. Runs BEFORE the eSIM loads because
         // `esimPaused` decides what the eSIM tab says when the catalog is empty.
         await refreshAppStatus(using: AppStatusAPI(client: api))
-        // Also behind the reveal, and for the same reason: a greeting is a
-        // label. The user id comes from the profile fetched above rather than
-        // from `Session`, which `AppState` does not hold — no profile means no
-        // row to PATCH anyway, so there is nothing to do.
-        if let userId = profile?.userId {
-            await applyPendingDisplayName(userId: userId, using: ProfileAPI(client: api))
-        }
-        await loadEsimCatalog(using: EsimPlansAPI(client: api))
-        await loadEsimOrders(using: EsimOrdersAPI(client: api))
-        // Behind the reveal like the eSIM loads: history is not needed to render
-        // a correct Home screen. It WAS missing entirely — loadEmailOrders
-        // existed and had no caller, so email activations never appeared in
-        // history at all.
-        await loadEmailOrders(using: EmailAPI(client: api))
+        if signedIn {
+            // Also behind the reveal, and for the same reason: a greeting is a
+            // label. The user id comes from the profile fetched above rather than
+            // from `Session`, which `AppState` does not hold — no profile means no
+            // row to PATCH anyway, so there is nothing to do.
+            if let userId = profile?.userId {
+                await applyPendingDisplayName(userId: userId, using: ProfileAPI(client: api))
+            }
+            await loadEsimCatalog(using: EsimPlansAPI(client: api))
+            await loadEsimOrders(using: EsimOrdersAPI(client: api))
+            // Behind the reveal like the eSIM loads: history is not needed to render
+            // a correct Home screen. It WAS missing entirely — loadEmailOrders
+            // existed and had no caller, so email activations never appeared in
+            // history at all.
+            await loadEmailOrders(using: EmailAPI(client: api))
 
-        // Also behind the reveal, and last: attribution is a MEASUREMENT, and
-        // no measurement may lengthen the boot critical path. It is also the
-        // only thing here that can tell us which Search Ads campaign produced
-        // a paying user — the app spends on ASA daily and, until this landed,
-        // installs and purchases were never joined at all.
-        await submitAttributionIfNeeded(api: api)
+            // Also behind the reveal, and last: attribution is a MEASUREMENT, and
+            // no measurement may lengthen the boot critical path. It is also the
+            // only thing here that can tell us which Search Ads campaign produced
+            // a paying user — the app spends on ASA daily and, until this landed,
+            // installs and purchases were never joined at all.
+            await submitAttributionIfNeeded(api: api)
+        }
 
         // Last, with attribution, and for the same reason: a measurement may
         // never lengthen the boot critical path. Enqueue only — the flush is
         // gated on an authenticated session inside `Analytics`.
         Analytics.shared.track("app_open")
+    }
+
+    /// Everything that needs a session, in the order cold start has always
+    /// run it. `progress` is called after each of the four steps that count
+    /// towards the splash bar (wallet, profile, orders, line) so a signed-in
+    /// cold start reports exactly what it did before the split.
+    func loadAccount(api: APIClient, progress: () -> Void = {}) async {
+        // Must precede applyStartupSelection in `coldStart`, which is what picks the
+        // country a first-run user lands on — the single decision this data
+        // exists to improve. ~390 rows / ~25 KB against the catalog's 3.5 MB,
+        // so this is one more round-trip's latency, not payload, on a chain
+        // that already has six. It swallows its own failure, so a slow or dead
+        // response costs the ranking and nothing else.
+        await loadCountryRanks(using: CatalogAPI(client: api))
+
+        await refreshWallet(using: WalletAPI(client: api));   progress()
+        await refreshProfile(using: ProfileAPI(client: api)); progress()
+        await loadOrders(using: OrdersAPI(client: api));      progress()
+        // The rented line, BEFORE the reveal (owner decision 2026-09-06): one
+        // RLS-scoped row, and without it the Number tab rendered the store for
+        // a frame before a subscriber's own number replaced it. Swallows its
+        // own failure and sets `linesLoaded` regardless — see that flag.
+        await loadLine(using: LineAPI(client: api))
+        // And its conversations, for the same reason: the Messages segment is
+        // the tab's opening view, and on an empty list it renders the
+        // "your number is live" card — which is a lie for a beat to anyone
+        // who already has threads. Only when a line exists; one RLS-scoped
+        // read, folded into the same progress step.
+        if line != nil { await loadLineThreads(using: LineAPI(client: api)) }
+        progress()
     }
 
     /// Hand Apple's AdServices attribution token to `record-attribution`, once
