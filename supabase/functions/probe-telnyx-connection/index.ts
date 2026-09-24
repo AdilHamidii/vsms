@@ -474,7 +474,7 @@ Deno.serve(async (req) => {
   // Switch ONE number we own to P2P messaging (no 10DLC) and read it back.
   // 🔴 WRITING MODE. `ensureP2P` refuses a number Telnyx does not list as
   // P2P-eligible and reports read-back, never the PATCH status. The same call
-  // runs hourly in `sync-line-voice` for every live line; this is for a
+  // runs hourly in `sync-line-voice` once `line_p2p_enabled` is on; this is for a
   // one-number test.
   if (body.probe === "p2p") {
     const e164 = String(body.e164 ?? "");

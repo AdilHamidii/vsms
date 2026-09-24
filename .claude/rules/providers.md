@@ -854,9 +854,11 @@ was **~$105 in the 30 days to 2026-09-24** (50 numbers × $2 from 35 new lines
 + 15 swaps, $3.25 calls, $0.66 SMS) — revisit at ~10× that. Until then 10DLC is the
 only documented route for US outbound, and it is a carrier rule, so no other
 provider escapes it. (`/v2/10dlc/brand` reports `totalRecords: 0`.)
-`ensureP2P` in `_shared/telnyx.ts` is wired (purchase, swap, and an hourly
-sweep in `sync-line-voice` gated OFF by `app_config.line_p2p_sweep_enabled`)
-so the day Telnyx enables it, flipping that key switches every live line.
+`ensureP2P` in `_shared/telnyx.ts` is wired (purchase and swap via
+`switchToP2P`, plus an hourly sweep in `sync-line-voice`), all three gated OFF
+by the one key `app_config.line_p2p_enabled` (`p2pEnabled()` in
+`_shared/lineProvision.ts`), so the day Telnyx enables it, flipping that key
+switches every live line.
 Test one number with `probe-telnyx-connection {"probe":"p2p","e164":…}`.
 
 **What that means for who this line is for.** It is a **US product**, and that

@@ -549,9 +549,11 @@ all 28 live ones was accepted and read back `A2P` on every one. It needs Telnyx'
 P2P EXEMPTION, which requires a **$1,000+/month Telnyx contract** and months of
 review — out of reach at our ~$105 spend in the 30 days to 2026-09-24
 (50 numbers × $2 + $3.91 calls/SMS). The
-code is ready: `ensureP2P` runs at purchase and swap, and the hourly sweep in
-`sync-line-voice` switches every live line once
-`app_config.line_p2p_sweep_enabled` is set `true` (absent = off). Detail in
+code is ready and ONE key gates all of it: once
+`app_config.line_p2p_enabled` is set `true` (absent = off), `switchToP2P`
+(`_shared/lineProvision.ts`) runs at purchase and swap and the hourly sweep in
+`sync-line-voice` switches every live line. While it is off none of the three
+touches Telnyx. Detail in
 `.claude/rules/providers.md`.
 
 ✅ **DECIDED 2026-09-17: KEEP SELLING US/PR AND DISCLOSE IT.** US and PR were

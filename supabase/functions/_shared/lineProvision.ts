@@ -50,6 +50,32 @@ export const DEFAULT_LINE_COUNTRY = "CA";
 const ORDER_POLL_ATTEMPTS = 10;
 const ORDER_POLL_MS = 1000;
 
+/** `app_config.line_p2p_enabled` — anything but `true` (absent, unreadable)
+ *  is OFF. One switch for every `ensureP2P` caller: purchase, swap and the
+ *  `sync-line-voice` sweep. OFF because P2P is closed at the Telnyx ACCOUNT
+ *  (2026-09-24: all 28 eligible US numbers read back A2P after an accepted
+ *  PATCH), so each call is up to three Telnyx round-trips for nothing — on
+ *  the key `send-line-message` shares. Flip it once Telnyx enables P2P. */
+export async function p2pEnabled(sb: SB = admin()): Promise<boolean> {
+  const { data } = await sb.from("app_config")
+    .select("value").eq("key", "line_p2p_enabled").maybeSingle();
+  return data?.value === true;
+}
+
+/** Switch a freshly wired number to P2P texting (no 10DLC; A2P, the default,
+ *  is refused `40010` by US carriers). Call it AFTER the messaging-profile
+ *  attach — `/messaging_phone_numbers` lists only numbers with messaging
+ *  configured. Best-effort and never a failure reason: it only logs, and the
+ *  hourly `sync-line-voice` sweep retries a miss. */
+export async function switchToP2P(e164: string, log: Record<string, unknown>): Promise<void> {
+  if (!(await p2pEnabled())) return;
+  const r = await ensureP2P(e164);
+  console.log(JSON.stringify({
+    event: "line_p2p", ...log, e164,
+    result: faultOf(r) ? { fault: r.detail ?? r.type } : r,
+  }));
+}
+
 export type ProvisionResult =
   | { ok: true; e164: string; inboundReady: boolean; numberId: string | null }
   | { ok: false; reason: string; status: number };
@@ -171,15 +197,7 @@ export async function completeLineProvision(
         alert: "line_msg_profile_failed", line: o.lineId, detail: attached.detail,
       }));
     } else {
-      // P2P texting needs no 10DLC; A2P (the default) is refused `40010` by
-      // US carriers. AFTER the profile attach — `/messaging_phone_numbers`
-      // lists only numbers with messaging configured. Best-effort: the hourly
-      // `sync-line-voice` sweep retries anything this misses.
-      const p2p = await ensureP2P(e164);
-      console.log(JSON.stringify({
-        event: "line_p2p", line: o.lineId, e164,
-        result: faultOf(p2p) ? { fault: p2p.detail ?? p2p.type } : p2p,
-      }));
+      await switchToP2P(e164, { line: o.lineId });
     }
   }
 
