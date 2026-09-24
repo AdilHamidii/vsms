@@ -346,12 +346,15 @@ struct LineStoreScreen: View {
                 if state.isLoadingLineNumbers
                     || (state.lineOffers.isEmpty && state.lineUnavailableReason == nil) {
                     LineOfferSkeleton(rows: Self.visibleOffers)
+                        .transition(.opacity)
                 } else if state.lineOffers.isEmpty {
                     unavailable
+                        .transition(.opacity)
                 } else {
                     LineOfferList(offers: Array(state.lineOffers.prefix(Self.visibleOffers)),
                                   country: state.lineCountry,
                                   placeFallback: state.linePlaceLabel) { pick($0) }
+                        .transition(.opacity)
                     GhostButton(label: "Show different numbers", icon: RIcon.refresh,
                                 fillsWidth: false) {
                         Task { await LineStoreSearch.reload(state, api: api) }
@@ -359,8 +362,13 @@ struct LineStoreScreen: View {
                     .disabled(state.isLoadingLineNumbers)
                     .opacity(state.isLoadingLineNumbers ? 0.5 : 1)
                     .padding(.top, RSpace.xs)
+                    .transition(.opacity)
                 }
             }
+            // Changing country or "Show different numbers" crossfades
+            // skeleton ↔ list (spec §3a); instant under Reduce Motion.
+            .animation(RMotion.unlessReduced(RMotion.content, reduceMotion),
+                       value: state.isLoadingLineNumbers)
         }
     }
 

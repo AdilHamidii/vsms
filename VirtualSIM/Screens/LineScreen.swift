@@ -104,6 +104,7 @@ private struct LiveLineView: View {
     @Environment(CallController.self) private var calling
     /// Threaded through `LineEnv` for `PeerNameSheet`.
     @Environment(IAPStore.self) private var iap
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     let line: Line
 
@@ -113,6 +114,11 @@ private struct LiveLineView: View {
     @State private var seg: Seg = LiveLineView.initialSeg
     @State private var naming: PeerRef?
     @State private var swappedTo: String?
+    /// +1 when the new segment is to the right of the old one, -1 to the
+    /// left, so the content slides the way the capsule glides.
+    @State private var segDirection: CGFloat = 1
+    /// The thread list's entrance stagger (spec §3a), once per visit.
+    @State private var listShown = false
 
     /// Screenshot harness: `lineCalls` / `lineNumber` open on their segment.
     private static var initialSeg: Seg {
@@ -134,11 +140,11 @@ private struct LiveLineView: View {
                 if line.status.isSettingUp {
                     provisioning
                 } else {
-                    CapsuleSegmentedControl(selection: $seg, tags: Seg.allCases) { tag, _ in
+                    CapsuleSegmentedControl(selection: segBinding, tags: Seg.allCases) { tag, _ in
                         segmentLabel(tag)
                     }
                     .padding(.top, RSpace.xl)
-                    segmentContent
+                    ZStack { segmentContent }
                         .padding(.top, RSpace.lg)
                 }
             }
@@ -146,6 +152,14 @@ private struct LiveLineView: View {
             .padding(.bottom, RSpace.xxl)
         }
         .scrollIndicators(.hidden)
+        // Pull to refresh reloads the line and its threads (and calls, which
+        // the Calls segment reads).
+        .refreshable {
+            async let l: () = state.loadLine(using: LineAPI(client: api))
+            async let t: () = state.loadLineThreads(using: LineAPI(client: api))
+            async let c: () = state.loadLineCalls(using: LineAPI(client: api))
+            _ = await (l, t, c)
+        }
         .background(theme.bg.ignoresSafeArea())
         .sheet(item: $naming) { peer in
             PeerNameSheet(e164: peer.id)
@@ -288,12 +302,34 @@ private struct LiveLineView: View {
         }
     }
 
+    /// Direction is set in the SAME transaction as the selection, so the
+    /// insertion transition reads the new direction, not the previous one.
+    private var segBinding: Binding<Seg> {
+        Binding(get: { seg }, set: { new in
+            let all = Seg.allCases
+            segDirection = (all.firstIndex(of: new) ?? 0) > (all.firstIndex(of: seg) ?? 0) ? 1 : -1
+            seg = new
+        })
+    }
+
+    /// Crossfade plus a slight slide in the segment order's direction (spec
+    /// §3a). `CapsuleSegmentedControl` changes the selection inside
+    /// `withAnimation(RMotion.unlessReduced(RMotion.standard, …))`, so under
+    /// Reduce Motion the swap is instant.
+    private var segmentTransition: AnyTransition {
+        .asymmetric(insertion: .opacity.combined(with: .offset(x: 8 * segDirection)),
+                    removal: .opacity.combined(with: .offset(x: -8 * segDirection)))
+    }
+
     @ViewBuilder
     private var segmentContent: some View {
         switch seg {
-        case .messages: messages
-        case .calls:    LineRecentsView(line: line)
-        case .number:   LineNumberSegment(line: line) { swappedTo = $0 }
+        case .messages:
+            messages.transition(segmentTransition)
+        case .calls:
+            LineRecentsView(line: line).transition(segmentTransition)
+        case .number:
+            LineNumberSegment(line: line) { swappedTo = $0 }.transition(segmentTransition)
         }
     }
 
@@ -357,9 +393,15 @@ private struct LiveLineView: View {
                             state.openThreadId = thread.id
                             state.flow = .thread       // Task 6 turns this into a push
                         })
+                    // Capped stagger on entry; a new thread (an inbound
+                    // message from a new peer) drops in at the top.
+                    .riseIn(listShown, index: threads.firstIndex(of: thread) ?? 0)
+                    .transition(.move(edge: .top).combined(with: .opacity))
                 }
             }
             .background(theme.elev, in: .rect(cornerRadius: RRadius.group, style: .continuous))
+            .animation(RMotion.unlessReduced(RMotion.standard, reduceMotion), value: threads.map(\.id))
+            .onAppear { listShown = true }
         }
     }
 }

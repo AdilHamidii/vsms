@@ -28,6 +28,7 @@ struct ThreadScreen: View {
     @Environment(AppState.self) private var state
     @Environment(APIClient.self) private var api
     @Environment(CallController.self) private var calls
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     @State private var draft = ""
     @State private var isSending = false
@@ -266,6 +267,10 @@ struct ThreadScreen: View {
                         MessageBubble(
                             message: row.message,
                             sentFromUnreliableCountry: sendsFromUnreliableCountry(row.message))
+                            // A new bubble grows in from its sender's side.
+                            .transition(.scale(scale: 0.94,
+                                               anchor: row.message.isOutbound ? .bottomTrailing : .bottomLeading)
+                                        .combined(with: .opacity))
                             .id(row.id)
                     }
                     // Anchor for the scroll-to-bottom, so a new message does
@@ -274,6 +279,7 @@ struct ThreadScreen: View {
                 }
                 .padding(.horizontal, RSpace.gutter)
                 .padding(.vertical, 14)
+                .animation(RMotion.unlessReduced(RMotion.standard, reduceMotion), value: messages.count)
             }
             .onChange(of: messages.count) { _, _ in
                 withAnimation(RMotion.content) { proxy.scrollTo("bottom", anchor: .bottom) }
@@ -452,11 +458,14 @@ private struct DaySeparator: View {
 /// standard "this one is from you" grammar.
 struct MessageBubble: View {
     @Environment(\.theme) private var theme
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let message: LineMessage
     /// The number it went out on is American (US/PR). A carrier refusal there
     /// is the 10DLC rule, not this recipient — see `failureCopy`.
     var sentFromUnreliableCountry: Bool = false
     @State private var copiedCode = false
+    /// Drives the code chip's bounce; bumped once per tap.
+    @State private var copyTick = 0
 
     var body: some View {
         HStack {
@@ -480,16 +489,19 @@ struct MessageBubble: View {
                    let code = VerificationCode.detect(in: message.body) {
                     Button {
                         UIPasteboard.general.string = code
-                        withAnimation(RMotion.select) { copiedCode = true }
+                        copyTick += 1
+                        withAnimation(RMotion.unlessReduced(RMotion.select, reduceMotion)) { copiedCode = true }
                         RHaptic.select()
                         Task {
                             try? await Task.sleep(for: .seconds(1.6))
-                            withAnimation(RMotion.select) { copiedCode = false }
+                            withAnimation(RMotion.unlessReduced(RMotion.select, reduceMotion)) { copiedCode = false }
                         }
                     } label: {
                         HStack(spacing: 5) {
                             Image(systemName: copiedCode ? RIcon.check : "doc.on.doc")
                                 .font(.system(size: 10, weight: .semibold))
+                                .contentTransition(.symbolEffect(.replace))
+                                .symbolEffect(.bounce, value: reduceMotion ? 0 : copyTick)
                             Text(copiedCode ? "Copied" : "Copy \(code)")
                                 .font(RFont.text(11, weight: .semibold))
                         }

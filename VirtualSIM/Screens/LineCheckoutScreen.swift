@@ -37,6 +37,8 @@ struct LineCheckoutScreen: View {
     @State private var isRestoring = false
     /// The "Good to know" disclosure. Collapsed on open — see `goodToKnow`.
     @State private var limitsShown = false
+    /// The selected plan's border springs between rows (spec §3a).
+    @Namespace private var planNS
 
     /// Scroll anchor for the plan picker. Only the screenshot harness uses it,
     /// but it is a plain view id rather than DEBUG-only state so the scroll
@@ -58,8 +60,13 @@ struct LineCheckoutScreen: View {
                     // thing it describes has been chosen.
                     plans.padding(.top, RSpace.xl).riseIn(appeared, index: 3)
                         .id(Self.planAnchor)
-                    priceSentence.padding(.top, RSpace.md).riseIn(appeared, index: 3)
-                    rentalLine.padding(.top, RSpace.sm).riseIn(appeared, index: 3)
+                    // Gated like `plans`: with no plan and no price on screen,
+                    // renewal terms would describe nothing. The 3.1.2(a)
+                    // sentence therefore renders whenever a plan does.
+                    if subs.hasMonthly || subs.isLoadingProduct {
+                        priceSentence.padding(.top, RSpace.md).riseIn(appeared, index: 3)
+                        rentalLine.padding(.top, RSpace.sm).riseIn(appeared, index: 3)
+                    }
                     // What this number does NOT do, collapsed. It stays ON the
                     // purchase screen (3.1.2(a): the limitations are terms the
                     // buyer accepts before paying), one tap away instead of in
@@ -171,6 +178,7 @@ struct LineCheckoutScreen: View {
             Text("Your own number")
                 .font(RFont.text(17, weight: .semibold))
                 .foregroundStyle(theme.text)
+                .padding(.horizontal, RSpace.gutter)
             HStack {
                 Button { state.flow = nil } label: {
                     Image(systemName: RIcon.close)
@@ -188,8 +196,12 @@ struct LineCheckoutScreen: View {
                     .font(RFont.text(15, weight: .medium))
                     .foregroundStyle(theme.text)
             }
+            // The ✕ circle is 36pt inside a 44pt hit frame, so its visual
+            // edge sits 4pt in from the frame: pull the frame out by 4 and
+            // the circle lines up with the 16pt content column.
+            .padding(.leading, RSpace.gutter - 4)
+            .padding(.trailing, RSpace.gutter)
         }
-        .padding(.horizontal, RSpace.gutter)
         .frame(height: 52)
         .background(.bar)
         .overlay(alignment: .bottom) {
@@ -199,7 +211,12 @@ struct LineCheckoutScreen: View {
 
     private var restoreButton: some View {
         Button(action: restore) {
-            Text(isRestoring ? "Restoring…" : "Restore")
+            // Both instances (header, link row) get a 44pt tap target.
+            Group {
+                if isRestoring { Text("Restoring…") } else { Text("Restore") }
+            }
+            .frame(minHeight: 44)
+            .contentShape(.rect)
         }
         .buttonStyle(.plain)
         .disabled(isRestoring)
@@ -588,9 +605,11 @@ struct LineCheckoutScreen: View {
         return Button { select(plan) } label: {
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 6) {
-                    Text(plan == .monthly ? "Monthly" : "Yearly")
-                        .font(RFont.text(15, weight: .semibold))
-                        .foregroundStyle(theme.text)
+                    Group {
+                        if plan == .monthly { Text("Monthly") } else { Text("Yearly") }
+                    }
+                    .font(RFont.text(15, weight: .semibold))
+                    .foregroundStyle(theme.text)
                     // Computed from the two live prices, so it cannot promise
                     // a saving the store will not honour.
                     if plan == .yearly, let pct = subs.yearlySavingsPercent {
@@ -606,8 +625,18 @@ struct LineCheckoutScreen: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(RSpace.lg)
-            .background(theme.elev, in: .rect(cornerRadius: RRadius.group, style: .continuous))
-            .selectedEmphasis(active, radius: RRadius.group, color: theme.ink)
+            .background {
+                ZStack {
+                    RoundedRectangle(cornerRadius: RRadius.group, style: .continuous)
+                        .fill(theme.elev)
+                    if active {
+                        // One border that springs between rows (spec §3a).
+                        RoundedRectangle(cornerRadius: RRadius.group, style: .continuous)
+                            .strokeBorder(theme.ink, lineWidth: 1)
+                            .matchedGeometryEffect(id: "planBorder", in: planNS)
+                    }
+                }
+            }
             .contentShape(.rect)
         }
         .buttonStyle(PressScaleStyle(scale: 0.99))
@@ -657,7 +686,7 @@ struct LineCheckoutScreen: View {
         if subs.selectedPlan != plan {
             Analytics.shared.track("line_plan_selected", ["plan": .string(plan.rawValue)])
         }
-        withAnimation(RMotion.unlessReduced(RMotion.select, reduceMotion)) {
+        withAnimation(RMotion.unlessReduced(RMotion.standard, reduceMotion)) {
             subs.selectedPlan = plan
         }
     }
@@ -666,24 +695,33 @@ struct LineCheckoutScreen: View {
     /// SELECTED plan. The figure comes from StoreKit only. When an intro or
     /// trial applies, 3.1.2(a) also requires saying what happens when it ends
     /// — the most common reason a subscription paywall is rejected.
+    ///
+    /// ONE `Text` whose key changes, not a branch per sentence: a branch swap
+    /// is a view transition (a plain fade), and only a change inside the
+    /// same `Text` gets the `numericText` roll (spec §3a).
     private var priceSentence: some View {
-        Group {
-            if subs.selectedPlan == .yearly {
-                if let trial = subs.trialLabel, let price = subs.yearlyPriceDisplay {
-                    Text("\(trial) free, then \(price). Renews every year until you cancel. Cancel any time in Settings.")
-                } else {
-                    Text("Renews every year until you cancel. Cancel any time in Settings.")
-                }
-            } else if subs.selectedIntroPriceDisplay != nil, let price = subs.monthlyPriceDisplay {
-                Text("Then \(price) every month until you cancel. Cancel any time in Settings.")
-            } else {
-                Text("Renews every month until you cancel. Cancel any time in Settings.")
+        Text(priceSentenceKey)
+            .font(RFont.text(13))
+            .foregroundStyle(theme.text2)
+            .monospacedDigit()
+            .fixedSize(horizontal: false, vertical: true)
+            .contentTransition(.numericText())
+            .animation(RMotion.unlessReduced(RMotion.standard, reduceMotion), value: subs.selectedPlan)
+    }
+
+    /// The four sentences, unchanged as catalog keys (`LocalizedStringKey`
+    /// by declared type, so each literal is looked up, never shown raw).
+    private var priceSentenceKey: LocalizedStringKey {
+        if subs.selectedPlan == .yearly {
+            if let trial = subs.trialLabel, let price = subs.yearlyPriceDisplay {
+                return "\(trial) free, then \(price). Renews every year until you cancel. Cancel any time in Settings."
             }
+            return "Renews every year until you cancel. Cancel any time in Settings."
         }
-        .font(RFont.text(13))
-        .foregroundStyle(theme.text2)
-        .monospacedDigit()
-        .fixedSize(horizontal: false, vertical: true)
+        if subs.selectedIntroPriceDisplay != nil, let price = subs.monthlyPriceDisplay {
+            return "Then \(price) every month until you cancel. Cancel any time in Settings."
+        }
+        return "Renews every month until you cancel. Cancel any time in Settings."
     }
 
     /// True of the lapse machine: `reclaim_lapsed_lines` never releases a line

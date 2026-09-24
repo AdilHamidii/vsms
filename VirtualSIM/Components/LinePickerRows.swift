@@ -326,6 +326,10 @@ struct LineOfferList: View {
     var placeFallback: String? = nil
     let onPick: (LineNumberOffer) -> Void
 
+    /// The rows' fade-and-stagger entrance (spec §3a). A reload swaps this
+    /// list for the skeleton and back, so a fresh instance replays it.
+    @State private var shown = false
+
     var body: some View {
         VStack(spacing: 0) {
             ForEach(offers) { offer in
@@ -334,9 +338,11 @@ struct LineOfferList: View {
                 }
                 LineOfferRow(offer: offer, country: country,
                              placeFallback: placeFallback) { onPick(offer) }
+                    .riseIn(shown, index: offers.firstIndex(of: offer) ?? 0)
             }
         }
         .background(theme.elev, in: .rect(cornerRadius: RRadius.group, style: .continuous))
+        .onAppear { shown = true }
     }
 }
 
@@ -365,6 +371,10 @@ struct LineOfferSkeleton: View {
             }
         }
         .background(theme.elev, in: .rect(cornerRadius: RRadius.group, style: .continuous))
+        // `Shimmer` draws nothing under Reduce Motion. Clipped so the moving
+        // band stays inside the card rather than sweeping across the page.
+        .shimmer()
+        .clipShape(.rect(cornerRadius: RRadius.group, style: .continuous))
         .accessibilityHidden(true)
         .transition(.opacity)
     }

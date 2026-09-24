@@ -11,12 +11,20 @@ struct LineNumberCard: View {
     @Environment(\.theme) private var theme
     @Environment(AppState.self) private var state
     @Environment(\.dynamicTypeSize) private var typeSize
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     let line: Line
     /// The confirmation under the card after a swap, from either entry point.
     @Binding var swappedTo: String?
 
     @State private var copied = false
+    /// First appearance only: `TabView` keeps this view alive, so the rise
+    /// does not replay on every tab switch.
+    @State private var appeared = false
+    /// The switch-success border glow (spec §3a), 0 at rest.
+    @State private var glow: Double = 0
+    /// Drives the Copy icon's bounce; bumped once per tap.
+    @State private var copyTick = 0
 
     var body: some View {
         VStack(alignment: .leading, spacing: RSpace.md) {
@@ -40,8 +48,7 @@ struct LineNumberCard: View {
                 .frame(minHeight: 44)
             }
             HStack(spacing: RSpace.sm) {
-                Circle().fill(statusTint).frame(width: 8, height: 8)
-                    .accessibilityHidden(true)
+                LiveDot(tint: statusTint, pulses: line.status == .active)
                 CodeFlag(code: line.countryCode, size: 20)
                 Text(verbatim: placeLabel)
                     .font(RFont.text(14))
@@ -60,6 +67,25 @@ struct LineNumberCard: View {
         }
         .padding(RSpace.lg)
         .background(theme.elev, in: .rect(cornerRadius: RRadius.card, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: RRadius.card, style: .continuous)
+                .strokeBorder(theme.live.opacity(glow), lineWidth: 2)
+                .allowsHitTesting(false)
+        }
+        .opacity(appeared ? 1 : 0)
+        .offset(y: appeared || reduceMotion ? 0 : 12)
+        .onAppear {
+            guard !appeared else { return }
+            withAnimation(RMotion.unlessReduced(RMotion.standard, reduceMotion)) { appeared = true }
+        }
+        // Switch success: a short mint glow (0.6 → 0 over 1.2s). The roll
+        // itself is the number's `.animation(value: line.e164)` below —
+        // the line reloads only after the swap sheet has gone.
+        .onChange(of: swappedTo) { _, new in
+            guard new != nil, !reduceMotion else { return }
+            glow = 0.6
+            withAnimation(.easeOut(duration: 1.2)) { glow = 0 }
+        }
     }
 
     // MARK: Row 1
@@ -67,8 +93,13 @@ struct LineNumberCard: View {
     private var numberLine: some View {
         HStack(spacing: RSpace.sm) {
             Text(verbatim: PhoneFormat.national(line.e164))
-                .numberStyle(size: 28, color: theme.text)
+                .numberStyle(size: numberSize, color: theme.text)
+                // Switch success: the old number rolls into the new one
+                // digit by digit (`numberStyle` sets `.numericText()`).
+                .animation(RMotion.unlessReduced(RMotion.standard, reduceMotion), value: line.e164)
                 .lineLimit(1)
+                // A safety net only (narrow phones, the multi-line
+                // switcher): the size is chosen explicitly above.
                 .minimumScaleFactor(0.7)
                 // The number shrinks before anything else gives way.
                 .layoutPriority(1)
@@ -77,6 +108,15 @@ struct LineNumberCard: View {
             // Switch capsule in the two-line frame).
             if state.hasMultipleLines { lineSwitcher.fixedSize() }
         }
+    }
+
+    /// 24pt beside the Switch capsule, 28pt when the row is the number's
+    /// alone (no Switch offered, or the accessibility layout, where the
+    /// capsule sits on its own row). Explicit, rather than left to
+    /// `minimumScaleFactor`, so the card reads the same on every phone.
+    private var numberSize: CGFloat {
+        LineSwitchNumberButton.isOffered(for: line, state: state) && !typeSize.isAccessibilitySize
+            ? 24 : 28
     }
 
     private var switchControl: some View {
@@ -151,6 +191,8 @@ struct LineNumberCard: View {
             HStack(spacing: 5) {
                 Image(systemName: copied ? RIcon.check : RIcon.copy)
                     .font(.system(size: 12, weight: .semibold))
+                    .contentTransition(.symbolEffect(.replace))
+                    .symbolEffect(.bounce, value: reduceMotion ? 0 : copyTick)
                 Text(copied ? "Copied" : "Copy")
                     .font(RFont.text(14, weight: .semibold))
             }
@@ -182,10 +224,36 @@ struct LineNumberCard: View {
     private func copy() {
         UIPasteboard.general.string = line.e164
         RHaptic.select()
-        copied = true
+        copyTick += 1
+        withAnimation(RMotion.unlessReduced(RMotion.select, reduceMotion)) { copied = true }
         Task {
             try? await Task.sleep(for: .seconds(1.6))
-            copied = false
+            withAnimation(RMotion.unlessReduced(RMotion.select, reduceMotion)) { copied = false }
         }
+    }
+}
+
+/// The status dot. Pulses gently (2s ease-in-out opacity loop) while the
+/// line is live — the tab's ONE looping animation (spec §3a). Still under
+/// Reduce Motion.
+struct LiveDot: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    let tint: Color
+    let pulses: Bool
+    @State private var dim = false
+
+    var body: some View {
+        Circle()
+            .fill(tint)
+            .frame(width: 8, height: 8)
+            .opacity(dim ? 0.35 : 1)
+            .animation(pulses && !reduceMotion
+                       ? .easeInOut(duration: 1).repeatForever(autoreverses: true)
+                       : nil,
+                       value: dim)
+            .onAppear { dim = pulses && !reduceMotion }
+            .onChange(of: pulses) { _, p in dim = p && !reduceMotion }
+            .onChange(of: reduceMotion) { _, r in dim = pulses && !r }
+            .accessibilityHidden(true)
     }
 }
