@@ -178,3 +178,41 @@ https://chernev.com/wp-content/uploads/2017/02/ChoiceOverload_JCP_2015.pdf
 12. Notify line by authorization. 13. New events; activation per install only;
    guardrail metrics (ratings average, refund notifications). 14. "Again" on a
    failed order opens recovery suggestions.
+
+## Verify review 1 (2026-09-24) — first cut of §6.1
+
+**Three changes, in order**
+
+1. **Fill the empty lower half with the line entry, for non-subscribers only.**
+   Spec change to §6.1; the owner should confirm it. Below the chips, add one
+   quiet row: "A number you keep · US or Canada · calls, texts and codes" →
+   My number. It has no price and no accent fill, so it doesn't compete with the
+   tiles. Line buyers have always arrived cold and never touched the code
+   product. Home's Number card was their landing entry, and a tab label alone is
+   a weaker signpost for the half of revenue that subscriptions now are. Do not
+   pad the space with how-it-works copy or a free e-mail card; Ways in (§6.2)
+   covers both.
+2. **Format every phone number (§5 number styles, §6.1 strip).** Use the
+   existing `PhoneFormat.national` for the line strip: "+1 (212) 555-0128".
+   Use `PhoneFormat.compact` in ResumeBar for +1 numbers, and leave non-NANP
+   numbers untouched, as that helper already does. Copy keeps copying the raw
+   E.164, which is what sign-up forms accept.
+3. **Give the credits pill a unit and a name (§6.1).** Show "42 credits" (a
+   localized plural, not the interpolated noun §7 forbids), with the
+   VoiceOver label "42 credits. Buy more." Keep it hidden for guests, as the
+   spec says.
+
+**Notes**
+
+- **Copy is accent-tinted while Resume is accent-filled.** §5 reserves the
+  accent for the one primary action. When an order is in flight, Resume is that
+  action, so Copy should be a neutral button that shows "Copied" plus a
+  `.selection` haptic.
+- **Recent repeats the grid.** WhatsApp and Google appear in both rows. Drop
+  recent services from the tiles and backfill from the static list, so a
+  returning user sees 8 distinct ways in (§6.1).
+- **Light mode and iOS 26.** In light mode the logo artwork's white plates show
+  as faint squares on white tiles. Give the tiles the grouped secondary
+  background or give the logos a hairline. If this frame is iOS 26, ResumeBar
+  should be the `tabViewBottomAccessory` (§4), not a floating card. Confirm
+  which OS the frame came from before accepting it.

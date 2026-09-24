@@ -139,3 +139,38 @@ prompts; whether AB 2863's promo notice applies when Apple bills.
 7. Waiting: notify line only when authorized; reroll countdown framing; "Closing
    keeps your order running".
 8. Low-row note past tense. 9. Risk reversal on Verify subtitle.
+
+## Verify review 1 (2026-09-24, Plan 1 first cut)
+
+Reviewed: `t6-homeRouter.png`, `t6-homeLine.png`, `VerifyScreen.swift`, spec §6.1/§7.
+The headline, the subtitle risk reversal ("Your credits come back", never "money
+back"), the search count from the catalog and the user-owned tile pick all clear
+the red lines. Three changes, most important first:
+
+1. **§6.1 / §6.4: the first tile tap hits the 10-second wall.** `pick()` calls
+   `openCodeStore()`, which pushes `TempScreen`, and its `.task` raises the gated
+   `DeliveryInfoSheet` 550 ms later for every user without
+   `deliveryInfoAcked`. So a new user's first action on the new first screen is
+   answered by a non-dismissible 10-second read, before they have picked a
+   country or seen a price. That is the activation moment the whole overhaul is
+   for. Move the trigger to the "Get number" tap (spec §6.4 already puts it at
+   checkout) now, in Plan 1, not in Plan 2. The gate itself stays as the owner
+   designed it. As built: [App L / Legal L / Backlash M]. Moved: [L/L/L].
+2. **§6.1 subscriber strip: it reads as "use this number to verify".** A
+   "Your number · Copy" card directly under "What do you want to verify?"
+   implies the rented line works for any of the tiles below it. That is red
+   line 3: the line is VoIP, WhatsApp is on Meta's VoIP-strict list, and codes
+   are proven only for WhatsApp, TikTok and DoorDash. Move the strip below the
+   grid and chips, label it "Your own number" (spec §4 vocabulary; the current
+   "Your number" breaks it), and format the digits ("+1 212 555 0128") so they
+   read as a number, not an ID. Don't add any "use it here" wording until the
+   Ways screen can scope it to the proven set. As built: [L/L/M]. Changed: [L/L/L].
+3. **§6.1 credits pill: hide it at a zero balance with no purchase history.**
+   A "0" coin pill in the top corner of a new user's first screen puts the
+   empty wallet in view before any need exists. That adds pain of paying at
+   the wrong moment; the one that converts is balance < price at checkout. Show
+   the pill once the balance is above 0 or the user has bought before. The
+   fixture's "42" hides this, so capture a real zero-balance frame. [L/L/L].
+
+Nothing here contradicts the red lines except item 2, which is a moderate
+capability implication, not a false statement.
