@@ -38,8 +38,6 @@ struct SplashScreen: View {
     var onRetry: (() -> Void)? = nil
     var onContinue: (() -> Void)? = nil
 
-    /// Drives the glow breath.
-    @State private var animating = false
     /// Two escalating delays. A slow launch should say so, but a fast one must
     /// never flash reassurance on and off — so both are armed on a timer and
     /// only ever fire if we are still on screen.
@@ -73,14 +71,7 @@ struct SplashScreen: View {
                 Spacer(minLength: 0)
             }
             .padding(.horizontal, RSpace.xxl)
-            .padding(.bottom, 28)
-        }
-        .onAppear {
-            // `repeatForever` has to start after the first frame or the initial
-            // state is what renders.
-            withAnimation(.easeInOut(duration: 1.7).repeatForever(autoreverses: true)) {
-                animating = true
-            }
+            .padding(.bottom, RSpace.xl)
         }
         .task {
             // 1.2s ≈ the measured healthy launch, so a normal cold start shows
