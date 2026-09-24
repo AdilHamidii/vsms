@@ -966,11 +966,17 @@ extension ContentView {
                 ]
             }
             if shot == .linePaywall || shot == .linePaywallYearly {
+                // Canada, set explicitly. Without it `lineCountry` resolved to
+                // the store's US default at runtime, so these "Toronto" frames
+                // were a US purchase with a 437 number (the card's US flag and
+                // the uncollapsed US/PR note both rendered).
+                state.lineCountry = "CA"
                 state.lineCity = "toronto"
                 state.lineOffer = LineNumberOffer(phoneNumber: "+14375550128",
                                                   region: "Toronto, Ontario",
                                                   monthlyCents: 100,
-                                                  upfrontCents: 100)
+                                                  upfrontCents: 100,
+                                                  countryCode: "CA")
                 state.flow = .lineCheckout
                 // Without this the paywall renders its "temporarily
                 // unavailable" state: `simctl` does not apply the scheme's
@@ -981,8 +987,8 @@ extension ContentView {
             }
             if shot == .linePaywallUS {
                 // The store's default (US, New York) reaching the paywall, so
-                // the frame shows the uncollapsed US/PR sending note — the one
-                // disclosure the Toronto frames above can never render.
+                // the frame shows the uncollapsed US/PR sending note — which
+                // the Canadian frames above do not render.
                 state.lineCountry = "US"
                 state.lineCities = [.init(id: "new-york", label: "New York")]
                 state.lineCity = "new-york"
@@ -1077,8 +1083,13 @@ extension ContentView {
             state.lineMessages = ["t1": ScreenshotMode.sampleMessages]
             switch shot {
             case .linePushThread:
-                // Exercise the REAL handler (`onChange(initial: true)`), over
-                // an open cover, from another tab.
+                // Exercise the REAL handler, over an open cover, from another
+                // tab. ⚠️ It fires the handler's CHANGE path, not its
+                // `initial: true` path: this runs inside `ContentView`'s
+                // `.task`, after the view (and its `onChange`) exists, so the
+                // write is observed as a change. The cold-launch case — a push
+                // already pending before `ContentView` is built — is NOT what
+                // this frame proves.
                 state.tab = .verify
                 state.flow = .orders
                 push.pendingLineThreadId = "t1"

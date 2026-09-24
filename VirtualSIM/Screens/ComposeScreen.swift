@@ -29,6 +29,7 @@ struct ComposeScreen: View {
     @Environment(\.theme) private var theme
     @Environment(AppState.self) private var state
     @Environment(APIClient.self) private var api
+    @Environment(CallController.self) private var calls
     @Environment(\.dismiss) private var dismiss
 
     @State private var to = ""
@@ -112,6 +113,12 @@ struct ComposeScreen: View {
             // of that number's allowance.
             state.openThreadId = nil
             focus = .to
+        }
+        // The keyboard lives in its own window ABOVE the root call overlay
+        // (telephony trap 5), so a call going live over this pushed page would
+        // leave it sitting over the call screen's controls.
+        .onChange(of: calls.isLive) { _, live in
+            if live { focus = nil }
         }
     }
 

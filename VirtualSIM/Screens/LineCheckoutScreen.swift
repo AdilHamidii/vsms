@@ -391,7 +391,10 @@ struct LineCheckoutScreen: View {
     private var numberCard: some View {
         VStack(spacing: RSpace.sm) {
             HStack(spacing: 6) {
-                if let iso = state.lineOffer?.countryCode ?? state.lineCountry {
+                // `lineCountry`, the source `sendingWarningShown` and every
+                // analytics prop read, so the flag and the US/PR note can
+                // never describe different countries.
+                if let iso = state.lineCountry {
                     CodeFlag(code: iso, size: 18)
                 }
                 Text(placeLine)

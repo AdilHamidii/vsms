@@ -85,11 +85,14 @@ struct ThreadScreen: View {
         .onAppear { state.openThreadId = threadId }
         .onDisappear { if state.openThreadId == threadId { state.openThreadId = nil } }
         // Telephony trap 5: a sheet or a dialog is presented ABOVE the root
-        // call overlay, so neither may stay up once a call is live.
+        // call overlay, so neither may stay up once a call is live. The
+        // keyboard is the same class of problem: it lives in its own window
+        // above the overlay and would sit over the call screen's controls.
         .onChange(of: calls.isLive) { _, live in
             if live {
                 showNameSheet = false
                 showActions = false
+                composerFocused = false
             }
         }
         // Inbound arrives by push, but a thread left open while the other side
