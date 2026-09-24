@@ -59,6 +59,14 @@ struct DeliveryInfoSheet: View {
     /// change behaviour.
     let source: String
 
+    /// WHERE a gated showing happened (branch `design-overhaul`):
+    /// `"get_number"` — the store's Get-number tap, the primary showing — or
+    /// `"checkout"` — the backstop inside the checkout cover, for routes into
+    /// checkout that skip that tap. nil from the ⓘ. Sent as the `at` prop on
+    /// both events so the two gated arms can be read apart while `source`
+    /// stays `"auto"` and the series stays one series.
+    var at: String? = nil
+
     /// 🔴 The acknowledgement GATE, and it is on only for the automatic
     /// showing (owner, 2026-09-13). The CTA stays grey and inert until the
     /// reader has both reached the bottom AND spent `Self.dwellSeconds` on the
@@ -128,7 +136,9 @@ struct DeliveryInfoSheet: View {
         .interactiveDismissDisabled(mustAcknowledge && !canContinue)
         .onAppear {
             shownAt = Date()
-            Analytics.shared.track("delivery_info_shown", ["source": .string(source)])
+            var props: [String: AnalyticsValue] = ["source": .string(source)]
+            if let at { props["at"] = .string(at) }
+            Analytics.shared.track("delivery_info_shown", props)
         }
         .task {
             guard mustAcknowledge else { secondsLeft = 0; return }
@@ -322,9 +332,11 @@ struct DeliveryInfoSheet: View {
                         // the screen forever — the one outcome the gate is
                         // for.
                         UserDefaults.standard.set(true, forKey: PrefKey.deliveryInfoAcked)
-                        Analytics.shared.track("delivery_info_acknowledged", [
+                        var props: [String: AnalyticsValue] = [
                             "seconds": .int(Int(Date().timeIntervalSince(shownAt))),
-                        ])
+                        ]
+                        if let at { props["at"] = .string(at) }
+                        Analytics.shared.track("delivery_info_acknowledged", props)
                     }
                     dismiss()
                 }

@@ -50,6 +50,11 @@ struct ContentView: View {
     @State private var state = AppState()
     /// The in-flight review dwell. See `scheduleReviewPrompt`.
     @State private var reviewDwell: Task<Void, Never>?
+    /// The tab that was showing when the last flow cover went up. A
+    /// `fullScreenCover` dismissing re-fires `onAppear` on the view beneath
+    /// it, so without this `verify_view` would count every checkout / waiting
+    /// / code screen closed over Verify as a fresh visit. See `codeStore`.
+    @State private var coverOpenedOnTab: AppTab?
     /// Sheets presented from the TAB content (home / esim / orders / account).
     @State private var sheet: ActiveSheet?
     /// Sheets presented from INSIDE the fullScreenCover (checkout, eSIM
@@ -91,11 +96,19 @@ struct ContentView: View {
         // `TabChrome`. Without this dark mode renders pure black.
         .containerBackground(theme.bg, for: .navigation)
         .toolbar(.hidden, for: .navigationBar)
-        // Once per VISIT, deliberately ungated: `TabView` keeps this view
-        // alive, so a `@State` guard would make it once per session. Moved
-        // here from the retired grid Verify screen so the series continues.
+        // Once per VISIT: `TabView` keeps this view alive, so a `@State`
+        // "already tracked" guard would make it once per session. Moved here
+        // from the retired grid Verify screen so the series continues.
         // `has_line` is only trustworthy where `lines_loaded` is true.
+        //
+        // NOT a visit: a flow cover closing back onto Verify (the cover was
+        // opened while Verify was the tab). A cover that closes INTO Verify
+        // from another tab (e.g. the line store's "one-off code" link) still
+        // counts, because the user arrived somewhere new.
         .onAppear {
+            let returningFromCover = coverOpenedOnTab == .verify
+            coverOpenedOnTab = nil
+            guard !returningFromCover else { return }
             Analytics.shared.track("verify_view", [
                 "guest": .bool(false),   // Plan 2 wires the real guest flag
                 "has_line": .bool(state.linesLoaded && (state.line?.status.isLive ?? false)),
@@ -131,6 +144,13 @@ struct ContentView: View {
         }
         .tint(theme.ink)
         .background(theme.bg.ignoresSafeArea())
+        // Feeds `verify_view`'s "not a new visit" rule; see `coverOpenedOnTab`.
+        .onChange(of: state.flow == nil) { _, closed in
+            if !closed { coverOpenedOnTab = state.tab }
+        }
+        // A tab change means the next Verify appearance IS a visit, even if
+        // the last cover went up over Verify.
+        .onChange(of: state.tab) { _, _ in coverOpenedOnTab = nil }
         // Environment first, THEN overlay/sheet/cover — so banner + cover
         // content all see AppState in scope.
         .environment(\.theme, theme)
@@ -469,7 +489,7 @@ struct ContentView: View {
                 // `otp is not null` wins over status, always — a rescued code
                 // lives on a CANCELED row, and routing that row by status would
                 // land the user on the refund screen while their code sits one
-                // switch-case away. Same rule as onTapOrder and OrdersScreen.
+                // switch-case away. Same rule as `AppState.openOrder` and OrdersScreen.
                 if order.otp != nil {
                     state.activeOrder = order
                     state.flow = .otp
@@ -987,7 +1007,7 @@ extension ContentView {
         // `deliveryInfo` is the same frame with the explainer raised —
         // `TempScreen` raises it itself when it sees that case, because the
         // sheet is `@State` on that screen and cannot be presented from here.
-        case .verify, .home, .deliveryInfo:
+        case .verify, .home, .deliveryInfo, .announcement:
             state.openCodeStore()
             state.lines = []
             // `coldStart` sets it for a real user and is skipped here.
@@ -1003,6 +1023,20 @@ extension ContentView {
             // same reason, as the store and paywall frames.
             subs.screenshotPricing = .init()
             pinStoreScreenshotPair()
+            if shot == .announcement {
+                // Synthetic copy, a warning so the one icon the banner keeps
+                // is in frame. ⚠️ Dismissal is persisted by `id`: if this
+                // fixture's banner was ever waved away on the simulator it
+                // stays hidden — change the id rather than the code.
+                state.appStatus = AppStatus(
+                    announcement: Announcement(
+                        active: true,
+                        text: "Some codes are slow to arrive right now. If one doesn't come, your credits come back automatically.",
+                        kind: "warn",
+                        id: "screenshot-fixture-1"),
+                    esimPaused: false,
+                    lineSwapCredits: nil)
+            }
 
         // The same root for a subscriber (was `homeLine`), with one delivered
         // code and one order still running — the running one puts ResumeBar

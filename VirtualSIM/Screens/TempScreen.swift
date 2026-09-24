@@ -105,13 +105,22 @@ struct TempScreen: View {
                     .padding(.top, 6)
                     .riseIn(appeared, index: 0)
 
-                // (The announcement banner lived here until 2026-09-15. It
-                // moved to the TOP OF HOME — owner decision, and it is a reach
-                // win rather than a lateral move: Home is element 0 of every
-                // `launchOrder` by construction, so it is the first screen on
-                // every cold launch, while this tab is only seen by people who
-                // go looking for it. Do not re-add it here; two copies would
-                // both be dismissible and the second would read as a bug.)
+                // The announcement banner, directly under the header — above
+                // every card, since an outage notice outranks them. On `main`
+                // it lives on Home and the rule there is "never on the Temp
+                // tab" (two dismissible copies would read as a bug). On branch
+                // `design-overhaul` Home is gone and THIS screen is the Verify
+                // tab's root, the first screen of every cold launch, so this is
+                // Home's slot and the only copy. Without it no build from the
+                // branch could show an `/announce` outage notice.
+                if let announcement = state.visibleAnnouncement {
+                    AnnouncementBanner(announcement: announcement) {
+                        state.dismissAnnouncement()
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.top, 14)
+                    .transition(.move(edge: .top).combined(with: .opacity))
+                }
 
                 // (The daily-credit claim card lived here until 2026-08-02 —
                 // the feature was disabled server-side and then removed.)
@@ -199,6 +208,7 @@ struct TempScreen: View {
         .sheet(item: $deliveryInfoMode, onDismiss: continueAfterDeliveryInfo) { mode in
             DeliveryInfoSheet(
                 source: mode == .gated ? "auto" : "button",
+                at: mode == .gated ? "get_number" : nil,
                 mustAcknowledge: mode == .gated
             )
             .environment(\.theme, theme)
@@ -347,9 +357,12 @@ struct TempScreen: View {
     /// and checkout continues from `continueAfterDeliveryInfo` once it is
     /// acknowledged. On `main` it raised on every appearance of the Temp tab.
     ///
-    /// Every other route into checkout (buy again, the recovery card's retry,
-    /// Order another number, the code screen's "another code") starts from an
-    /// order that already exists, so this tap is the only first-order path.
+    /// This is the PRIMARY showing, not the only one. The key is per DEVICE
+    /// while orders live on the server, so a reinstalled or new-device user
+    /// can reach checkout without this tap (Activity → buy again, the recovery
+    /// card's retry, the code screen's "another code"). `CheckoutScreen`
+    /// carries the backstop for those; it never fires after this one, because
+    /// acknowledging here writes the key.
     ///
     /// 🔴 **The flag is written on ACKNOWLEDGEMENT, not on presentation.**
     /// `DeliveryInfoSheet` writes it from its CTA; writing it here would let a
@@ -372,7 +385,10 @@ struct TempScreen: View {
         guard startCheckoutAfterAcknowledgement else { return }
         startCheckoutAfterAcknowledgement = false
         guard UserDefaults.standard.bool(forKey: PrefKey.deliveryInfoAcked) else { return }
-        onStart()
+        // One runloop tick later: the checkout cover is presented from the
+        // ContentView root, and presenting in the same pass that tears this
+        // sheet down risks "a presentation is already in progress".
+        DispatchQueue.main.async { onStart() }
     }
 
     /// First run AND cannot afford the route in front of them — including the

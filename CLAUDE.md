@@ -79,11 +79,17 @@ which selects the Verify tab and the mode; nothing is pushed (`VerifyRoute` /
 `service_selected{source: verify*}`, `verify_line_row_tapped` and
 `service_search_empty{source: verify}` events. `verify_view {guest, has_line,
 lines_loaded}` still fires on every visit, from the store root in
-`ContentView` (`AccountScreen`'s `invite` / `vroam` arms of
-`home_card_tapped` still fire).
+`ContentView` — but NOT when a flow cover (checkout, waiting, code…) that went
+up over Verify closes back onto it (`coverOpenedOnTab`); a cover that closes
+INTO Verify from another tab still counts (`AccountScreen`'s `invite` /
+`vroam` arms of `home_card_tapped` still fire). **The announcement banner
+renders under the Verify root's header (`TempScreen`) on this branch** — Home
+is gone and that root is the first screen of every cold launch; main's "do not
+re-add it to `TempScreen`" rule below describes main.
 Fixtures on this branch: `verify`, `verifyLine`, `activity`, `waitingClosed`,
-`account`, `splash`; `home` is an alias of `verify` (`homeRouter` / `homeLine`
-below are main's names).
+`account`, `splash`, `announcement` (the root with a synthetic warning
+banner); `home` is an alias of `verify` (`homeRouter` / `homeLine` below are
+main's names).
 The text below describes `main`.
 
 `AppTab` order is `home · line · temp · account` and the app opens on
@@ -1443,9 +1449,10 @@ like no pack has a screenshot and the field is optional. Every pack has one.
 (409 `ATTRIBUTE.UNKNOWN`); territory availability follows the price schedule
 and the availability resource.
 ⚠️ `-screenshot credits` is the fixture that produces the review frame, and
-it needed `PrefKey.deliveryInfoAcked` set: `DeliveryInfoSheet` raises on every
-Temp-tab appearance and covered the pack ladder completely, which read as the
-launch argument being ignored.
+on `main` it needed `PrefKey.deliveryInfoAcked` set: `DeliveryInfoSheet` raises
+on every Temp-tab appearance there and covered the pack ladder completely,
+which read as the launch argument being ignored. (On branch `design-overhaul`
+the sheet raises only at a Get-number tap, so the fixture no longer sets it.)
 
 🔴 **ASC consumable price equalization is a ladder-inverting trap.** Every pack
 carries MANUAL prices in both USD and EUR (same numeral); never set only the
@@ -1709,14 +1716,20 @@ store is now the app's first screen). `TempScreen.startNumberOrder` raises the
 GATED sheet instead of starting checkout while `PrefKey.deliveryInfoAcked` is
 unset; the sheet's `onDismiss` re-reads the key and, only if it is now
 written, continues with the same `onStart` (`startCheckout()`) a normal tap
-uses. The gate (10 s dwell + reaching the end), the V2 key, the ⓘ (ungated) and
-the events are unchanged, and `delivery_info_shown{source: "auto"}` still marks
-the gated showing so the series continues. Every other route into checkout
-(`buyAgain`, the recovery card's retry, Order another number, `OtpScreen`'s
-"another code") starts from an existing order, so the tap is the only
-first-order path. ⚠️ Build- and screenshot-verified only; the tap-then-continue
-path has never been walked (no tap automation). The `credits` fixture no longer
-writes the key. **The text below describes `main`.**
+uses. 🔴 **That tap is the PRIMARY showing, not the only one: `CheckoutScreen`
+carries a BACKSTOP.** The key is per DEVICE while orders live on the server, so
+a reinstalled or new-device user can reach checkout without the tap (Activity
+→ `buyAgain`, the recovery card's retry, `OtpScreen`'s "another code"). Every
+paid SMS order is confirmed in `CheckoutScreen`, so with the key unset its Get
+number raises the same gated sheet inside the cover and calls
+`confirmGetNumber` only after acknowledgement. It never shows twice — the
+primary showing writes the same key. Both gated showings send
+`delivery_info_shown{source: "auto"}` (one series) plus `at` ∈ `get_number` ·
+`checkout` (also on `delivery_info_acknowledged`); the ⓘ sends `source:
+"button"` and no `at`. The gate (10 s dwell + reaching the end), the V2 key and
+the ⓘ (ungated) are unchanged. ⚠️ Build- and screenshot-verified only; neither
+tap-then-continue path has been walked (no tap automation). The `credits`
+fixture no longer writes the key. **The text below describes `main`.**
 
 `DeliveryInfoSheet` opens on EVERY appearance of the Temp tab in SMS mode
 until the user acknowledges it — *"wether they ordered before or not"* (owner,

@@ -39,6 +39,35 @@ struct CheckoutScreen: View {
     /// meant to be read against becomes meaningless.
     @State private var steerLogged = false
 
+    /// The delivery explainer's BACKSTOP (branch `design-overhaul`). Its
+    /// primary showing is the store's Get-number tap (`TempScreen
+    /// .startNumberOrder`), but `PrefKey.deliveryInfoAcked` is per DEVICE while
+    /// orders live on the server — so a reinstalled or new-device user can
+    /// reach this screen through Activity → buy again, the recovery card's
+    /// retry or the code screen's "another code" without ever passing that
+    /// tap. Every paid SMS order is confirmed here, so this is the chokepoint:
+    /// with the key unset, confirming raises the GATED sheet and the order is
+    /// placed only after acknowledgement writes the key. It never shows twice,
+    /// because the primary showing writes the same key.
+    ///
+    /// A plain Bool is safe here, unlike `TempScreen.DeliveryInfoMode`: this
+    /// presentation has exactly one mode (gated), so there is no second flag
+    /// for SwiftUI to read stale.
+    @State private var showDeliveryInfoGate = false
+
+    private var deliveryInfoAcked: Bool {
+        UserDefaults.standard.bool(forKey: PrefKey.deliveryInfoAcked)
+    }
+
+    private func placeOrder() {
+        Task {
+            await state.confirmGetNumber(
+                using: OrdersAPI(client: api),
+                wallet: WalletAPI(client: api)
+            )
+        }
+    }
+
     // Identical to the draft here (this screen only exists inside `.checkout`),
     // but routed through the one accessor so the raw `?? last…` shape — the one
     // that mispriced both pickers — has no remaining foothold to be copied from.
@@ -196,6 +225,23 @@ struct CheckoutScreen: View {
 
                 BottomBar { ctaBlock }
             }
+        }
+        // Continues only when the dismissal WAS the acknowledgement: the key
+        // is re-read, so a sheet closed any other way places no order. One
+        // tick later so the order's own cover transition (checkout → waiting)
+        // does not start while this sheet is still tearing down. Env injected
+        // explicitly: sheet content does not reliably inherit `@Observable`
+        // environment objects.
+        .sheet(isPresented: $showDeliveryInfoGate, onDismiss: {
+            guard deliveryInfoAcked else { return }
+            DispatchQueue.main.async { placeOrder() }
+        }) {
+            DeliveryInfoSheet(source: "auto", at: "checkout", mustAcknowledge: true)
+                .environment(\.theme, theme)
+                .environment(state)
+                .presentationDetents([.large])
+                .presentationDragIndicator(.visible)
+                .presentationBackground(theme.bg)
         }
         .task {
             withAnimation(RMotion.content) { appeared = true }
@@ -428,12 +474,11 @@ struct CheckoutScreen: View {
                         disabled: state.isPlacingOrder,
                         action: {
                             RHaptic.select()
-                            Task {
-                                await state.confirmGetNumber(
-                                    using: OrdersAPI(client: api),
-                                    wallet: WalletAPI(client: api)
-                                )
+                            guard deliveryInfoAcked else {
+                                showDeliveryInfoGate = true
+                                return
                             }
+                            placeOrder()
                         }
                     )
                 }

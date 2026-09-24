@@ -72,6 +72,10 @@ enum ScreenshotMode {
         // grid fold was invisible in the source and obvious in a frame.
         case verify
         case verifyLine      // the Verify tab for a subscriber (was `homeLine`)
+        // The Verify root with an ops-bot `/announce` notice showing under the
+        // header. The banner is otherwise only reachable with a live
+        // announcement in `app_config`, so it could ship unseen.
+        case announcement
         case activity        // the Activity tab with the sample order history
         case waitingClosed   // an order in flight, its screen closed: ResumeBar
         case account         // the Account tab: profile, invite, vRoam card
