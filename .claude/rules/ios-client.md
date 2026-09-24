@@ -44,13 +44,14 @@ VirtualSIM/
                                  CountryRank = the PROVIDER's success rate for a
                                  (service, country) — steering input, never a
                                  badge; see the steering section)
-  Screens/                       HomeScreen (⚠️ on `design-overhaul` a STOPGAP
-                                 hosting the Verify tab; on `main` the Home tab: router for new users,
-                                 light dashboard for a subscriber — greeting,
-                                 need-cards in `AppTab.productOrder`, the static
-                                 seven-service grid + More tile, How it works
-                                 until the first order then Recent, invite card;
-                                 see CLAUDE.md "Home leads the app"),
+  Screens/                       VerifyScreen (the Verify tab on
+                                 `design-overhaul`: one question, the credit
+                                 pill, a live subscriber's number strip, search
+                                 over the catalog, Recent, an eight-app grid and
+                                 category chips; a pick goes through
+                                 `commitServicePick` then `openCodeStore`. It
+                                 replaced `HomeScreen`, which on `main` is the
+                                 Home tab — see CLAUDE.md "Home leads the app"),
                                  TempScreen (the Temp tab on `main`; pushed
                                  inside Verify on `design-overhaul`:
                                  temp SMS + temp e-mail, `emailMode`),
@@ -87,8 +88,12 @@ VirtualSIM/
                                  Home greets by — raised from the greeting, the
                                  only place that name is shown; mirrors
                                  `AppState.greetingName`'s rejections and stays
-                                 OPEN on a failed write)
-  Components/                    Theme primitives + ServiceLogo / FlagImage /
+                                 OPEN on a failed write; ⚠️ on `design-overhaul`
+                                 nothing presents it since `HomeScreen` went —
+                                 Account is to adopt it in a later plan)
+  Components/                    Theme primitives + VerifyTile (the one
+                                 Verify grid tile body, so every cell is the
+                                 same height) + ServiceLogo / FlagImage /
                                  FlagCircle — bundle-first via BundledImageStore,
                                  network cascade (DuckDuckGo/FaviconV2, flagcdn) as
                                  fallback; SuccessBadge renders MEASURED delivery

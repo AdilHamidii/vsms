@@ -106,12 +106,10 @@ struct ContentView: View {
         TabView(selection: $state.tab) {
             Tab("Verify", systemImage: "checkmark.shield", value: AppTab.verify) {
                 NavigationStack(path: $state.verifyPath) {
-                    // Stopgap until `VerifyScreen` exists (design overhaul,
-                    // Task 6): the old Home screen hosts the Verify tab.
                     // `openServices` is the SAME closure the code store gets,
-                    // so the More tile and the store's picker raise one sheet.
-                    HomeScreen(openCredits: { sheet = .credits },
-                               openServices: { sheet = .services })
+                    // so any picker raised from Verify is the store's sheet.
+                    VerifyScreen(openCredits: { sheet = .credits },
+                                 openServices: { sheet = .services })
                         .containerBackground(theme.bg, for: .navigation)
                         .navigationDestination(for: VerifyRoute.self) { route in
                             switch route {
@@ -973,21 +971,17 @@ extension ContentView {
             state.openThreadId = "t1"
             state.flow = .thread
 
-        // The Home TAB, with no line: the three need-cards, the service grid,
-        // How it works, and the invite card.
+        // The Verify tab, with no line (fixture renamed in Task 7): the
+        // question, search, the app grid and the category chips.
         case .homeRouter:
             state.tab = .verify
             state.verifyPath = []
             state.lines = []
-            // Names the greeting and fills the invite card. Both halves are
-            // needed: `HomeScreen.inviteCard` renders only when
-            // `inviteMessage` AND `referralCode` are non-nil, and
-            // `greetingName` refuses a name that is merely the e-mail handle,
-            // so a profile without a real `displayName` shows the nameless
-            // greeting instead.
+            // A real profile, so Account's name and invite card are filled if
+            // the frame is walked from here.
             state.profile = ScreenshotMode.sampleProfile
             // `orders` stays EMPTY on purpose: this frame is the first-run
-            // state, and it is the How-it-works branch that belongs in it.
+            // state, so Verify shows no Recent row.
             state.orders = []
             state.emailOrders = []
             // The number card prints the monthly price from StoreKit, and
@@ -995,15 +989,15 @@ extension ContentView {
             // same shim, same reason, as the store and paywall frames.
             subs.screenshotPricing = .init()
 
-        // The Home TAB for a subscriber: the line card on top, then the two
-        // temp cards. The number card is absent by construction.
+        // The Verify tab for a subscriber (fixture renamed in Task 7): the
+        // "Your number" strip above the search, and a Recent row.
         case .homeLine:
             state.tab = .verify
             state.verifyPath = []
             state.lines = [ScreenshotMode.sampleLine]
             state.lineThreads = ScreenshotMode.sampleThreads
             // 🔴 Required, and its absence is INVISIBLE rather than empty:
-            // `HomeScreen.hasLine` is gated on `linesLoaded` (the anti-flash
+            // `VerifyScreen.hasLiveLine` is gated on `linesLoaded` (the anti-flash
             // rule), so seeding `lines` alone renders the frame as if the user
             // had no number — the router state under the subscriber's name.
             // The other line frames do not need it; they read `lines` directly.

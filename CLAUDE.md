@@ -68,8 +68,12 @@ number · Activity · Account in a fixed order (the `Tab` declaration order in
 `ContentView`'s native `TabView`; `AppTab.order` mirrors it); `/tabs` no longer orders anything in builds from this branch — the
 value is still stored, never applied. Every former "go to Temp" entry point
 calls `AppState.openCodeStore(email:)`, which pushes the temp store inside the
-Verify tab. Until `VerifyScreen` lands, the Verify tab hosts `HomeScreen` as a
-stopgap. The text below describes `main`.
+Verify tab. On this branch `HomeScreen`, `home_view` and `home_card_tapped`
+(from Home) are retired: the Verify tab is `VerifyScreen`, which fires
+`verify_view {guest, has_line, lines_loaded}` on every visit and
+`service_selected{source: verify | verify_search | verify_recent}` on a pick
+(`AccountScreen`'s `invite` / `vroam` arms of `home_card_tapped` still fire).
+The text below describes `main`.
 
 `AppTab` order is `home · line · temp · account` and the app opens on
 **Home** on EVERY cold launch, new or returning (owner decision 2026-09-10) —

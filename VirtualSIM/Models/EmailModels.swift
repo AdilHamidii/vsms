@@ -133,9 +133,9 @@ struct ServerEmailOrder: Codable, Hashable, Identifiable {
     /// thing to "when the code landed" the client can get. The provider window
     /// is ~22 minutes, which is noise against the hours-scale floor
     /// `AppState.reviewPromptBlocker` uses and unacceptable for anything
-    /// finer-grained. ⚠️ `OrdersScreen.HistoryItem.sortDate` and
-    /// `HomeScreen.parseCreatedAt` each carry a private copy of this parse;
-    /// they predate it and should migrate here rather than a fourth appearing.
+    /// finer-grained. ⚠️ `OrdersScreen.HistoryItem.sortDate` carries a
+    /// private copy of this parse; it predates it and should migrate here
+    /// rather than another copy appearing.
     var createdAtDate: Date? {
         guard let createdAt else { return nil }
         return Self.isoFractional.date(from: createdAt) ?? Self.iso.date(from: createdAt)

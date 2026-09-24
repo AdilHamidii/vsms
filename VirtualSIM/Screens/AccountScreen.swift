@@ -366,7 +366,8 @@ struct AccountScreen: View {
     /// kept so the `vroam` / `vroam_dismissed` series that began on Home on
     /// 2026-09-15 continues across the 2026-09-21 move instead of restarting
     /// at zero — the same documented compromise as `TempScreen`'s
-    /// `source: "home"`. See `HomeScreen.track` for the full vocabulary.
+    /// `source: "home"`. The Home screen that fired the other arms is retired
+    /// on the design-overhaul branch, so these are the only live arms.
     private func track(_ card: String) {
         Analytics.shared.track("home_card_tapped", ["card": .string(card)])
     }
