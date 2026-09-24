@@ -390,11 +390,11 @@ struct ContentView: View {
             // branch below — this all happens at flow == nil, so flow's didSet
             // never runs.
             state.intent = .email
-            // Synchronous: the quote is marked pending in THIS update, so the
-            // first e-mail frame renders the pending layout. A quote for this
-            // service under a minute old (the launch prefetch, or the last
-            // visit) stays on screen while the refresh runs, and nothing is
-            // sold from it until the refresh lands.
+            // Synchronous. A quote for this service under ten minutes old (the
+            // launch prefetch, or the last visit) renders at once with its CTA
+            // live and is refreshed silently; with none, the quote is marked
+            // pending in THIS update so the first frame is the pending layout.
+            // See `AppState.emailQuoteDisplayWindow`.
             state.requestEmailQuote(using: EmailAPI(client: api))
         }
         .onChange(of: state.lastService.id) { _, _ in
@@ -406,8 +406,10 @@ struct ContentView: View {
         // assignment such as `openLineThread`'s. In e-mail mode that left a
         // settled quote with no selection, i.e. "Choose one" over a live
         // "Choose a domain" button. Re-quote instead: stock moves, and an
-        // address may just have been bought. Keyed on the selection, not on
-        // `flow`, because `onChange` never sees a nil → nil assignment.
+        // address may just have been bought. Same rule as entry — a held
+        // quote under the window re-picks the selection at once and refreshes
+        // silently (no spinner). Keyed on the selection, not on `flow`,
+        // because `onChange` never sees a nil → nil assignment.
         .onChange(of: state.emailDomain == nil) { _, cleared in
             guard cleared, state.emailMode,
                   state.emailQuote == .loaded(serviceId: state.configuringService.id),
@@ -1333,7 +1335,7 @@ extension ContentView {
             mailStore.screenshotPricing = .init()
             state.flow = .emailCode
 
-        case .emailStore, .emailReady, .emailLoading:
+        case .emailStore, .emailReady, .emailLoading, .emailFailed:
             // The e-mail line's own screen, not its code screen. The delivered
             // code frame is nearly identical to the SMS one — same big digits,
             // same Done button — so on its own it does not show that a second
@@ -1355,10 +1357,15 @@ extension ContentView {
                 }
                 guard shot != .emailLoading else { return }
                 // After the service change's own `onChange` has marked the
-                // quote pending, or that would re-mark this answer unsettled.
+                // quote pending, or that would overwrite this state.
                 try? await Task.sleep(for: .milliseconds(400))
-                state.applyEmailQuote(ScreenshotMode.sampleEmailDomains, creditPrice: nil,
-                                      usage: nil, for: state.configuringService.id)
+                if shot == .emailFailed {
+                    // A failed fetch with no quote held: the retry row.
+                    state.screenshotFailEmailQuote(for: state.configuringService.id)
+                } else {
+                    state.applyEmailQuote(ScreenshotMode.sampleEmailDomains, creditPrice: nil,
+                                          usage: nil, for: state.configuringService.id)
+                }
             }
 
         case .emailDomains:

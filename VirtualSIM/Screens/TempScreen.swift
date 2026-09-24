@@ -618,24 +618,17 @@ struct TempScreen: View {
     // tappable placeholder UI for that whole time ("Choose one", a 22pt "—", a
     // live "Choose a domain" button, the 20-minute refund sentence even for a
     // free domain) and then SNAPPED to the answer, with the card changing
-    // height twice. Now a pending quote holds the answered layout's geometry
-    // with redacted content, and the answer crossfades in.
+    // height twice. Now the launch prefetch usually has the answer before the
+    // tap, and a quote under `AppState.emailQuoteDisplayWindow` (10 min)
+    // renders LIVE while a silent refresh runs; the refresh crossfades only
+    // what changed. Only with no such quote does the card show the pending
+    // layout: the answered geometry with redacted content.
 
-    /// A quote for the service on screen is on its way and there is nothing
-    /// for it to show yet: placeholders, never "Choose one".
+    /// No quote for the service on screen is held (or it is past the window),
+    /// and one is on its way: placeholders, never "Choose one".
     private var emailQuotePending: Bool {
         guard state.emailMode, state.emailSupported else { return false }
-        switch state.emailQuotePresentation {
-        case .pending: return true
-        case .showing(let settled): return !settled && state.emailDomain == nil
-        case .failed: return false
-        }
-    }
-
-    /// The fresh answer for this service is in. Nothing is sold before it:
-    /// a recent quote shown during the refresh keeps the CTA disabled.
-    private var emailQuoteSettled: Bool {
-        state.emailQuotePresentation == .showing(settled: true)
+        return state.emailQuotePresentation == .pending
     }
 
     private var emailQuoteFailed: Bool {
@@ -1172,16 +1165,14 @@ struct TempScreen: View {
             PrimaryButton(label: "Get email address", icon: RIcon.bolt,
                           disabled: true, loading: true, action: {})
         } else if let dom = state.emailDomain, dom.inStock {
-            // A recent quote shown while its refresh runs renders the SAME
-            // button it will settle on, disabled with a spinner: stale stock
-            // is shown, never sold.
-            let refreshing = !emailQuoteSettled
+            // LIVE, also while a silent refresh runs under a held quote: the
+            // order re-checks stock and price server-side, so a stale "in
+            // stock" costs one refused tap, never money. See
+            // `AppState.emailQuoteDisplayWindow`.
             if dom.credits > 0 && state.balance < dom.credits {
                 PrimaryButton(label: "Buy credits",
                               sub: String(localized: "Need \(dom.credits - state.balance) more"),
                               icon: RIcon.plus,
-                              disabled: refreshing,
-                              loading: refreshing,
                               action: { RHaptic.select(); openCredits() })
             } else if dom.isFree && freeEmailAccess == .subscription {
                 // The paywall's ONLY entry point used to be a refused order:
@@ -1196,8 +1187,6 @@ struct TempScreen: View {
                     // credit ladder.
                     sub: mailPlanSub,
                     icon: RIcon.inbox,
-                    disabled: refreshing,
-                    loading: refreshing,
                     action: {
                         RHaptic.select()
                         // Declare the product first, exactly as the refused-
@@ -1221,24 +1210,18 @@ struct TempScreen: View {
                     // then refused with `subscription_required`.
                     sub: dom.isFree ? freeEmailAccess.subtitle : "\(dom.credits) cr",
                     icon: RIcon.bolt,
-                    disabled: state.isBuyingEmail || refreshing,
-                    loading: refreshing,
+                    disabled: state.isBuyingEmail,
                     action: { RHaptic.select(); onStartEmail() }
                 )
             }
-        } else if emailQuoteSettled {
-            // The fresh answer holds nothing in stock to pre-select.
+        } else {
+            // The quote holds nothing in stock to pre-select.
             // No `sub`. "Pick where it lives" wrapped to two mono lines on a
             // narrow phone and squeezed the label it was meant to support —
             // and the label already says what the tap does.
             PrimaryButton(label: "Choose a domain",
                           icon: "envelope.fill",
                           action: { RHaptic.select(); openEmailDomains() })
-        } else {
-            // A recent quote with nothing in stock, still refreshing: wait
-            // for the answer rather than send the user to a stale list.
-            PrimaryButton(label: "Get email address", icon: RIcon.bolt,
-                          disabled: true, loading: true, action: {})
         }
     }
 

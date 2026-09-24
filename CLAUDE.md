@@ -88,8 +88,9 @@ is gone and that root is the first screen of every cold launch; main's "do not
 re-add it to `TempScreen`" rule below describes main.
 Fixtures on this branch: `verify`, `verifyLine`, `activity`, `waitingClosed`,
 `account`, `splash`, `announcement` (the root with a synthetic warning
-banner), `emailLoading` / `emailReady` (the E-mail segment with its domain
-quote pending / answered — same geometry; see "The temp-e-mail product",
+banner), `emailLoading` / `emailReady` / `emailFailed` (the E-mail segment
+with its domain quote pending / answered — same geometry — / failed with
+nothing to show; see "The temp-e-mail product",
 which also covers the cold-start e-mail prefetch); `home` is an alias of
 `verify` (`homeRouter` / `homeLine` below are main's names). My number: `lineIntro`, `lineStore`, `lineStoreError`,
 `linePaywall` / `linePaywallYearly` (a Canadian number, Toronto),
@@ -2109,20 +2110,30 @@ snapped to the answer, growing the card twice. What is true now:
   Nothing on the reveal path awaits either; a failed prefetch is SILENT (no
   banner). `mailStore.load(reportingFailure: false)` warms the mail plan's
   StoreKit price on `bootPhase == .ready`.
-- **`AppState.emailQuote`** (`idle` / `loading` / `loaded` / `failed`, each
-  naming its service) is set SYNCHRONOUSLY by `requestEmailQuote` — mode
-  entry, service change, Try again — before any await. While a quote is
-  pending with nothing to show, `TempScreen` keeps the answered layout's
-  geometry with redacted content (domain, cost, the refund line's fixed
-  two-line slot, a subscriber's meter line) and a disabled "Get email
-  address" with a spinner; the answer crossfades in (`RMotion.content`, nil
-  under Reduce Motion, scoped to the hero rows). A failure shows a
-  "Couldn't load domains · Try again" row in place of the Domain row.
-- **Showing is not selling.** A quote for the same service under 60 s old
-  (`emailQuoteDisplayWindow`) stays on screen on re-entry while it is
-  refetched, but every e-mail CTA stays disabled until the fresh answer
-  lands. A quote older than that is not shown at all — so the launch prefetch
-  only removes the wait for a user who opens E-mail within a minute.
+- 🔴 **A held quote under 10 minutes old is shown AND sold from (owner
+  intent, 2026-09-24: tapping E-mail must not show loading).** Entering or
+  re-entering e-mail mode, or closing a flow, with such a quote for the
+  service on screen renders it at once with the CTA LIVE and refreshes it
+  silently — no spinner, no disabled CTA; the refresh crossfades only what
+  changed and re-picks the selection if its domain went out of stock.
+  `AppState.emailQuoteDisplayWindow` = 10 min. **What makes this compatible
+  with "Never cache it": the ORDER is the authority.** `create-email-order`
+  re-quotes the provider for the exact (site, domain) and refuses
+  `email_out_of_stock` / `domain_unavailable` / `margin_too_low`, all mapped
+  in `APIError`, so a stale "in stock" costs one refused tap and no money;
+  every entry still refetches.
+- **"Pending" now means ONLY: no quote for this service is held, or the held
+  one is older than 10 min.** `AppState.emailQuote` (`idle` / `loading` /
+  `loaded` / `failed`, each naming its service) is set SYNCHRONOUSLY by
+  `requestEmailQuote` before any await, so in that case the first frame is
+  the pending layout: the answered geometry with redacted content (domain,
+  cost, the refund line's fixed two-line slot, a subscriber's meter line) and
+  a disabled "Get email address" with a spinner; the answer crossfades in
+  (`RMotion.content`, nil under Reduce Motion, scoped to the hero rows).
+- **Failure:** a failed refresh under a held, in-window quote keeps showing
+  it — logged (`print`), no banner. Only with nothing to show does the card
+  switch to a "Couldn't load domains · Try again" row in place of the Domain
+  row (plus the error banner, unchanged, when the user asked).
 - **Staleness guard:** an answer applies only if it is still the latest
   request asked (a generation counter), the user is in e-mail mode or it is
   the prefetch, and its service is the one on screen. A second request for a
@@ -2132,11 +2143,15 @@ snapped to the answer, growing the card twice. What is true now:
   `intent`, `emailCreditsNeeded`, `emailPaidOffer` and `showMailPaywall`.
   `flow`'s didSet still clears `emailDomain` on every `flow = nil`, so
   ContentView re-quotes when the selection is cleared under a settled,
-  in-stock quote in e-mail mode.
-- Fixtures: `emailLoading` (pending; screenshot mode skips the fetch) and
+  in-stock quote in e-mail mode — by the same rule: an in-window quote
+  re-picks the selection at once and refreshes silently.
+- Fixtures: `emailLoading` (pending; screenshot mode skips the fetch),
   `emailReady` (= `emailStore`, seeded through `applyEmailQuote`, which the
-  fetch no longer wipes). ⚠️ Build- and screenshot-verified only; the
-  prefetch timing and the crossfade have never been walked on a device.
+  fetch no longer wipes) and `emailFailed` (the retry row). ⚠️ `emailReady`
+  waits on a live catalog fetch; capture at ~12 s, since at 7 s it can
+  still be pending. ⚠️ Build- and screenshot-verified only; the prefetch
+  timing, the silent refresh and the crossfade have never been walked on a
+  device.
 
 **`expire_email_orders()` has two traps** that would make a copied
 `expire_esim_orders()` look like a working deploy while matching nothing:

@@ -54,10 +54,10 @@ enum EmailQuotePresentation: Equatable {
     case pending
     /// The last ask for this service failed: a retry row, no placeholder.
     case failed
-    /// Data for this service is on screen. `settled` = it is the fresh
-    /// answer; until then it is a recent quote shown while the refresh runs,
-    /// and nothing may be sold from it.
-    case showing(settled: Bool)
+    /// A quote for this service is on screen and LIVE — the CTA sells from
+    /// it. `refreshing` = a silent background refresh is in flight; it
+    /// changes nothing on screen until its answer lands.
+    case showing(refreshing: Bool)
 }
 
 enum FlowStage: String, Hashable, Identifiable {
@@ -672,10 +672,23 @@ final class AppState {
     /// only while its generation is still current, so the last request ASKED
     /// wins, never the last to land.
     @ObservationIgnored private var emailQuoteGeneration = 0
-    /// How old a quote may be and still be SHOWN while its refresh runs.
-    /// Showing is not selling: the CTA stays disabled until the fresh answer
-    /// lands (CLAUDE.md, "There is no catalog to sync … Never cache it").
-    static let emailQuoteDisplayWindow: TimeInterval = 60
+    /// How old a quote may be and still be shown — with its CTA LIVE — while a
+    /// silent refresh runs (owner, 2026-09-24: tapping E-mail must not show
+    /// loading; the splash prefetch should already have the answer).
+    ///
+    /// Why 10 minutes: long enough that the launch prefetch covers a normal
+    /// first session (a user rarely finds E-mail within the 60 s the first
+    /// cut allowed), short enough that a quote from an earlier visit is not
+    /// dressed up as current. Past it, the pending layout shows instead.
+    ///
+    /// What protects a stale quote: the ORDER, not this screen.
+    /// `create-email-order` re-quotes the provider for the exact (site,
+    /// domain) at order time and refuses `email_out_of_stock`,
+    /// `domain_unavailable` or `margin_too_low` — all mapped in `APIError` —
+    /// so a stale "in stock" costs one refused tap and no money. That is what
+    /// keeps CLAUDE.md's "Never cache it" honest: nothing is SOLD from the
+    /// cache, only rendered, and every entry still refetches.
+    static let emailQuoteDisplayWindow: TimeInterval = 10 * 60
     var activeEmailOrder: ServerEmailOrder?
     var isBuyingEmail = false
     /// What ONE address costs a user who is not covered, as the server last
@@ -2501,9 +2514,13 @@ final class AppState {
     /// break at the moment the user taps buy.
     ///
     /// SYNCHRONOUS up to the network call, on purpose: `emailQuote` is
-    /// `.loading` before this returns, so the first e-mail frame after a tap
-    /// renders the pending layout instead of a "Choose one" placeholder that
-    /// looks like a working screen. Callers never wrap it in their own `Task`.
+    /// `.loading` before this returns. With a quote for this service younger
+    /// than `emailQuoteDisplayWindow` held, that is a SILENT refresh — the
+    /// held quote stays on screen with its CTA live (and a selection cleared
+    /// by `flow`'s didSet is re-picked from it right here). With none, the
+    /// first e-mail frame renders the pending layout instead of a "Choose
+    /// one" placeholder that looks like a working screen. Callers never wrap
+    /// it in their own `Task`.
     ///
     /// A request for a service that already has one in flight JOINS it (the
     /// tap landing while the launch prefetch is still out, a second Try
@@ -2521,6 +2538,9 @@ final class AppState {
             emailQuoteAnsweredAt = Date()
             emailQuote = .loaded(serviceId: svc.id)
             return nil
+        }
+        if emailDomain == nil, holdsFreshEmailQuote(for: svc.id) {
+            emailDomain = emailDomains.first(where: { $0.inStock })
         }
         if emailQuote == .loading(serviceId: svc.id) { return nil }
         emailQuoteGeneration += 1
@@ -2549,6 +2569,15 @@ final class AppState {
                             usage: res.usage, for: request.serviceId)
         } catch {
             guard acceptsEmailQuote(request) else { return }
+            // A background refresh that fails under a quote still inside the
+            // window changes nothing on screen: the held quote stays live
+            // (the order re-checks stock anyway), and no banner is raised
+            // over a working screen. Logged only.
+            if holdsFreshEmailQuote(for: request.serviceId) {
+                print("email quote refresh failed; keeping the held quote: \(error)")
+                emailQuote = .loaded(serviceId: request.serviceId)
+                return
+            }
             emailDomains = []
             emailDomain = nil
             emailUsage = nil
@@ -2607,23 +2636,41 @@ final class AppState {
         emailQuote = .loaded(serviceId: serviceId)
     }
 
-    /// What the e-mail hero may render for the service on screen. A quote
-    /// held for this service and younger than `emailQuoteDisplayWindow` is
-    /// SHOWN while its refresh runs; `settled` is false until the fresh
-    /// answer lands, and nothing is sold before then.
+    #if DEBUG
+    /// The `emailFailed` fixture: the state a failed fetch leaves when no
+    /// quote for the service is held (the retry row). DEBUG-only, like every
+    /// screenshot hook.
+    func screenshotFailEmailQuote(for serviceId: String) {
+        emailDomains = []
+        emailDomain = nil
+        emailUsage = nil
+        emailQuoteServiceId = serviceId
+        emailQuoteAnsweredAt = nil
+        emailQuote = .failed(serviceId: serviceId)
+    }
+    #endif
+
+    /// A quote for `serviceId` is held and younger than
+    /// `emailQuoteDisplayWindow`, so it may be shown — and sold from — while
+    /// a refresh runs.
+    private func holdsFreshEmailQuote(for serviceId: String) -> Bool {
+        guard emailQuoteServiceId == serviceId, let at = emailQuoteAnsweredAt else { return false }
+        return Date().timeIntervalSince(at) < Self.emailQuoteDisplayWindow
+    }
+
+    /// What the e-mail hero may render for the service on screen. "Pending"
+    /// means ONLY that no quote for this service is held, or the held one is
+    /// older than `emailQuoteDisplayWindow`. A fresh held quote renders live
+    /// while its refresh runs, which changes nothing until it lands.
     var emailQuotePresentation: EmailQuotePresentation {
         let id = configuringService.id
         switch emailQuote {
         case .loaded(let s) where s == id:
-            return .showing(settled: true)
+            return .showing(refreshing: false)
         case .failed(let s) where s == id:
             return .failed
         case .loading(let s) where s == id:
-            if emailQuoteServiceId == id, let at = emailQuoteAnsweredAt,
-               Date().timeIntervalSince(at) < Self.emailQuoteDisplayWindow {
-                return .showing(settled: false)
-            }
-            return .pending
+            return holdsFreshEmailQuote(for: id) ? .showing(refreshing: true) : .pending
         default:
             // Idle, or a status about another service: nothing for this one.
             return .pending

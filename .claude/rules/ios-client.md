@@ -243,8 +243,12 @@ expensive here specifically, because activation is a single-session event
   Nothing on the reveal path awaits them, so boot is not longer. They
   interleave with the chain only at `await`s on the main actor — not the
   `async let` race below — and the quote's staleness guard
-  (`AppState.acceptsEmailQuote`: a generation counter plus a service check) decides whether a late answer
-  still applies. The mail plan's StoreKit price warms on
+  (`AppState.acceptsEmailQuote`: a generation counter plus a service check)
+  decides whether a late answer still applies. A quote under
+  `emailQuoteDisplayWindow` (10 min) is what makes the E-mail tap instant:
+  it renders with the CTA live and refreshes silently; the pending layout
+  appears only with no quote held or one past the window. The mail plan's
+  StoreKit price warms on
   `bootPhase == .ready` (`mailStore.load(reportingFailure: false)`). Detail
   in CLAUDE.md, "The temp-e-mail product".
 - **`loadCatalog` returns `Bool`.** It used to be `-> Void` with a bare

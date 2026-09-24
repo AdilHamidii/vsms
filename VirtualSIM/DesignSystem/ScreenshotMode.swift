@@ -60,6 +60,9 @@ enum ScreenshotMode {
         // cost, a disabled CTA with a spinner, the refund line's two-line
         // slot. Must match `emailReady`'s geometry frame for frame.
         case emailLoading
+        // The same screen after a failed fetch with no quote held: the
+        // "Couldn't load domains · Try again" row in place of the Domain row.
+        case emailFailed
         // The domain picker sheet itself, over the e-mail store. Reachable
         // otherwise only by a tap, so without a frame its height and stock
         // labels could ship unseen.
