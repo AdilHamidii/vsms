@@ -73,8 +73,10 @@ struct ContentView: View {
         isDark ? .dark(state.accent) : .light(state.accent)
     }
 
-    /// The temp-SMS / temp-e-mail store, pushed inside Verify (Plan 1
-    /// interim; Plan 2 replaces it with "Ways to verify").
+    /// The temp-SMS / temp-e-mail store: the Verify tab's ROOT (owner,
+    /// 2026-09-24 — on a grid-first Verify screen a new user never learned
+    /// that temp e-mail exists; the store's Number / E-mail segment says so
+    /// on screen one).
     private var codeStore: some View {
         TempScreen(
             openServices: { sheet = .services },
@@ -83,39 +85,33 @@ struct ContentView: View {
             openCredits: { sheet = .credits },
             onStart: { state.startCheckout() },
             onStartEmail: { startEmailOrder() },
-            onStartEmailPaid: { startEmailOrder(payCredits: true) },
-            onTapOrder: { o in
-                if o.status == .waiting {
-                    state.activeOrder = o
-                    state.flow = .waiting
-                } else if o.otp != nil {
-                    state.activeOrder = o      // rescued code — show it
-                    state.flow = .otp
-                } else {
-                    state.buyAgain(o)
-                }
-            },
-            onSeeAllOrders: { state.tab = .activity }
+            onStartEmailPaid: { startEmailOrder(payCredits: true) }
         )
-        // A pushed view gets its own hosting background; see `TabChrome`.
+        // The root of a NavigationStack gets its own hosting background; see
+        // `TabChrome`. Without this dark mode renders pure black.
         .containerBackground(theme.bg, for: .navigation)
+        .toolbar(.hidden, for: .navigationBar)
+        // Once per VISIT, deliberately ungated: `TabView` keeps this view
+        // alive, so a `@State` guard would make it once per session. Moved
+        // here from the retired grid Verify screen so the series continues.
+        // `has_line` is only trustworthy where `lines_loaded` is true.
+        .onAppear {
+            Analytics.shared.track("verify_view", [
+                "guest": .bool(false),   // Plan 2 wires the real guest flag
+                "has_line": .bool(state.linesLoaded && (state.line?.status.isLive ?? false)),
+                "lines_loaded": .bool(state.linesLoaded),
+            ])
+        }
     }
 
     var body: some View {
         @Bindable var state = state
         TabView(selection: $state.tab) {
             Tab("Verify", systemImage: "checkmark.shield", value: AppTab.verify) {
-                NavigationStack(path: $state.verifyPath) {
-                    // `openServices` is the SAME closure the code store gets,
-                    // so any picker raised from Verify is the store's sheet.
-                    VerifyScreen(openCredits: { sheet = .credits },
-                                 openServices: { sheet = .services })
-                        .containerBackground(theme.bg, for: .navigation)
-                        .navigationDestination(for: VerifyRoute.self) { route in
-                            switch route {
-                            case .store: codeStore
-                            }
-                        }
+                // Nothing is pushed here today; the stack is kept for Plan 2's
+                // "Ways to verify".
+                NavigationStack {
+                    codeStore
                 }
                 .resumeBarInset()
             }
@@ -733,6 +729,9 @@ struct ContentView: View {
             // which a tab never did — the tab bar WAS the way out.
             OrdersScreen(openCredits: { flowSheet = .credits },
                          onClose: { state.flow = nil })
+                // `OrdersScreen` draws no background of its own (the tab gets
+                // one from `TabChrome`), so as a cover it sat on #000000.
+                .background(theme.bg.ignoresSafeArea())
         case .dialer:
             // Still gated on a real WebRTC client being attached, even though
             // `TelnyxVoiceClient` is now wired in `AuthGate`. The guard is what
@@ -981,51 +980,46 @@ extension ContentView {
             state.openThreadId = "t1"
             state.flow = .thread
 
-        // The Verify tab, with no line (was `homeRouter`): the question,
-        // search, the app grid, the category chips and the own-number row.
-        case .verify:
-            state.tab = .verify
-            state.verifyPath = []
+        // The Verify tab's root — the code store — with no line (was
+        // `homeRouter`). `home` (the old pushed store's frame) is an ALIAS:
+        // its raw value is a FILENAME `scripts/screenshots/` still captures,
+        // so it renders exactly what `verify` renders rather than going away.
+        // `deliveryInfo` is the same frame with the explainer raised —
+        // `TempScreen` raises it itself when it sees that case, because the
+        // sheet is `@State` on that screen and cannot be presented from here.
+        case .verify, .home, .deliveryInfo:
+            state.openCodeStore()
             state.lines = []
-            // The own-number row waits for `linesLoaded` (so a subscriber
-            // never sees it flash); `coldStart` sets it for a real user and
-            // is skipped here.
+            // `coldStart` sets it for a real user and is skipped here.
             state.linesLoaded = true
             // A real profile, so Account's name and invite card are filled if
             // the frame is walked from here.
             state.profile = ScreenshotMode.sampleProfile
-            // `orders` stays EMPTY on purpose: this frame is the first-run
-            // state, so Verify shows no Recent row.
+            // First-run: no history.
             state.orders = []
             state.emailOrders = []
-            // The number card prints the monthly price from StoreKit, and
-            // `simctl` never applies the scheme's StoreKit configuration —
-            // same shim, same reason, as the store and paywall frames.
+            // The line store and paywall price from StoreKit, and `simctl`
+            // never applies the scheme's StoreKit configuration — same shim,
+            // same reason, as the store and paywall frames.
             subs.screenshotPricing = .init()
+            pinStoreScreenshotPair()
 
-        // The Verify tab for a subscriber (was `homeLine`): the "Your number"
-        // strip above the search, and a Recent row.
+        // The same root for a subscriber (was `homeLine`), with one delivered
+        // code and one order still running — the running one puts ResumeBar
+        // above the tab bar.
         case .verifyLine:
-            state.tab = .verify
-            state.verifyPath = []
+            state.openCodeStore()
             state.lines = [ScreenshotMode.sampleLine]
             state.lineThreads = ScreenshotMode.sampleThreads
-            // 🔴 Required, and its absence is INVISIBLE rather than empty:
-            // `VerifyScreen.hasLiveLine` is gated on `linesLoaded` (the anti-flash
-            // rule), so seeding `lines` alone renders the frame as if the user
-            // had no number — the router state under the subscriber's name.
-            // The other line frames do not need it; they read `lines` directly.
+            // Line surfaces gate on `linesLoaded` (the anti-flash rule), so
+            // seeding `lines` alone renders the user as having no number.
             state.linesLoaded = true
             state.profile = ScreenshotMode.sampleProfile
-            // Recent, with one delivered code and one order still running —
-            // the two states the trailing edge of that row can be in.
-            //
             // 🔴 `resolve` binds the Service and Country ONCE, from whatever
             // catalog is loaded at THIS instant — and the cold-start chain is
             // skipped above, so that is `SeedData`. The live catalog arriving a
-            // second later via the scenePhase refresh does not re-resolve these
-            // rows. Every id here must therefore exist in BOTH, or the row
-            // renders the fallback pair: a grey "Service" tile under a globe.
+            // second later does not re-resolve these rows. Every id here must
+            // therefore exist in BOTH, or the row renders the fallback pair.
             //
             // ⚠️ `uk`, not `gb`. `gb` is the ISO code, and
             // `Country.flagImageCode` maps `uk` onto it for the flag PNG — but
@@ -1040,49 +1034,7 @@ extension ContentView {
                     serviceId: "google", countryId: "uk", ageSeconds: 40)),
             ]
             subs.screenshotPricing = .init()
-
-        // ⚠️ NOT the Home tab. `.home` is the temp-SMS store's frame and its
-        // raw value is a FILENAME that `scripts/screenshots/make-set.py`
-        // filters on, so it keeps the name and keeps pointing at `.temp`.
-        // Same state as `.home` — `TempScreen` raises the sheet itself when it
-        // sees this case, because the sheet is `@State` on that screen and
-        // cannot be presented from out here.
-        case .home, .deliveryInfo:
-            state.openCodeStore()
-            // Pin a pair that PUBLISHES a network rate, so the frame shows the
-            // delivery figure the whole picker is built around. The default
-            // pair may publish nothing, and a store screenshot with a blank
-            // where the rate goes sells the opposite of the feature.
-            //
-            // leboncoin/Austria measured 5 credits at 87% on 2026-08-06 — a
-            // real, bookable pair. The figure is NOT hardcoded here; it is
-            // whatever the route publishes at capture time, so the frame
-            // cannot claim a rate the catalog does not.
-            //
-            // ⚠️ leboncoin is not in `SeedData`, so this has to await the
-            // fetch. Which is possible because the catalog is FETCHED here,
-            // not seeded — `routes` carries a `public read` policy, so the
-            // publishable key alone is enough. See the corrected note at the
-            // call site.
-            Task { @MainActor in
-                await state.loadCatalog(using: CatalogAPI(client: api))
-                if let svc = state.services.first(where: { $0.id == "leboncoin" }) {
-                    state.lastService = svc
-                }
-                if let cty = state.countries.first(where: { $0.id == "at" }) {
-                    state.lastCountry = cty
-                }
-                // Home's Recent section renders from `orders`, so without this
-                // the frame collapsed it entirely and looked like the feature
-                // was gone. Seeded AFTER the catalog so each row resolves its
-                // real service logo and flag.
-                //
-                // 🔴 Seeded, never fetched. `loadOrders` is gated in screenshot
-                // mode on purpose: the account these run against is the dev
-                // account, and letting it through would publish real order
-                // history — real numbers, real codes — into an App Store frame.
-                state.orders = ScreenshotMode.sampleOrderRows.map(state.resolve)
-            }
+            pinStoreScreenshotPair()
 
         // ⚠️ These three set REAL STATE now. Until 2026-08-06 the whole group
         // set only `tab`, so `waiting` and `code` were byte-identical captures
@@ -1127,7 +1079,6 @@ extension ContentView {
                 .map(state.resolve)
             state.flow = nil
             state.tab = .verify
-            state.verifyPath = []
             state.linesLoaded = true
 
         case .account:
@@ -1157,14 +1108,11 @@ extension ContentView {
 
         case .credits:
             state.openCodeStore()
-            // 🔴 Without this the frame is the DELIVERY EXPLAINER, not the
-            // credits sheet. `DeliveryInfoSheet` raises on EVERY appearance of
-            // the Temp tab until acknowledged, and this fixture lands on Temp
-            // — so it covered the pack ladder completely, and the capture
-            // looked like the app had ignored the launch argument. Marking it
-            // acknowledged is the honest fixture: a review screenshot has to
-            // show the product being reviewed.
-            UserDefaults.standard.set(true, forKey: PrefKey.deliveryInfoAcked)
+            // (On `main` this fixture also wrote `PrefKey.deliveryInfoAcked`,
+            // because the explainer raised on every appearance of the Temp
+            // tab and covered the pack ladder. On this branch it raises only
+            // at the first Get-number tap, so the write — which persisted on
+            // the simulator and silently disarmed the gate there — is gone.)
             // A modest balance. ⚠️ This comment used to claim
             // `creditsShortfall` is 0 here — "the seeded catalog has no route
             // for the default pair" — so the sheet opened on MOST POPULAR.
@@ -1223,6 +1171,32 @@ extension ContentView {
                 if let svc = state.services.first(where: { $0.id == "leboncoin" }) {
                     state.lastService = svc
                 }
+            }
+        }
+    }
+
+    /// Pin the store to a pair that PUBLISHES a network rate, so the frame
+    /// shows the delivery figure the whole picker is built around. The default
+    /// pair may publish nothing, and a store screenshot with a blank where the
+    /// rate goes sells the opposite of the feature.
+    ///
+    /// leboncoin/Austria measured 5 credits at 87% on 2026-08-06 — a real,
+    /// bookable pair. The figure is NOT hardcoded here; it is whatever the
+    /// route publishes at capture time, so the frame cannot claim a rate the
+    /// catalog does not. With the fixture balance of 42 the CTA is Get number.
+    ///
+    /// ⚠️ leboncoin is not in `SeedData`, so this has to await the fetch.
+    /// Which is possible because the catalog is FETCHED here, not seeded —
+    /// `routes` carries a `public read` policy, so the publishable key alone is
+    /// enough. See the corrected note at the `.task` call site.
+    private func pinStoreScreenshotPair() {
+        Task { @MainActor in
+            await state.loadCatalog(using: CatalogAPI(client: api))
+            if let svc = state.services.first(where: { $0.id == "leboncoin" }) {
+                state.lastService = svc
+            }
+            if let cty = state.countries.first(where: { $0.id == "at" }) {
+                state.lastCountry = cty
             }
         }
     }

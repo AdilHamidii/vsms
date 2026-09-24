@@ -143,7 +143,10 @@ struct OrdersScreen: View {
                 .padding(.top, 14)
             }
             .padding(.top, 8)
-            .padding(.bottom, 140)
+            // Only breathing room: the native tab bar insets scroll
+            // content itself, and `resumeBarInset()` adds the ResumeBar.
+            // (140 was sized for the old floating custom bar.)
+            .padding(.bottom, RSpace.xl)
         }
         .scrollIndicators(.hidden)
         .task {
@@ -212,7 +215,7 @@ struct OrdersScreen: View {
                 .buttonStyle(.plain)
                 .accessibilityLabel("Close")
             }
-            Text("Orders")
+            Text("Activity")
                 .displayType(28)
                 .foregroundStyle(theme.text)
             Spacer()

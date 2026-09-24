@@ -6,9 +6,10 @@ import SwiftUI
 ///
 /// **Nothing on it said what the product does.** The top 60pt was a time-of-day
 /// greeting and the words "Get a number." — a command, not a proposition, and
-/// ambiguous besides ("a number" for what?). Both are gone. The eyebrow now
-/// names the outcome and the headline names the specific next action, with the
-/// selected service in it.
+/// ambiguous besides ("a number" for what?). Both are gone. Since 2026-09-24
+/// (branch `design-overhaul`) this is the Verify tab's root and the header is
+/// the question "What do you want to verify?" plus the refund promise — see
+/// `header`.
 ///
 /// **There were THREE stacked decision surfaces and one was a pure
 /// duplicate**: the mode switch, the hero (service + country + price + metrics
@@ -53,8 +54,6 @@ struct TempScreen: View {
     /// The same order, paid at the server's `credit_price` instead of the
     /// included tier — offered as the paywall's secondary action.
     var onStartEmailPaid: () -> Void = {}
-    var onTapOrder: (Order) -> Void = { _ in }
-    var onSeeAllOrders: () -> Void = {}
 
     @State private var appeared = false
     /// Presented from HERE, not through `state.showMailPaywall`. The root
@@ -80,6 +79,13 @@ struct TempScreen: View {
         var id: String { rawValue }
     }
     @State private var deliveryInfoMode: DeliveryInfoMode?
+
+    /// Set when a Get-number tap raised the gated explainer instead of
+    /// starting checkout. The sheet's `onDismiss` consumes it: acknowledged →
+    /// checkout continues with the same `onStart` a normal tap uses; closed
+    /// any other way → nothing happens. Separate from `deliveryInfoMode`
+    /// because that value is already nil by the time `onDismiss` runs.
+    @State private var startCheckoutAfterAcknowledgement = false
 
     /// `-screenshot deliveryInfo` opens the sheet on appear. DEBUG-only and
     /// inert in a release build; see `ScreenshotMode.Screen.deliveryInfo`.
@@ -130,12 +136,9 @@ struct TempScreen: View {
                     .padding(.top, 18)
                     .riseIn(appeared, index: 2)
 
-                if !state.orders.isEmpty {
-                    recentSection
-                        .padding(.horizontal, 16)
-                        .padding(.top, 26)
-                        .riseIn(appeared, index: 3)
-                }
+                // (A Recent list lived here until 2026-09-24. This screen is
+                // now the Verify tab's root and the Activity tab owns history,
+                // so a second copy of it would be the duplicate.)
 
                 // eSIM lived only behind the 2nd tab. It is the healthier of
                 // the two product lines by every measure we have — 4x margin,
@@ -155,23 +158,18 @@ struct TempScreen: View {
                     .riseIn(appeared, index: 5)
             }
             .padding(.top, 8)
-            .padding(.bottom, 140)
+            // Only breathing room: the native tab bar insets scroll
+            // content itself, and `resumeBarInset()` adds the ResumeBar.
+            // (140 was sized for the old floating custom bar.)
+            .padding(.bottom, RSpace.xl)
         }
         .scrollIndicators(.hidden)
         .task {
             withAnimation(RMotion.content) { appeared = true }
-            if screenshotWantsDeliveryInfo {
-                deliveryInfoMode = .gated
-            } else {
-                await raiseDeliveryInfoIfNeeded()
-            }
+            // The explainer no longer raises on appearance (see
+            // `startNumberOrder`); only the screenshot fixture opens it here.
+            if screenshotWantsDeliveryInfo { deliveryInfoMode = .gated }
         }
-        // The user can arrive on this tab in e-mail mode, or with a flow on
-        // top, and switch out of either without the tab being re-created — so
-        // `.task` alone would miss them. Both re-checks are cheap (one
-        // UserDefaults read) and idempotent.
-        .onChange(of: state.emailMode) { _, _ in Task { await raiseDeliveryInfoIfNeeded() } }
-        .onChange(of: state.flow == nil) { _, _ in Task { await raiseDeliveryInfoIfNeeded() } }
         // The segmented control is a shared component with no haptic of its
         // own; switching product line is the biggest state change on the
         // screen and should be felt.
@@ -198,7 +196,7 @@ struct TempScreen: View {
         }
         // Same explicit injection as the paywall above, same reason. `item:`
         // rather than `isPresented:` — see `DeliveryInfoMode`.
-        .sheet(item: $deliveryInfoMode) { mode in
+        .sheet(item: $deliveryInfoMode, onDismiss: continueAfterDeliveryInfo) { mode in
             DeliveryInfoSheet(
                 source: mode == .gated ? "auto" : "button",
                 mustAcknowledge: mode == .gated
@@ -245,47 +243,47 @@ struct TempScreen: View {
 
     // MARK: - What this app is for
 
-    /// Eyebrow states the OUTCOME; headline states the next action.
+    /// The question, then the promise that makes it safe to try.
     ///
-    /// The greeting it replaced is the purest example of the problem: it took
-    /// the most valuable 60pt on the app's entry screen, was different on every
-    /// visit, and told the user nothing they did not already know. Median
-    /// signup → first order is ~2 minutes, so this block is very close to the
-    /// entire pitch.
+    /// Owner, 2026-09-24: this screen became the Verify tab's root and "What
+    /// do you want to verify?" stays as its headline, in BOTH modes — the
+    /// Number / E-mail segment below is what says which product answers it.
+    /// It replaced an eyebrow ("Verify any account without your real number")
+    /// over "Get a number for {service}".
+    ///
+    /// The ⓘ and the credit pill share the title's row. With no eyebrow there
+    /// is no longer a label to truncate beside them (the old eyebrow needed a
+    /// third line for exactly that); the title wraps instead, and the subtitle
+    /// runs full width underneath.
     private var header: some View {
         VStack(alignment: .leading, spacing: 8) {
-            // ⚠️ The ⓘ takes ~36pt out of a row that was already full, and the
-            // two obvious fixes both break something: with no help the eyebrow
-            // truncates to "…WITHOUT YOUR REAL NUMB…", and with
-            // `layoutPriority` on the eyebrow the CREDIT PILL is the thing
-            // that gets clipped instead. The fix is to let the eyebrow take a
-            // third line (see `eyebrow`), which shrinks the width it asks for
-            // and leaves both neighbours intact.
-            HStack(alignment: .center, spacing: 8) {
-                eyebrow
-                Spacer(minLength: 0)
+            HStack(alignment: .top, spacing: 8) {
+                Text("What do you want to verify?")
+                    .displayType(30)
+                    .foregroundStyle(theme.text)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityAddTraits(.isHeader)
+                Spacer(minLength: 4)
                 // SMS only, at the owner's instruction: the explainer is about
                 // temp-number delivery, and e-mail mode has its own, very
                 // different delivery profile (49% against 22%).
                 if !state.emailMode { deliveryInfoButton }
                 CreditPill(value: state.balance, action: openCredits)
             }
-            headline
+            Text("Get a code for an app. No code? Your credits come back.")
+                .font(RFont.text(15))
+                .foregroundStyle(theme.text2)
+                .fixedSize(horizontal: false, vertical: true)
         }
     }
 
-    // Both of these are written as an if/else over two `Text("literal")` calls
-    // rather than one ternary. A ternary between two string literals resolves
-    // to `String`, which selects `Text.init<S: StringProtocol>` — so the copy
-    // silently stops being localized and never reaches the catalog at all.
-    @ViewBuilder
     /// Always available, and deliberately UNGATED — no dwell, no scroll
     /// requirement, dismissible. The acknowledgement gate is about the
-    /// automatic showing; a user who chooses to open the screen has already
-    /// done the thing the gate exists to cause, and making them re-earn it
-    /// would be punishment rather than instruction. Most people come here
-    /// after a failure, which is exactly when the copy they acknowledged on
-    /// day one has been forgotten.
+    /// showing at the first Get-number tap; a user who chooses to open the
+    /// screen has already done the thing the gate exists to cause, and making
+    /// them re-earn it would be punishment rather than instruction. Most
+    /// people come here after a failure, which is exactly when the copy they
+    /// acknowledged on day one has been forgotten.
     private var deliveryInfoButton: some View {
         Button {
             RHaptic.select()
@@ -303,42 +301,6 @@ struct TempScreen: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel(Text("How temporary numbers work"))
-    }
-
-    private var eyebrow: some View {
-        // 🔴 THREE lines, not two. The ⓘ button shares this row in SMS mode
-        // and a two-line cap makes the label truncate mid-word at 393pt. A
-        // third line is free — the headline below it is what carries the
-        // screen — and truncating the sentence that says what the product
-        // does is not a trade worth making for a button.
-        if state.emailMode {
-            MicroLabel("Sign up without your real e-mail").lineLimit(3)
-        } else {
-            MicroLabel("Verify any account without your real number").lineLimit(3)
-        }
-    }
-
-    @ViewBuilder
-    private var headline: some View {
-        if state.emailMode {
-            Text("Get an e-mail for \(state.lastService.name)")
-                .displayType(28)
-                .foregroundStyle(theme.text)
-                .fixedSize(horizontal: false, vertical: true)
-        } else if isSuggestion {
-            // Naming the service here would be the same overclaim the hero
-            // below makes: the app picked it, the user has not, and the CTA
-            // underneath refuses to sell it. State the product instead.
-            Text("Get a verification number")
-                .displayType(28)
-                .foregroundStyle(theme.text)
-                .fixedSize(horizontal: false, vertical: true)
-        } else {
-            Text("Get a number for \(state.lastService.name)")
-                .displayType(28)
-                .foregroundStyle(theme.text)
-                .fixedSize(horizontal: false, vertical: true)
-        }
     }
 
     /// The hero is showing the app's OWN pre-selection, which the CTA will not
@@ -378,39 +340,39 @@ struct TempScreen: View {
     /// A user who has never placed an order.
     private var isFirstRun: Bool { state.orders.isEmpty }
 
-    /// Raise the delivery explainer the first time this user opens the Temp
-    /// tab in SMS mode, gated, and keep raising it until they acknowledge
-    /// (owner, 2026-09-13: everyone sees it, "wether they ordered before or
-    /// not").
+    /// The SMS Get-number tap. The delivery explainer is read BEFORE a user's
+    /// first SMS order (spec §6.4, pulled forward 2026-09-24 when this screen
+    /// became the app's first screen): until `PrefKey.deliveryInfoAcked` is
+    /// written, the tap raises the GATED sheet instead of starting checkout,
+    /// and checkout continues from `continueAfterDeliveryInfo` once it is
+    /// acknowledged. On `main` it raised on every appearance of the Temp tab.
+    ///
+    /// Every other route into checkout (buy again, the recovery card's retry,
+    /// Order another number, the code screen's "another code") starts from an
+    /// order that already exists, so this tap is the only first-order path.
     ///
     /// 🔴 **The flag is written on ACKNOWLEDGEMENT, not on presentation.**
-    /// Writing it here would let a user who force-quits mid-read skip the
-    /// screen forever, which is the one outcome the gate exists to prevent.
-    /// `DeliveryInfoSheet` writes it from its CTA instead.
-    ///
-    /// ⚠️ **Not raised over a live flow.** `state.flow` non-nil means a
-    /// checkout, a waiting screen or a code is on top of this tab; a sheet
-    /// arriving there interrupts an order in progress rather than informing
-    /// one that has not started. The tab is still here when the flow ends.
-    ///
-    /// ⚠️ **The settle delay is deliberate.** Presenting in the same frame the
-    /// tab draws makes the sheet appear to slam up out of nothing — the owner's
-    /// words from the device were "it opens so quickly". Letting the tab render
-    /// first and then raising the sheet turns it into a transition the eye can
-    /// follow. It is not a "wait for data" delay; nothing here is loading.
-    private func raiseDeliveryInfoIfNeeded() async {
-        guard !state.emailMode, state.flow == nil,
-              deliveryInfoMode == nil,
-              !UserDefaults.standard.bool(forKey: PrefKey.deliveryInfoAcked)
-        else { return }
-        try? await Task.sleep(for: .milliseconds(550))
-        // Re-check: half a second is long enough for the user to have switched
-        // to e-mail, started an order, or left the tab.
-        guard !Task.isCancelled, !state.emailMode, state.flow == nil,
-              deliveryInfoMode == nil,
-              !UserDefaults.standard.bool(forKey: PrefKey.deliveryInfoAcked)
-        else { return }
-        deliveryInfoMode = .gated
+    /// `DeliveryInfoSheet` writes it from its CTA; writing it here would let a
+    /// user who force-quits mid-read skip the screen forever, which is the one
+    /// outcome the gate exists to prevent.
+    private func startNumberOrder() {
+        guard UserDefaults.standard.bool(forKey: PrefKey.deliveryInfoAcked) else {
+            startCheckoutAfterAcknowledgement = true
+            deliveryInfoMode = .gated
+            return
+        }
+        onStart()
+    }
+
+    /// `onDismiss` for the explainer. Continues into checkout only when the
+    /// dismissal was the gated showing's acknowledgement — the key is read
+    /// back rather than trusted, so a sheet closed any other way (a swipe once
+    /// the gate has opened, which writes nothing) starts no order.
+    private func continueAfterDeliveryInfo() {
+        guard startCheckoutAfterAcknowledgement else { return }
+        startCheckoutAfterAcknowledgement = false
+        guard UserDefaults.standard.bool(forKey: PrefKey.deliveryInfoAcked) else { return }
+        onStart()
     }
 
     /// First run AND cannot afford the route in front of them — including the
@@ -905,7 +867,7 @@ struct TempScreen: View {
                     label: "Get number",
                     sub: "\(routeCost) cr",
                     icon: RIcon.bolt,
-                    action: { RHaptic.select(); onStart() }
+                    action: { RHaptic.select(); startNumberOrder() }
                 )
             }
         } else {
@@ -1117,32 +1079,6 @@ struct TempScreen: View {
         .task(id: service.id) {
             Analytics.shared.track("email_phone_only_note_shown",
                                    ["service": .string(service.id)])
-        }
-    }
-
-    // MARK: - Recent
-
-    private var recentSection: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(alignment: .firstTextBaseline) {
-                MicroLabel("Recent")
-                Button(action: { RHaptic.select(); onSeeAllOrders() }) {
-                    Text("See all")
-                        .font(RFont.text(13, weight: .medium))
-                        .foregroundStyle(theme.text2)
-                }
-                .pressable(0.94)
-            }
-            Card {
-                VStack(spacing: 0) {
-                    let recent = Array(state.orders.prefix(3))
-                    ForEach(Array(recent.enumerated()), id: \.element.id) { idx, order in
-                        OrderRow(order: order,
-                                 isLast: idx == recent.count - 1,
-                                 onTap: { onTapOrder(order) })
-                    }
-                }
-            }
         }
     }
 

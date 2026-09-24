@@ -66,17 +66,24 @@ still serves the 12 legacy eSIMs sold before the provider switch.
 **Superseded on branch `design-overhaul` (2026-09-24):** tabs are Verify · My
 number · Activity · Account in a fixed order (the `Tab` declaration order in
 `ContentView`'s native `TabView`; `AppTab.order` mirrors it); `/tabs` no longer orders anything in builds from this branch — the
-value is still stored, never applied. Every former "go to Temp" entry point
-calls `AppState.openCodeStore(email:)`, which pushes the temp store inside the
-Verify tab. On this branch `HomeScreen`, `home_view` and `home_card_tapped`
-(from Home) are retired: the Verify tab is `VerifyScreen`, which fires
-`verify_view {guest, has_line, lines_loaded}` on every visit and
-`service_selected{source: verify | verify_search | verify_recent}` on a pick,
-`verify_line_row_tapped` from its own-number row, and `service_search_empty`
-with `source: "verify"` (`AccountScreen`'s `invite` / `vroam` arms of
+value is still stored, never applied. **The Verify tab's ROOT is the temp code
+store (`TempScreen`), owner decision 2026-09-24** — on a grid-first Verify
+screen a new user never learned temp e-mail exists; the store's Number /
+E-mail segment says so on screen one. Its header is "What do you want to
+verify?" in both modes, with no Recent list (the Activity tab owns history).
+Every former "go to Temp" entry point calls `AppState.openCodeStore(email:)`,
+which selects the Verify tab and the mode; nothing is pushed (`VerifyRoute` /
+`verifyPath` are gone). On this branch `HomeScreen`, `home_view` and
+`home_card_tapped` (from Home) are retired, and so are the grid
+`VerifyScreen` / `VerifyTile` that briefly replaced them with their
+`service_selected{source: verify*}`, `verify_line_row_tapped` and
+`service_search_empty{source: verify}` events. `verify_view {guest, has_line,
+lines_loaded}` still fires on every visit, from the store root in
+`ContentView` (`AccountScreen`'s `invite` / `vroam` arms of
 `home_card_tapped` still fire).
 Fixtures on this branch: `verify`, `verifyLine`, `activity`, `waitingClosed`,
-`account`, `splash` (`homeRouter` / `homeLine` below are main's names).
+`account`, `splash`; `home` is an alias of `verify` (`homeRouter` / `homeLine`
+below are main's names).
 The text below describes `main`.
 
 `AppTab` order is `home · line · temp · account` and the app opens on
@@ -1695,6 +1702,21 @@ service's own record.
 ## The temp-SMS product
 
 ### The delivery explainer (2.14, owner design 2026-09-13)
+
+**On branch `design-overhaul` (2026-09-24) it opens at the user's first SMS
+Get-number TAP, not on tab appearance** (spec §6.4, pulled forward because the
+store is now the app's first screen). `TempScreen.startNumberOrder` raises the
+GATED sheet instead of starting checkout while `PrefKey.deliveryInfoAcked` is
+unset; the sheet's `onDismiss` re-reads the key and, only if it is now
+written, continues with the same `onStart` (`startCheckout()`) a normal tap
+uses. The gate (10 s dwell + reaching the end), the V2 key, the ⓘ (ungated) and
+the events are unchanged, and `delivery_info_shown{source: "auto"}` still marks
+the gated showing so the series continues. Every other route into checkout
+(`buyAgain`, the recovery card's retry, Order another number, `OtpScreen`'s
+"another code") starts from an existing order, so the tap is the only
+first-order path. ⚠️ Build- and screenshot-verified only; the tap-then-continue
+path has never been walked (no tap automation). The `credits` fixture no longer
+writes the key. **The text below describes `main`.**
 
 `DeliveryInfoSheet` opens on EVERY appearance of the Temp tab in SMS mode
 until the user acknowledges it — *"wether they ordered before or not"* (owner,

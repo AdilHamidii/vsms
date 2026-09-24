@@ -66,9 +66,10 @@ struct LineRecentsView: View {
                         }
                     }
                     .padding(.horizontal, 20)
-                    // Clears the floating tab bar AND the dial FAB, which sits
-                    // over the bottom-trailing corner of this list.
-                    .padding(.bottom, 140)
+                    // Clears the dial FAB, which sits over the bottom-trailing
+                    // corner of this list (the native tab bar insets the
+                    // scroll view itself).
+                    .padding(.bottom, LineScreen.fabClearance)
                 }
             }
         }

@@ -21,9 +21,10 @@ VirtualSIM/
   ContentView.swift              native TabView, 4 tabs (verify/line/activity/
                                  account; the order is the Tab declaration
                                  order in ContentView, `AppTab.order` mirrors
-                                 it); the temp store is
-                                 pushed inside Verify (`VerifyRoute.store`,
-                                 `AppState.openCodeStore`); `ResumeBar` rides a
+                                 it); the temp store (`TempScreen`) is
+                                 the Verify tab's NavigationStack ROOT
+                                 (`AppState.openCodeStore` selects tab +
+                                 mode, pushes nothing); `ResumeBar` rides a
                                  bottom `safeAreaInset` on every tab
                                  + fullScreenCover for Checkout/Waiting/OTP
                                  + the parked eSIM flow; EnvBundle
@@ -44,23 +45,14 @@ VirtualSIM/
                                  CountryRank = the PROVIDER's success rate for a
                                  (service, country) — steering input, never a
                                  badge; see the steering section)
-  Screens/                       VerifyScreen (the Verify tab on
-                                 `design-overhaul`: one question, the credit
-                                 pill (hidden at 0), search over the catalog
-                                 with ONE category-chip row directly under it
-                                 in every state (one instance, so its scroll
-                                 offset survives a selection), Recent, an
-                                 eight-app grid (Recent apps are excluded and
-                                 backfilled), then "Your own number" — the subscriber's
-                                 strip, or for a non-subscriber (once
-                                 `linesLoaded`) a quiet row to the My number
-                                 tab; a pick goes through
-                                 `commitServicePick` then `openCodeStore`. It
-                                 replaced `HomeScreen`, which on `main` is the
-                                 Home tab — see CLAUDE.md "Home leads the app"),
-                                 TempScreen (the Temp tab on `main`; pushed
-                                 inside Verify on `design-overhaul`:
-                                 temp SMS + temp e-mail, `emailMode`),
+  Screens/                       TempScreen (the Temp tab on `main`; on
+                                 `design-overhaul` the Verify tab's root,
+                                 headed "What do you want to verify?", no
+                                 Recent list: temp SMS + temp e-mail,
+                                 `emailMode`; the grid `VerifyScreen` /
+                                 `VerifyTile` it replaced were deleted
+                                 2026-09-24. `HomeScreen` is main's Home tab
+                                 — see CLAUDE.md "Home leads the app"),
                                  Checkout, Waiting (+ WaitingAnimations),
                                  OTP (⚠️ fires NO review prompt — see "The
                                  review prompt" below; it did until 2026-08-19
@@ -97,9 +89,7 @@ VirtualSIM/
                                  OPEN on a failed write; on `design-overhaul`
                                  Account's headline name presents it, since
                                  `HomeScreen` and its greeting are gone)
-  Components/                    Theme primitives + VerifyTile (the one
-                                 Verify grid tile body, so every cell is the
-                                 same height) + ServiceLogo / FlagImage /
+  Components/                    Theme primitives + ServiceLogo / FlagImage /
                                  FlagCircle — bundle-first via BundledImageStore,
                                  network cascade (DuckDuckGo/FaviconV2, flagcdn) as
                                  fallback; SuccessBadge renders MEASURED delivery

@@ -99,17 +99,19 @@ struct LineStoreScreen: View {
                     smsEscape.padding(.top, 12).riseIn(appeared, index: 4)
                 }
                 .padding(.horizontal, 20)
-                // 🔴 THE TAB-BAR CLEARANCE MUST SIT OUTSIDE THE MIN-HEIGHT
-                // FRAME. With `.padding(.bottom, 120)` applied INSIDE it, the
-                // 120pt of clearance counts as content: the spacers then
+                // 🔴 THE BOTTOM CLEARANCE MUST SIT OUTSIDE THE MIN-HEIGHT
+                // FRAME. (It was 120, sized for the old floating custom tab
+                // bar; the native bar is below the safe area `proxy` measures,
+                // so only breathing room is left.) With the padding applied
+                // INSIDE the frame, the clearance counts as content: the spacers then
                 // distribute slack across the FULL viewport, which puts the
-                // last element flush against the bottom of the screen — i.e.
-                // on top of the floating tab bar — and pushes `smsEscape`
-                // underneath it entirely. The escape is the only route to the
+                // last element flush against the bottom of the screen — under
+                // the floating tab bar this screen had until 2026-09-24 — and
+                // pushed `smsEscape` underneath it entirely. The escape is the only route to the
                 // temp-SMS product from the launch surface, so it being
                 // invisible is a funnel bug, not a cosmetic one.
-                .frame(minHeight: proxy.size.height - 120, alignment: .top)
-                .padding(.bottom, 120)
+                .frame(minHeight: proxy.size.height - RSpace.xl, alignment: .top)
+                .padding(.bottom, RSpace.xl)
             }
         }
         .background(theme.bg)

@@ -7,7 +7,7 @@ import StoreKit
 /// there pays out wallet credits on every renewal, forever.
 enum MailProduct {
     static let monthlyId = "com.anthersystems.VirtualSIM.mail.monthly"
-    /// $29.99/year with a 3-day free trial.
+    /// $29.99/year. Its 3-day free trial was removed in ASC on 2026-09-16.
     static let yearlyId = "com.anthersystems.VirtualSIM.mail.yearly"
 
     /// 🔴 EVERY product in the group. An id missing from here is routed to the
@@ -115,7 +115,9 @@ final class MailSubscriptionStore {
         /// ($2.99 × 12 − $29.99) ÷ ($2.99 × 12) = 16.4% → 16, which is what
         /// `yearlySavingsPercent` computes from the live prices.
         var savingsPercent = 16
-        var trial = "3 days"
+        /// nil: `mail.yearly` carries no free trial since 2026-09-16 (all 175
+        /// territory offers removed in ASC), so the frame must not promise one.
+        var trial: String? = nil
     }
 
     /// Non-nil ONLY under `ScreenshotMode`. Every read of it is behind

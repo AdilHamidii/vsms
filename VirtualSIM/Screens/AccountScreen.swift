@@ -87,25 +87,47 @@ struct AccountScreen: View {
         let ok: Bool
     }
 
+    /// The title's scroll id: the anchor the tab-switch reset scrolls to.
+    private static let topAnchor = "account.top"
+
     var body: some View {
         @Bindable var state = state
-        ScrollView {
-            VStack(alignment: .leading, spacing: 0) {
-                title
-                profileCard
-                balanceCard
-                invite
-                vroamCard
-                preferences(state: state)
-                support
-                legal
-                dangerZone
-                credit
+        ScrollViewReader { proxy in
+            ScrollView {
+                VStack(alignment: .leading, spacing: 0) {
+                    title
+                        .id(Self.topAnchor)
+                    profileCard
+                    balanceCard
+                    invite
+                    vroamCard
+                    preferences(state: state)
+                    support
+                    legal
+                    dangerZone
+                    credit
+                }
+                .padding(.top, 8)
+                // Only breathing room: the native tab bar insets scroll
+                // content itself, and `resumeBarInset()` adds the ResumeBar.
+                // (140 was sized for the old floating custom bar.)
+                .padding(.bottom, RSpace.xl)
             }
-            .padding(.top, 8)
-            .padding(.bottom, 140)
+            .scrollIndicators(.hidden)
+            // Owner, 2026-09-24: Account opens at the top every time it is
+            // returned to. `TabView` keeps this view alive, so the scroll offset
+            // would otherwise survive the switch. Reset on LEAVING the tab, with
+            // no animation, so the jump happens off-screen — never on appear,
+            // which a sheet dismissal would also trigger. Nothing presented from
+            // here (the name sheet, change password, credits, the delete dialog)
+            // writes `state.tab`, so none of them can fire it.
+            .onChange(of: state.tab) { _, tab in
+                guard tab != .account else { return }
+                var t = Transaction()
+                t.disablesAnimations = true
+                withTransaction(t) { proxy.scrollTo(Self.topAnchor, anchor: .top) }
+            }
         }
-        .scrollIndicators(.hidden)
         .task {
             // The cold-start chain fetches this, but a tab opened after a
             // failed launch fetch would otherwise sit on a placeholder
@@ -406,6 +428,9 @@ struct AccountScreen: View {
                             track("vroam")
                         })
                     }
+                    // Full width, so the card's right edge lines up with
+                    // Invite's; without it the card hugged its text.
+                    .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(18)
                 }
             }
@@ -848,7 +873,8 @@ struct AccountScreen: View {
             .opacity(0.7)
             .frame(maxWidth: .infinity)
             .padding(.top, 32)
-            .padding(.bottom, 16)
+            // No bottom padding of its own: the scroll content's
+            // `RSpace.xl` is the one gap above the tab bar.
     }
 
     private var dangerZone: some View {

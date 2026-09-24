@@ -23,13 +23,6 @@ enum AppTab: String, Hashable, CaseIterable {
     static let order: [AppTab] = [.verify, .line, .activity, .account]
 }
 
-/// Destinations pushed inside the Verify tab. Plan 1 has one: the existing
-/// temp-SMS / temp-e-mail screen, reached after a service pick. Plan 2
-/// replaces it with "Ways to verify".
-enum VerifyRoute: Hashable {
-    case store
-}
-
 enum FlowStage: String, Hashable, Identifiable {
     case checkout, waiting, otp, recovery, esimCheckout, esimDetail
     case emailWaiting, emailCode
@@ -332,16 +325,15 @@ final class AppState {
     /// a product. See CLAUDE.md, "Home leads the app".
     var tab: AppTab = .verify
 
-    /// Navigation inside the Verify tab. Not persisted.
-    var verifyPath: [VerifyRoute] = []
-
     /// Open the temp code store (SMS, or e-mail when `email`), from anywhere.
     /// The ONE replacement for the old `tab = .temp`, so every entry point —
     /// push notifications, the order list, upsell cards — lands the same way.
+    ///
+    /// The store IS the Verify tab's root (owner, 2026-09-24), so this only
+    /// selects the tab and the mode; nothing is pushed.
     func openCodeStore(email: Bool = false) {
         emailMode = email
         tab = .verify
-        verifyPath = [.store]
     }
     var balance: Int = 0
     var services: [Service] = SeedData.services

@@ -62,6 +62,18 @@ struct LineScreen: View {
 /// failed", "your number cannot receive calls yet" — and a fault the user has
 /// to go looking for is a fault they find out about from a stranger who could
 /// not reach them.
+/// The line tab's floating action button geometry, shared by the FAB and by
+/// the lists that scroll under it (`LineRecentsView`, the Messages list).
+extension LineScreen {
+    /// The FAB's gap above the bottom of the safe area — which, under the
+    /// native `TabView`, is already the top of the tab bar (and of ResumeBar
+    /// when one is showing).
+    static let fabBottomInset: CGFloat = RSpace.xl
+    /// What a list under the FAB reserves at its end so its last row can
+    /// scroll clear of the 60pt button: inset + button + a gap.
+    static let fabClearance: CGFloat = fabBottomInset + 60 + RSpace.md
+}
+
 private struct LiveLineView: View {
     @Environment(\.theme) private var theme
     @Environment(AppState.self) private var state
@@ -443,9 +455,9 @@ private struct LiveLineView: View {
         .pressable(0.94)
         .accessibilityLabel(label)
         .padding(.trailing, 20)
-        // Clears the floating tab bar, which is 28pt off the bottom and
-        // ~56pt tall. Same clearance the scrolling lists reserve.
-        .padding(.bottom, 108)
+        // 108 until 2026-09-24, sized to clear the old floating custom tab
+        // bar; the native bar sits below the safe area, so only a gap remains.
+        .padding(.bottom, LineScreen.fabBottomInset)
     }
 
     // MARK: - Provisioning
@@ -524,8 +536,9 @@ private struct LiveLineView: View {
                     }
                 }
                 .padding(.horizontal, 20)
-                // Clears the tab bar AND the dial FAB in the same corner.
-                .padding(.bottom, 140)
+                // Clears the FAB in the same corner (the native tab bar
+                // insets the scroll view itself).
+                .padding(.bottom, LineScreen.fabClearance)
             }
         }
     }
