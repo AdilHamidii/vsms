@@ -14511,6 +14511,46 @@
         }
       }
     },
+    "From US and Canadian numbers and services.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Von Nummern und Diensten aus den USA und Kanada."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "De números y servicios de EE. UU. y Canadá."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Depuis des numéros et services américains et canadiens."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Da numeri e servizi di Stati Uniti e Canada."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "米国・カナダの番号やサービスから受信できます。"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "De números e serviços dos EUA e do Canadá."
+          }
+        }
+      }
+    },
     "Full refund": {
       "extractionState": "stale",
       "localizations": {
@@ -16293,6 +16333,46 @@
           "stringUnit": {
             "state": "translated",
             "value": "Um instante. Você poderá cancelar em %lld segundos. A maioria dos códigos chega nos primeiros minutos."
+          }
+        }
+      }
+    },
+    "Has received codes from WhatsApp, TikTok and DoorDash.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hat bereits Codes von WhatsApp, TikTok und DoorDash empfangen."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ya ha recibido códigos de WhatsApp, TikTok y DoorDash."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "A déjà reçu des codes de WhatsApp, TikTok et DoorDash."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ha già ricevuto codici da WhatsApp, TikTok e DoorDash."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "WhatsApp、TikTok、DoorDashからのコード受信実績があります。"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Já recebeu códigos do WhatsApp, TikTok e DoorDash."
           }
         }
       }
@@ -27503,6 +27583,46 @@
         }
       }
     },
+    "Receive texts and verification codes": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "SMS und Bestätigungscodes empfangen"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Recibe SMS y códigos de verificación"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Recevez des SMS et des codes de vérification"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ricevi SMS e codici di verifica"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "SMSと認証コードを受信"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Receba SMS e códigos de verificação"
+          }
+        }
+      }
+    },
     "Receive texts and verification codes from US and Canadian senders": {
       "localizations": {
         "de": {
@@ -34248,6 +34368,46 @@
         }
       }
     },
+    "Texts you send from an American number often don't arrive — most US networks block them. Receiving codes and calling work normally.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "SMS, die Sie von einer amerikanischen Nummer senden, kommen oft nicht an – die meisten US-Netze blockieren sie. Codes empfangen und Telefonieren funktionieren normal."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Los SMS que envías desde un número estadounidense a menudo no llegan: la mayoría de las redes de EE. UU. los bloquean. Recibir códigos y llamar funciona con normalidad."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Les SMS que vous envoyez depuis un numéro américain n'arrivent souvent pas : la plupart des réseaux américains les bloquent. La réception des codes et les appels fonctionnent normalement."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gli SMS che invii da un numero americano spesso non arrivano: la maggior parte delle reti statunitensi li blocca. Ricevere codici e chiamare funziona normalmente."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "米国の番号から送信したSMSは届かないことがよくあります。米国のほとんどの通信網がブロックするためです。コードの受信と通話は通常どおりご利用いただけます。"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "As mensagens que você envia de um número americano muitas vezes não chegam — a maioria das redes dos EUA as bloqueia. Receber códigos e fazer ligações funciona normalmente."
+          }
+        }
+      }
+    },
     "Texts you send from an American number often don't arrive — most US networks block them. Receiving codes and calling work normally. A Canadian number sends texts reliably.": {
       "extractionState": "manual",
       "localizations": {
@@ -34285,6 +34445,46 @@
           "stringUnit": {
             "state": "translated",
             "value": "As mensagens enviadas de um número americano muitas vezes não chegam — a maioria das redes dos EUA as bloqueia. Receber códigos e ligar funcionam normalmente. Um número canadense envia mensagens com confiabilidade."
+          }
+        }
+      }
+    },
+    "Texts you send to US numbers usually don't arrive.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "SMS, die Sie an US-Nummern senden, kommen meist nicht an."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Los SMS que envías a números de EE. UU. no suelen llegar."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Les SMS que vous envoyez vers des numéros américains n'arrivent généralement pas."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gli SMS che invii a numeri statunitensi di solito non arrivano."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "米国の番号宛てに送信したSMSは、通常届きません。"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "As mensagens que você envia para números dos EUA geralmente não chegam."
           }
         }
       }

@@ -66,6 +66,16 @@ struct LineSwapSheet: View {
     private var shortfall: Int { max(0, cost - state.balance) }
     private var affordable: Bool { shortfall == 0 }
 
+    /// The country the swap will land in — the same expression `perform`
+    /// sends as `country`.
+    private var targetCountry: String { state.lineCountry ?? line.countryCode }
+
+    /// The ledger's ✗ row, when the NEW number is US/PR (spec §4.4). Reads the
+    /// one list, like checkout and the thread.
+    private var sendsUnreliably: Bool {
+        LineStoreScreen.unreliableSendingCountries.contains(targetCountry.uppercased())
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             SheetHeader(title: title)
@@ -82,7 +92,18 @@ struct LineSwapSheet: View {
             .scrollIndicators(.hidden)
         }
         .background(theme.bg)
-        .task { await loadInitial() }
+        .task {
+            #if DEBUG
+            // Screenshot harness: open straight on the confirm page. No
+            // search, no `line_swap_open` — the frame is not a visit.
+            if ScreenshotMode.screen == .lineSwapConfirm {
+                state.lineCountry = "US"
+                page = .confirm(ScreenshotMode.sampleSwapOffer)
+                return
+            }
+            #endif
+            await loadInitial()
+        }
         .sheet(isPresented: $showCredits) {
             CreditsSheet(balance: state.balance, needed: shortfall) {
                 await state.refreshWallet(using: WalletAPI(client: api))
@@ -259,6 +280,13 @@ struct LineSwapSheet: View {
                 }
             }
 
+            if sendsUnreliably {
+                LineLedger {
+                    LineLedgerRow(kind: .no,
+                                  text: Text("Texts you send to US numbers usually don't arrive."))
+                }
+            }
+
             // The paywall, last. Both figures come from the server: the price
             // is `app_config.line_swap_credits` and the balance is the wallet.
             Card(radius: RRadius.group, elevation: .flat) {
@@ -306,7 +334,7 @@ struct LineSwapSheet: View {
         .task(id: page) {
             Analytics.shared.track("line_swap_confirm_view", [
                 "affordable": .bool(affordable),
-                "changed_country": .bool((state.lineCountry ?? line.countryCode) != line.countryCode),
+                "changed_country": .bool(targetCountry != line.countryCode),
             ])
         }
     }
@@ -471,7 +499,7 @@ struct LineSwapSheet: View {
         errorText = nil
         defer { swapping = false }
 
-        let country = state.lineCountry ?? line.countryCode
+        let country = targetCountry
         do {
             let result = try await LineAPI(client: api).swapNumber(
                 lineId: line.id, phoneNumber: offer.phoneNumber,

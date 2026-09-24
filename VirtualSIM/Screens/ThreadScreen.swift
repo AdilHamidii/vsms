@@ -546,11 +546,11 @@ struct MessageBubble: View {
         case .carrierBlocked:
             // From a US/PR number the refusal is systematic (the number is not
             // 10DLC-registered), so "the recipient's network" would send the
-            // user retrying other recipients. Reuses the store's own sentence
-            // — same catalog key, same translations, so the buyer reads here
-            // exactly what they were told before buying.
+            // user retrying other recipients. Reuses checkout's
+            // `capabilityNote` sentence — same catalog key, same translations,
+            // so the buyer reads here exactly what they were told before buying.
             if sentFromUnreliableCountry {
-                return "Texts you send from an American number often don't arrive — most US networks block them. Receiving codes and calling work normally. A Canadian number sends texts reliably."
+                return "Texts you send from an American number often don't arrive — most US networks block them. Receiving codes and calling work normally."
             }
             return "The recipient's network refused this message."
         case .badNumber:

@@ -74,6 +74,11 @@ struct LineSwitchNumberButton: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
+            .onAppear {
+                // Screenshot harness: the swap sheet is `@State` here, so the
+                // frame raises it itself. The live-line instance only.
+                if ScreenshotMode.screen == .lineSwapConfirm, style == .primary { choosing = true }
+            }
             // The picker borrows the Number tab's search state; on the way out
             // it is cleared so the store never inherits a swap's country, city
             // or offers. `clearLineDraft` is the same reset the tab runs on

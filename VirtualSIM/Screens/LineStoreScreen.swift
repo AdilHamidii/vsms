@@ -274,9 +274,10 @@ struct LineStoreScreen: View {
                     .padding(.horizontal, 16)
                     .padding(.bottom, 8)
 
-                // Only proven names. Adding a service here requires a real
-                // code on a rented line, not a guess.
-                Text("Verify WhatsApp or WhatsApp Business with it — also works with TikTok, DoorDash and most other apps. The code lands here, with one tap to copy it.")
+                // Owner, 2026-09-24: past tense, exactly these three (each has
+                // a real code in `line_messages`). "And most other apps" was
+                // unmeasured and is gone.
+                Text("Has received codes from WhatsApp, TikTok and DoorDash.")
                     .font(RFont.text(13))
                     .lineSpacing(2)
                     .foregroundStyle(theme.text2)
@@ -422,7 +423,7 @@ struct LineStoreScreen: View {
                 }
             }
 
-            if isVoiceOnly { voiceOnlyNotice } else { sendingNotice }
+            ledger
 
             if state.isLoadingLineNumbers, state.lineOffers.isEmpty {
                 numberSkeleton
@@ -513,101 +514,38 @@ struct LineStoreScreen: View {
         LineOfferSkeleton(rows: Self.visibleOffers)
     }
 
-    /// Carried here AND on checkout, deliberately twice.
+    /// The honest ledger (spec §4.1). It replaces `sendingNotice` and its
+    /// false Canada branch, and `voiceOnlyNotice`.
     ///
-    /// A user who picks a voice-only country and discovers it after paying is
-    /// an Apple refund and, on this product, a `CONSUMPTION_REQUEST` — the
-    /// same failure the "Not yet" ledger rows exist to prevent. `warnSoft` and
-    /// not `failSoft`: it is a property of the number, not a fault.
-    private var voiceOnlyNotice: some View {
-        // Through `Card` with a semantic fill and hairline, which is the one
-        // sanctioned use of `border`: an amber caution surface. Identical
-        // treatment to `LineCheckoutScreen`'s own copy of this notice and to
-        // its emergency block, so a caution looks like a caution everywhere in
-        // the funnel instead of three hand-rolled backgrounds drifting apart.
-        Card(radius: RRadius.group, elevation: .flat,
-             fill: theme.warnSoft, border: theme.warn.opacity(0.28)) {
-            HStack(alignment: .top, spacing: 10) {
-                Image(systemName: "exclamationmark.triangle.fill")
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(theme.warn)
-                    .padding(.top, 1)
-                Text("Calls only. This number can't send or receive texts.")
-                    .font(RFont.text(12, weight: .medium))
-                    .foregroundStyle(theme.text)
-                    .lineSpacing(2)
-                    .fixedSize(horizontal: false, vertical: true)
-                Spacer(minLength: 0)
+    /// 🔴 The ✗ row renders for EVERY country, not only US/PR: 10DLC is
+    /// enforced by the RECIPIENT's network, so a Canadian number texting a US
+    /// number fails too (CA→US 0 of 8, all `40010`, CLAUDE.md 2026-09-24).
+    /// The ✓ row's detail is the inbound NANP limit (`usSoon`'s claim): a
+    /// number does not receive texts from outside the US and Canada, and the
+    /// unqualified "texts" is honest only while this line is on screen.
+    private var ledger: some View {
+        LineLedger {
+            if isVoiceOnly {
+                LineLedgerRow(kind: .no,
+                              text: Text("Calls only. This number can't send or receive texts."))
+            } else {
+                LineLedgerRow(kind: .yes,
+                              text: Text("Receive texts and verification codes"),
+                              detail: Text("From US and Canadian numbers and services."))
             }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 12)
-        }
-    }
-
-    /// What SENDING a text from this country's numbers actually does, stated
-    /// while the reader is still choosing the country — the one moment the
-    /// difference is free to act on.
-    ///
-    /// 🔴 It is a MEASURED difference, not a caveat (2026-09-17). US carriers
-    /// refuse texts from long codes that are not 10DLC-registered, and no
-    /// number we own carries a campaign: over the 30 days to 2026-09-17, every
-    /// send from a Canadian number was delivered and 16 of 24 US sends failed
-    /// with Telnyx `40010`. Two subscribers turned auto-renew off within
-    /// minutes of their first failed text. Receiving codes and calling are
-    /// unaffected on both, which is why this note is scoped to sending and the
-    /// pitch above it is not touched.
-    ///
-    /// ⚠️ The positive Canadian line is a CLAIM and is only honest while the
-    /// send record stays clean — re-derive before editing either half:
-    /// `select left(e164_from,5), status, count(*) from line_messages
-    ///   where direction='outbound' group by 1,2;`
-    /// If the US ever registers a campaign, BOTH halves go and the catalog
-    /// block note in CLAUDE.md goes with them.
-    @ViewBuilder
-    private var sendingNotice: some View {
-        if let iso = currentCountry?.countryCode {
-            if Self.unreliableSendingCountries.contains(iso) {
-                // Same amber caution surface as `voiceOnlyNotice` — a caution
-                // must look like every other caution in this funnel.
-                Card(radius: RRadius.group, elevation: .flat,
-                     fill: theme.warnSoft, border: theme.warn.opacity(0.28)) {
-                    HStack(alignment: .top, spacing: 10) {
-                        Image(systemName: "exclamationmark.triangle.fill")
-                            .font(.system(size: 13, weight: .semibold))
-                            .foregroundStyle(theme.warn)
-                            .padding(.top, 1)
-                        Text("Texts you send from an American number often don't arrive — most US networks block them. Receiving codes and calling work normally. A Canadian number sends texts reliably.")
-                            .font(RFont.text(12, weight: .medium))
-                            .foregroundStyle(theme.text)
-                            .lineSpacing(2)
-                            .fixedSize(horizontal: false, vertical: true)
-                        Spacer(minLength: 0)
-                    }
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 12)
-                }
-            } else if iso == "CA" {
-                // `live` green is the semantic "this is proven", the same tint
-                // the store's inbound-codes row carries, and the record behind
-                // it is every outbound send from a Canadian number delivering.
-                HStack(alignment: .top, spacing: 8) {
-                    Image(systemName: "checkmark.seal.fill")
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundStyle(theme.live)
-                        .padding(.top, 1)
-                    Text("Texts you send from a Canadian number arrive normally.")
-                        .font(RFont.text(12, weight: .medium))
-                        .foregroundStyle(theme.text2)
-                        .fixedSize(horizontal: false, vertical: true)
-                    Spacer(minLength: 0)
-                }
+            LineLedgerRow(kind: .yes, text: Text("Calls"))
+            if !isVoiceOnly {
+                LineLedgerRow(kind: .no,
+                              text: Text("Texts you send to US numbers usually don't arrive."))
             }
         }
     }
 
     /// US and Puerto Rico: both are +1 US-carrier long codes under the same
-    /// 10DLC rule. Kept as ONE list so the two screens carrying this notice
-    /// cannot disagree about who it covers.
+    /// 10DLC rule. Read by checkout's `capabilityNote`, the thread's
+    /// failed-send copy and the swap sheet's confirm page, so they cannot
+    /// disagree about who is warned. The store's ledger ✗ row is shown for
+    /// every country and does not read it.
     static let unreliableSendingCountries: Set<String> = ["US", "PR"]
 
     // MARK: - Nothing to sell

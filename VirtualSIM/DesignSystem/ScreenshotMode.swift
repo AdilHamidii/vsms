@@ -65,6 +65,7 @@ enum ScreenshotMode {
         // The keypad over a live line, with a number typed. The dialer is a
         // cover reached only by a tap, so without a frame it ships unseen.
         case lineDialer
+        case lineSwapConfirm   // the swap sheet's last page: price, balance, given up for good, US ✗ row
         case home         // the temp-SMS store
         // The delivery explainer, opened over the temp-SMS store. It exists
         // because `DeliveryInfoSheet` is otherwise reachable only by a TAP,
@@ -181,6 +182,13 @@ extension ScreenshotMode {
             // prompt; walk that on a real account.
             lastSuccessAt: nil
         )
+    }
+
+    /// The number the `lineSwapConfirm` frame switches TO. US on purpose, so
+    /// the ✗ row renders. 555 range, like every fixture.
+    static var sampleSwapOffer: LineNumberOffer {
+        LineNumberOffer(phoneNumber: "+13105550164", region: "Los Angeles, CA",
+                        monthlyCents: 100, upfrontCents: 100, countryCode: "US")
     }
 
     /// Three conversations, because the point of a rented number is that it

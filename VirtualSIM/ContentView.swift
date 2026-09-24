@@ -993,6 +993,14 @@ extension ContentView {
             state.dialerPrefill = "+13105550199"
             state.flow = .dialer
 
+        case .lineSwapConfirm:
+            state.tab = .line
+            state.lines = [ScreenshotMode.sampleLine]
+            state.lineThreads = ScreenshotMode.sampleThreads
+            // The live price, as every line fixture sets it (`simctl` never
+            // fetches `app_config`); 8 is what it read on 2026-09-01.
+            state.appStatus = AppStatus(announcement: nil, esimPaused: false, lineSwapCredits: 8)
+
         case .thread:
             state.tab = .line
             state.lines = [ScreenshotMode.sampleLine]

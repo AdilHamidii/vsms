@@ -337,8 +337,8 @@ struct LineCheckoutScreen: View {
             // Apple CONSUMPTION_REQUEST; this is the 3.1.2(a) surface, so it
             // belongs on it in full view.
             //
-            // It names Canada because the remedy has to be actionable at the
-            // moment it is read: the country picker is two taps back.
+            // It no longer names Canada: CA→US fails the same way (0 of 8,
+            // CLAUDE.md 2026-09-24), so a Canadian number is not a remedy.
             Card(radius: RRadius.group, elevation: .flat,
                  fill: theme.warnSoft, border: theme.warn.opacity(0.28)) {
                 HStack(alignment: .top, spacing: 10) {
@@ -346,7 +346,7 @@ struct LineCheckoutScreen: View {
                         .font(.system(size: 13, weight: .semibold))
                         .foregroundStyle(theme.warn)
                         .padding(.top, 1)
-                    Text("Texts you send from an American number often don't arrive — most US networks block them. Receiving codes and calling work normally. A Canadian number sends texts reliably.")
+                    Text("Texts you send from an American number often don't arrive — most US networks block them. Receiving codes and calling work normally.")
                         .font(RFont.text(13, weight: .semibold))
                         .foregroundStyle(theme.text)
                         .lineSpacing(2)
