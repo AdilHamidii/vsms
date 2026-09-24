@@ -667,6 +667,46 @@
         }
       }
     },
+    "%@ free, then %@. Renews every year until you cancel. Cancel any time in Settings.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@ gratis, danach %2$@. Verlängert sich jährlich, bis Sie kündigen. Sie können jederzeit in den Einstellungen kündigen."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@ gratis, después %2$@. Se renueva cada año hasta que canceles. Cancela cuando quieras en Ajustes."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@ gratuits, puis %2$@. Renouvelé chaque année jusqu'à résiliation. Résiliez à tout moment dans Réglages."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@ gratis, poi %2$@. Si rinnova ogni anno finché non annulli. Annulla quando vuoi in Impostazioni."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@無料、その後%2$@。解約するまで毎年自動更新されます。解約は「設定」からいつでも行えます。"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@ grátis, depois %2$@. Renova todo ano até você cancelar. Cancele quando quiser em Ajustes."
+          }
+        }
+      }
+    },
     "%@ free, then billed yearly": {
       "localizations": {
         "de": {
@@ -1396,6 +1436,46 @@
           "stringUnit": {
             "state": "translated",
             "value": "%@/mês"
+          }
+        }
+      }
+    },
+    "%@/year": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@/Jahr"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@/año"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@/an"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@/anno"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@/年"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@/ano"
           }
         }
       }
@@ -25053,6 +25133,46 @@
         }
       }
     },
+    "Only need it for a month? Turn off renewal after buying — it stays yours until the end of the month you paid for.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Brauchen Sie sie nur einen Monat? Schalten Sie die Verlängerung nach dem Kauf aus – die Nummer bleibt bis zum Ende des bezahlten Monats Ihre."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "¿Solo lo necesitas un mes? Desactiva la renovación después de comprar: seguirá siendo tuyo hasta el final del mes que pagaste."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vous n'en avez besoin que pour un mois ? Désactivez le renouvellement après l'achat — il reste à vous jusqu'à la fin du mois payé."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ti serve solo per un mese? Disattiva il rinnovo dopo l'acquisto: resta tuo fino alla fine del mese che hai pagato."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "1か月だけ必要ですか？購入後に自動更新をオフにしてください。お支払い済みの月の終わりまで、番号はあなたのものです。"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Só precisa por um mês? Desative a renovação depois de comprar — ele continua seu até o fim do mês que você pagou."
+          }
+        }
+      }
+    },
     "Ontario": {
       "localizations": {
         "de": {
@@ -28673,6 +28793,46 @@
         }
       }
     },
+    "Renews every month until you cancel. Cancel any time in Settings.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Verlängert sich monatlich, bis Sie kündigen. Sie können jederzeit in den Einstellungen kündigen."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Se renueva cada mes hasta que canceles. Cancela cuando quieras en Ajustes."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Renouvelé chaque mois jusqu'à résiliation. Résiliez à tout moment dans Réglages."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Si rinnova ogni mese finché non annulli. Annulla quando vuoi in Impostazioni."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "解約するまで毎月自動更新されます。解約は「設定」からいつでも行えます。"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Renova todo mês até você cancelar. Cancele quando quiser em Ajustes."
+          }
+        }
+      }
+    },
     "Renews every month until you cancel. Cancel any time in your Apple ID settings.": {
       "localizations": {
         "de": {
@@ -28709,6 +28869,46 @@
           "stringUnit": {
             "state": "translated",
             "value": "Renova todo mês até você cancelar. Cancele quando quiser nos ajustes do seu ID Apple."
+          }
+        }
+      }
+    },
+    "Renews every year until you cancel. Cancel any time in Settings.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Verlängert sich jährlich, bis Sie kündigen. Sie können jederzeit in den Einstellungen kündigen."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Se renueva cada año hasta que canceles. Cancela cuando quieras en Ajustes."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Renouvelé chaque année jusqu'à résiliation. Résiliez à tout moment dans Réglages."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Si rinnova ogni anno finché non annulli. Annulla quando vuoi in Impostazioni."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "解約するまで毎年自動更新されます。解約は「設定」からいつでも行えます。"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Renova todo ano até você cancelar. Cancele quando quiser em Ajustes."
           }
         }
       }
@@ -36447,6 +36647,46 @@
           "stringUnit": {
             "state": "translated",
             "value": "A janela fechou antes de qualquer coisa chegar. Nada foi cobrado."
+          }
+        }
+      }
+    },
+    "Then %@ every month until you cancel. Cancel any time in Settings.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Danach %@ pro Monat, bis Sie kündigen. Sie können jederzeit in den Einstellungen kündigen."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Después, %@ cada mes hasta que canceles. Cancela cuando quieras en Ajustes."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Puis %@ chaque mois jusqu'à résiliation. Résiliez à tout moment dans Réglages."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Poi %@ ogni mese finché non annulli. Annulla quando vuoi in Impostazioni."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "その後は解約するまで毎月%@です。解約は「設定」からいつでも行えます。"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Depois, %@ por mês até você cancelar. Cancele quando quiser em Ajustes."
           }
         }
       }

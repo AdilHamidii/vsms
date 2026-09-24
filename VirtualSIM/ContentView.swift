@@ -887,7 +887,8 @@ extension ContentView {
         case .onboarding:
             break                              // handled before the gate
 
-        case .lineIntro, .lineStore, .lineStoreError, .linePaywall, .linePaywallYearly:
+        case .lineIntro, .lineStore, .lineStoreError, .linePaywall, .linePaywallYearly,
+             .linePaywallUS:
             state.tab = .line
             state.lines = []                   // not yet a subscriber
             // The pitch prices the switch from `app_config.line_swap_credits`,
@@ -974,6 +975,21 @@ extension ContentView {
                 // `SubscriptionStore.ScreenshotPricing`.
                 subs.screenshotPricing = .init()
                 subs.selectedPlan = shot == .linePaywallYearly ? .yearly : .monthly
+            }
+            if shot == .linePaywallUS {
+                // The store's default (US, New York) reaching the paywall, so
+                // the frame shows the uncollapsed US/PR sending note — the one
+                // disclosure the Toronto frames above can never render.
+                state.lineCountry = "US"
+                state.lineCities = [.init(id: "new-york", label: "New York")]
+                state.lineCity = "new-york"
+                state.lineOffer = LineNumberOffer(phoneNumber: "+12125550128",
+                                                  region: "New York, NY",
+                                                  monthlyCents: 100, upfrontCents: 100,
+                                                  countryCode: "US")
+                state.flow = .lineCheckout
+                subs.screenshotPricing = .init()
+                subs.selectedPlan = .monthly
             }
 
         case .mailPaywall, .mailPaywallYearly:

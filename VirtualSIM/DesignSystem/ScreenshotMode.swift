@@ -55,6 +55,7 @@ enum ScreenshotMode {
         // thing that differs — the price, the period under the CTA and the
         // trial line all follow the selection.
         case linePaywallYearly
+        case linePaywallUS   // the TOP of the paywall on a US number: the US/PR note uncollapsed
         // The e-mail subscription's paywall, monthly selected. Its own group,
         // its own two App Store Connect products, and therefore its own pair
         // of review screenshots — a frame of the LINE paywall would show a

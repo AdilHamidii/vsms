@@ -58,6 +58,13 @@ final class Analytics {
     // MARK: - Enqueue
 
     func track(_ name: String, _ props: [String: AnalyticsValue]? = nil) {
+        #if DEBUG
+        // Lets a simulator run prove what fired (`simctl launch --stderr=`),
+        // e.g. that `line_checkout_exit` fires once. Screenshot mode only.
+        if ScreenshotMode.isActive {
+            NSLog("[analytics] %@ %@", name, String(describing: props ?? [:]))
+        }
+        #endif
         queue.append(Event(name: name,
                            props: props,
                            at: Date(),

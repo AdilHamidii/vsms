@@ -9,6 +9,9 @@ import SwiftUI
 struct BottomBar<Content: View>: View {
     @Environment(\.theme) private var theme
     var scrimHeight: CGFloat = 56
+    /// 20 for every existing caller; the overhaul's screens pass the 16pt
+    /// `RSpace.gutter` so the button lines up with the content above it.
+    var horizontalPadding: CGFloat = 20
     @ViewBuilder var content: Content
 
     var body: some View {
@@ -19,7 +22,7 @@ struct BottomBar<Content: View>: View {
                 .allowsHitTesting(false)
 
             content
-                .padding(.horizontal, 20)
+                .padding(.horizontal, horizontalPadding)
                 .padding(.bottom, 28)
                 .background(theme.bg)
         }

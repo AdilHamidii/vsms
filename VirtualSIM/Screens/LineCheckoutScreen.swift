@@ -29,6 +29,7 @@ struct LineCheckoutScreen: View {
     @Environment(SubscriptionStore.self) private var subs
     @Environment(IAPStore.self) private var iap
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     @State private var appeared = false
     @State private var now = Date()
@@ -43,70 +44,57 @@ struct LineCheckoutScreen: View {
     private static let planAnchor = "plan-picker"
 
     var body: some View {
-        ZStack {
-            theme.bg.ignoresSafeArea()
-            VStack(spacing: 0) {
-                header
-                ScrollViewReader { proxy in
-                    ScrollView {
-                        VStack(alignment: .leading, spacing: 0) {
-                            intro.riseIn(appeared, index: 0)
-                            numberCard.padding(.top, 20).riseIn(appeared, index: 1)
-                            // Directly under the number and above the benefit
-                            // list — as prominent as the price, because it is
-                            // the term most likely to be discovered after
-                            // paying rather than before.
-                            capabilityNote.padding(.top, 12).riseIn(appeared, index: 1)
-                            included.padding(.top, 26).riseIn(appeared, index: 2)
-                            // Choice first, then the price block — which restates
-                            // the selection in full with its renewal terms. Putting
-                            // the picker after the price would mean the 3.1.2(a)
-                            // disclosure is read before the thing it describes has
-                            // been chosen.
-                            planPicker.padding(.top, 20).riseIn(appeared, index: 3)
-                                .id(Self.planAnchor)
-                            priceBlock.padding(.top, 12).riseIn(appeared, index: 3)
-                            // What this number does NOT do, collapsed. It used
-                            // to be the tail of the benefit ledger, directly
-                            // above the plan picker — so the last thing read
-                            // before choosing a plan was the limitations list.
-                            // It stays ON the purchase screen (3.1.2(a): the
-                            // limitations are terms the buyer accepts before
-                            // paying, not a footnote), one tap away instead of
-                            // in the way.
-                            goodToKnow.padding(.top, 14).riseIn(appeared, index: 4)
-                            // The safety disclosure sits ABOVE the action, not
-                            // between the price and the button. Price -> CTA has to
-                            // be adjacent: the last thing read before a purchase
-                            // decision should not be a liability warning.
-                            emergency.padding(.top, 18).riseIn(appeared, index: 4)
-                            legal.padding(.top, 14).riseIn(appeared, index: 5)
-                        }
-                        .padding(.horizontal, RSpace.gutter)
-                        .padding(.bottom, 20)
-                    }
-                    .scrollIndicators(.hidden)
-                    // A screenshot frame has to SHOW the plan choice and the
-                    // 3.1.2(a) renewal sentence, and on a fresh open both sit
-                    // below the fold — the first frame taken this way showed
-                    // only the hero and the CTA. Scrolled deterministically
-                    // rather than by a scripted swipe, which is the same reason
-                    // `ScreenshotMode` addresses screens by launch argument
-                    // instead of driving the UI: a frame has to come out
-                    // identical every run.
-                    //
-                    // `isActive` is a stored `false` in Release, so this is
-                    // folded away in a shipping build.
-                    .task {
-                        guard ScreenshotMode.isActive else { return }
-                        try? await Task.sleep(for: .milliseconds(400))
-                        proxy.scrollTo(Self.planAnchor, anchor: .top)
-                    }
+        ScrollViewReader { proxy in
+            ScrollView {
+                VStack(alignment: .leading, spacing: 0) {
+                    numberCard.riseIn(appeared, index: 0)
+                    // As prominent as the price: the term most likely to be
+                    // discovered after paying rather than before.
+                    capabilityNote.padding(.top, RSpace.md).riseIn(appeared, index: 1)
+                    whatYouGet.padding(.top, RSpace.xl).riseIn(appeared, index: 2)
+                    // Choice first, then the sentence that restates it with its
+                    // renewal terms (3.1.2(a)). Putting the plans after the
+                    // sentence would mean the disclosure is read before the
+                    // thing it describes has been chosen.
+                    plans.padding(.top, RSpace.xl).riseIn(appeared, index: 3)
+                        .id(Self.planAnchor)
+                    priceSentence.padding(.top, RSpace.md).riseIn(appeared, index: 3)
+                    rentalLine.padding(.top, RSpace.sm).riseIn(appeared, index: 3)
+                    // What this number does NOT do, collapsed. It stays ON the
+                    // purchase screen (3.1.2(a): the limitations are terms the
+                    // buyer accepts before paying), one tap away instead of in
+                    // the way of the plan choice.
+                    goodToKnow.padding(.top, RSpace.lg).riseIn(appeared, index: 4)
+                    // The safety disclosure sits ABOVE the action, not between
+                    // the price and the button.
+                    emergency.padding(.top, RSpace.lg).riseIn(appeared, index: 4)
+                    links.padding(.top, RSpace.lg).riseIn(appeared, index: 5)
                 }
-
-                BottomBar { cta }
+                .padding(.horizontal, RSpace.gutter)
+                .padding(.top, RSpace.lg)
+                .padding(.bottom, RSpace.lg)
+            }
+            .scrollIndicators(.hidden)
+            // Content scrolls UNDER a material header instead of being cut flat
+            // by a bare HStack (audit §2.2 item 5).
+            .safeAreaInset(edge: .top, spacing: 0) { header }
+            .safeAreaInset(edge: .bottom, spacing: 0) {
+                BottomBar(scrimHeight: 24, horizontalPadding: RSpace.gutter) { cta }
+            }
+            // A screenshot frame of a plan has to SHOW the plan choice and the
+            // 3.1.2(a) renewal sentence, which sit below the fold on a fresh
+            // open. Scrolled deterministically rather than by a scripted swipe,
+            // so a frame comes out identical every run. The US frame
+            // (`linePaywallUS`) shows the TOP, so it is not scrolled.
+            // `screen` is a stored nil in Release, so this folds away.
+            .task {
+                guard ScreenshotMode.screen == .linePaywall
+                        || ScreenshotMode.screen == .linePaywallYearly else { return }
+                try? await Task.sleep(for: .milliseconds(400))
+                proxy.scrollTo(Self.planAnchor, anchor: .top)
             }
         }
+        .background(theme.bg.ignoresSafeArea())
         .onAppear { CheckoutVisit.begin() }
         .onDisappear {
             // Only a REAL exit counts. `line_checkout_view` usually arrives in
@@ -154,7 +142,7 @@ struct LineCheckoutScreen: View {
         // `now` drives exactly one thing: the "Held for you · 4:12" pill. It
         // used to be reassigned every second unconditionally, which invalidates
         // this whole body — number card, price block, legal text, the lot — at
-        // 1 Hz on a screen that is usually showing "Available now" and has
+        // 1 Hz on a screen that usually shows no hold at all and has
         // nothing to animate. `reserveNumber` is unproven against the live API
         // and a hold is explicitly optional, so the common case is no
         // countdown at all and the timer was pure waste.
@@ -173,106 +161,87 @@ struct LineCheckoutScreen: View {
 
     // MARK: - Chrome
 
-    /// Restore lives here, not only in Account.
-    ///
-    /// A user who was charged and has no number is standing on this screen, not
-    /// three taps deep in settings — and App Review 3.1.1 expects the control
-    /// to be reachable wherever a purchase is offered.
+    /// ✕, title, Restore on a `.bar` material. Restore lives here AND in the
+    /// link row, not only in Account: a user who was charged and has no number
+    /// is standing on this screen, not three taps deep in settings — and App
+    /// Review 3.1.1 expects the control to be reachable wherever a purchase is
+    /// offered.
     private var header: some View {
-        HStack {
-            Button { state.flow = nil } label: {
-                Image(systemName: RIcon.close)
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(theme.text2)
-                    .frame(width: 34, height: 34)
-                    .background(theme.chipBg, in: .circle)
-            }
-            .pressable(0.92)
-            .accessibilityLabel("Close")
-
-            Spacer()
-
-            Button {
-                Task {
-                    isRestoring = true
-                    defer { isRestoring = false }
-                    // Cleared first so what we render afterwards describes THIS
-                    // restore and not some earlier failed purchase.
-                    subs.lastError = nil
-                    _ = await iap.restorePurchases()
-                    await state.loadLine(using: LineAPI(client: api))
-                    // ⚠️ `isLive`, not `!= nil`. `AppState.line` falls back to
-                    // ANY line when there is no live one, so a `failed` row
-                    // from an earlier botched activation made this report
-                    // success and dismiss the screen — to the one user who can
-                    // never be told that: someone already charged who still has
-                    // no number.
-                    if state.line?.status.isLive == true {
-                        RHaptic.success()
-                        CheckoutVisit.exitVia = "restore"
-                        state.flow = nil
-                    } else if let failure = subs.lastFailure {
-                        // A restore that recovers nothing must SAY so. Silence
-                        // reads as "it worked" — the worst possible answer for
-                        // the only person who ever taps this button: someone
-                        // who has been charged and has no number.
-                        //
-                        // Re-raised WITH its code. Passing `lastError` here
-                        // dropped it, and a codeless banner is blocking —
-                        // which on this flow means a red triangle with no
-                        // action and no auto-dismiss.
-                        RHaptic.warn()
-                        state.showError(failure)
-                    }
+        ZStack {
+            Text("Your own number")
+                .font(RFont.text(17, weight: .semibold))
+                .foregroundStyle(theme.text)
+            HStack {
+                Button { state.flow = nil } label: {
+                    Image(systemName: RIcon.close)
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(theme.text2)
+                        .frame(width: 36, height: 36)
+                        .background(theme.chipBg, in: .circle)
+                        .frame(width: 44, height: 44)
+                        .contentShape(.rect)
                 }
-            } label: {
-                Text(isRestoring ? "Restoring…" : "Restore")
-                    .font(RFont.text(13, weight: .medium))
-                    .foregroundStyle(theme.text2)
+                .buttonStyle(PressScaleStyle(scale: 0.92))
+                .accessibilityLabel(Text("Close"))
+                Spacer()
+                restoreButton
+                    .font(RFont.text(15, weight: .medium))
+                    .foregroundStyle(theme.text)
             }
-            .pressable(0.94)
-            .disabled(isRestoring)
         }
         .padding(.horizontal, RSpace.gutter)
-        .padding(.top, 12)
-        .padding(.bottom, 4)
+        .frame(height: 52)
+        .background(.bar)
+        .overlay(alignment: .bottom) {
+            Rectangle().fill(theme.sep).frame(height: 0.5)
+        }
+    }
+
+    private var restoreButton: some View {
+        Button(action: restore) {
+            Text(isRestoring ? "Restoring…" : "Restore")
+        }
+        .buttonStyle(.plain)
+        .disabled(isRestoring)
+    }
+
+    /// Moved verbatim from the old header's button (every comment kept).
+    private func restore() {
+        Task {
+            isRestoring = true
+            defer { isRestoring = false }
+            // Cleared first so what we render afterwards describes THIS
+            // restore and not some earlier failed purchase.
+            subs.lastError = nil
+            _ = await iap.restorePurchases()
+            await state.loadLine(using: LineAPI(client: api))
+            // ⚠️ `isLive`, not `!= nil`. `AppState.line` falls back to
+            // ANY line when there is no live one, so a `failed` row
+            // from an earlier botched activation made this report
+            // success and dismiss the screen — to the one user who can
+            // never be told that: someone already charged who still has
+            // no number.
+            if state.line?.status.isLive == true {
+                RHaptic.success()
+                CheckoutVisit.exitVia = "restore"
+                state.flow = nil
+            } else if let failure = subs.lastFailure {
+                // A restore that recovers nothing must SAY so. Silence
+                // reads as "it worked" — the worst possible answer for
+                // the only person who ever taps this button: someone
+                // who has been charged and has no number.
+                //
+                // Re-raised WITH its code. Passing `lastError` here
+                // dropped it, and a codeless banner is blocking —
+                // which on this flow means a red triangle with no
+                // action and no auto-dismiss.
+                RHaptic.warn()
+                state.showError(failure)
+            }
+        }
     }
 
     // MARK: - What this screen is
-
-    private var intro: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            MicroLabel("Second number")
-
-            // Names the city the user chose three taps ago. The old screen
-            // never said the word, so the thing they had just picked did not
-            // appear on the screen confirming it.
-            Text(cityLabel.map { "Your \($0) number, ready now." }
-                 ?? String(localized: "Your new number, ready now."))
-                .displayType(30)
-                .foregroundStyle(theme.text)
-                .fixedSize(horizontal: false, vertical: true)
-                .padding(.top, 8)
-
-            // ⚠️ This said "Send and receive texts right here", then "Sending
-            // texts works to Canadian numbers today". Outbound SMS is now
-            // DROPPED entirely (owner decision, 2026-08-18): it is the one
-            // capability that needs carrier approval (10DLC), lifetime outbound
-            // is 1 sent against 6 failed, and four of five subscribers
-            // cancelled within ten minutes of paying.
-            //
-            // Leads with RECEIVING because that is the half that demonstrably
-            // works (3 of 3 inbound) and is what people came for, then sells
-            // calling out — which is real, priced, and was invisible to anyone
-            // deciding whether to buy.
-            Text("Text and call US and Canadian numbers, and take calls and codes on it. Your real number never leaves your phone.")
-                .font(RFont.text(15))
-                .foregroundStyle(theme.text2)
-                .lineSpacing(3)
-                .fixedSize(horizontal: false, vertical: true)
-                .padding(.top, 8)
-        }
-    }
 
     private var cityLabel: String? {
         guard let id = state.lineCity else { return nil }
@@ -319,7 +288,9 @@ struct LineCheckoutScreen: View {
     /// can never describe a different screen from the one rendered.
     private var sendingWarningShown: Bool {
         guard numberSendsTexts != false, let iso = state.lineCountry else { return false }
-        return LineStoreScreen.unreliableSendingCountries.contains(iso)
+        // Uppercased like the swap sheet's check, so a lowercase ISO from any
+        // source cannot silently drop the warning.
+        return LineStoreScreen.unreliableSendingCountries.contains(iso.uppercased())
     }
 
     @ViewBuilder
@@ -331,7 +302,8 @@ struct LineCheckoutScreen: View {
             // actually hits was a tap away from a buyer who never taps. It is
             // measured, not a caveat: 16 of 24 US sends failed with Telnyx
             // `40010` (sender not 10DLC-registered) over the 30 days to
-            // 2026-09-17, against every Canadian send delivering, and two
+            // 2026-09-17, against every Canadian send to a Canadian number
+            // delivering, and two
             // subscribers turned auto-renew off minutes after their first
             // failed text. A limit discovered AFTER paying is a refund and an
             // Apple CONSUMPTION_REQUEST; this is the 3.1.2(a) surface, so it
@@ -359,9 +331,9 @@ struct LineCheckoutScreen: View {
         }
         if numberSendsTexts == false {
             // Through `Card` with a semantic fill + hairline, identical to the
-            // emergency block below and to `LineStoreScreen.voiceOnlyNotice`:
-            // one caution surface across the whole funnel rather than three
-            // hand-rolled backgrounds free to drift apart.
+            // emergency block below: one caution surface on this screen rather
+            // than hand-rolled backgrounds free to drift apart. The store
+            // states the same limitation as a ✗ row in its `LineLedger`.
             Card(radius: RRadius.group, elevation: .flat,
                  fill: theme.warnSoft, border: theme.warn.opacity(0.28)) {
                 HStack(alignment: .top, spacing: 10) {
@@ -394,48 +366,31 @@ struct LineCheckoutScreen: View {
 
     // MARK: - The number
 
-    /// The one object this screen is about, and the only elevated thing on it.
-    ///
-    /// It used to be `theme.elev` on `theme.bg` with no shadow and no border —
-    /// in light mode a ~1.5% luminance step — so the emotional centre of the
-    /// purchase rendered as a flat white rectangle indistinguishable from a
-    /// settings row.
+    /// The one object this screen is about. Flat, like every surface in the
+    /// overhaul (no shadow, spec §3 rule 1): it separates from the canvas by
+    /// FILL alone — `theme.elev` (white in light mode) on the warm `theme.bg`
+    /// paper, and a raised grey on near-black in dark mode — and by being the
+    /// largest type on the screen, not by elevation.
     private var numberCard: some View {
-        Card(radius: RRadius.card, elevation: .flat) {
-            VStack(spacing: 12) {
-                // The SAME deterministic circle the number wore on the picker
-                // row it was chosen from, keyed on the E.164 — so the thing
-                // being paid for is visibly the thing that was picked, and it
-                // keeps that identity into the thread and recents rows after
-                // the purchase. Decorative only; the digits below carry the
-                // meaning and the avatar is hidden from VoiceOver.
-                PeerAvatar(e164: state.lineOffer?.phoneNumber ?? "", size: 54)
-                    .padding(.bottom, 2)
-
-                HStack(spacing: 7) {
-                    // ⚠️ Was a hardcoded 🇨🇦. Harmless while Canada was the
-                    // whole catalogue and a flat error the moment it is not —
-                    // the flag sits directly above the digits, so the wrong
-                    // one contradicts the number itself. Falls back to the
-                    // launch market only when the country is genuinely unknown.
-                    Text(verbatim: country.map(\.flag).flatMap { $0.isEmpty ? nil : $0 } ?? "🇨🇦")
-                        .font(.system(size: 15))
-                    Text(placeLine)
-                        .font(RFont.text(12, weight: .semibold))
-                        .foregroundStyle(theme.text2)
+        VStack(spacing: RSpace.sm) {
+            HStack(spacing: 6) {
+                if let iso = state.lineOffer?.countryCode ?? state.lineCountry {
+                    CodeFlag(code: iso, size: 18)
                 }
-
-                Text(PhoneFormat.national(state.lineOffer?.phoneNumber ?? ""))
-                    .numberStyle(size: 31, color: theme.text)
-                    .minimumScaleFactor(0.6)
-                    .lineLimit(1)
-
-                holdLine
+                Text(placeLine)
+                    .font(RFont.text(13, weight: .semibold))
+                    .foregroundStyle(theme.text2)
             }
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 28)
-            .padding(.horizontal, 18)
+            Text(verbatim: PhoneFormat.national(state.lineOffer?.phoneNumber ?? ""))
+                .numberStyle(size: 30, color: theme.text)
+                .lineLimit(1)
+                .minimumScaleFactor(0.6)
+            holdLine
         }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, RSpace.xl)
+        .padding(.horizontal, RSpace.lg)
+        .background(theme.elev, in: .rect(cornerRadius: RRadius.card, style: .continuous))
     }
 
     private var placeLine: String {
@@ -444,119 +399,61 @@ struct LineCheckoutScreen: View {
         return city
     }
 
-    /// The hold, or an honest absence of one.
+    /// Only where the server actually holds the number (spec §4.2).
     ///
-    /// `heldUntil` is optional because Telnyx reservations have not been
-    /// exercised live — only `reservable: true` from a search response is on
-    /// record. With no hold this says **"Available now"** and shows no
-    /// countdown, rather than claiming a reservation we did not place.
-    ///
-    /// It is a `StatusPill` rather than 12pt `text3`, which is the faintest ink
-    /// on the screen: the one slot designed to carry presence was spending
-    /// itself on the least visible thing available. Same words, actual weight.
+    /// `reserve-line-number` runs inside `buy()`, after Subscribe, and a fresh
+    /// search clears `lineReservation` — so on a normal open there is no hold
+    /// and nothing renders. The old "Available now" pill claimed a presence
+    /// the server was not backing.
     @ViewBuilder
     private var holdLine: some View {
         if let until = state.lineReservation?.heldUntil, until > now {
-            StatusPill(
-                text: "Held for you · \(PhoneFormat.duration(Int(until.timeIntervalSince(now))))")
+            StatusPill(text: "Held for you · \(PhoneFormat.duration(Int(until.timeIntervalSince(now))))")
                 .contentTransition(.numericText())
-        } else {
-            StatusPill(text: "Available now")
         }
     }
 
     // MARK: - What you get
 
-    /// ⚠️ **Only sell what ships.**
+    /// Five rows, down from nine (spec §4.2). The minutes row and the 50+
+    /// countries row MUST stay: the store's "✓ Calls" carries no figures, and
+    /// is honest only because these two state them before the purchase.
+    /// The ✗ row is the store's, for a number that texts and is NOT US/PR
+    /// (US/PR get the uncollapsed note above instead).
     ///
-    /// Calling sat here as an explicitly unavailable "Coming soon" row for as
-    /// long as `flow = .dialer` was assigned nowhere, and moved into the paid
-    /// list in the same commit that linked the SDK and wired the dialer — the
-    /// ordering this comment exists to preserve. Selling a capability the
-    /// buyer cannot use after paying is a refund driver and an App Review
-    /// 2.3.1 exposure.
-    ///
-    /// ⚠️ **Emergency calling is NOT included and is disclosed separately** —
-    /// see the notice on `NumberDetailView`. Nothing in this list may imply
-    /// the number can reach 911.
-    private var included: some View {
-        VStack(alignment: .leading, spacing: 0) {
+    /// ⚠️ **Only sell what ships**, and **emergency calling is NOT included**
+    /// — it is disclosed separately below. Nothing in this list may imply the
+    /// number can reach 911. Figures come from `LineProduct`, never literals.
+    private var whatYouGet: some View {
+        VStack(alignment: .leading, spacing: RSpace.sm) {
             MicroLabel("What you get")
-                .padding(.bottom, 10)
-
-            Card(radius: RRadius.card, elevation: .flat) {
-                VStack(spacing: 0) {
-                    // 🔴 A "200 texts a month, in and out" row lived here and is
-                    // GONE, not relabelled. A texts-per-month FIGURE is a
-                    // promise the buyer cannot spend: sending is dropped, and
-                    // inbound is never metered — so any number beside a text
-                    // icon either sells a capability that does not exist or
-                    // invents a cap on one that has none. `sms_allowance`
-                    // stays in the schema; it simply is not a selling point.
-                    //
-                    // Figures come from `LineProduct`, the single client-side
-                    // mirror of the schema defaults — never inline literals.
-                    //
-                    // WhatsApp first (owner decision 2026-09-05): the service
-                    // these numbers verify most reliably, with real codes in
-                    // `line_messages` behind the claim. Mirrors the store
-                    // pitch; keep the two in step.
-                    BenefitRow(icon: "checkmark.seal.fill",
-                               label: "Great for WhatsApp and WhatsApp Business verification",
-                               tint: theme.live)
-                    RowRule()
-                    BenefitRow(icon: RIcon.message,
-                               label: "Receive texts and verification codes from US and Canadian senders")
-                    RowRule()
-                    // ⚠️ "Send" is stated WITHOUT a delivery promise, and the
-                    // matching "Good to know" row below carries the caveat.
-                    // Outbound has one measured delivery in this product's
-                    // history and it was on-net between two of our own
-                    // numbers, with no 10DLC campaign registered anywhere —
-                    // so this row may say what the number will ADDRESS and
-                    // must never say that a message will arrive.
-                    BenefitRow(icon: "paperplane",
-                               label: "Send texts to US and Canadian numbers")
-                    RowRule()
-                    // The allowance is OUTGOING only, and that wording stays
-                    // exact: inbound bills nothing and is unmetered, so folding
-                    // it into a minutes figure would invent a limit on it.
-                    BenefitRow(icon: RIcon.phone,
-                               figure: "\(LineProduct.voiceAllowanceMinutes)",
-                               label: "minutes of outgoing calls a month")
-                    RowRule()
-                    // Inbound calling connected for the first time on 2026-09-08,
-                    // proven on a physical device with the app open AND closed.
-                    // It was a "Not yet" row here until then.
-                    BenefitRow(icon: "phone.arrow.down.left",
-                               label: "Take incoming calls in the app — they don't use your minutes")
-                    RowRule()
-                    BenefitRow(icon: RIcon.globe,
-                               label: "Call 50+ countries, priced per minute before you dial")
-                    RowRule()
-                    BenefitRow(icon: "infinity",
-                               label: "Keep this number for as long as you subscribe")
-                    RowRule()
-                    BenefitRow(icon: "lock.fill",
-                               label: "Your own number never leaves your phone")
-                    RowRule()
-                    // The honest line, and the remedy priced live. Some
-                    // platforms refuse virtual numbers, and a buyer who
-                    // discovers that after paying is a refund; naming it here
-                    // makes it a term they accepted. NO client default for the
-                    // price — `app_config.line_swap_credits` moves without a
-                    // release, so when it is unknown the sentence drops the
-                    // figure rather than inventing one. Mirrors
-                    // `LineStoreScreen.pitch`.
-                    if let cost = state.appStatus.lineSwapCredits {
-                        BenefitRow(icon: "arrow.triangle.2.circlepath",
-                                   label: "Might not work on every service — if a code doesn't arrive, switch to a new number for \(cost) credits")
-                    } else {
-                        BenefitRow(icon: "arrow.triangle.2.circlepath",
-                                   label: "Might not work on every service — if a code doesn't arrive, switch to a new number for a few credits")
-                    }
+            LineLedger {
+                if numberSendsTexts != false {
+                    LineLedgerRow(kind: .yes,
+                                  text: Text("Receive texts and verification codes"),
+                                  detail: Text("From US and Canadian numbers and services."))
                 }
-                .padding(.vertical, 4)
+                // OUTGOING only, and that wording stays exact: inbound bills
+                // nothing and is unmetered.
+                LineLedgerRow(kind: .yes,
+                              figure: "\(LineProduct.voiceAllowanceMinutes)",
+                              text: Text("minutes of outgoing calls a month"))
+                LineLedgerRow(kind: .yes,
+                              text: Text("Call 50+ countries, priced per minute before you dial"))
+                // NO client default for the price (`line_swap_credits` moves
+                // without a release). "As many times as you want" is true only
+                // while `line_swap_cooldown_days` is 0.
+                if let cost = state.appStatus.lineSwapCredits {
+                    LineLedgerRow(kind: .yes,
+                                  text: Text("Switch to a new number for only \(cost) credits — any time, as many times as you want"))
+                } else {
+                    LineLedgerRow(kind: .yes,
+                                  text: Text("Switch to a new number any time, as many times as you want"))
+                }
+                if numberSendsTexts != false, !sendingWarningShown {
+                    LineLedgerRow(kind: .no,
+                                  text: Text("Texts you send to US numbers usually don't arrive."))
+                }
             }
         }
     }
@@ -584,7 +481,12 @@ struct LineCheckoutScreen: View {
                 withAnimation(RMotion.panel) { limitsShown.toggle() }
             } label: {
                 HStack(spacing: 8) {
-                    MicroLabel("Good to know")
+                    // Sentence case beside its chevron (audit §2.2 item 9),
+                    // not a full-width MicroLabel that pushed the chevron
+                    // to the far edge.
+                    Text("Good to know")
+                        .font(RFont.text(13, weight: .semibold))
+                        .foregroundStyle(theme.text2)
                     Image(systemName: RIcon.chevDn)
                         .font(.system(size: 11, weight: .semibold))
                         .foregroundStyle(theme.text3)
@@ -597,58 +499,57 @@ struct LineCheckoutScreen: View {
             .accessibilityAddTraits(.isButton)
 
             if limitsShown {
-                Card(radius: RRadius.card, elevation: .flat) {
-                    VStack(spacing: 0) {
-                        // Muted tint + "Not yet" hint keeps each one a ledger
-                        // line rather than an alarm.
-                        // 🔴 REPLACED, NOT DELETED (2026-09-08). "Sending
-                        // texts — Not yet" came off because sending is back;
-                        // what took its place is the honest residue of that
-                        // change. A message we accept can still be refused by
-                        // the recipient's carrier minutes later — no number we
-                        // own carries a 10DLC campaign — and this is the
-                        // 3.1.2(a) disclosure screen, so a buyer who meets
-                        // that after paying is a refund and a
-                        // CONSUMPTION_REQUEST. `hint` says "Sometimes" rather
-                        // than "Not yet": it is a real risk, not an absent
-                        // feature.
-                        BenefitRow(icon: "paperplane",
-                                   label: "Some networks block texts sent from virtual numbers",
-                                   hint: "Sometimes",
-                                   tint: theme.text3)
-                            .opacity(0.72)
-                        RowRule()
-                        // 🔴 MOVED HERE FROM THE STORE PITCH (2026-09-09), not
-                        // deleted. The store now sells the swap as a feature
-                        // ("any time, as many times as you want") instead of a
-                        // remedy, which removed the only place the app said
-                        // that a service can refuse a virtual number at all.
-                        // That is a real and common outcome — it is why the
-                        // swap exists — and a buyer who meets it after paying
-                        // is a refund and a CONSUMPTION_REQUEST. This is the
-                        // 3.1.2(a) surface, so it belongs here if it is
-                        // anywhere. `hint` is "Sometimes": a real risk, not an
-                        // absent feature.
-                        BenefitRow(icon: "questionmark.circle",
-                                   label: "Some services refuse virtual numbers — switch to a new one and try again",
-                                   hint: "Sometimes",
-                                   tint: theme.text3)
-                            .opacity(0.72)
-                        RowRule()
-                        BenefitRow(icon: RIcon.message,
-                                   label: "Sending texts outside the US and Canada",
-                                   hint: "Not yet",
-                                   tint: theme.text3)
-                            .opacity(0.72)
-                        RowRule()
-                        BenefitRow(icon: RIcon.globe,
-                                   label: "Receiving texts from outside the US and Canada",
-                                   hint: "Not yet",
-                                   tint: theme.text3)
-                            .opacity(0.72)
-                    }
-                    .padding(.vertical, 4)
+                VStack(spacing: 0) {
+                    // Muted tint + "Not yet" hint keeps each one a ledger
+                    // line rather than an alarm.
+                    // 🔴 REPLACED, NOT DELETED (2026-09-08). "Sending
+                    // texts — Not yet" came off because sending is back;
+                    // what took its place is the honest residue of that
+                    // change. A message we accept can still be refused by
+                    // the recipient's carrier minutes later — no number we
+                    // own carries a 10DLC campaign — and this is the
+                    // 3.1.2(a) disclosure screen, so a buyer who meets
+                    // that after paying is a refund and a
+                    // CONSUMPTION_REQUEST. `hint` says "Sometimes" rather
+                    // than "Not yet": it is a real risk, not an absent
+                    // feature.
+                    BenefitRow(icon: "paperplane",
+                               label: "Some networks block texts sent from virtual numbers",
+                               hint: "Sometimes",
+                               tint: theme.text3)
+                        .opacity(0.72)
+                    RowRule()
+                    // 🔴 MOVED HERE FROM THE STORE PITCH (2026-09-09), not
+                    // deleted. The store now sells the swap as a feature
+                    // ("any time, as many times as you want") instead of a
+                    // remedy, which removed the only place the app said
+                    // that a service can refuse a virtual number at all.
+                    // That is a real and common outcome — it is why the
+                    // swap exists — and a buyer who meets it after paying
+                    // is a refund and a CONSUMPTION_REQUEST. This is the
+                    // 3.1.2(a) surface, so it belongs here if it is
+                    // anywhere. `hint` is "Sometimes": a real risk, not an
+                    // absent feature.
+                    BenefitRow(icon: "questionmark.circle",
+                               label: "Some services refuse virtual numbers — switch to a new one and try again",
+                               hint: "Sometimes",
+                               tint: theme.text3)
+                        .opacity(0.72)
+                    RowRule()
+                    BenefitRow(icon: RIcon.message,
+                               label: "Sending texts outside the US and Canada",
+                               hint: "Not yet",
+                               tint: theme.text3)
+                        .opacity(0.72)
+                    RowRule()
+                    BenefitRow(icon: RIcon.globe,
+                               label: "Receiving texts from outside the US and Canada",
+                               hint: "Not yet",
+                               tint: theme.text3)
+                        .opacity(0.72)
                 }
+                .padding(.vertical, 4)
+                .background(theme.elev, in: .rect(cornerRadius: RRadius.group, style: .continuous))
                 .padding(.top, 6)
                 .transition(.opacity)
             }
@@ -658,193 +559,140 @@ struct LineCheckoutScreen: View {
     // MARK: - Price
     //
     // App Store 3.1.2(a): price, period, renewal terms and the two legal links
-    // must all appear in-app before the purchase.
+    // must all appear in-app before the purchase. Every figure below comes
+    // from StoreKit through `SubscriptionStore`; none is a literal.
 
-    /// Stated **once**, from StoreKit, in a bordered container.
+    /// D4 (spec §4.2): "{regular}/month" at plan size, the intro beneath and
+    /// smaller, behind the eligibility gate. Yearly is a plain second row.
+    /// Only the selected plan carries a border. A single monthly row when the
+    /// yearly is not offered in this storefront — never a choice one side of
+    /// which cannot be bought.
     ///
-    /// The old block printed the price at `display(30)` and then again inside
-    /// the CTA label 200pt below, and it wrapped BOTH the figure and its "per
-    /// month" label in `if let price` — so before StoreKit answered, the whole
-    /// row collapsed and the renewal sentence slid up under the bullets and
-    /// then jumped back down. A visible layout jump on the paywall's first
-    /// paint. The height is now reserved, so nothing reflows.
-    /// Monthly vs yearly.
-    ///
-    /// Rendered ONLY when StoreKit actually returned both products. If the
-    /// yearly is missing — still `MISSING_METADATA` in App Store Connect, not
-    /// yet available in this storefront, or simply not loaded — the screen
-    /// falls back to exactly what it was before, a single monthly plan, rather
-    /// than offering a choice one side of which cannot be bought.
+    /// The REGULAR price leads because 3.1.2(a) wants the renewal figure
+    /// visible, and the intro is the exception, not the price. The intro line
+    /// vanishes for an Apple ID that is not eligible:
+    /// `monthlyIntroPriceDisplay` is nil unless `isEligibleForIntroOffer`
+    /// answered true — never read `introductoryOffer` directly.
     @ViewBuilder
-    private var planPicker: some View {
-        if subs.hasMonthly, subs.hasYearly {
-            VStack(spacing: 8) {
-                planRow(.monthly,
-                        title: String(localized: "Monthly"),
-                        // The RECURRING price stays in the price column —
-                        // 3.1.2(a) wants the renewal figure visible, and the
-                        // intro is the exception, not the price. The note
-                        // carries the first month, and vanishes for an Apple
-                        // ID that is not eligible (see `monthlyIntroOffer`).
-                        price: subs.monthlyPriceDisplay,
-                        badge: nil,
-                        note: subs.monthlyIntroPriceDisplay.map { String(localized: "\($0) for your first month") })
-                planRow(.yearly,
-                        title: String(localized: "Yearly"),
-                        price: subs.yearlyPriceDisplay,
-                        // Both derived from live StoreKit, so neither can promise
-                        // something the store will not honour: the saving is
-                        // computed from the two real prices, and the trial
-                        // vanishes for an Apple ID that has already used one —
-                        // Apple allows a single introductory offer per
-                        // subscription GROUP per Apple ID.
-                        //
-                        // They are shown TOGETHER rather than one-or-the-other,
-                        // and each disappears on its own. Either can be absent
-                        // without the row losing its meaning.
-                        badge: subs.yearlySavingsPercent.map { String(localized: "SAVE \($0)%") },
-                        note: subs.trialLabel.map { String(localized: "\($0) free, then billed yearly") })
+    private var plans: some View {
+        if subs.hasMonthly || subs.isLoadingProduct {
+            VStack(spacing: RSpace.sm) {
+                planRow(.monthly)
+                if subs.hasYearly { planRow(.yearly) }
             }
         }
     }
 
-    private func planRow(_ plan: LinePlan, title: String,
-                         price: String?, badge: String?, note: String?) -> some View {
+    private func planRow(_ plan: LinePlan) -> some View {
         let active = subs.selectedPlan == plan
-        return Button {
-            RHaptic.select()
-            // Only on a real change. Re-tapping the selected row is not a
-            // decision, and counting it would inflate the one number this
-            // event exists to answer: how many buyers move off monthly.
-            if !active {
-                Analytics.shared.track("line_plan_selected", [
-                    "plan": .string(plan.rawValue)])
-            }
-            withAnimation(RMotion.select) { subs.selectedPlan = plan }
-        } label: {
-            // `Card` with a semantic fill + border — exactly what `border` is
-            // for. The old hand-rolled `.background(RoundedRectangle)` +
-            // `.overlay(stroke)` pair drew the same thing twice with two
-            // radius literals free to drift; this is one shape.
-            Card(radius: RRadius.group, elevation: .flat,
-                 fill: active ? theme.inkSoft.opacity(0.5) : theme.elev,
-                 border: active ? theme.ink.opacity(0.5) : theme.sep) {
-            HStack(spacing: 12) {
-                Image(systemName: active ? "largecircle.fill.circle" : "circle")
-                    .font(.system(size: 20))
-                    .foregroundStyle(active ? theme.ink : theme.text3)
-                VStack(alignment: .leading, spacing: 3) {
-                    HStack(spacing: 6) {
-                        Text(verbatim: title)
-                            .font(RFont.text(15, weight: .semibold))
-                            .foregroundStyle(theme.text)
-                        // Same treatment as the credit ladder's MOST POPULAR /
-                        // BEST VALUE chips, so it reads as this app's own
-                        // marketing rather than a sticker bolted on. `accent2`
-                        // deliberately, NOT `live` — green means "your code
-                        // arrived" and "your credits came back" here, and
-                        // spending a semantic colour on a sales badge is the
-                        // collision the palette rules forbid.
-                        if let badge {
-                            Text(verbatim: badge)
-                                .font(RFont.text(10, weight: .heavy))
-                                .tracking(0.3)
-                                .foregroundStyle(theme.accent2)
-                                .padding(.horizontal, 7)
-                                .padding(.vertical, 2)
-                                .background(theme.inkSoft, in: .capsule)
-                        }
-                    }
-                    if let note {
-                        Text(verbatim: note)
-                            .font(RFont.text(12))
-                            .foregroundStyle(theme.ink)
-                            .fixedSize(horizontal: false, vertical: true)
+        return Button { select(plan) } label: {
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 6) {
+                    Text(plan == .monthly ? "Monthly" : "Yearly")
+                        .font(RFont.text(15, weight: .semibold))
+                        .foregroundStyle(theme.text)
+                    // Computed from the two live prices, so it cannot promise
+                    // a saving the store will not honour.
+                    if plan == .yearly, let pct = subs.yearlySavingsPercent {
+                        // A text tag, never a second bordered thing (emphasis rule).
+                        Text("SAVE \(pct)%")
+                            .font(RFont.text(11, weight: .heavy))
+                            .tracking(0.3)
+                            .foregroundStyle(theme.text2)
                     }
                 }
-                Spacer(minLength: 0)
-                Text(verbatim: price ?? "—")
-                    .font(RFont.text(15, weight: .semibold))
-                    .foregroundStyle(theme.text)
-                    .monospacedDigit()
+                planPrice(plan)
+                planNote(plan)
             }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 14)
             .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(RSpace.lg)
+            .background(theme.elev, in: .rect(cornerRadius: RRadius.group, style: .continuous))
+            .selectedEmphasis(active, radius: RRadius.group, color: theme.ink)
             .contentShape(.rect)
-            }
         }
         .buttonStyle(PressScaleStyle(scale: 0.99))
-        // 44pt minimum, and the whole row is the target rather than the radio.
-        .frame(minHeight: 44)
         .accessibilityElement(children: .combine)
         .accessibilityAddTraits(active ? [.isButton, .isSelected] : .isButton)
     }
 
-    private var priceBlock: some View {
-        Card(radius: RRadius.group, elevation: .flat,
-             fill: theme.inkSoft.opacity(0.5), border: theme.ink.opacity(0.28)) {
-            VStack(alignment: .leading, spacing: 4) {
-                HStack(alignment: .firstTextBaseline, spacing: 6) {
-                    if let intro = subs.selectedIntroPriceDisplay {
-                        // The figure the sheet will actually charge today.
-                        // The regular price and period follow in the renewal
-                        // sentence below, which 3.1.2(a) requires whenever an
-                        // introductory price applies.
-                        Text(intro)
-                            .displayType(30)
-                            .foregroundStyle(theme.text)
-                        Text("first month")
-                            .font(RFont.text(15))
-                            .foregroundStyle(theme.text2)
-                    } else if let price = subs.displayPrice {
-                        Text(price)
-                            .displayType(30)
-                            .foregroundStyle(theme.text)
-                        // Follows the SELECTED plan. A price that says "per
-                        // month" beside a yearly charge is both a lie and an
-                        // App Store 3.1.2(a) violation.
-                        Text(subs.selectedPlan == .yearly ? "per year" : "per month")
-                            .font(RFont.text(15))
-                            .foregroundStyle(theme.text2)
-                    } else {
-                        Text(verbatim: "—")
-                            .displayType(30)
-                            .foregroundStyle(theme.text3)
-                            .redacted(reason: subs.isLoadingProduct ? .placeholder : [])
-                    }
-                    Spacer(minLength: 0)
-                }
-                .frame(height: 36)
-
-                // 3.1.2(a) requires the ACTUAL billing period and renewal
-                // terms. When a free trial applies, it also requires saying
-                // what happens when it ends — the most common reason a
-                // subscription paywall is rejected.
-                Group {
-                    if subs.selectedPlan == .yearly {
-                        if let trial = subs.trialLabel {
-                            Text("\(trial) free, then \(subs.displayPrice ?? "").  Renews every year until you cancel. Cancel any time in your Apple ID settings.")
-                        } else {
-                            Text("Renews every year until you cancel. Cancel any time in your Apple ID settings.")
-                        }
-                    } else if subs.selectedIntroPriceDisplay != nil {
-                        // The intro is stated in the figure above; what the
-                        // reader needs here is what comes AFTER it.
-                        Text("Then \(subs.displayPrice ?? "") every month until you cancel. Cancel any time in your Apple ID settings.")
-                    } else {
-                        Text("Renews every month until you cancel. Cancel any time in your Apple ID settings.")
-                    }
-                }
-                .font(RFont.text(12))
-                .foregroundStyle(theme.text2)
-                .lineSpacing(2)
-                .fixedSize(horizontal: false, vertical: true)
+    /// The height is reserved while StoreKit loads ("—", redacted), so the
+    /// renewal sentence below never slides up and back on first paint.
+    @ViewBuilder
+    private func planPrice(_ plan: LinePlan) -> some View {
+        let price = plan == .monthly ? subs.monthlyPriceDisplay : subs.yearlyPriceDisplay
+        if let price {
+            Group {
+                if plan == .monthly { Text("\(price)/month") } else { Text("\(price)/year") }
             }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 14)
-            .frame(maxWidth: .infinity, alignment: .leading)
+            .numberStyle(size: 20, color: theme.text)
+        } else {
+            Text(verbatim: "—")
+                .numberStyle(size: 20, color: theme.text3)
+                .redacted(reason: subs.isLoadingProduct ? .placeholder : [])
         }
+    }
+
+    @ViewBuilder
+    private func planNote(_ plan: LinePlan) -> some View {
+        if plan == .monthly, let intro = subs.monthlyIntroPriceDisplay {
+            Text("\(intro) your first month · new subscribers")
+                .font(RFont.text(13))
+                .foregroundStyle(theme.text2)
+                .monospacedDigit()
+        } else if plan == .yearly, let trial = subs.trialLabel {
+            // Eligibility-gated like the intro: nil for an Apple ID that has
+            // used its one introductory offer in this group.
+            Text("\(trial) free, then billed yearly")
+                .font(RFont.text(13))
+                .foregroundStyle(theme.text2)
+        }
+    }
+
+    /// Moved from the old `planRow` button action: only a REAL change counts.
+    /// Re-tapping the selected row is not a decision, and counting it would
+    /// inflate the one number this event exists to answer: how many buyers
+    /// move off monthly.
+    private func select(_ plan: LinePlan) {
+        RHaptic.select()
+        if subs.selectedPlan != plan {
+            Analytics.shared.track("line_plan_selected", ["plan": .string(plan.rawValue)])
+        }
+        withAnimation(RMotion.unlessReduced(RMotion.select, reduceMotion)) {
+            subs.selectedPlan = plan
+        }
+    }
+
+    /// 3.1.2(a): what happens after the intro, and the renewal terms, for the
+    /// SELECTED plan. The figure comes from StoreKit only. When an intro or
+    /// trial applies, 3.1.2(a) also requires saying what happens when it ends
+    /// — the most common reason a subscription paywall is rejected.
+    private var priceSentence: some View {
+        Group {
+            if subs.selectedPlan == .yearly {
+                if let trial = subs.trialLabel, let price = subs.yearlyPriceDisplay {
+                    Text("\(trial) free, then \(price). Renews every year until you cancel. Cancel any time in Settings.")
+                } else {
+                    Text("Renews every year until you cancel. Cancel any time in Settings.")
+                }
+            } else if subs.selectedIntroPriceDisplay != nil, let price = subs.monthlyPriceDisplay {
+                Text("Then \(price) every month until you cancel. Cancel any time in Settings.")
+            } else {
+                Text("Renews every month until you cancel. Cancel any time in Settings.")
+            }
+        }
+        .font(RFont.text(13))
+        .foregroundStyle(theme.text2)
+        .monospacedDigit()
+        .fixedSize(horizontal: false, vertical: true)
+    }
+
+    /// True of the lapse machine: `reclaim_lapsed_lines` never releases a line
+    /// before `current_period_end` (CLAUDE.md, "The lapse machine").
+    private var rentalLine: some View {
+        Text("Only need it for a month? Turn off renewal after buying — it stays yours until the end of the month you paid for.")
+            .font(RFont.text(13))
+            .foregroundStyle(theme.text2)
+            .fixedSize(horizontal: false, vertical: true)
     }
 
     /// Disclosed here as well as in the store and the manage screen —
@@ -878,22 +726,41 @@ struct LineCheckoutScreen: View {
     /// Terms of Use (EULA) and the privacy policy. The 2.0(37) rejection taught
     /// two things: the labels must NAME the documents ("Terms" reads as our own
     /// terms, not the EULA the metadata declares), and links tinted like muted
-    /// body text are links a reviewer does not see. One link per line — the
-    /// German labels don't fit side by side on a 375pt screen.
-    private var legal: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Link("Terms of Use (EULA)", destination: LegalLinks.eula)
-            Link("Privacy Policy", destination: LegalLinks.privacy)
+    /// body text are links a reviewer does not see — so these are underlined
+    /// and full-contrast. One row when it fits; stacked in long locales (the
+    /// German labels don't fit side by side on a 375pt screen).
+    private var links: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: RSpace.sm) {
+                eulaLink
+                Text(verbatim: "·").foregroundStyle(theme.text3)
+                privacyLink
+                Text(verbatim: "·").foregroundStyle(theme.text3)
+                restoreButton.underline()
+            }
+            VStack(alignment: .leading, spacing: RSpace.sm) {
+                eulaLink
+                privacyLink
+                restoreButton.underline()
+            }
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .font(RFont.text(12))
-        .tint(theme.ink)
+        .font(RFont.text(13, weight: .medium))
+        .foregroundStyle(theme.text)
+        .tint(theme.text)
+    }
+
+    private var eulaLink: some View {
+        Link(destination: LegalLinks.eula) { Text("Terms of Use (EULA)").underline() }
+    }
+
+    private var privacyLink: some View {
+        Link(destination: LegalLinks.privacy) { Text("Privacy Policy").underline() }
     }
 
     // MARK: - Action
 
     private var cta: some View {
-        VStack(spacing: 10) {
+        VStack(spacing: RSpace.sm) {
             if unavailable {
                 Text("The App Store isn't offering this subscription right now. Please try again in a moment.")
                     .font(RFont.text(12))
@@ -901,20 +768,13 @@ struct LineCheckoutScreen: View {
                     .multilineTextAlignment(.center)
                     .fixedSize(horizontal: false, vertical: true)
             }
-
-            // ⚠️ The period must FOLLOW the selected plan. This read
-            // `"\($0)/mo"` unconditionally, so picking Yearly rendered
-            // "$99.99/mo" directly under the button — a 10× misstatement of
-            // the billing period, in the one place App Store 3.1.2(a) is
-            // about. `priceBlock` had it right ("per year" / "per month") and
-            // the CTA silently contradicted it 200pt below.
-            PrimaryButton(
-                label: ctaLabel,
-                sub: busy ? nil : ctaPriceSub,
-                disabled: busy || state.lineOffer == nil || !subs.hasMonthly,
-                action: buy
-            )
-
+            // No typewriter price (spec §4.2): the price is stated in the plan
+            // rows and the sentence above, and again on Apple's sheet. (The
+            // old `sub` line was also where a Yearly pick once read "/mo" — a
+            // third copy of the price is a third place for the period to lie.)
+            PrimaryButton(label: ctaLabel,
+                          disabled: busy || state.lineOffer == nil || !subs.hasMonthly,
+                          action: buy)
             Text("Cancel any time in Settings")
                 .font(RFont.text(12))
                 .foregroundStyle(theme.text3)
@@ -931,29 +791,14 @@ struct LineCheckoutScreen: View {
     /// Names the step in progress rather than showing a spinner on a button
     /// whose label still says "Get this number". Reserving involves a live
     /// Telnyx round trip, so the pause is real and unexplained silence there
-    /// reads as a dead tap. The price rides in the `sub` slot, which
-    /// `PrimaryButton` has for exactly this and which the old label crammed
-    /// into its own text.
+    /// reads as a dead tap. It carries no price: the plan rows and the renewal
+    /// sentence state it (spec §4.2).
     private var ctaLabel: String {
         if isReserving { return String(localized: "Checking availability…") }
         if subs.isPurchasing { return String(localized: "Confirming…") }
         if subs.isLoadingProduct { return String(localized: "Loading…") }
         if unavailable { return String(localized: "Temporarily unavailable") }
         return String(localized: "Subscribe")
-    }
-
-    /// "$3.99 first month" when the intro applies to the selected plan,
-    /// otherwise "$5.99/mo" / "$59.99/yr". The period follows the plan for
-    /// the reason documented at the call site; the intro follows it too, via
-    /// `selectedIntroPriceDisplay`, so a Yearly pick can never wear the
-    /// monthly's first-month figure.
-    private var ctaPriceSub: String? {
-        if let intro = subs.selectedIntroPriceDisplay {
-            return String(localized: "\(intro) first month")
-        }
-        return subs.displayPrice.map {
-            "\($0)\(subs.selectedPlan == .yearly ? "/yr" : "/mo")"
-        }
     }
 
     /// Reserve → pay → provision, in that order.
