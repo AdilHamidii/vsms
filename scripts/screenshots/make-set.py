@@ -11,7 +11,7 @@ import sys
 T = sys.argv[1] if len(sys.argv) > 1 else "."   # work dir holding frame_<name>.png and compose-slide.py
 OUT = f"{T}/set"; os.makedirs(OUT, exist_ok=True)
 SLIDES = [
-    ("homeRouter", "green", "What do\\nyou need?",
+    ("verify", "green", "What do\\nyou need?",
      "A second number you keep, a one-time SMS code, or a throwaway email. All in one app."),
     ("lineStore", "green", "Get a real\\nUSA number",
      "Calls, texts and codes from WhatsApp, TikTok, DoorDash and most other apps. Yours to keep."),

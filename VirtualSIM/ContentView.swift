@@ -211,6 +211,16 @@ struct ContentView: View {
             }
         }
         .animation(.easeOut(duration: 0.35), value: state.bootPhase)
+        #if DEBUG
+        // The `splash` screenshot fixture: the real splash pinned at a
+        // determinate 60% bar. See `ScreenshotMode.Screen.splash`.
+        .overlay {
+            if ScreenshotMode.screen == .splash {
+                SplashScreen(state: .progress(0.6))
+                    .environment(\.theme, theme)
+            }
+        }
+        #endif
         .task {
             #if DEBUG
             // The cold-start chain is skipped entirely — six sequential
@@ -971,10 +981,9 @@ extension ContentView {
             state.openThreadId = "t1"
             state.flow = .thread
 
-        // The Verify tab, with no line (fixture renamed in Task 7): the
-        // question, search, the app grid, the category chips and the
-        // own-number row.
-        case .homeRouter:
+        // The Verify tab, with no line (was `homeRouter`): the question,
+        // search, the app grid, the category chips and the own-number row.
+        case .verify:
             state.tab = .verify
             state.verifyPath = []
             state.lines = []
@@ -994,9 +1003,9 @@ extension ContentView {
             // same shim, same reason, as the store and paywall frames.
             subs.screenshotPricing = .init()
 
-        // The Verify tab for a subscriber (fixture renamed in Task 7): the
-        // "Your number" strip above the search, and a Recent row.
-        case .homeLine:
+        // The Verify tab for a subscriber (was `homeLine`): the "Your number"
+        // strip above the search, and a Recent row.
+        case .verifyLine:
             state.tab = .verify
             state.verifyPath = []
             state.lines = [ScreenshotMode.sampleLine]
@@ -1092,13 +1101,59 @@ extension ContentView {
                 ScreenshotMode.sampleOrder(status: .received, otp: "123456"))
             state.flow = .otp
 
+        // The `.orders` COVER, as on main — reachable from WaitingScreen and
+        // ErrorBanner. The Activity TAB has its own frame, `.activity`, so
+        // this one keeps its meaning for the scripts that capture it.
         case .orders:
-            // The Activity TAB since the overhaul (2026-09-24), not the
-            // `.orders` cover: that cover would hide the tab bar this frame
-            // now exists to show. The cover is still reachable from
-            // WaitingScreen and ErrorBanner.
-            state.tab = .activity
+            state.openCodeStore()
             state.orders = ScreenshotMode.sampleOrderRows.map(state.resolve)
+            state.flow = .orders
+
+        case .activity:
+            // Same sample orders as `.orders`, shown in the Activity TAB.
+            state.orders = ScreenshotMode.sampleOrderRows.map(state.resolve)
+            state.tab = .activity
+
+        case .waitingClosed:
+            // An order in flight with its screen closed: ResumeBar above the
+            // system tab bar (Review Focus 4). `sampleOrderRows` holds no
+            // `.waiting` row on purpose — adding one there would put a
+            // ResumeBar into the `home` store frame — so it is prepended here.
+            // `uk`, not `gb`: see the `.verifyLine` note on catalog ids.
+            let inFlight = ScreenshotMode.sampleOrder(
+                status: .waiting, otp: nil, id: "sample-waiting",
+                serviceId: "google", countryId: "uk", ageSeconds: 40)
+            state.orders = ([inFlight] + ScreenshotMode.sampleOrderRows)
+                .map(state.resolve)
+            state.flow = nil
+            state.tab = .verify
+            state.verifyPath = []
+            state.linesLoaded = true
+
+        case .account:
+            state.tab = .account
+            // Fills the name, "member since", and the invite card's code +
+            // Share button (`inviteMessage` needs `referralCode`).
+            state.profile = ScreenshotMode.sampleProfile
+            // 🔴 The vRoam card is gated on `PrefKey.vroamCardDismissed`, which
+            // is device-global and persists — one tap of its ✕ on this
+            // simulator would silently drop the card this frame exists to
+            // show. Overridden in the ARGUMENT domain, which is volatile: it
+            // outranks the persisted value for this launch and is never
+            // written to disk, so the simulator's real preference is untouched.
+            // Merged, not replaced, so `-pref.appearance` and `-AppleLanguages`
+            // on the same launch keep working.
+            let argDomain = UserDefaults.argumentDomain
+            var args = UserDefaults.standard.volatileDomain(forName: argDomain)
+            args[PrefKey.vroamCardDismissed] = false
+            UserDefaults.standard.removeVolatileDomain(forName: argDomain)
+            UserDefaults.standard.setVolatileDomain(args, forName: argDomain)
+
+        case .splash:
+            // Rendered by the DEBUG overlay beside the real splash overlay:
+            // `bootPhase` is private(set) and `continueWithoutCatalog` above
+            // has already lifted the real one.
+            break
 
         case .credits:
             state.openCodeStore()

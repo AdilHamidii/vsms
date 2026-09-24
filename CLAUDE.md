@@ -75,6 +75,8 @@ Verify tab. On this branch `HomeScreen`, `home_view` and `home_card_tapped`
 `verify_line_row_tapped` from its own-number row, and `service_search_empty`
 with `source: "verify"` (`AccountScreen`'s `invite` / `vroam` arms of
 `home_card_tapped` still fire).
+Fixtures on this branch: `verify`, `verifyLine`, `activity`, `waitingClosed`,
+`account`, `splash` (`homeRouter` / `homeLine` below are main's names).
 The text below describes `main`.
 
 `AppTab` order is `home · line · temp · account` and the app opens on
