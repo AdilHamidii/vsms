@@ -1,5 +1,12 @@
 import SwiftUI
 
+/// Non-generic so callers can read it without naming `VerifyTile`'s `Icon`.
+enum VerifyTileStyle {
+    /// The logo plate's corner radius. The caller draws the logo at this
+    /// radius so the tile's hairline traces the plate exactly.
+    static let plateRadius: CGFloat = 11
+}
+
 /// One app tile on Verify. Kept as the only tile body so every cell in the
 /// grid is the same height.
 struct VerifyTile<Icon: View>: View {
@@ -12,6 +19,12 @@ struct VerifyTile<Icon: View>: View {
         Button(action: action) {
             VStack(spacing: RSpace.sm) {
                 icon
+                    // Logos sit on a white plate; on a white light-mode tile
+                    // the plate otherwise reads as a faint, edgeless square.
+                    .overlay {
+                        RoundedRectangle(cornerRadius: VerifyTileStyle.plateRadius, style: .continuous)
+                            .strokeBorder(theme.sep, lineWidth: 1)
+                    }
                 label
                     .font(RFont.text(12, weight: .semibold))
                     .foregroundStyle(theme.text2)

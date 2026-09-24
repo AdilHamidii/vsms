@@ -48,6 +48,9 @@ struct AccountScreen: View {
     var openCredits: () -> Void
 
     @State private var showChangePassword = false
+    /// `NameSheet`'s only presenter since the Home greeting went (design
+    /// overhaul): the headline name is the button.
+    @State private var showNameSheet = false
     @State private var showDeleteConfirm = false
     @State private var deleteInProgress = false
 
@@ -122,6 +125,18 @@ struct AccountScreen: View {
                 .environment(api)
                 .environment(session)
         }
+        // Env objects injected explicitly: sheet content does not reliably
+        // inherit `@Observable` environment objects from its presenter.
+        .sheet(isPresented: $showNameSheet) {
+            NameSheet()
+                .environment(\.theme, theme)
+                .environment(state)
+                .environment(api)
+                .environment(session)
+                .presentationDetents([.height(280)])
+                .presentationDragIndicator(.visible)
+                .presentationBackground(theme.bg)
+        }
         .confirmationDialog("Delete your account?",
                             isPresented: $showDeleteConfirm,
                             titleVisibility: .visible) {
@@ -162,12 +177,7 @@ struct AccountScreen: View {
                         .foregroundStyle(theme.text)
                 }
                 VStack(alignment: .leading, spacing: 3) {
-                    Text(verbatim: headlineName)
-                        .font(RFont.display(17, weight: .semibold))
-                        .tracking(-0.3)
-                        .foregroundStyle(theme.text)
-                        .lineLimit(1)
-                        .truncationMode(.middle)
+                    nameButton
                     profileSubtitle
                 }
                 Spacer(minLength: 0)
@@ -176,6 +186,35 @@ struct AccountScreen: View {
         }
         .padding(.horizontal, 16)
         .padding(.top, 18)
+    }
+
+    /// The headline name, and the way to set it. The label stays the name
+    /// (it is the content); the HINT says what a tap does — a label would
+    /// replace the name for VoiceOver, the mistake main's Home greeting
+    /// documented. `NameSheet` writes with `display_name_set{source:"home"}`
+    /// (its default), kept for series continuity: there "home" means "the
+    /// user typed it", not the Home tab.
+    private var nameButton: some View {
+        Button {
+            RHaptic.select()
+            showNameSheet = true
+        } label: {
+            HStack(spacing: 6) {
+                Text(verbatim: headlineName)
+                    .font(RFont.display(17, weight: .semibold))
+                    .tracking(-0.3)
+                    .foregroundStyle(theme.text)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                Image(systemName: "pencil")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(theme.text3)
+                    .accessibilityHidden(true)
+            }
+            .contentShape(.rect)
+        }
+        .buttonStyle(PressScaleStyle(scale: 0.97))
+        .accessibilityHint(Text("Set your name"))
     }
 
     private var headlineName: String {

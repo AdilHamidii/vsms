@@ -46,9 +46,13 @@ VirtualSIM/
                                  badge; see the steering section)
   Screens/                       VerifyScreen (the Verify tab on
                                  `design-overhaul`: one question, the credit
-                                 pill, a live subscriber's number strip, search
-                                 over the catalog, Recent, an eight-app grid and
-                                 category chips; a pick goes through
+                                 pill (hidden at 0), search over the catalog,
+                                 Recent, an eight-app grid (Recent apps are
+                                 excluded and backfilled) and category chips,
+                                 then "Your own number" — the subscriber's
+                                 strip, or for a non-subscriber (once
+                                 `linesLoaded`) a quiet row to the My number
+                                 tab; a pick goes through
                                  `commitServicePick` then `openCodeStore`. It
                                  replaced `HomeScreen`, which on `main` is the
                                  Home tab — see CLAUDE.md "Home leads the app"),
@@ -88,9 +92,9 @@ VirtualSIM/
                                  Home greets by — raised from the greeting, the
                                  only place that name is shown; mirrors
                                  `AppState.greetingName`'s rejections and stays
-                                 OPEN on a failed write; ⚠️ on `design-overhaul`
-                                 nothing presents it since `HomeScreen` went —
-                                 Account is to adopt it in a later plan)
+                                 OPEN on a failed write; on `design-overhaul`
+                                 Account's headline name presents it, since
+                                 `HomeScreen` and its greeting are gone)
   Components/                    Theme primitives + VerifyTile (the one
                                  Verify grid tile body, so every cell is the
                                  same height) + ServiceLogo / FlagImage /

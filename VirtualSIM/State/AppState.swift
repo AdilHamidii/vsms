@@ -2047,6 +2047,12 @@ final class AppState {
     @ObservationIgnored
     private var lastCatalogLoad: Date?
 
+    /// A live catalog has loaded at least once this process — `services` is
+    /// not the `SeedData` stub. Not observed on its own (`lastCatalogLoad` is
+    /// `@ObservationIgnored`); a view that also reads `services` re-renders
+    /// when the load lands, because both are written together.
+    var hasLiveCatalog: Bool { lastCatalogLoad != nil }
+
     /// Credits from a just-completed purchase. The app had NO purchase
     /// confirmation anywhere — no receipt, no toast, no "+N credits" — so a
     /// successful buy was visually identical to a failed one.

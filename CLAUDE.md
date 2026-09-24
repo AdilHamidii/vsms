@@ -71,8 +71,10 @@ calls `AppState.openCodeStore(email:)`, which pushes the temp store inside the
 Verify tab. On this branch `HomeScreen`, `home_view` and `home_card_tapped`
 (from Home) are retired: the Verify tab is `VerifyScreen`, which fires
 `verify_view {guest, has_line, lines_loaded}` on every visit and
-`service_selected{source: verify | verify_search | verify_recent}` on a pick
-(`AccountScreen`'s `invite` / `vroam` arms of `home_card_tapped` still fire).
+`service_selected{source: verify | verify_search | verify_recent}` on a pick,
+`verify_line_row_tapped` from its own-number row, and `service_search_empty`
+with `source: "verify"` (`AccountScreen`'s `invite` / `vroam` arms of
+`home_card_tapped` still fire).
 The text below describes `main`.
 
 `AppTab` order is `home · line · temp · account` and the app opens on

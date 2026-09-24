@@ -93,9 +93,11 @@ struct ResumeBar: View {
         if let sms = waitingSms {
             // Name the one Resume actually opens, so the bar cannot promise one
             // number and deliver another.
+            // `compact` leaves a non-NANP number untouched.
+            let number = PhoneFormat.compact(sms.number)
             return waitingSmsCount > 1
-                ? String(localized: "Newest: \(sms.number)")
-                : sms.number
+                ? String(localized: "Newest: \(number)")
+                : number
         }
         return ""
     }

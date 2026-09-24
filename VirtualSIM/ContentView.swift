@@ -972,11 +972,16 @@ extension ContentView {
             state.flow = .thread
 
         // The Verify tab, with no line (fixture renamed in Task 7): the
-        // question, search, the app grid and the category chips.
+        // question, search, the app grid, the category chips and the
+        // own-number row.
         case .homeRouter:
             state.tab = .verify
             state.verifyPath = []
             state.lines = []
+            // The own-number row waits for `linesLoaded` (so a subscriber
+            // never sees it flash); `coldStart` sets it for a real user and
+            // is skipped here.
+            state.linesLoaded = true
             // A real profile, so Account's name and invite card are filled if
             // the frame is walked from here.
             state.profile = ScreenshotMode.sampleProfile
