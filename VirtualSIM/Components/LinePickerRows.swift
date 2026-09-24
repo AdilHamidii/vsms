@@ -5,7 +5,7 @@ import SwiftUI
 /// country, a city and a candidate number look identical wherever a user is
 /// choosing one.
 ///
-/// Extracted 2026-09-05, when "Change number" gained the picker. Until then
+/// Extracted 2026-09-05, when the number swap gained the picker. Until then
 /// every row had exactly one caller and lived privately in the store; a second
 /// caller meant either a copy of ~150 lines that would drift, or this file.
 ///

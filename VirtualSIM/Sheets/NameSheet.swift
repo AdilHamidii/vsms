@@ -113,7 +113,7 @@ struct NameSheet: View {
 
             // HIDDEN while there is nothing to save, never disabled: a greyed
             // button still advertises an action, and the empty field already
-            // says what is missing. Same rule as `LineScreen.actionFAB`.
+            // says what is missing. Same rule as the My number header's keypad button.
             if acceptable != nil {
                 PrimaryButton(label: String(localized: "Save"), disabled: saving) {
                     Task { await save() }

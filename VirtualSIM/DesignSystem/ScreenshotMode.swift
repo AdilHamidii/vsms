@@ -68,6 +68,11 @@ enum ScreenshotMode {
         // CTA and the trial line all follow the selection.
         case mailPaywallYearly
         case lineInbox       // an owned number, with conversations
+        case lineInboxEmpty  // a live line with no conversations yet
+        case lineCalls       // the Calls segment with sample history and the minutes footer
+        case lineNumber      // the Number segment: usage, Switch number…, Rent another, 911
+        case lineBanner      // a PAST-DUE line: the banner under the card, no Switch
+        case lineInboxMulti  // two live lines: the switcher and its elsewhere-unread badge
         // The keypad over a live line, with a number typed. The dialer is a
         // cover reached only by a tap, so without a frame it ships unseen.
         case lineDialer
@@ -155,18 +160,25 @@ extension ScreenshotMode {
     /// A line that looks lived-in. Deliberately part-used: a full 200/200
     /// allowance is the least informative state a meter can be in, and an
     /// untouched inbox does not show what the product is for.
-    static var sampleLine: Line {
+    static var sampleLine: Line { sampleLine() }
+
+    /// The sample line with another id / number / status (multi-line and
+    /// banner frames). Same body as before; only these three vary.
+    static func sampleLine(id: String = "sample-line",
+                           // A US number since 2026-09-06: the store defaults
+                           // every reader to the US and the listing leads with
+                           // "USA", so the owned-number frames show the same
+                           // country the store sells first. 555-01xx is the
+                           // reserved fictional range in every NANP area code.
+                           e164: String = "+12125550128",
+                           status: LineStatus = .active) -> Line {
         let now = Date()
         return Line(
-            id: "sample-line",
-            // A US number since 2026-09-06: the store defaults every reader to
-            // the US and the listing leads with "USA", so the owned-number
-            // frames show the same country the store sells first. 555-01xx is
-            // the reserved fictional range in every NANP area code.
-            e164: "+12125550128",
+            id: id,
+            e164: e164,
             countryCode: "US",
             numberType: "local",
-            status: .active,
+            status: status,
             currentPeriodStart: now.addingTimeInterval(-11 * 86_400),
             currentPeriodEnd: now.addingTimeInterval(19 * 86_400),
             graceUntil: nil,
@@ -188,6 +200,27 @@ extension ScreenshotMode {
             // prompt; walk that on a real account.
             lastSuccessAt: nil
         )
+    }
+
+    /// Four calls across two days: a missed one (red glyph), an outgoing one
+    /// with a settled duration, an incoming one, one awaiting its CDR.
+    static var sampleCalls: [LineCall] {
+        let now = Date()
+        func call(_ id: String, _ dir: LineCallDirection, _ peer: String,
+                  _ status: LineCallStatus, ago: TimeInterval, secs: Int?) -> LineCall {
+            LineCall(id: id, lineId: "sample-line", direction: dir, peerE164: peer,
+                     status: status, startedAt: now.addingTimeInterval(-ago),
+                     answeredAt: secs == nil ? nil : now.addingTimeInterval(-ago + 5),
+                     endedAt: secs.map { now.addingTimeInterval(-ago + 5 + Double($0)) },
+                     durationSeconds: secs, billedSeconds: secs,
+                     createdAt: now.addingTimeInterval(-ago))
+        }
+        return [
+            call("c1", .inbound,  "+13105550199", .missed,    ago: 900,     secs: nil),
+            call("c2", .outbound, "+13125550144", .completed, ago: 5_400,   secs: 142),
+            call("c3", .inbound,  "+13105550199", .completed, ago: 90_000,  secs: 63),
+            call("c4", .outbound, "+18885550111", .completed, ago: 93_600,  secs: nil),
+        ]
     }
 
     /// The number the `lineSwapConfirm` frame switches TO. US on purpose, so

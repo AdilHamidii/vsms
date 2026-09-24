@@ -1,7 +1,8 @@
 import SwiftUI
 
-/// The app's segmented control — Orders' Active/Past, the Number tab's
-/// Messages/Calls/Number, the eSIM tab's three sections.
+/// The app's segmented control — Orders' Active/Past, the eSIM tab's three
+/// sections (the My number tab uses `CapsuleSegmentedControl` since
+/// 2026-09-24).
 struct SegmentedTabs<Tag: Hashable>: View {
     @Environment(\.theme) private var theme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion

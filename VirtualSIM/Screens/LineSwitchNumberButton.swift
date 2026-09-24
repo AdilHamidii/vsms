@@ -1,103 +1,131 @@
 import SwiftUI
 
-/// "Change number" — the one affordance the second-number product is built
-/// around since 2026-09-01 (owner decision): a number that receives
-/// verification codes, and a fresh one for a few credits when a platform
-/// refuses the current one.
+/// "Switch" — the swap's two entry points (spec §4.5, owner 2026-09-24):
+/// a compact capsule on the number card, right of the number, and a
+/// "Switch number…" row in the Number segment. Both open `LineSwapSheet`.
 ///
-/// It renders on the live line itself, directly under the number, and the
-/// settings sheet reuses the same view so the entry point has exactly one
-/// definition. What it opens is `LineSwapSheet`.
+/// ── No price on the control (owner decision 2026-09-05) ───────────────────
+/// The price, the balance, the top-up path and "given up for good" live on
+/// the sheet's LAST page, after a number is chosen, so nothing is offered
+/// that `begin_line_swap` would refuse for money. The confirm page is the
+/// safety net against an accidental tap.
 ///
-/// ── No price on the button (owner decision 2026-09-05) ────────────────────
-///
-/// It used to read "Switch number · 8 credits" and, on confirm, bought the
-/// first free number in the same area code without checking the wallet. The
-/// first real complaint ("changing my number doesn't work") was a user with 6
-/// credits tapping an 8-credit button and getting a 402. Now the button names
-/// the action only; the price, the balance and the top-up path live on the
-/// LAST page of the sheet, after the user has chosen a country, a city and a
-/// number — so nothing is ever offered that the server would refuse for money.
-///
-/// Price rules, unchanged:
-/// - `app_config.line_swap_credits` is read live (`state.appStatus`). NO client
-///   default — a stale price in a confirmation is the "+3 credits" card that
-///   outlived its grant. Nil hides the button entirely, because a sheet that
-///   cannot quote a price cannot ask for money honestly.
-/// - Only an ACTIVE line can be swapped; `begin_line_swap` refuses anything
-///   else, and a button the server will refuse teaches the user the feature
-///   is broken.
+/// Price rules, unchanged: `app_config.line_swap_credits` is read live and
+/// has NO client default — nil HIDES the control (a sheet that cannot quote a
+/// price cannot ask for money). Only an ACTIVE line swaps. Hidden, never
+/// disabled.
 struct LineSwitchNumberButton: View {
     @Environment(\.theme) private var theme
     @Environment(AppState.self) private var state
     @Environment(APIClient.self) private var api
     @Environment(IAPStore.self) private var iap
+    @Environment(CallController.self) private var calls
 
     let line: Line
-    /// `.primary` is the filled capsule for the live-line screen; `.ghost` is
-    /// the quieter shape the settings sheet has always used.
-    var style: Style = .primary
+    var style: Style = .compact
+    /// `line_swap_open.from`: "home" (the card) or "number_segment" (the row).
+    let from: String
+    /// The new number, reported once the sheet has gone.
+    var onSwapped: (String) -> Void = { _ in }
 
-    enum Style { case primary, ghost }
+    enum Style { case compact, row }
 
     @State private var choosing = false
-    /// The number we moved to, held only long enough to confirm it on screen.
-    /// Without this the row simply changes underneath the user and nothing
-    /// says the thing they paid for actually happened.
-    @State private var swappedTo: String?
+    /// Set by the sheet the moment the cutover lands; reported on dismiss.
+    @State private var completedSwap: String?
 
-    private var swapCredits: Int? { state.appStatus.lineSwapCredits }
-    private var canSwap: Bool { swapCredits != nil && line.status == .active }
+    /// The one definition of "the swap is offered", for callers that lay out
+    /// around the control (the Number segment's divider).
+    static func isOffered(for line: Line, state: AppState) -> Bool {
+        state.appStatus.lineSwapCredits != nil && line.status == .active
+    }
 
     var body: some View {
-        if canSwap, let cost = swapCredits {
-            VStack(alignment: .leading, spacing: 8) {
-                switch style {
-                case .primary:
-                    PrimaryButton(label: String(localized: "Change number"),
-                                  icon: "arrow.triangle.2.circlepath") {
-                        RHaptic.select()
-                        choosing = true
-                    }
-                case .ghost:
-                    GhostButton(label: String(localized: "Change number"),
-                                icon: "arrow.triangle.2.circlepath") {
-                        RHaptic.select()
-                        choosing = true
-                    }
+        if let cost = state.appStatus.lineSwapCredits, line.status == .active {
+            trigger
+                // The picker borrows the tab's search state; clearing it on the
+                // way out keeps the store from inheriting a swap's place. The
+                // line reload happens HERE, after the sheet has gone, so the
+                // card's number visibly rolls to the new one (spec §3a) — the
+                // sheet's own last page shows the new number meanwhile.
+                .sheet(isPresented: $choosing, onDismiss: {
+                    state.clearLineDraft()
+                    guard let number = completedSwap else { return }
+                    completedSwap = nil
+                    onSwapped(number)
+                    Task { await state.loadLine(using: LineAPI(client: api)) }
+                }) {
+                    LineSwapSheet(line: line, cost: cost, from: from) { completedSwap = $0 }
+                        // 🔴 Sheet content does NOT inherit `@Observable`
+                        // environment objects. `IAPStore` is what the top-up
+                        // path needs, and it is a crash, not a blank screen.
+                        .environment(\.theme, theme)
+                        .environment(state)
+                        .environment(api)
+                        .environment(iap)
+                        .presentationDetents([.large])
+                        .presentationDragIndicator(.visible)
+                        .presentationBackground(theme.bg)
                 }
-
-                if let to = swappedTo {
-                    Text("Your new number is \(PhoneFormat.national(to)). Share it wherever you used the old one.")
-                        .font(RFont.text(12))
-                        .foregroundStyle(theme.text2)
-                        .fixedSize(horizontal: false, vertical: true)
+                // A picker is not work worth preserving over a live call, and
+                // a sheet would sit above the call screen (telephony trap 5).
+                .onChange(of: calls.isLive) { _, live in if live { choosing = false } }
+                .onAppear {
+                    // Screenshot harness: the HOME instance raises the sheet.
+                    if ScreenshotMode.screen == .lineSwapConfirm, from == "home" { choosing = true }
                 }
-            }
-            .onAppear {
-                // Screenshot harness: the swap sheet is `@State` here, so the
-                // frame raises it itself. The live-line instance only.
-                if ScreenshotMode.screen == .lineSwapConfirm, style == .primary { choosing = true }
-            }
-            // The picker borrows the Number tab's search state; on the way out
-            // it is cleared so the store never inherits a swap's country, city
-            // or offers. `clearLineDraft` is the same reset the tab runs on
-            // leaving — the dialer cannot be open under this sheet, so the
-            // call-price fields it also clears are already idle.
-            .sheet(isPresented: $choosing, onDismiss: { state.clearLineDraft() }) {
-                LineSwapSheet(line: line, cost: cost) { swappedTo = $0 }
-                    // 🔴 Sheet content does NOT inherit `@Observable`
-                    // environment objects from its presenter. `IAPStore` is
-                    // what the top-up path inside needs, and it is a crash on
-                    // presentation rather than a blank screen.
-                    .environment(\.theme, theme)
-                    .environment(state)
-                    .environment(api)
-                    .environment(iap)
-                    .presentationDetents([.large])
-                    .presentationDragIndicator(.visible)
-                    .presentationBackground(theme.bg)
-            }
         }
+    }
+
+    @ViewBuilder
+    private var trigger: some View {
+        switch style {
+        case .compact:
+            // Visible without competing (spec §4.5): neutral fill, a 1pt accent
+            // border, never accent-filled — the one-green rule holds.
+            Button(action: open) {
+                HStack(spacing: 6) {
+                    Image(systemName: "arrow.triangle.2.circlepath")
+                        .font(.system(size: 13, weight: .semibold))
+                    Text("Switch")
+                        .font(RFont.text(15, weight: .semibold))
+                }
+                .foregroundStyle(theme.text)
+                .padding(.horizontal, 14)
+                .frame(height: 36)
+                .background(theme.chipBg, in: .capsule)
+                .overlay(Capsule().strokeBorder(theme.ink, lineWidth: 1))
+                .frame(minHeight: 44)
+                .contentShape(.rect)
+            }
+            .buttonStyle(PressScaleStyle(scale: 0.95))
+            .fixedSize()
+            .accessibilityLabel(Text("Switch number"))
+        case .row:
+            Button(action: open) {
+                HStack(spacing: RSpace.md) {
+                    Image(systemName: "arrow.triangle.2.circlepath")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(theme.text2)
+                        .frame(width: 28)
+                    Text("Switch number…")
+                        .font(RFont.text(16))
+                        .foregroundStyle(theme.text)
+                    Spacer(minLength: RSpace.sm)
+                    Image(systemName: RIcon.chev)
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(theme.text3)
+                }
+                .padding(.horizontal, RSpace.lg)
+                .frame(minHeight: 52)
+                .contentShape(.rect)
+            }
+            .buttonStyle(PressScaleStyle(scale: 0.98, dim: true))
+        }
+    }
+
+    private func open() {
+        RHaptic.select()
+        choosing = true
     }
 }

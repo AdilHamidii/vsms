@@ -9,9 +9,13 @@ import SwiftUI
 /// initial; unnamed ones a person glyph — never a guessed letter from the
 /// phone number.
 struct PeerAvatar: View {
+    @Environment(\.theme) private var theme
     let e164: String
     var name: String? = nil
     var size: CGFloat = 44
+    /// The My number tab's lists (spec §4.3, one-green rule): a `chipBg` disc
+    /// with a `text2` glyph instead of the hashed colour.
+    var neutral: Bool = false
 
     /// A fixed palette, deliberately independent of the user's accent choice:
     /// avatars must not all turn green, and none of these are `live`/`warn`/
@@ -47,15 +51,15 @@ struct PeerAvatar: View {
 
     var body: some View {
         ZStack {
-            Circle().fill(color)
+            Circle().fill(neutral ? theme.chipBg : color)
             if let initial {
                 Text(verbatim: initial)
                     .font(.system(size: size * 0.42, weight: .semibold, design: .rounded))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(neutral ? theme.text2 : .white)
             } else {
                 Image(systemName: "person.fill")
                     .font(.system(size: size * 0.42, weight: .medium))
-                    .foregroundStyle(.white.opacity(0.92))
+                    .foregroundStyle(neutral ? theme.text2 : .white.opacity(0.92))
             }
         }
         .frame(width: size, height: size)

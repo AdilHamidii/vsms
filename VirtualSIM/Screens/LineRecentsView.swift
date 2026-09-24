@@ -8,8 +8,8 @@ import SwiftUI
 /// person back) and had no way to do it. Every action here starts from a number
 /// that is already on screen; nothing needs typing.
 ///
-/// The minutes meter stays at the top of THIS segment and nowhere else: it
-/// meters calls, so it belongs over the calls. It sat above the segmented
+/// The minutes meter stays at the foot of this segment and nowhere else: it
+/// meters calls, so it belongs with the calls. It sat above the segmented
 /// control once and metered a subscriber's empty inbox with "78 minutes left".
 struct LineRecentsView: View {
     @Environment(\.theme) private var theme
@@ -31,24 +31,21 @@ struct LineRecentsView: View {
     private var calls: [LineCall] { state.callsForSelectedLine }
 
     var body: some View {
-        Group {
+        VStack(alignment: .leading, spacing: RSpace.lg) {
             if calls.isEmpty {
-                VStack(spacing: 0) {
-                    strip.padding(.horizontal, RSpace.gutter)
-                    EmptyState(
-                        icon: RIcon.phone,
-                        title: "No calls yet",
-                        message: "Calls you make and receive on this number appear here."
-                    )
-                    .padding(.top, 6)
-                }
+                EmptyState(icon: RIcon.phone,
+                           title: "No calls yet",
+                           message: "Calls you make and receive on this number appear here.",
+                           tint: theme.text2)
             } else {
-                ScrollView {
-                    LazyVStack(alignment: .leading, spacing: 8, pinnedViews: []) {
-                        strip.padding(.bottom, 6)
-                        ForEach(days) { day in
-                            dayHeader(day.date)
+                ForEach(days) { day in
+                    VStack(alignment: .leading, spacing: RSpace.sm) {
+                        dayHeader(day.date)
+                        VStack(spacing: 0) {
                             ForEach(day.calls) { call in
+                                if call.id != day.calls.first?.id {
+                                    RowRule(inset: RSpace.lg + 40 + RSpace.md)
+                                }
                                 RecentRow(
                                     call: call,
                                     name: state.contactName(for: call.peerE164),
@@ -60,18 +57,14 @@ struct LineRecentsView: View {
                                     onCallBack: { callBack(call) },
                                     onOpenThread: { open(thread(for: call.peerE164)) },
                                     onCopy: { copy(call) },
-                                    onAddName: { naming = PeerRef(id: call.peerE164) }
-                                )
+                                    onAddName: { naming = PeerRef(id: call.peerE164) })
                             }
                         }
+                        .background(theme.elev, in: .rect(cornerRadius: RRadius.group, style: .continuous))
                     }
-                    .padding(.horizontal, RSpace.gutter)
-                    // Clears the dial FAB, which sits over the bottom-trailing
-                    // corner of this list (the native tab bar insets the
-                    // scroll view itself).
-                    .padding(.bottom, LineScreen.fabClearance)
                 }
             }
+            allowanceFooter
         }
         .sheet(item: $naming) { peer in
             PeerNameSheet(e164: peer.id)
@@ -81,14 +74,16 @@ struct LineRecentsView: View {
                 .presentationDragIndicator(.visible)
                 .presentationBackground(theme.bg)
         }
+        .onChange(of: calling.isLive) { _, live in if live { naming = nil } }
     }
 
-    private var strip: some View {
-        // The hero header already states the renewal date and the allowance
-        // resets on renewal, so the strip's own copy of it would print the same
-        // date twice on one screen.
+    /// Minutes left. NO reset date: `allowanceResetsAt` is the renewal date,
+    /// and the owner keeps this tab plan-free (ruling 2026-09-24). The meter
+    /// meters calls, so it stays in Calls.
+    private var allowanceFooter: some View {
         AllowanceStrip(line: line, showsResetDate: false)
-            .padding(.bottom, 14)
+            .padding(RSpace.lg)
+            .background(theme.elev, in: .rect(cornerRadius: RRadius.group, style: .continuous))
     }
 
     // MARK: - Grouping
@@ -129,9 +124,7 @@ struct LineRecentsView: View {
         .font(RFont.display(12, weight: .semibold))
         .tracking(0.2)
         .foregroundStyle(theme.text3)
-        .padding(.horizontal, 4)
-        .padding(.top, 10)
-        .padding(.bottom, 2)
+        .padding(.horizontal, RSpace.xs)
     }
 
     // MARK: - Actions
@@ -147,7 +140,7 @@ struct LineRecentsView: View {
         }
     }
 
-    /// Gated exactly as the FAB is: no voice client, no offer to dial. A
+    /// Gated exactly as the header's keypad is: no voice client, no offer to dial. A
     /// disabled "Call back" still advertises a capability the build cannot
     /// deliver.
     private func callBack(_ call: LineCall) {
@@ -206,13 +199,13 @@ private struct RecentRow: View {
         VStack(spacing: 0) {
             Button(action: onTap) {
                 HStack(spacing: 12) {
-                    PeerAvatar(e164: call.peerE164, name: name, size: 42)
+                    PeerAvatar(e164: call.peerE164, name: name, size: 40, neutral: true)
                     VStack(alignment: .leading, spacing: 3) {
                         Text(verbatim: title)
                             .font(RFont.text(15, weight: .semibold))
-                            // Missed calls are the one thing on this screen a
-                            // user scans for, so they keep the red they had.
-                            .foregroundStyle(call.status.isMissed ? theme.fail : theme.text)
+                            // A missed call shows a red GLYPH, not a red name
+                            // (spec §4.3): one warning channel per row.
+                            .foregroundStyle(theme.text)
                             .lineLimit(1)
                         HStack(spacing: 5) {
                             Image(systemName: icon)
@@ -244,7 +237,8 @@ private struct RecentRow: View {
                         .accessibilityLabel(Text("Call back"))
                     }
                 }
-                .padding(14)
+                .padding(.horizontal, RSpace.lg)
+                .padding(.vertical, RSpace.md)
                 .contentShape(.rect)
             }
             .buttonStyle(.plain)
@@ -272,12 +266,10 @@ private struct RecentRow: View {
                                tint: theme.text, run: onAddName)
                     }
                 }
-                .padding(.horizontal, 14)
-                .padding(.bottom, 14)
+                .padding([.horizontal, .bottom], RSpace.lg)
                 .transition(.opacity.combined(with: .move(edge: .top)))
             }
         }
-        .background(theme.elev, in: .rect(cornerRadius: RRadius.group))
     }
 
     private func action(icon: String, label: LocalizedStringKey, tint: Color,

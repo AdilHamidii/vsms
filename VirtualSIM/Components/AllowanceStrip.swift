@@ -17,11 +17,8 @@ struct AllowanceStrip: View {
 
     /// Whether to print the reset date under the gauges.
     ///
-    /// Off on the Number tab since the hero header gained `renews <date>`: the
-    /// allowance resets ON renewal, so the two lines are the same date by
-    /// construction and printing both says one thing twice. Kept as a parameter
-    /// rather than deleted because the strip is reusable and the date is the
-    /// right thing to show anywhere the renewal is not already stated.
+    /// OFF on the My number tab's Calls footer: the reset date IS the renewal
+    /// date, and the tab is plan-free (owner, 2026-09-24).
     var showsResetDate: Bool = true
 
     var body: some View {
@@ -42,15 +39,9 @@ struct AllowanceStrip: View {
             // on 2026-09-08 and proven off-net, so that argument no longer
             // holds.**
             //
-            // The rule survives on a different footing: the count IS shown, in
-            // the composer (`ThreadScreen`, "N texts left this month"), which is
-            // where it is spendable and therefore where it means something. A
-            // second copy here would be a claim on the screen a subscriber opens
-            // daily, in a strip whose other gauges are about MINUTES.
-            // `NumberDetailView` deleted its own copy of this row, and its
-            // comment forbids re-purposing it as an INBOUND counter — that part
-            // is unconditional: inbound is unmetered, so a bar that only ever
-            // falls would invent a limit that does not exist.
+            // The count is shown in the Number segment's Usage group
+            // (`LineNumberSegment`, 'Texts you can send') and, at ≤ 10, under
+            // the composer. Never an INBOUND counter.
             //
             // Restored in the commit that shipped the dialer. It was held
             // back while `flow = .dialer` was assigned nowhere, because a
@@ -106,7 +97,7 @@ struct AllowanceStrip: View {
         let left = 1 - fraction
         if left <= 0.05 { return theme.fail }
         if left <= 0.20 { return theme.warn }
-        return theme.ink
+        return theme.text2
     }
 }
 
@@ -123,7 +114,7 @@ struct AllowanceBar: View {
         let left = 1 - fraction
         if left <= 0.05 { return theme.fail }
         if left <= 0.20 { return theme.warn }
-        return theme.ink
+        return theme.text2
     }
 
     var body: some View {

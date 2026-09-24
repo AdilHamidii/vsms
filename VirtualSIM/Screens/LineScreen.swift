@@ -89,123 +89,64 @@ extension View {
     }
 }
 
-/// A line that exists — shaped like a phone app (2026-08-27).
+/// A live line (spec §4.3): the title, the number card, the status banners,
+/// and Messages · Calls · Number. No FAB — compose and the keypad are the
+/// header's one trailing button, and the Switch capsule is on the card.
 ///
-/// It used to open with a 34pt centred hero: the number, Copy and Share
-/// capsules, a status line, and only then a three-way segmented control whose
-/// third segment was the billing screen. That is a product page, not a tool.
-/// A phone app has TWO places you live in — recents and conversations — and a
-/// settings screen you visit twice a year, so:
-///
-/// - the hero collapses into one slim bar (flag, number, live dot, gear),
-///   keeping tap-to-copy and Share as an icon,
-/// - the segments are **Recents | Messages**,
-/// - everything the Number segment held moved behind the gear into
-///   `LineSettingsScreen`,
-/// - a floating dial FAB sits over both segments, so the keypad is reachable
-///   from wherever you are rather than only from inside Calls.
-///
-/// `LineStatusBanner` and `VoiceReadinessNotice` stay directly under the header
-/// and did NOT move into settings. They are honesty surfaces — "your payment
-/// failed", "your number cannot receive calls yet" — and a fault the user has
-/// to go looking for is a fault they find out about from a stranger who could
-/// not reach them.
-/// The line tab's floating action button geometry, shared by the FAB and by
-/// the lists that scroll under it (`LineRecentsView`, the Messages list).
-extension LineScreen {
-    /// The FAB's gap above the bottom of the safe area — which, under the
-    /// native `TabView`, is already the top of the tab bar (and of ResumeBar
-    /// when one is showing).
-    static let fabBottomInset: CGFloat = RSpace.xl
-    /// What a list under the FAB reserves at its end so its last row can
-    /// scroll clear of the 60pt button: inset + button + a gap.
-    static let fabClearance: CGFloat = fabBottomInset + 60 + RSpace.md
-}
-
+/// `LineStatusBanner` and `VoiceReadinessNotice` stay directly under the card
+/// and never move into a segment: they are honesty surfaces, and a fault the
+/// user has to go looking for is a fault they learn about from a stranger.
 private struct LiveLineView: View {
     @Environment(\.theme) private var theme
     @Environment(AppState.self) private var state
     @Environment(APIClient.self) private var api
     @Environment(SubscriptionStore.self) private var subs
     @Environment(CallController.self) private var calling
-    /// Threaded through `LineEnv` for the settings sheet, whose "Change
-    /// number" button opens a picker that can end on a credits top-up.
+    /// Threaded through `LineEnv` for `PeerNameSheet`.
     @Environment(IAPStore.self) private var iap
 
     let line: Line
 
-    private enum Seg: Hashable { case recents, messages }
-    /// Opens on Messages, deliberately unchanged: inbound SMS is the half of
-    /// this product that demonstrably works, and the empty-inbox card is the
-    /// one instruction a new subscriber needs in their first minute.
-    @State private var seg: Seg = .messages
-    @State private var copied = false
-    @State private var showingSettings = false
-    /// Set by the settings sheet, acted on once it has actually gone. Assigning
-    /// `state.flow` from inside a sheet asks SwiftUI to present a
-    /// `fullScreenCover` from a view that is being torn down — sometimes it
-    /// works, sometimes the cover never appears, and nothing logs a reason.
-    @State private var pendingRentAnother = false
+    enum Seg: CaseIterable, Hashable { case messages, calls, number }
+
+    /// Opens on Messages: inbound SMS is the half that demonstrably works.
+    @State private var seg: Seg = LiveLineView.initialSeg
     @State private var naming: PeerRef?
+    @State private var swappedTo: String?
+
+    /// Screenshot harness: `lineCalls` / `lineNumber` open on their segment.
+    private static var initialSeg: Seg {
+        switch ScreenshotMode.screen {
+        case .lineCalls:  .calls
+        case .lineNumber: .number
+        default:          .messages
+        }
+    }
 
     var body: some View {
-        ZStack(alignment: .bottomTrailing) {
-            VStack(spacing: 0) {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 0) {
                 header
-                // The product's one action, on the product's one screen
-                // (owner decision 2026-09-01): a fresh number for a few credits
-                // when a platform refuses this one. It renders only for an
-                // active line with a live price — see the button's own doc.
-                if !line.status.isSettingUp {
-                    LineSwitchNumberButton(line: line, style: .primary)
-                        .padding(.horizontal, RSpace.gutter)
-                        .padding(.top, 10)
-                }
+                LineNumberCard(line: line, swappedTo: $swappedTo)
+                    .padding(.top, RSpace.lg)
                 LineStatusBanner(line: line)
-                    .padding(.horizontal, RSpace.gutter)
                 VoiceReadinessNotice(readiness: calling.readiness)
-                    .padding(.horizontal, RSpace.gutter)
-
                 if line.status.isSettingUp {
                     provisioning
                 } else {
-                    SegmentedTabs(selection: $seg, items: [
-                        (.recents, String(localized: "Recents"), nil),
-                        (.messages, String(localized: "Messages"),
-                         unreadCount == 0 ? nil : unreadCount),
-                    ])
-                    .padding(.horizontal, 16).padding(.top, 12).padding(.bottom, 10)
-
-                    // No blanket `.animation` here — `SegmentedTabs` already
-                    // wraps its selection change in `withAnimation`, which
-                    // these transitions pick up.
-                    ZStack {
-                        switch seg {
-                        case .recents:  LineRecentsView(line: line).transition(.opacity)
-                        case .messages: messages.transition(.opacity)
-                        }
+                    CapsuleSegmentedControl(selection: $seg, tags: Seg.allCases) { tag, _ in
+                        segmentLabel(tag)
                     }
+                    .padding(.top, RSpace.xl)
+                    segmentContent
+                        .padding(.top, RSpace.lg)
                 }
-                Spacer(minLength: 0)
             }
-
-            // Follows the segment; the call half is hidden on a build with no
-            // voice client — see `actionFAB`.
-            if !line.status.isSettingUp { actionFAB }
+            .padding(.horizontal, RSpace.gutter)
+            .padding(.bottom, RSpace.xxl)
         }
-        .background(theme.bg)
-        .sheet(isPresented: $showingSettings, onDismiss: openStoreIfRequested) {
-            LineSettingsScreen(line: line,
-                               onRentAnother: { pendingRentAnother = true })
-                // 🔴 Sheet content does NOT inherit `@Observable` environment
-                // objects from its presenter. `SubscriptionStore` in
-                // particular is a crash on presentation, not a blank screen.
-                .modifier(LineEnv(theme: theme, state: state, api: api,
-                                  subs: subs, calling: calling, iap: iap))
-                .presentationDetents([.large])
-                .presentationDragIndicator(.visible)
-                .presentationBackground(theme.bg)
-        }
+        .scrollIndicators(.hidden)
+        .background(theme.bg.ignoresSafeArea())
         .sheet(item: $naming) { peer in
             PeerNameSheet(e164: peer.id)
                 .modifier(LineEnv(theme: theme, state: state, api: api,
@@ -261,262 +202,109 @@ private struct LiveLineView: View {
         // the dialer mints a credential for, and calls out from, whichever line
         // the server picks rather than the one on screen.
         .onAppear { calling.activeLineId = line.id }
-        .onChange(of: line.id) { _, id in calling.activeLineId = id }
+        .onChange(of: line.id) { _, id in
+            calling.activeLineId = id
+            swappedTo = nil
+        }
+        // A name sheet would sit above the call screen (telephony trap 5).
+        .onChange(of: calling.isLive) { _, live in if live { naming = nil } }
     }
 
     private var unreadCount: Int {
         state.threadsForSelectedLine.reduce(0) { $0 + $1.unreadCount }
     }
 
-    private func openStoreIfRequested() {
-        guard pendingRentAnother else { return }
-        pendingRentAnother = false
-        state.flow = .lineStoreMore
-    }
+    // MARK: Header
 
-    // MARK: - Header
-
-    /// One slim bar: whose number this is, whether it is live, and the way into
-    /// settings.
-    ///
-    /// The number is still the first thing on the screen and still copies on
-    /// tap — that muscle memory is cheap to keep and it is what a subscriber
-    /// came here to do. What it no longer does is take a third of the viewport
-    /// to say it, above two lists that are the actual product.
     private var header: some View {
-        HStack(spacing: 11) {
-            CodeFlag(code: line.countryCode, size: 28, style: .circle)
-
-            VStack(alignment: .leading, spacing: 2) {
-                HStack(spacing: 7) {
-                    Button { copyNumber() } label: {
-                        HStack(spacing: 7) {
-                            Circle().fill(statusTint).frame(width: 7, height: 7)
-                            Text(verbatim: PhoneFormat.national(line.e164))
-                                .numberStyle(size: 17, color: theme.text)
-                                .lineLimit(1)
-                                .minimumScaleFactor(0.7)
-                        }
-                        .contentShape(.rect)
-                    }
-                    .buttonStyle(PressScaleStyle())
-
-                    // Only when there is a choice to make. One number must look
-                    // exactly as it did before multi-number existed.
-                    if state.hasMultipleLines { lineSwitcher }
-                }
-                subtitle
-            }
-
-            Spacer(minLength: 8)
-
-            // Sharing the number is genuinely the next step for a new
-            // subscriber, so it keeps a permanent affordance — as an icon now
-            // rather than a full-width capsule.
-            // An explicit copy control beside the tap-to-copy number. The
-            // number is what a subscriber pastes into a signup form, and a
-            // hidden gesture is not an affordance a first-time user can find.
-            Button { copyNumber() } label: {
-                iconChip(RIcon.copy)
-            }
-            .buttonStyle(.plain)
-            .pressable(0.9)
-            .accessibilityLabel(Text("Copy number"))
-
-            ShareLink(item: PhoneFormat.national(line.e164)) {
-                iconChip("square.and.arrow.up")
-            }
-            .simultaneousGesture(TapGesture().onEnded { RHaptic.select() })
-
-            Button {
-                RHaptic.select()
-                showingSettings = true
-            } label: {
-                iconChip(RIcon.gear)
-            }
-            .buttonStyle(.plain)
-            .pressable(0.9)
-            .accessibilityLabel(Text("Number settings"))
+        HStack(alignment: .center) {
+            Text("My number")
+                .displayType(30)
+                .foregroundStyle(theme.text)
+            Spacer(minLength: RSpace.md)
+            headerAction
         }
-        .padding(.horizontal, RSpace.gutter)
-        .padding(.top, 8)
-        .padding(.bottom, 4)
+        // The button's height, held when Number shows none, so the card does
+        // not jump up when that segment is selected.
+        .frame(minHeight: 44)
+        .padding(.top, RSpace.lg)
     }
 
-    private func iconChip(_ icon: String) -> some View {
-        Image(systemName: icon)
-            .font(.system(size: 14, weight: .semibold))
-            .foregroundStyle(theme.text2)
-            .frame(width: 36, height: 36)
-            .background(theme.chipBg, in: .circle)
-            .contentShape(.circle)
-    }
-
-    /// The dot's colour, matching what `LineStatusBanner` says in a sentence
-    /// underneath. Two components describing the same fault must at least agree
-    /// on whether there is one.
-    private var statusTint: Color {
-        switch line.status {
-        case .active:            theme.live
-        case .grace, .pastDue:   theme.warn
-        case .suspended, .failed: theme.fail
-        default:                 theme.text3
-        }
-    }
-
-    /// One quiet line under the number: copied, or how to copy.
-    ///
-    /// "Active · renews <date>" lived here until 2026-09-01 and is GONE with
-    /// every other plan/renewal mention on the Number tab (owner decision):
-    /// this screen is about receiving codes, not about the subscription.
-    ///
-    /// Deliberately says nothing about a PROBLEM state — `LineStatusBanner`
-    /// sits directly below and explains grace, past-due and suspension in a
-    /// full sentence. Two components describing the same fault, one in three
-    /// words and one in thirty, is how they drift apart.
+    /// The segment's one action. 🔴 The keypad is HIDDEN, never disabled,
+    /// without a voice client: a disabled button still advertises a
+    /// capability the build lacks. Compose has no such gate — every refusal
+    /// `send-line-message` can make is stated inside `ComposeScreen`.
     @ViewBuilder
-    private var subtitle: some View {
-        if copied {
-            Text("Copied")
-                .font(RFont.text(12, weight: .medium))
-                .foregroundStyle(theme.live)
-        } else {
-            Text("Tap the number to copy it")
-                .font(RFont.text(12))
-                .foregroundStyle(theme.text3)
-        }
-    }
-
-    private func copyNumber() {
-        UIPasteboard.general.string = line.e164
-        RHaptic.select()
-        withAnimation(RMotion.select) { copied = true }
-        Task {
-            try? await Task.sleep(for: .seconds(1.6))
-            withAnimation(RMotion.select) { copied = false }
-        }
-    }
-
-    /// Pick which of your numbers the tab is showing.
-    ///
-    /// A Menu rather than a segmented control: the cap is 5 and the labels are
-    /// full phone numbers, which will not fit across the width of an iPhone SE.
-    /// Each row carries its own unread count, because the whole point of the
-    /// switcher is noticing that the OTHER number has a message waiting.
-    private var lineSwitcher: some View {
-        Menu {
-            ForEach(state.lines.filter { $0.status.isLive }) { l in
-                Button {
-                    RHaptic.select()
-                    withAnimation(RMotion.select) { state.selectedLineId = l.id }
-                } label: {
-                    let unread = state.lineThreads
-                        .filter { $0.lineId == l.id }
-                        .reduce(0) { $0 + $1.unreadCount }
-                    Label(
-                        unread > 0
-                            ? "\(PhoneFormat.national(l.e164))  (\(unread))"
-                            : PhoneFormat.national(l.e164),
-                        systemImage: l.id == line.id ? RIcon.check : "")
-                }
-            }
-        } label: {
-            HStack(spacing: 4) {
-                Image(systemName: "chevron.up.chevron.down")
-                    .font(.system(size: 9, weight: .semibold))
-                    .foregroundStyle(theme.text3)
-                // Unread on the numbers you are NOT looking at. Without this the
-                // switcher is invisible when it matters most — a message
-                // arriving on the other number looks like nothing happened.
-                let elsewhere = state.lineThreads
-                    .filter { $0.lineId != line.id }
-                    .reduce(0) { $0 + $1.unreadCount }
-                if elsewhere > 0 {
-                    Text(verbatim: "\(elsewhere)")
-                        .font(RFont.text(10, weight: .heavy))
-                        .foregroundStyle(theme.onInk)
-                        .padding(.horizontal, 5).padding(.vertical, 1)
-                        .background(theme.ink, in: .capsule)
-                }
-            }
-            .frame(minWidth: 28, minHeight: 44, alignment: .leading)
-            .contentShape(.rect)
-        }
-        .buttonStyle(.plain)
-    }
-
-    // MARK: - Dial FAB
-
-    /// The one entry point to the keypad, on BOTH segments.
-    ///
-    /// It was a capsule inside the Calls list, so dialling required first
-    /// finding the segment that holds the keypad — and on the empty state it
-    /// competed with the empty-state copy for the same 200 points of screen.
-    ///
-    /// ONE floating action, and it follows the segment — keypad on Recents,
-    /// new message on Messages.
-    ///
-    /// Two FABs in the same corner is the obvious alternative and it is worse:
-    /// the thumb target is one place, and stacking them would put the less
-    /// relevant action under the more relevant one on both segments. A phone
-    /// app makes the same choice — the keypad lives in Recents, the pencil in
-    /// Messages.
-    ///
-    /// 🔴 HIDDEN, never disabled, when no voice client is attached. A disabled
-    /// button still advertises the feature, and on a build without the SDK that
-    /// is a promise the app cannot keep. Same rule as `RecentRow`'s call-back
-    /// glyph. The COMPOSE half has no equivalent gate: `send-line-message` is
-    /// always reachable, and every refusal it can make (allowance, lapse,
-    /// international recipient) is stated inside `ComposeScreen` where the
-    /// user can see which one applies.
-    @ViewBuilder
-    private var actionFAB: some View {
+    private var headerAction: some View {
         switch seg {
         case .messages:
-            fab(icon: "square.and.pencil", label: Text("New message")) {
+            roundButton(icon: "square.and.pencil", label: Text("New message")) {
                 state.flow = .compose
             }
-        case .recents:
+        case .calls:
             if calling.isVoiceAvailable {
-                fab(icon: "circle.grid.3x3.fill", label: Text("Make a call")) {
+                roundButton(icon: "circle.grid.3x3.fill", label: Text("Make a call")) {
                     state.flow = .dialer
                 }
             }
+        case .number:
+            EmptyView()
         }
     }
 
-    private func fab(icon: String, label: Text,
-                     action: @escaping () -> Void) -> some View {
+    private func roundButton(icon: String, label: Text,
+                             action: @escaping () -> Void) -> some View {
         Button {
             RHaptic.select()
             action()
         } label: {
             Image(systemName: icon)
-                .font(.system(size: 22, weight: .semibold))
-                .foregroundStyle(theme.onInk)
-                .frame(width: 60, height: 60)
-                .background(theme.ink, in: .circle)
+                .font(.system(size: 17, weight: .semibold))
+                .foregroundStyle(theme.text)
+                .frame(width: 44, height: 44)
+                .background(theme.chipBg, in: .circle)
                 .contentShape(.circle)
         }
-        .buttonStyle(.plain)
-        .pressable(0.94)
+        .buttonStyle(PressScaleStyle(scale: 0.92))
         .accessibilityLabel(label)
-        .padding(.trailing, RSpace.gutter)
-        // 108 until 2026-09-24, sized to clear the old floating custom tab
-        // bar; the native bar sits below the safe area, so only a gap remains.
-        .padding(.bottom, LineScreen.fabBottomInset)
     }
 
-    // MARK: - Provisioning
+    // MARK: Segments
 
-    /// The number exists at Telnyx but is not usable yet. Number orders are
-    /// asynchronous (`pending` → `success`), so this is a real state rather
-    /// than a spinner standing in for one.
+    @ViewBuilder
+    private func segmentLabel(_ tag: Seg) -> some View {
+        switch tag {
+        case .messages:
+            HStack(spacing: 5) {
+                Text("Messages")
+                if unreadCount > 0 {
+                    Text(verbatim: "\(unreadCount)")
+                        .monospacedDigit()
+                        .foregroundStyle(theme.text2)
+                }
+            }
+        case .calls:  Text("Calls")
+        case .number: Text("Number")
+        }
+    }
+
+    @ViewBuilder
+    private var segmentContent: some View {
+        switch seg {
+        case .messages: messages
+        case .calls:    LineRecentsView(line: line)
+        case .number:   LineNumberSegment(line: line) { swappedTo = $0 }
+        }
+    }
+
+    // MARK: Provisioning
+
+    /// The number exists but is not usable yet (orders are asynchronous).
     private var provisioning: some View {
-        VStack(spacing: 10) {
+        VStack(spacing: RSpace.sm) {
             ProgressView()
             Text("Setting up your number")
-                .font(RFont.display(16, weight: .semibold))
+                .font(RFont.text(16, weight: .semibold))
                 .foregroundStyle(theme.text)
             Text("This usually takes a few seconds. You can leave this screen, and we'll let you know when it's ready.")
                 .font(RFont.text(13))
@@ -524,114 +312,54 @@ private struct LiveLineView: View {
                 .multilineTextAlignment(.center)
                 .fixedSize(horizontal: false, vertical: true)
         }
-        .padding(.horizontal, 40)
         .frame(maxWidth: .infinity)
-        .padding(.top, 60)
+        .padding(.top, RSpace.xxl)
     }
 
-    // MARK: - Messages
+    // MARK: Messages
 
-    /// The empty inbox is what a user who just paid for a month actually looks
-    /// at for their first hour, so it is the screen that most deserves
-    /// designing. (The charge is $5.99/mo or $59.99/yr in the USA since
-    /// 2026-09-02 — never quoted as a literal on any screen; StoreKit's own
-    /// `displayPrice` is the only figure a user is shown.)
-    ///
-    /// 🔴 IT IS THE CANCELLATION SCREEN. Every subscriber so far killed
-    /// auto-renew at a median of 3.9 minutes after paying, and lifetime inbound
-    /// is 8 messages across 13 subscriptions — so what they bought, looked at,
-    /// and cancelled is this exact view with nothing in it. Silence on a screen
-    /// that is supposed to receive reads as "the number is dead", and nothing
-    /// here ever told them how to find out otherwise.
-    ///
-    /// So it is ONE instruction, not an invitation to share and wait: **text
-    /// the number from your own phone.** Inbound SMS is the half that
-    /// demonstrably works (3 of 3 lifetime), it costs the user nothing, it
-    /// needs no second person, and it answers the only question they have in
-    /// seconds.
-    ///
-    /// ⚠️ It must NOT say "call it and see". Inbound CALLING has never
-    /// connected once, so half the instruction would be a broken promise on the
-    /// same card — and this is the surface the product's credibility rests on.
+    /// One inset-grouped list (spec §4.3). The empty state names no service:
+    /// the old proof-of-life card's "and most other apps" was unmeasured.
+    /// Rendered only once the first read has answered (the 2026-09-06 flash).
     @ViewBuilder
     private var messages: some View {
-        if state.threadsForSelectedLine.isEmpty {
-            // Only once the first read has answered. Before that an empty
-            // list means "not asked yet", and showing the instruction card
-            // over an inbox that is about to fill is the flash a subscriber
-            // reported on 2026-09-06. `coldStart` answers it before the
-            // reveal, so this is normally never blank on screen.
+        let threads = state.threadsForSelectedLine
+        if threads.isEmpty {
             if state.lineThreadsLoaded {
-                proofOfLife
-                    .padding(.horizontal, RSpace.gutter)
-                    .padding(.top, 24)
+                VStack(spacing: RSpace.sm) {
+                    Image(systemName: RIcon.message)
+                        .font(.system(size: 22, weight: .medium))
+                        .foregroundStyle(theme.text3)
+                    Text("Codes and texts sent to this number appear here.")
+                        .font(RFont.text(15))
+                        .foregroundStyle(theme.text2)
+                        .multilineTextAlignment(.center)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, RSpace.xxl)
             }
         } else {
-            ScrollView {
-                LazyVStack(spacing: 8) {
-                    ForEach(state.threadsForSelectedLine) { thread in
-                        ThreadRow(
-                            thread: thread,
-                            name: state.contactName(for: thread.peerE164),
-                            onAddName: { naming = PeerRef(id: thread.peerE164) },
-                            onCopy: { UIPasteboard.general.string = thread.peerE164
-                                      RHaptic.select() },
-                            onTap: {
-                                state.openThreadId = thread.id
-                                state.flow = .thread
-                            })
+            VStack(spacing: 0) {
+                ForEach(threads) { thread in
+                    if thread.id != threads.first?.id {
+                        RowRule(inset: RSpace.lg + 40 + RSpace.md)
                     }
+                    ThreadRow(
+                        thread: thread,
+                        name: state.contactName(for: thread.peerE164),
+                        onAddName: { naming = PeerRef(id: thread.peerE164) },
+                        onCopy: { UIPasteboard.general.string = thread.peerE164
+                                  RHaptic.select() },
+                        onTap: {
+                            state.openThreadId = thread.id
+                            state.flow = .thread       // Task 6 turns this into a push
+                        })
                 }
-                .padding(.horizontal, RSpace.gutter)
-                // Clears the FAB in the same corner (the native tab bar
-                // insets the scroll view itself).
-                .padding(.bottom, LineScreen.fabClearance)
             }
+            .background(theme.elev, in: .rect(cornerRadius: RRadius.group, style: .continuous))
         }
     }
-
-    /// The one card the empty inbox shows: how to prove the number works.
-    ///
-    /// A `Card` rather than the shared `EmptyState`, deliberately. `EmptyState`
-    /// is centred chrome that says "there is nothing here" — which is the
-    /// reading that gets this product cancelled. This is an instruction, so it
-    /// is left-aligned, raised, and reads as something to act on.
-    private var proofOfLife: some View {
-        Card(radius: RRadius.card, elevation: .flat) {
-            VStack(alignment: .leading, spacing: 10) {
-                HStack(spacing: 8) {
-                    // The live dot is the same grammar as the header's status
-                    // dot: this is a state, not a decoration.
-                    Circle().fill(theme.live).frame(width: 7, height: 7)
-                    Text("Your number is live")
-                        .font(RFont.display(17, weight: .semibold))
-                        .tracking(-0.3)
-                        .foregroundStyle(theme.text)
-                }
-                // Codes-first (2026-09-01). Names only services that have
-                // delivered a real code to a rented number — WhatsApp, TikTok
-                // and DoorDash each have — never a guess.
-                Text("Use it to sign up for WhatsApp, TikTok, DoorDash and most other apps — the code appears here within seconds, with one tap to copy it.")
-                    .font(RFont.text(14))
-                    .lineSpacing(2)
-                    .foregroundStyle(theme.text2)
-                    .fixedSize(horizontal: false, vertical: true)
-                // Points at the header rather than repeating it — one number
-                // per screen, so a swap has one place to be correct.
-                Text("If a code doesn't arrive, some platforms refuse virtual numbers — switch to a new number from the button above.")
-                    .font(RFont.text(12))
-                    .foregroundStyle(theme.text3)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            .padding(18)
-            .frame(maxWidth: .infinity, alignment: .leading)
-        }
-    }
-
-    // The "New message" affordance came back on 2026-09-08 with outbound SMS,
-    // as the Messages half of `actionFAB` rather than as an inline button in
-    // both states — one floating action per segment, in the place the thumb
-    // already goes for the keypad.
 }
 
 // MARK: - Shared plumbing
@@ -645,8 +373,8 @@ struct PeerRef: Identifiable, Hashable {
 ///
 /// 🔴 Sheet and cover content does NOT inherit `@Observable` environment
 /// objects from its presenter — the trap `ContentView.EnvBundle` exists for.
-/// This is the same modifier scoped to the four objects the line sheets read
-/// (`LineSettingsScreen` reads all four; `PeerNameSheet` reads two), rather
+/// This is the same modifier scoped to the objects the line sheets read
+/// (`PeerNameSheet` reads two), rather
 /// than making the app-wide bundle reachable from here and dragging six more
 /// objects through this file.
 struct LineEnv: ViewModifier {
@@ -655,10 +383,9 @@ struct LineEnv: ViewModifier {
     let api: APIClient
     let subs: SubscriptionStore
     let calling: CallController
-    /// Added 2026-09-05: `LineSwitchNumberButton` (rendered inside
-    /// `LineSettingsScreen`) presents a picker whose last page can open the
-    /// credits sheet, and `CreditsSheet` reads `IAPStore` from the
-    /// environment — a crash on presentation without it.
+    /// Added 2026-09-05: a line sheet can end on a credits top-up, and
+    /// `CreditsSheet` reads `IAPStore` from the environment — a crash on
+    /// presentation without it.
     let iap: IAPStore
 
     func body(content: Content) -> some View {
@@ -751,7 +478,8 @@ struct LineStatusBanner: View {
 /// 2026-09-08 return of outbound SMS: tapping a row opens the conversation,
 /// which is where the composer is. The long-press menu stays limited to naming
 /// and copying — both act on the peer, and a third "message" item would
-/// duplicate the tap. Starting a NEW conversation is the Messages FAB.
+/// duplicate the tap. Starting a NEW conversation is the header's compose
+/// button.
 struct ThreadRow: View {
     @Environment(\.theme) private var theme
     let thread: LineThread
@@ -779,7 +507,7 @@ struct ThreadRow: View {
     var body: some View {
         Button(action: onTap) {
             HStack(spacing: 12) {
-                PeerAvatar(e164: thread.peerE164, name: name, size: 44)
+                PeerAvatar(e164: thread.peerE164, name: name, size: 40, neutral: true)
                 VStack(alignment: .leading, spacing: 3) {
                     HStack(spacing: 6) {
                         Text(verbatim: name ?? PhoneFormat.compact(thread.peerE164))
@@ -828,8 +556,9 @@ struct ThreadRow: View {
                     }
                 }
             }
-            .padding(14)
-            .background(theme.elev, in: .rect(cornerRadius: RRadius.group))
+            // The list draws the group (one inset-grouped surface, spec §4.3).
+            .padding(.horizontal, RSpace.lg)
+            .padding(.vertical, RSpace.md)
             .contentShape(.rect)
         }
         .buttonStyle(.plain)

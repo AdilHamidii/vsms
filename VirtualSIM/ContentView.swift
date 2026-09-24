@@ -1017,8 +1017,39 @@ extension ContentView {
             state.tab = .line
             state.lines = [ScreenshotMode.sampleLine]
             state.lineThreads = ScreenshotMode.sampleThreads
-            // "Switch number · N credits" renders only with a live price;
-            // see the `.lineIntro` note above.
+            // The card's Switch capsule renders only with a live price; see
+            // the `.lineIntro` note above.
+            state.appStatus = AppStatus(announcement: nil, esimPaused: false, lineSwapCredits: 8)
+
+        case .lineInboxEmpty:
+            state.tab = .line
+            state.lines = [ScreenshotMode.sampleLine]
+            state.lineThreads = []
+            state.lineThreadsLoaded = true
+            state.appStatus = AppStatus(announcement: nil, esimPaused: false, lineSwapCredits: 8)
+
+        case .lineCalls, .lineNumber:
+            state.tab = .line
+            state.lines = [ScreenshotMode.sampleLine]
+            state.lineThreads = ScreenshotMode.sampleThreads
+            state.lineCalls = ScreenshotMode.sampleCalls
+            state.appStatus = AppStatus(announcement: nil, esimPaused: false, lineSwapCredits: 8)
+
+        case .lineBanner:
+            state.tab = .line
+            state.lines = [ScreenshotMode.sampleLine(status: .pastDue)]
+            state.lineThreads = ScreenshotMode.sampleThreads
+            state.appStatus = AppStatus(announcement: nil, esimPaused: false, lineSwapCredits: 8)
+
+        case .lineInboxMulti:
+            state.tab = .line
+            state.lines = [ScreenshotMode.sampleLine,
+                           ScreenshotMode.sampleLine(id: "sample-line-2", e164: "+13125550177")]
+            state.lineThreads = ScreenshotMode.sampleThreads + [
+                LineThread(id: "t4", lineId: "sample-line-2", peerE164: "+18885550122",
+                           lastMessageAt: Date().addingTimeInterval(-60),
+                           lastPreview: "Your code is 482913", unreadCount: 1,
+                           blocked: false, createdAt: Date().addingTimeInterval(-600))]
             state.appStatus = AppStatus(announcement: nil, esimPaused: false, lineSwapCredits: 8)
 
         case .lineDialer:

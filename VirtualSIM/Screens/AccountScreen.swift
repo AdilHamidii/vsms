@@ -1091,7 +1091,7 @@ struct AccountScreen: View {
     }
 
     /// Apple's sheet for every subscription this Apple ID holds (line and
-    /// mail groups alike). Moved here from `LineSettingsScreen` on 2026-09-01.
+    /// mail groups alike). Moved here from the Number tab's settings sheet on 2026-09-01.
     private func openManageSubscriptions() async {
         guard let scene = UIApplication.shared.connectedScenes
             .first(where: { $0.activationState == .foregroundActive }) as? UIWindowScene

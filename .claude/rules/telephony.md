@@ -565,7 +565,14 @@ GONE from the Number tab**; Apple's manage-subscriptions sheet is reachable
 from **Account → Support** only. Calling stays, demoted to one secondary row.
 `LineSwitchNumberButton` is the single entry point; since 2026-09-05 it reads
 **"Change number"** with NO price and opens `LineSwapSheet` — see "Swapping a
-line's number" for the choose-first-pay-last flow and why.
+line's number" for the choose-first-pay-last flow and why. **On branch
+`design-overhaul` (2026-09-24)** it has two styles: a compact **"Switch"**
+capsule right of the number on `LineNumberCard` (`line_swap_open{from:
+"home"}`) and a **"Switch number…"** row in the Number segment
+(`LineNumberSegment`, `from: "number_segment"`); the gear's
+`LineSettingsScreen` and the dial/compose FAB are gone (compose and keypad
+are the header's trailing button; the keypad stays HIDDEN without a voice
+client). The Calls footer shows no reset date — it is the renewal date.
 
 ### International calling — credits, not minutes (2026-08-17)
 
@@ -630,7 +637,8 @@ never read the wallet — so a user with 6 credits was invited to tap an
 8-credit button and got 402 `insufficient_credits`. That was the first real
 swap complaint ("changing my number doesn't work", user `d580…`, 03:15Z; the
 swap then succeeded at 03:17Z after they freed 2 credits). Now:
-- `LineSwitchNumberButton` reads **"Change number"** (no figure; still hidden
+- `LineSwitchNumberButton` reads **"Change number"** ("Switch" / "Switch
+  number…" on branch `design-overhaul`; no figure; still hidden
   when `lineSwapCredits` is nil — a sheet that cannot quote a price cannot ask
   for money) and opens **`LineSwapSheet`**.
 - The sheet walks country → city → number using the SAME rows as the store

@@ -1,7 +1,8 @@
 import SwiftUI
 
-/// "Change number" — pick a new place and number for a line you already rent,
-/// then pay for it in credits. Presented from `LineSwitchNumberButton`.
+/// "Switch" — pick a new place and number for a line you already rent, then
+/// pay for it in credits. Presented from `LineSwitchNumberButton` (the card's
+/// capsule or the Number segment's row).
 ///
 /// ── Choose first, pay last (owner decision 2026-09-05) ─────────────────────
 ///
@@ -45,8 +46,11 @@ struct LineSwapSheet: View {
     /// client default — the presenter hides the button when it is nil, so this
     /// screen is never shown without a real price.
     let cost: Int
-    /// Called with the new number once the cutover has landed and the user
-    /// taps Done, so the presenter can confirm it under the button.
+    /// `line_swap_open.from`: "home" (the card's capsule) or "number_segment"
+    /// (the Number segment's row).
+    let from: String
+    /// Called the moment the cutover lands (so a swipe-dismiss still confirms
+    /// it); the presenter reloads the line after the sheet has gone.
     var onSwapped: (String) -> Void
 
     private enum Page: Equatable {
@@ -437,10 +441,7 @@ struct LineSwapSheet: View {
                 .padding(.horizontal, 14)
                 .padding(.vertical, 14)
             }
-            PrimaryButton(label: String(localized: "Done"), icon: "checkmark") {
-                onSwapped(number)
-                dismiss()
-            }
+            PrimaryButton(label: String(localized: "Done"), icon: "checkmark") { dismiss() }
         }
         .padding(.top, 4)
     }
@@ -448,7 +449,7 @@ struct LineSwapSheet: View {
     // MARK: - Data
 
     private func loadInitial() async {
-        Analytics.shared.track("line_swap_open")
+        Analytics.shared.track("line_swap_open", ["from": .string(from)])
         // The country catalogue first: whether a country list is worth showing
         // is a question only it can answer. Swallows its own failure and keeps
         // the seeded set — see `AppState.loadLineCountries`.
@@ -486,9 +487,11 @@ struct LineSwapSheet: View {
     /// Buy the chosen number for this line.
     ///
     /// `swapping` is the re-entrancy guard as well as the button's busy state.
-    /// Reloading the line afterwards is not cosmetic: every other surface —
-    /// the header, the share sheet, the thread list — reads `state.line`, so
-    /// skipping it leaves the whole tab showing a number we just gave away.
+    /// The line is NOT reloaded here: the presenter (`LineSwitchNumberButton`)
+    /// reloads it once the sheet has gone, so the card's number visibly rolls
+    /// to the new one. It still must be reloaded — every other surface (the
+    /// card, the share sheet, the thread list) reads `state.line`, and skipping
+    /// it would leave the tab showing a number we just gave away.
     @MainActor
     private func perform(_ offer: LineNumberOffer) async {
         guard !swapping else { return }
@@ -501,7 +504,6 @@ struct LineSwapSheet: View {
             let result = try await LineAPI(client: api).swapNumber(
                 lineId: line.id, phoneNumber: offer.phoneNumber,
                 country: country, city: state.lineCity)
-            await state.loadLine(using: LineAPI(client: api))
             // The wallet moved, and the credits pill reads AppState.
             await state.refreshWallet(using: WalletAPI(client: api))
             RHaptic.success()
@@ -509,6 +511,7 @@ struct LineSwapSheet: View {
                 "outcome": .string("success"),
                 "changed_country": .bool(country != line.countryCode)])
             page = .done(result.phoneNumber)
+            onSwapped(result.phoneNumber)
         } catch let error as APIError {
             // Every failure path server-side refunds before returning, so the
             // message is the whole story — there is no "and you were charged"
