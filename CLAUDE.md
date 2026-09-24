@@ -63,6 +63,14 @@ still serves the 12 legacy eSIMs sold before the provider switch.
 
 ### Home leads the app (2026-09-10)
 
+**Superseded on branch `design-overhaul` (2026-09-24):** tabs are Verify · My
+number · Activity · Account in a fixed order (`AppTab.order`, a native
+`TabView`); `/tabs` no longer orders anything in builds from this branch — the
+value is still stored, never applied. Every former "go to Temp" entry point
+calls `AppState.openCodeStore(email:)`, which pushes the temp store inside the
+Verify tab. Until `VerifyScreen` lands, the Verify tab hosts `HomeScreen` as a
+stopgap. The text below describes `main`.
+
 `AppTab` order is `home · line · temp · account` and the app opens on
 **Home** on EVERY cold launch, new or returning (owner decision 2026-09-10) —
 `.home` is element 0 of every `launchOrder` variant BY CONSTRUCTION, so

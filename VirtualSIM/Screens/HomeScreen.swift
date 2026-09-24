@@ -30,10 +30,10 @@ import SwiftUI
 /// here waits on a fetch. The `.task` does exactly two things and neither
 /// gates a pixel — see it below.
 ///
-/// 🔴 **Card order is `AppTab.productOrder`, not a literal.** That is the same
-/// definition `TabBar` reads, so a bar led by Number and a Home screen led by
-/// the temp card is impossible by construction — the bug the `currentOrder`
-/// shape exists to prevent, one layer up.
+/// ⚠️ **STOPGAP (design overhaul, 2026-09-24):** this screen hosts the Verify
+/// tab until `VerifyScreen` replaces it (Task 6). Its cards now open the code
+/// store through `AppState.openCodeStore`, and the card order is fixed
+/// (`cardOrder`) since `/tabs` no longer orders anything.
 struct HomeScreen: View {
     @Environment(\.theme) private var theme
     @Environment(AppState.self) private var state
@@ -61,19 +61,11 @@ struct HomeScreen: View {
     /// See `howItWorks` — a disclosure, deliberately not persisted.
     @State private var howItWorksOpen = false
 
-    /// The card order, resolved into a stored property when the view is
-    /// initialised — once per `HomeScreen` init, not per body evaluation —
-    /// the same rule, and the same reason, as `TabBar.items`: `AppState` is
-    /// `@Observable` and this screen redraws on every collection it reads, so
-    /// a computed order would hit UserDefaults on each redraw. Not once per
-    /// SESSION, though: `ContentView` re-inits this struct on any change it
-    /// observes (opening and closing the credits sheet, say), and the key is
-    /// written by `refreshAppStatus` AFTER the reveal — so on the one launch
-    /// that carries a `/tabs` flip, a re-init can pick the new order up before
-    /// the next cold launch. Two cards swapping places once, on that launch
-    /// only; `TabBar.items` has the same property. Harmless, and cheaper than
-    /// a static cache that would then disagree with the bar.
-    private let productOrder = AppTab.productOrder
+    /// The card order. ⚠️ STOPGAP (design overhaul, 2026-09-24): `/tabs` no
+    /// longer orders anything, so the code products lead and the Number card
+    /// follows. This whole screen is replaced by `VerifyScreen` in Task 6.
+    private enum CardSlot { case codes, line }
+    private let cardOrder: [CardSlot] = [.codes, .line]
 
     /// The user holds a rented number RIGHT NOW.
     ///
@@ -139,9 +131,9 @@ struct HomeScreen: View {
                 // `home_card_tapped{card:"more_services"}`. Do not read the
                 // `sms` arm going to zero as the SMS product dying.
                 VStack(alignment: .leading, spacing: 10) {
-                    ForEach(productOrder, id: \.self) { tab in
-                        switch tab {
-                        case .temp:
+                    ForEach(cardOrder, id: \.self) { slot in
+                        switch slot {
+                        case .codes:
                             serviceGrid
                                 .padding(.bottom, 6)
                             emailCard
@@ -150,8 +142,6 @@ struct HomeScreen: View {
                             // number, and one live line per user is enforced by
                             // a partial unique index, not by convention.
                             if !hasLine { numberCard }
-                        default:
-                            EmptyView()
                         }
                     }
                 }
@@ -430,8 +420,7 @@ struct HomeScreen: View {
                  title: Text("A throwaway email"),
                  sub: Text("An Outlook or Hotmail address you use once.")) {
             track("email")
-            state.emailMode = true
-            state.tab = .temp
+            state.openCodeStore(email: true)
         }
     }
 
@@ -583,8 +572,7 @@ struct HomeScreen: View {
                             "source": .string("home"),
                         ])
                         state.commitServicePick(service)
-                        state.emailMode = false
-                        state.tab = .temp
+                        state.openCodeStore()
                     } icon: {
                         ServiceLogo(service: service, size: 38, radius: 11)
                     }
@@ -592,8 +580,7 @@ struct HomeScreen: View {
                 GridTile(label: Text("More")) {
                     RHaptic.select()
                     track("more_services")
-                    state.emailMode = false
-                    state.tab = .temp
+                    state.openCodeStore()
                     openServices()
                 } icon: {
                     Image(systemName: "square.grid.2x2")

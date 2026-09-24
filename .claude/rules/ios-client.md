@@ -18,8 +18,11 @@ file is open.
 VirtualSIM/
   VirtualSIMApp.swift            App entry; resizes URLCache (32MB mem / 64MB disk
                                  for brand logos + flag PNGs); installs AppDelegate
-  ContentView.swift              4-tab routing (home/line/temp/account —
-                                 `AppTab.currentOrder`; Home always first)
+  ContentView.swift              native TabView, 4 tabs (verify/line/activity/
+                                 account, `AppTab.order`); the temp store is
+                                 pushed inside Verify (`VerifyRoute.store`,
+                                 `AppState.openCodeStore`); `ResumeBar` rides a
+                                 bottom `safeAreaInset` on every tab
                                  + fullScreenCover for Checkout/Waiting/OTP
                                  + the parked eSIM flow; EnvBundle
                                  ViewModifier re-injects every @Observable env
@@ -39,13 +42,15 @@ VirtualSIM/
                                  CountryRank = the PROVIDER's success rate for a
                                  (service, country) — steering input, never a
                                  badge; see the steering section)
-  Screens/                       HomeScreen (the Home tab: router for new users,
+  Screens/                       HomeScreen (⚠️ on `design-overhaul` a STOPGAP
+                                 hosting the Verify tab; on `main` the Home tab: router for new users,
                                  light dashboard for a subscriber — greeting,
                                  need-cards in `AppTab.productOrder`, the static
                                  seven-service grid + More tile, How it works
                                  until the first order then Recent, invite card;
                                  see CLAUDE.md "Home leads the app"),
-                                 TempScreen (the Temp tab:
+                                 TempScreen (the Temp tab on `main`; pushed
+                                 inside Verify on `design-overhaul`:
                                  temp SMS + temp e-mail, `emailMode`),
                                  Checkout, Waiting (+ WaitingAnimations),
                                  OTP (⚠️ fires NO review prompt — see "The
@@ -227,8 +232,9 @@ fallback (near-opaque fill over `.ultraThinMaterial` with a hairline border) —
 which is precisely why scattering the guard would let one surface drift without
 anyone noticing.
 
-Applied ONLY to chrome that floats over content: the tab bar, `ResumeBar`, and
-the eSIM map's selection card / globe button / warning pill. Not to inline
+Applied ONLY to chrome that floats over content: `ResumeBar` and
+the eSIM map's selection card / globe button / warning pill. (The custom
+`TabBar` was glass too until 2026-09-24; the native `TabView` draws its own.) Not to inline
 cards — Apple's guidance is that glass belongs to the navigation layer, and on
 ordinary cards it puts text over unpredictable backgrounds while destroying the
 elevation hierarchy `theme.elev` already expresses.

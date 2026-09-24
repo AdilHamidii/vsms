@@ -1,89 +1,40 @@
 import AdServices
 import SwiftUI
 
-/// The app's tab identities. `.home` is the router/dashboard the app opens on
-/// (owner decision 2026-09-10); `.temp` is the tab labelled "Temp": it hosts
-/// BOTH temp SMS and temp e-mail (`AppState.emailMode` switches between them),
-/// so neither product's name fits it on its own.
+/// The four tabs, in their one fixed order (design overhaul, 2026-09-24):
+/// Verify · My number · Activity · Account. Verify opens on every launch.
 ///
-/// ⚠️ The enum's CASE ORDER is NOT the tab-bar order, and nothing in this
-/// declaration says which tab the app opens on. `currentOrder` below is the ONE
-/// definition of both — reading the case list as the bar's layout is exactly
-/// how a stale claim about the ordering survived here for ten days after it had
-/// been reverted. Read `currentOrder` and `TabBar.items`.
+/// ⚠️ `app_config.launch_tab` (`/tabs number|temp`) no longer orders anything
+/// in this build: Home and Temp are gone, so there is nothing for it to
+/// reorder. The key is still read and stored by `refreshAppStatus` so older
+/// builds keep honouring it.
 ///
-/// (History: the rented line led the bar from 2026-08-05 and was unwound on
-/// 08-08, then led again from 2026-09-09 under the owner switch. What that
-/// ordering has cost is in CLAUDE.md.)
+/// `tab` is not persisted, so changing this enum carries no decode risk —
+/// nothing builds an `AppTab` from a stored or server string.
 ///
-/// `tab` is not persisted, so growing this enum and moving its default carry no
-/// decode risk — unlike `OrderStatus`, which ships to every phone.
-///
-/// ⚠️ `esim` was REMOVED on 2026-09-08 (owner decision). The eSIM business
-/// moved to a separate app; the line had been paused since 2026-07-31 with 0
-/// active plans, so the tab rendered an empty store on every launch. The 10
-/// eSIMs ever sold are all from 19–26 July and every one reads 0 MB used, so
-/// nothing live was stranded by taking the tab away.
-///
-/// The `esimCheckout` / `esimDetail` flows and `PurchaseIntent.esim` are
-/// deliberately KEPT — `check-esim-usage` still serves the legacy rows, and
-/// deleting a `PurchaseIntent` case would change how `creditsShortfall`
-/// resolves for a product line that may come back.
+/// ⚠️ `esim` was REMOVED as a tab on 2026-09-08 (owner decision). The
+/// `esimCheckout` / `esimDetail` flows and `PurchaseIntent.esim` are
+/// deliberately KEPT — `check-esim-usage` still serves the legacy rows.
 enum AppTab: String, Hashable, CaseIterable {
-    case home, line, temp, orders, account
+    case verify, line, activity, account
 
-    /// The tab bar's order, owner-switchable from Telegram (`/tabs`).
-    ///
-    /// 🔴 **ONE DEFINITION, read by BOTH `TabBar` and the landing tab.** The
-    /// first element is the tab the app opens on, so the bar and the landing
-    /// tab cannot drift apart — a bar led by Number that opens on Temp is the
-    /// bug this shape exists to make impossible.
-    ///
-    /// Since 2026-09-10 `.home` leads every variant, so what `/tabs` decides is
-    /// the order of the two PRODUCT tabs behind it — and, through
-    /// `productOrder`, the order of Home's own need-cards.
-    ///
-    /// `orders` is absent on purpose: it stopped being a tab on 2026-08-06 and
-    /// is reached as a cover from the Temp tab.
-    static func launchOrder(for raw: String?) -> [AppTab]? {
-        switch raw {
-        case "line": [.home, .line, .temp, .account]
-        case "temp": [.home, .temp, .line, .account]
-        // Includes nil. An unknown value must never produce an empty or
-        // partial bar — the caller falls back to the compiled default.
-        default:     nil
-        }
-    }
+    static let order: [AppTab] = [.verify, .line, .activity, .account]
+}
 
-    /// What the build ships with, and what an absent or unreadable
-    /// `app_config.launch_tab` falls back to. Owner decision 2026-09-10: Home
-    /// leads on every launch; `/tabs` orders what sits behind it.
-    static let defaultOrder: [AppTab] = [.home, .line, .temp, .account]
-
-    /// The product tabs in the owner's order — what `/tabs` decides now that
-    /// Home is always first. The ONE definition Home's need-cards read, so the
-    /// bar and the cards can never disagree.
-    static var productOrder: [AppTab] { currentOrder.filter { $0 == .line || $0 == .temp } }
-
-    /// The order this launch will use: the owner's stored choice when it is
-    /// one we recognise, otherwise the compiled default.
-    ///
-    /// ⚠️ Read from UserDefaults, NOT from `AppState.appStatus` — the server
-    /// value arrives after the reveal. See `PrefKey.launchTab`.
-    static var currentOrder: [AppTab] {
-        launchOrder(for: UserDefaults.standard.string(forKey: PrefKey.launchTab))
-            ?? defaultOrder
-    }
+/// Destinations pushed inside the Verify tab. Plan 1 has one: the existing
+/// temp-SMS / temp-e-mail screen, reached after a service pick. Plan 2
+/// replaces it with "Ways to verify".
+enum VerifyRoute: Hashable {
+    case store
 }
 
 enum FlowStage: String, Hashable, Identifiable {
     case checkout, waiting, otp, recovery, esimCheckout, esimDetail
     case emailWaiting, emailCode
     /// The rented line. `thread` and `dialer` are covers rather than navigation
-    /// pushes, and that is forced by the layout rather than chosen: `TabBar` is
-    /// a ZStack overlay pinned to the bottom of `ContentView` on every tab, so
-    /// a NavigationStack push would leave the floating tab bar sitting on top
-    /// of the message composer.
+    /// pushes. That was forced by the old custom `TabBar` (a ZStack overlay
+    /// that would have sat on top of the message composer); the native
+    /// `TabView` since 2026-09-24 no longer forces it, but they stay covers.
     case lineCheckout, lineProvisioning, thread, dialer
     /// Start a conversation with a number that has never texted us.
     ///
@@ -343,6 +294,10 @@ enum PrefKey {
 
     /// The owner's `/tabs` switch, as last seen from the server.
     ///
+    /// ⚠️ Stored but NOT read by builds from the `design-overhaul` branch —
+    /// their tab order is fixed (`AppTab.order`). The text below describes
+    /// `main`.
+    ///
     /// 🔴 **PERSISTED RATHER THAN READ LIVE, AND THAT IS THE WHOLE DESIGN.**
     /// `refreshAppStatus` runs AFTER `bootPhase = .ready` in `coldStart` —
     /// deliberately, because a banner is additive and must not hold the reveal
@@ -365,37 +320,27 @@ enum PrefKey {
 
 @Observable
 final class AppState {
-    /// Home is the launch tab (owner decision 2026-09-10), and it is element 0
-    /// of every `AppTab.currentOrder` variant BY CONSTRUCTION — so this is
-    /// `.home` whatever `/tabs` says. Users were landing on one of two product
-    /// tabs and bouncing between them without a sentence anywhere naming which
-    /// need each one serves; Home names the three needs and routes.
+    /// The selected tab. Verify on every launch (design overhaul,
+    /// 2026-09-24); the order is fixed (`AppTab.order`) and `/tabs` no longer
+    /// changes it in builds from this branch.
     ///
-    /// ⚠️ THE HISTORY BELOW NOW APPLIES TO THE ORDER *BEHIND* HOME — which
-    /// product tab comes second in the bar, and therefore which need-card comes
-    /// first on Home (`AppTab.productOrder`). It is still a measured cost, just
-    /// one rung down: nobody lands directly on a paywall any more.
-    ///
-    /// ⚠️ THIS HAS BEEN SWAPPED BOTH WAYS AND ONE DIRECTION HAS A MEASURED
-    /// COST. The line led for one release in 2.0 (Aug 15–19) and `create-order`
-    /// calls fell from ~30/day to 1, with zero first-day orders from 45
-    /// signups — temp SMS was what the listing, the keywords and all
-    /// acquisition were about, so leading with a $9.99/mo subscription put a
-    /// paywall in front of everyone. It was reverted on 2026-08-08.
-    ///
-    /// What changed: the store name now leads with the second number, and the
-    /// two live ASA campaigns bid on "us number" / second-number intent rather
-    /// than temp-SMS intent — so arriving traffic is asking for this tab. That
-    /// premise is the whole case for the swap, and it fails the moment those
-    /// campaigns are paused. If SMS order volume collapses again, this line is
-    /// the first thing to re-examine.
-    ///
-    /// ✅ **AND IT NO LONGER NEEDS A RELEASE TO RE-EXAMINE.** Since 2026-09-09
-    /// the order is `AppTab.currentOrder`, which the owner flips from Telegram
-    /// with `/tabs number|temp` — the same argument that gave `/lines` and
-    /// `/esim` their kill switches. `.first` rather than a literal, so the
-    /// landing tab and the bar can never disagree.
-    var tab: AppTab = AppTab.currentOrder.first ?? .home
+    /// History that still binds: leading with the rented line in 2.0
+    /// (Aug 15–19) took `create-order` from ~30 calls/day to 1 — a paywall in
+    /// front of everyone. Verify leads because it names the need rather than
+    /// a product. See CLAUDE.md, "Home leads the app".
+    var tab: AppTab = .verify
+
+    /// Navigation inside the Verify tab. Not persisted.
+    var verifyPath: [VerifyRoute] = []
+
+    /// Open the temp code store (SMS, or e-mail when `email`), from anywhere.
+    /// The ONE replacement for the old `tab = .temp`, so every entry point —
+    /// push notifications, the order list, upsell cards — lands the same way.
+    func openCodeStore(email: Bool = false) {
+        emailMode = email
+        tab = .verify
+        verifyPath = [.store]
+    }
     var balance: Int = 0
     var services: [Service] = SeedData.services
     var countries: [Country] = SeedData.countries
@@ -526,12 +471,11 @@ final class AppState {
     func refreshAppStatus(using api: AppStatusAPI) async {
         if let s = try? await api.fetch() {
             appStatus = s
-            // Store the launch tab for the NEXT launch; nothing reads it this
-            // session. See `PrefKey.launchTab` for why it cannot be applied live.
-            // An absent or unrecognised value CLEARS the stored copy, so
-            // deleting the row returns every app to its compiled order rather
-            // than pinning it forever to the last thing the owner typed.
-            if let t = s.launchTab, AppTab.launchOrder(for: t) != nil {
+            // The `/tabs` value is STORED but never applied in this build: the
+            // tab order is fixed (`AppTab.order`) and nothing builds an
+            // `AppTab` from the string. An absent or unrecognised value CLEARS
+            // the stored copy, as before the overhaul.
+            if let t = s.launchTab, t == "line" || t == "temp" {
                 UserDefaults.standard.set(t, forKey: PrefKey.launchTab)
             } else {
                 UserDefaults.standard.removeObject(forKey: PrefKey.launchTab)

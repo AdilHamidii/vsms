@@ -6,8 +6,9 @@ import SwiftUI
 ///
 /// This runs INSIDE `AuthGate`, above `ContentView` — so `AppState`,
 /// `FlowStage` and the app's `fullScreenCover(item:)` machinery do not exist
-/// yet, and neither does the floating `TabBar` that is the documented reason
-/// this app avoids navigation pushes at all. A route enum plus an array is the
+/// yet, and neither does the tab bar (the old floating `TabBar`, replaced by a
+/// native `TabView` on 2026-09-24, was why this app avoided navigation
+/// pushes). A route enum plus an array is the
 /// same vocabulary `OnboardingScreen` already uses, it needs no system chrome
 /// to fight, and it keeps "where am I in auth" in exactly one place.
 ///

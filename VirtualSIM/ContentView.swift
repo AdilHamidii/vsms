@@ -73,63 +73,67 @@ struct ContentView: View {
         isDark ? .dark(state.accent) : .light(state.accent)
     }
 
+    /// The temp-SMS / temp-e-mail store, pushed inside Verify (Plan 1
+    /// interim; Plan 2 replaces it with "Ways to verify").
+    private var codeStore: some View {
+        TempScreen(
+            openServices: { sheet = .services },
+            openCountries: { sheet = .country },
+            openEmailDomains: { sheet = .emailDomain },
+            openCredits: { sheet = .credits },
+            onStart: { state.startCheckout() },
+            onStartEmail: { startEmailOrder() },
+            onStartEmailPaid: { startEmailOrder(payCredits: true) },
+            onTapOrder: { o in
+                if o.status == .waiting {
+                    state.activeOrder = o
+                    state.flow = .waiting
+                } else if o.otp != nil {
+                    state.activeOrder = o      // rescued code — show it
+                    state.flow = .otp
+                } else {
+                    state.buyAgain(o)
+                }
+            },
+            onSeeAllOrders: { state.tab = .activity }
+        )
+    }
+
     var body: some View {
         @Bindable var state = state
-        ZStack(alignment: .bottom) {
-            theme.bg.ignoresSafeArea()
-
-            Group {
-                switch state.tab {
-                case .home:
-                    // `openServices` is the SAME closure `TempScreen` gets, so
-                    // Home's More tile and the Temp tab's picker raise one
-                    // sheet rather than two that could drift apart.
+        TabView(selection: $state.tab) {
+            Tab("Verify", systemImage: "checkmark.shield", value: AppTab.verify) {
+                NavigationStack(path: $state.verifyPath) {
+                    // Stopgap until `VerifyScreen` exists (design overhaul,
+                    // Task 6): the old Home screen hosts the Verify tab.
+                    // `openServices` is the SAME closure the code store gets,
+                    // so the More tile and the store's picker raise one sheet.
                     HomeScreen(openCredits: { sheet = .credits },
                                openServices: { sheet = .services })
-                case .line:
-                    LineScreen(onOpenSms: { state.tab = .temp })
-                case .temp:
-                    TempScreen(
-                        openServices: { sheet = .services },
-                        openCountries: { sheet = .country },
-                        openEmailDomains: { sheet = .emailDomain },
-                        openCredits: { sheet = .credits },
-                        onStart: { state.startCheckout() },
-                        onStartEmail: { startEmailOrder() },
-                        onStartEmailPaid: { startEmailOrder(payCredits: true) },
-                        onTapOrder: { o in
-                            if o.status == .waiting {
-                                state.activeOrder = o
-                                state.flow = .waiting
-                            } else if o.otp != nil {
-                                state.activeOrder = o      // rescued code — show it
-                                state.flow = .otp
-                            } else {
-                                state.buyAgain(o)
+                        .navigationDestination(for: VerifyRoute.self) { route in
+                            switch route {
+                            case .store: codeStore
                             }
-                        },
-                        onSeeAllOrders: { state.flow = .orders }
-                    )
-                case .orders:
-                    OrdersScreen(openCredits: { sheet = .credits })
-                case .account:
-                    AccountScreen(openCredits: { sheet = .credits })
+                        }
                 }
+                .resumeBarInset()
             }
-
-            VStack(spacing: 10) {
-                // Sits above the tab bar on every tab. Closing a waiting screen
-                // no longer cancels the order, so there has to be a way back —
-                // otherwise a live order just vanishes from view and the user
-                // reasonably assumes it died.
-                ResumeBar()
-                    .padding(.horizontal, 16)
-                TabBar(tab: $state.tab, lineUnread: state.lineUnreadCount)
-                    .padding(.horizontal, 12)
+            Tab("My number", systemImage: "phone", value: AppTab.line) {
+                LineScreen(onOpenSms: { state.openCodeStore() })
+                    .resumeBarInset()
             }
-            .padding(.bottom, 28)
-            .animation(.easeOut(duration: 0.25), value: state.flow)
+            .badge(state.lineUnreadCount)
+            Tab("Activity", systemImage: "clock.arrow.circlepath", value: AppTab.activity) {
+                OrdersScreen(openCredits: { sheet = .credits })
+                    .resumeBarInset()
+            }
+            Tab("Account", systemImage: "person.crop.circle", value: AppTab.account) {
+                AccountScreen(openCredits: { sheet = .credits })
+                    .resumeBarInset()
+            }
         }
+        .tint(theme.ink)
+        .background(theme.bg.ignoresSafeArea())
         // Environment first, THEN overlay/sheet/cover — so banner + cover
         // content all see AppState in scope.
         .environment(\.theme, theme)
@@ -703,7 +707,7 @@ struct ContentView: View {
             // The same store, presented as a cover so it inherits EnvBundle —
             // covers do NOT reliably inherit @Observable env objects, which is
             // the trap this app wraps every cover for.
-            LineStoreScreen(onOpenSms: { state.flow = nil; state.tab = .temp },
+            LineStoreScreen(onOpenSms: { state.flow = nil; state.openCodeStore() },
                             onClose: { state.flow = nil })
         case .lineCheckout:
             LineCheckoutScreen()
@@ -934,7 +938,7 @@ extension ContentView {
             // sheet is Temp in e-mail mode — the surface this paywall is
             // actually raised from (`confirmGetEmail` refusing a second free
             // address with `subscription_required`).
-            state.tab = .temp
+            state.openCodeStore()
             state.emailMode = true
             // Presented as a plain `.sheet(isPresented:)` rather than through
             // `ActiveSheet`, because that is how the real screen is raised —
@@ -969,7 +973,8 @@ extension ContentView {
         // The Home TAB, with no line: the three need-cards, the service grid,
         // How it works, and the invite card.
         case .homeRouter:
-            state.tab = .home
+            state.tab = .verify
+            state.verifyPath = []
             state.lines = []
             // Names the greeting and fills the invite card. Both halves are
             // needed: `HomeScreen.inviteCard` renders only when
@@ -990,7 +995,8 @@ extension ContentView {
         // The Home TAB for a subscriber: the line card on top, then the two
         // temp cards. The number card is absent by construction.
         case .homeLine:
-            state.tab = .home
+            state.tab = .verify
+            state.verifyPath = []
             state.lines = [ScreenshotMode.sampleLine]
             state.lineThreads = ScreenshotMode.sampleThreads
             // 🔴 Required, and its absence is INVISIBLE rather than empty:
@@ -1031,7 +1037,7 @@ extension ContentView {
         // sees this case, because the sheet is `@State` on that screen and
         // cannot be presented from out here.
         case .home, .deliveryInfo:
-            state.tab = .temp
+            state.openCodeStore()
             // Pin a pair that PUBLISHES a network rate, so the frame shows the
             // delivery figure the whole picker is built around. The default
             // pair may publish nothing, and a store screenshot with a blank
@@ -1073,24 +1079,27 @@ extension ContentView {
         // that had never once shown what their names claim. Caught by checksum,
         // not by eye: the files looked plausible.
         case .waiting:
-            state.tab = .temp
+            state.openCodeStore()
             state.activeOrder = state.resolve(
                 ScreenshotMode.sampleOrder(status: .waiting, otp: nil))
             state.flow = .waiting
 
         case .code:
-            state.tab = .temp
+            state.openCodeStore()
             state.activeOrder = state.resolve(
                 ScreenshotMode.sampleOrder(status: .received, otp: "123456"))
             state.flow = .otp
 
         case .orders:
-            state.tab = .temp
+            // The Activity TAB since the overhaul (2026-09-24), not the
+            // `.orders` cover: that cover would hide the tab bar this frame
+            // now exists to show. The cover is still reachable from
+            // WaitingScreen and ErrorBanner.
+            state.tab = .activity
             state.orders = ScreenshotMode.sampleOrderRows.map(state.resolve)
-            state.flow = .orders
 
         case .credits:
-            state.tab = .temp
+            state.openCodeStore()
             // 🔴 Without this the frame is the DELIVERY EXPLAINER, not the
             // credits sheet. `DeliveryInfoSheet` raises on EVERY appearance of
             // the Temp tab until acknowledged, and this fixture lands on Temp
@@ -1129,7 +1138,7 @@ extension ContentView {
             sheet = .credits
 
         case .email:
-            state.tab = .temp
+            state.openCodeStore()
             state.emailMode = true
             state.activeEmailOrder = ScreenshotMode.sampleEmailOrder
             // The real flow inserts the order into `emailOrders` before it
@@ -1148,7 +1157,7 @@ extension ContentView {
             // code frame is nearly identical to the SMS one — same big digits,
             // same Done button — so on its own it does not show that a second
             // product exists at all.
-            state.tab = .temp
+            state.openCodeStore()
             state.emailMode = true
             state.emailDomains = ScreenshotMode.sampleEmailDomains
             state.emailDomain = ScreenshotMode.sampleEmailDomains.first
@@ -1196,11 +1205,39 @@ private struct EnvBundle: ViewModifier {
     }
 }
 
-#Preview("Temp — Light") {
+private extension View {
+    /// `ResumeBar` above the system tab bar, on every tab. `safeAreaInset`
+    /// rather than iOS 26's `tabViewBottomAccessory`: the accessory is not yet
+    /// verified to disappear when nothing is in flight (spec §4), and an empty
+    /// glass capsule on every screen would be worse than no accessory.
+    func resumeBarInset() -> some View {
+        safeAreaInset(edge: .bottom, spacing: 0) {
+            ResumeBarSlot()
+        }
+    }
+}
+
+/// The inset's content. A view rather than inline so it can read `flow` and
+/// animate the bar's entrance/exit, which the old bottom stack did with
+/// `.animation(…, value: state.flow)`. ResumeBar renders nothing while a flow
+/// is open or nothing is in flight, and padding on an empty view lays out
+/// nothing, so the inset collapses to zero height.
+private struct ResumeBarSlot: View {
+    @Environment(AppState.self) private var state
+
+    var body: some View {
+        ResumeBar()
+            .padding(.horizontal, RSpace.gutter)
+            .padding(.bottom, RSpace.sm)
+            .animation(RMotion.standard, value: state.flow)
+    }
+}
+
+#Preview("Light") {
     ContentView()
 }
 
-#Preview("Temp — Dark") {
+#Preview("Dark") {
     ContentView()
         .preferredColorScheme(.dark)
 }

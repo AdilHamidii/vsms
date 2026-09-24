@@ -2,10 +2,9 @@ import SwiftUI
 
 /// One conversation on the rented line.
 ///
-/// A cover rather than a navigation push, and that is forced by the layout:
-/// `TabBar` is a ZStack overlay pinned to the bottom of `ContentView` on every
-/// tab, so a push would leave the floating tab bar sitting on top of the
-/// composer.
+/// A cover rather than a navigation push. That was forced by the old custom
+/// `TabBar` (a ZStack overlay that would have sat on top of the composer); the
+/// native `TabView` since 2026-09-24 no longer forces it, but it stays a cover.
 ///
 /// ── The composer's history, because it governs what this screen may say ───
 ///
