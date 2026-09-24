@@ -160,3 +160,21 @@ NN/g icons https://www.nngroup.com/articles/icon-usability/ · Baymard perceived
 security https://baymard.com/blog/perceived-security-of-payment-form · Buell &
 Norton https://www.hbs.edu/faculty/Pages/item.aspx?num=40158 · Chernev 2015
 https://chernev.com/wp-content/uploads/2017/02/ChoiceOverload_JCP_2015.pdf
+
+## Spec review 1 (2026-09-24) — applied to the spec
+1. Rule order: free e-mail first (if free address left and not phone-only), then
+   measured-line → own number, else one-time number. 2. Country sections High ·
+   Medium · No published rate · Low. 3. Explainer third behaviour branches by band;
+   relocation overrides the "not over a live flow" rule → update CLAUDE.md.
+4. Line paywall needs EULA, Privacy, Restore. 5. Build order: guest-safe cold
+   start in step 2, sign-in sheet in step 3, step 8 = localisation review.
+6. Upsell "once this order closes"; auto-copy localOnly + 5-min expiry.
+7. Recovery ranked by failed band; cut "isn't something you did". 8. Only the
+   selected pack bordered; exit offer only with free address or Mail plan.
+9. Category chips = real `Service.category` values (Messaging · Social · Dating ·
+   Commerce · Finance · Delivery; never Gambling). 10. Verify on iOS 26:
+   `tabViewBottomAccessory` absent state, `.searchable` placement. 11. Guest e-mail
+   line has no credit price; one-time range over High+Medium countries.
+12. Notify line by authorization. 13. New events; activation per install only;
+   guardrail metrics (ratings average, refund notifications). 14. "Again" on a
+   failed order opens recovery suggestions.

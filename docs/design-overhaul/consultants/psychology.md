@@ -122,3 +122,20 @@ Baymard 18–26% is e-commerce survey data. The "friction signals importance" be
 behind the 10-second gate has no direct evidence either way; measure via
 shown-minus-acknowledged. Unverified: Apple 5.6.1 exact wording on custom review
 prompts; whether AB 2863's promo notice applies when Apple bills.
+
+## Spec review 1 (2026-09-24) — applied to the spec
+1. "Best pick" → "Recommended for"; own number not recommended on n=1 — bar ≥3
+   codes on ≥2 lines/90d (WhatsApp 16/7 qualifies; TikTok, DoorDash 1/1 do not).
+2. §6.7 cross-sell claims a capability only for measured-line services; generic
+   copy otherwise; "once this order closes" (true through the resend window).
+3. §6.8 cause line: "No code reached this number. That's common with one-time
+   numbers." (never "the service didn't send", never "not something you did");
+   9-in-10 line only on 1st/2nd consecutive failure.
+4. §6.10 CTA "Subscribe" + intro/renewal line under it; "stays yours for the
+   month you paid for" (no pre-purchase date).
+5. "Our pick" on the 30 acceptable as opinion if: shown only at shortfall ≥13,
+   text tag only, reason only if runtime-true; "Best value" computed live.
+6. Money beside credits for guests too (StoreKit works without a session).
+7. Waiting: notify line only when authorized; reroll countdown framing; "Closing
+   keeps your order running".
+8. Low-row note past tense. 9. Risk reversal on Verify subtitle.
