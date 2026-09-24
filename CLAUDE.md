@@ -545,8 +545,10 @@ number" is a hard campaign to get approved — or stop promising texting to US
 numbers; leading with Canadian numbers does NOT help, see below).
 ⚠️ **The only registration-free route is Telnyx's P2P traffic type, and it is
 closed to our account (2026-09-24).** US numbers list P2P as eligible; switching
-all 28 live ones was accepted and read back `A2P` on every one. It needs Telnyx
-to enable P2P on the account — an unasked support question, owner action. The
+all 28 live ones was accepted and read back `A2P` on every one. It needs Telnyx's
+P2P EXEMPTION, which requires a **$1,000+/month Telnyx contract** and months of
+review — out of reach at our ~$105 spend in the 30 days to 2026-09-24
+(50 numbers × $2 + $3.91 calls/SMS). The
 code is ready: `ensureP2P` runs at purchase and swap, and the hourly sweep in
 `sync-line-voice` switches every live line once
 `app_config.line_p2p_sweep_enabled` is set `true` (absent = off). Detail in

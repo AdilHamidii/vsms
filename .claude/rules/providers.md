@@ -844,8 +844,14 @@ longcodes list `["A2P"]` only.
   So the August no-op was NOT a wrong endpoint.
 **"Eligible" describes the number, not the account.** The docs say eligible
 numbers "can be switched via API or portal" — for this account they cannot.
-Whether Telnyx will enable P2P for a consumer second-number product is an
-UNASKED question to Telnyx support, not a refusal. Until then 10DLC is the
+🔴 **It is a SALES exemption, not a setting, and the bar is a contract:**
+Telnyx's [P2P exemption process](https://support.telnyx.com/en/articles/8685561-p2p-definition-and-exemption-process)
+requires no business messaging, not a cloud communications suite, traffic
+roughly symmetrical user-to-user (1:1–1:3), no automated texts, AND **an
+active Telnyx contract at a $1,000+/month minimum**, applied for through a
+CSM or `sales@telnyx.com`, approval "up to several months". Our Telnyx spend
+was **~$105 in the 30 days to 2026-09-24** (50 numbers × $2 from 35 new lines
++ 15 swaps, $3.25 calls, $0.66 SMS) — revisit at ~10× that. Until then 10DLC is the
 only documented route for US outbound, and it is a carrier rule, so no other
 provider escapes it. (`/v2/10dlc/brand` reports `totalRecords: 0`.)
 `ensureP2P` in `_shared/telnyx.ts` is wired (purchase, swap, and an hourly
