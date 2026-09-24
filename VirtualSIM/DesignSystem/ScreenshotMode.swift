@@ -121,10 +121,19 @@ enum ScreenshotMode {
         case activity        // the Activity tab with the sample order history
         case waitingClosed   // an order in flight, its screen closed: ResumeBar
         case account         // the Account tab: profile, invite, vRoam card
-        // The launch splash held at a fixed 60% bar. `SplashScreen` otherwise
-        // lives for well under a second on a warm simulator and screenshot mode
-        // skips the cold start that drives it, so it had never been captured.
+        // The launch splash, pinned. `SplashScreen` otherwise lives for well
+        // under a second on a warm simulator and screenshot mode skips the
+        // cold start that drives it, so it had never been captured.
+        // `splash` is a healthy launch: the wordmark alone, not breathing (a
+        // still would catch it mid-breath). `splashSlow` is past both timers:
+        // the progress line (at 60%) and the "Still loading…" caption.
         case splash
+        case splashSlow
+        // For a screen RECORDING, not a still: the real, unpinned cover held
+        // 2.5s and then lifted by the real `bootPhase` flip — the handoff and
+        // the Verify root's rise-in. (Every other fixture is ready before the
+        // system's launch animation ends, so its handoff is never on screen.)
+        case splashHandoff
         case waiting         // waiting for a code
         case code            // the code arrived
         case orders

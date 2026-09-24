@@ -175,7 +175,11 @@ struct TempScreen: View {
         }
         .scrollIndicators(.hidden)
         .task {
-            withAnimation(RMotion.content) { appeared = true }
+            // The entrance plays on the REVEAL, not on mount: this screen is
+            // the first one of every cold launch and mounts under the launch
+            // splash, so an entrance started here finished unseen. When the
+            // app is already up (a later appearance) it plays at once.
+            if state.bootPhase == .ready { appeared = true }
             // The explainer no longer raises on appearance (see
             // `startNumberOrder`); only the screenshot fixture opens it here.
             if screenshotWantsDeliveryInfo { deliveryInfoMode = .gated }
@@ -184,6 +188,11 @@ struct TempScreen: View {
         // own; switching product line is the biggest state change on the
         // screen and should be felt.
         .onChange(of: state.emailMode) { _, _ in RHaptic.select() }
+        // The same instant the splash starts handing off (`LaunchCover`), so
+        // the store rises in as the cover fades.
+        .onChange(of: state.bootPhase) { _, phase in
+            if phase == .ready { appeared = true }
+        }
         // Env objects injected explicitly: sheet content does not reliably
         // inherit @Observable environment objects — the reason `EnvBundle`
         // exists at all.

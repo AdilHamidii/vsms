@@ -71,7 +71,9 @@ struct AuthGate: View {
         Group {
             switch session.status {
             case .bootstrapping:
-                SplashScreen(state: .indeterminate)
+                // The splash itself is the `LaunchCover` overlay below, so it
+                // is the SAME instance when `ContentView` takes over.
+                resolvedTheme.bg.ignoresSafeArea()
             case .signedOut:
                 if onboardingComplete {
                     AuthFlowScreen()
@@ -90,6 +92,23 @@ struct AuthGate: View {
                         // daily-credit and winback nudges. No dialog is shown.
                         await push.registerProvisionalIfUndetermined()
                     }
+            }
+        }
+        // ONE splash per launch, above both the session bootstrap and
+        // `ContentView`'s cold chain — see `LaunchCover`. `ContentView`
+        // reports its phase up through `LaunchCoverKey`; while the session is
+        // still bootstrapping there is no `ContentView` and so no report.
+        // Signed out (onboarding, sign-in) there is no cover at all, and the
+        // host's state resets, so the next sign-in gets a fresh one.
+        .overlayPreferenceValue(LaunchCoverKey.self) { report in
+            if session.status != .signedOut {
+                LaunchCover(
+                    phase: session.status == .bootstrapping
+                        ? .bootstrapping
+                        : report?.phase ?? .bootstrapping,
+                    onRetry: report?.onRetry,
+                    onContinue: report?.onContinue
+                )
             }
         }
         .environment(\.theme, resolvedTheme)
@@ -195,6 +214,7 @@ struct AuthGate: View {
     }
 }
 
-// BootstrapScreen (a bare centred ProgressView) was replaced by SplashScreen.
+// BootstrapScreen (a bare centred ProgressView) was replaced by SplashScreen,
+// now hosted once per launch as `LaunchCover`.
 // A spinner alone gave the launch no identity and, more importantly, looked
 // identical whether the session refresh was working or wedged.

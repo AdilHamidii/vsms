@@ -37,5 +37,20 @@
 		<string>audio</string>
 		<string>voip</string>
 	</array>
+	<!--
+	  🔴 THE SECOND KEY, SAME TRAP (found 2026-09-24).
+	  `INFOPLIST_KEY_UILaunchScreen_BackgroundColor = LaunchBackground` is in
+	  the build settings too, and the built Info.plist carried an EMPTY
+	  `UILaunchScreen` dict, so the system launch screen drew the SYSTEM
+	  background (white / black) and `LaunchBackground.colorset` was never
+	  used. Declaring the dict here is what makes the launch screen
+	  `theme.bg`. Verify with:
+	      plutil -p "$APP/Info.plist" | grep -A2 UILaunchScreen
+	-->
+	<key>UILaunchScreen</key>
+	<dict>
+		<key>UIColorName</key>
+		<string>LaunchBackground</string>
+	</dict>
 </dict>
 </plist>

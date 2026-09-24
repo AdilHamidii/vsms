@@ -16,27 +16,35 @@ import SwiftUI
 /// back"); spending that colour on branding is exactly the conflation
 /// `AccentColor` documents as forbidden.
 ///
-/// `spins` makes the mark the app's loading indicator: the letters type on one
-/// at a time, then the `v` rotates for as long as the screen is up. That is why
-/// the splash needs no separate spinner — the logo is doing the work.
+/// `breathes` makes the mark the splash's loading indicator: it is fully drawn
+/// on the first frame and then pulses its opacity slowly for as long as the
+/// flag holds. (Until 2026-09-24 the letters typed on and the `v` then spun.
+/// The splash was two instances then, so the type-on replayed mid-launch when
+/// the second took over; the owner chose a calm, always-drawn mark instead.)
+/// Every other caller — onboarding, the sign-in fields — uses the static mark.
 struct BrandWordmark: View {
     @Environment(\.theme) private var theme
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var size: CGFloat = 30
-    /// Type the letters on, then rotate the `v` continuously.
-    var spins: Bool = false
+    /// Pulse the opacity 1 ↔ 0.72 (`RMotion.breathe`). Ignored under Reduce
+    /// Motion, where the mark stays still.
+    var breathes: Bool = false
 
-    @State private var revealed = 0
-    @State private var spinning = false
+    @State private var exhaled = false
 
-    /// (glyph, isTheV)
+    private var shouldBreathe: Bool { breathes && !reduceMotion }
+
+    /// (glyph, isTheV). One `Text` per letter, as it has always been drawn:
+    /// merging "SMS" into one run would apply the font's kerning and subtly
+    /// change the static mark onboarding and sign-in show.
     private let letters: [(String, Bool)] = [
         ("v", true), ("S", false), ("M", false), ("S", false),
     ]
 
     var body: some View {
         HStack(spacing: 0) {
-            ForEach(Array(letters.enumerated()), id: \.offset) { index, letter in
+            ForEach(Array(letters.enumerated()), id: \.offset) { _, letter in
                 // `verbatim` throughout: this is a brand name. As a
                 // LocalizedStringKey each letter would become its own catalog
                 // entry AND become translatable, and a translated logo is not
@@ -44,25 +52,17 @@ struct BrandWordmark: View {
                 Text(verbatim: letter.0)
                     .font(RFont.display(size, weight: .bold))
                     .foregroundStyle(letter.1 ? theme.ink : theme.text)
-                    // Rotation only ever applies to the `v`.
-                    .rotationEffect(letter.1 && spinning ? .degrees(360) : .zero)
-                    // Opacity, not conditional insertion — the glyphs must all
-                    // hold their place or the mark would reflow as it types.
-                    .opacity(spins ? (revealed > index ? 1 : 0) : 1)
-                    .offset(y: spins && revealed <= index ? size * 0.14 : 0)
             }
         }
-        .task {
-            guard spins else { return }
-            for i in 1...letters.count {
-                try? await Task.sleep(nanoseconds: 150_000_000)
-                withAnimation(.easeOut(duration: 0.28)) { revealed = i }
-            }
-            // A beat after the name lands, so the spin reads as "now loading"
-            // rather than as part of the write-on.
-            try? await Task.sleep(nanoseconds: 200_000_000)
-            withAnimation(.linear(duration: 1.15).repeatForever(autoreverses: false)) {
-                spinning = true
+        .opacity(exhaled ? 0.72 : 1)
+        // Starts at full opacity, so the first frame is the whole mark. A new
+        // non-repeating animation back to 1 replaces the loop when breathing
+        // stops (failure state, Reduce Motion switched on mid-launch).
+        .onChange(of: shouldBreathe, initial: true) { _, breathe in
+            if breathe {
+                withAnimation(RMotion.breathe) { exhaled = true }
+            } else if exhaled {
+                withAnimation(RMotion.content) { exhaled = false }
             }
         }
     }

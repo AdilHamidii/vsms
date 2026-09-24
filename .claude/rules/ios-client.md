@@ -257,9 +257,46 @@ expensive here specifically, because activation is a single-session event
   read "Unavailable" — indistinguishable from "this product is broken". The
   splash now offers **Try again** / **Continue anyway**. It still keeps existing
   data when a *foreground* refresh fails; only the cold path treats it as failure.
-- The splash sits **above** the maintenance overlay but is suppressed once
+- The splash sits **above** the maintenance overlay but hands off once
   maintenance is known active — that screen is the honest answer and must not
   wait behind five more fetches.
+- 🔴 **There is ONE splash per launch, `LaunchCover`, hosted by `AuthGate`**
+  (branch `design-overhaul`, 2026-09-24) as an `overlayPreferenceValue` above
+  BOTH the session bootstrap and `ContentView`. `ContentView` owns `AppState`,
+  so it publishes its half (`launchCoverReport`: `bootPhase` / `bootProgress`,
+  maintenance, and the Try again / Continue anyway closures) up through
+  `LaunchCoverKey`; while `session.status == .bootstrapping` there is no
+  `ContentView` and the cover draws `.indeterminate`. Signed out there is no
+  cover, and its state resets for the next sign-in. It replaced TWO instances
+  (`AuthGate`'s bootstrap splash and a `ContentView` overlay): the second
+  started from scratch, so the wordmark's type-on replayed and the `v`'s spin
+  restarted mid-launch. **Do not re-add a splash inside either phase** — the
+  view's identity surviving the bootstrap → signed-in swap is the whole fix.
+- **The handoff** (on `bootPhase == .ready`, or maintenance): hit-testing goes
+  off on the same frame, the background fades over `RMotion.handoff` (ease-out
+  0.5 s, `handoffSeconds`), the wordmark glides up 40 pt, and the foreground
+  (mark, line, caption) fades faster on `RMotion.content` — at one shared
+  opacity the glyphs ghosted over the store's cards while the background had
+  already vanished into the identical colour behind it (seen in a recording).
+  `LaunchCover` unmounts exactly `handoffSeconds` later and keeps drawing the
+  last COVERING state meanwhile, so "Continue anyway" fades the failure footer
+  out instead of swapping it mid-fade. Under Reduce Motion: no glide, no
+  breath, a plain crossfade (the store's `riseIn` is already off there).
+- **`TempScreen`'s `riseIn` stagger starts on the reveal**, not on mount: its
+  `appeared` flips on `bootPhase == .ready` (or at once in `.task` if the app
+  is already up). It mounts under the cover, so an entrance started in `.task`
+  finished unseen.
+- ⚠️ **A splash `.task` timer must `do`/`return` on a cancelled sleep, never
+  `try?`**: a cancelled `Task.sleep` throws at once and `try?` falls through,
+  which showed the line and the caption the instant the task was replaced.
+- Fixtures: `splash` (the mark alone, not breathing, so a still never catches
+  it mid-breath), `splashSlow` (line at 60% + caption), and `splashHandoff`
+  (for a screen RECORDING: the real unpinned cover lifted by a real
+  `bootPhase` flip 2.5 s in — every other fixture is ready before the system's
+  launch animation ends, so its handoff is never on screen). Verified
+  2026-09-24 from `splashHandoff` recordings (dark + light) and fixture stills;
+  a real signed-in cold launch was NOT recorded (the simulator has no
+  session), and Reduce Motion is code-verified only.
 - Measured 2026-07-30: catalog = 18,492 routes, **3.48 MB raw / 179 KB gzipped**,
   ~0.8–1.5s, and it is one of **six sequential round-trips** (~3s total).
   Overlapping them would genuinely help, but `AppState` is a plain `@Observable`
@@ -272,9 +309,14 @@ expensive here specifically, because activation is a single-session event
 product. The `v` takes `theme.ink` (the user-selectable accent) and **not**
 `theme.live`, which is the semantic success green; spending that colour on
 branding is the conflation `AccentColor` documents as forbidden. On the splash
-the letters type on and then the `v` rotates as the loading indicator, which is
-why there is no spinner. The progress bar appears only after 1.2s and the
-slow-connection line after 3.5s, so a healthy launch shows neither.
+the mark is fully drawn on the first frame and BREATHES (`BrandWordmark(breathes:)`,
+opacity 1 ↔ 0.72, `RMotion.breathe`, 1.6 s ease-in-out) as the loading
+indicator, which is why there is no spinner; it is still in the failure state
+and under Reduce Motion. (It typed on and then spun the `v` until 2026-09-24;
+nothing else ever used that, and onboarding / sign-in draw the static mark,
+one `Text` per letter, unchanged.) The progress line fades in only after
+1.5 s and the slow-connection caption after 3.5 s, both counted from the
+cover's first frame, so a healthy launch shows neither.
 
 **Appearance is `AppearanceMode` — System / Light / Dark, defaulting to System.**
 It replaced a `pref.isDark` Bool that defaulted to **false**, so the app and the
@@ -328,9 +370,11 @@ do not "fix" it by silently changing the hex. If it is ever revisited,
 `#1F7A00` is the same green a few steps darker and measures **5.47:1** against
 white while still reading as the brand.
 
-Light `bg` is warm paper **`#F8F7F4`** (was iOS's cool `#F2F2F7`) with `elev`
-left pure white, so cards read as genuinely raised. Dark mode is unchanged. The
-warm background is kept independently of the accent.
+Light `bg` is warm paper **`#F6F5F2`** (was iOS's cool `#F2F2F7`; this line
+said `#F8F7F4`, which is the DARK theme's text colour) with `elev` left pure
+white, so cards read as genuinely raised. Dark `bg` is **`#0A0A0C`**. Read
+both from `Theme.light` / `Theme.dark`, not from here. The warm background is
+kept independently of the accent.
 
 Three things that must move together, each a real trap:
 - **The `AccentColor` default is declared in FOUR places** — `Theme.light(_:)`,
@@ -339,9 +383,21 @@ Three things that must move together, each a real trap:
   hypothetical: the blue experiment changed three and left `AuthGate:28` on
   green, so an unreadable preference would have resolved to a different colour
   depending on which screen asked. Grep for all of them together.
-- **`Assets.xcassets/LaunchBackground.colorset` must match `theme.bg`.** It is
-  the static launch screen, so a mismatch is a visible colour flash on every
-  cold launch before SwiftUI has drawn anything.
+- **`Assets.xcassets/LaunchBackground.colorset` must match `theme.bg`** (light
+  `#F6F5F2`, dark `#0A0A0C`). It is the static launch screen, so a mismatch is
+  a visible colour step on every cold launch before SwiftUI has drawn
+  anything. 🔴 **And it must actually be WIRED.** Until 2026-09-24 it was
+  neither: the colorset read `#F8F7F4` / `#000000`, and it was never used at
+  all: `INFOPLIST_KEY_UILaunchScreen_BackgroundColor` is in the build
+  settings, but the built plist's `UILaunchScreen` was an EMPTY dict (read
+  with `plutil`; the likeliest cause is the same generator/merge trap as
+  `UIBackgroundModes`, not proven), so the launch screen drew the system's
+  white / black. `UILaunchScreen.UIColorName = LaunchBackground` now
+  lives in `VirtualSIM-Info.plist`; assert with
+  `plutil -p "$APP/Info.plist" | grep -A2 UILaunchScreen`. Recorded after the
+  fix with the simulator AND the app in light: launch screen → splash → store
+  with no step (the dark-on-dark case is the same mechanism, not recorded). An explicit in-app Light/Dark that differs from the
+  device still steps, because the launch screen can only follow the device.
 - **`live`/`warn`/`fail` are untouched and must stay that way.** Green still
   means "your code arrived" / "your credits came back". Now that the accent is
   no longer green, that separation is *stronger* than before — but it also means

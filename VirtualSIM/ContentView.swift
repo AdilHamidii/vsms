@@ -110,6 +110,38 @@ struct ContentView: View {
         }
     }
 
+    /// This view's half of the launch cover, published to `AuthGate`'s
+    /// `LaunchCover`.
+    ///
+    /// The cover sits ABOVE the maintenance overlay, so a cold launch shows
+    /// ONE cover, not a splash that lifts onto a second full-screen takeover.
+    /// It hands off once maintenance is known to be on: that screen is the
+    /// honest answer and should not wait behind five more fetches.
+    private var launchCoverReport: LaunchCoverReport {
+        #if DEBUG
+        // The `splash` / `splashSlow` fixtures: the real splash, pinned. The
+        // chain is skipped in screenshot mode and `continueWithoutCatalog`
+        // has already set `bootPhase = .ready`, so the pin overrides it.
+        switch ScreenshotMode.screen {
+        case .splash:
+            return LaunchCoverReport(phase: LaunchCoverPhase(
+                state: .progress(0.6), revealed: false, pinned: .calm))
+        case .splashSlow:
+            return LaunchCoverReport(phase: LaunchCoverPhase(
+                state: .progress(0.6), revealed: false, pinned: .slow))
+        default:
+            break
+        }
+        #endif
+        return LaunchCoverReport(
+            phase: LaunchCoverPhase(
+                state: state.bootPhase == .failed ? .failed : .progress(state.bootProgress),
+                revealed: state.bootPhase == .ready || state.maintenance.isActiveNow),
+            onRetry:    { Task { await state.coldStart(api: api) } },
+            onContinue: { state.continueWithoutCatalog() }
+        )
+    }
+
     var body: some View {
         @Bindable var state = state
         TabView(selection: $state.tab) {
@@ -206,33 +238,11 @@ struct ContentView: View {
             }
         }
         .animation(.easeOut(duration: 0.3), value: state.maintenance.isActiveNow)
-        // Above the maintenance overlay, so a cold launch shows ONE cover, not
-        // a splash that lifts onto a second full-screen takeover. Suppressed
-        // once maintenance is known to be on: that screen is the honest answer
-        // and should not wait behind five more fetches.
-        .overlay {
-            if state.bootPhase != .ready, !state.maintenance.isActiveNow {
-                SplashScreen(
-                    state: state.bootPhase == .failed
-                        ? .failed : .progress(state.bootProgress),
-                    onRetry:    { Task { await state.coldStart(api: api) } },
-                    onContinue: { state.continueWithoutCatalog() }
-                )
-                .environment(\.theme, theme)
-                .transition(.opacity)
-            }
-        }
-        .animation(.easeOut(duration: 0.35), value: state.bootPhase)
-        #if DEBUG
-        // The `splash` screenshot fixture: the real splash pinned at a
-        // determinate 60% bar. See `ScreenshotMode.Screen.splash`.
-        .overlay {
-            if ScreenshotMode.screen == .splash {
-                SplashScreen(state: .progress(0.6))
-                    .environment(\.theme, theme)
-            }
-        }
-        #endif
+        // The launch splash is NOT drawn here. `AuthGate` hosts ONE splash
+        // above the session bootstrap AND this view (`LaunchCover`), so the
+        // same instance carries through both; this view only reports where
+        // its cold chain is. See `launchCoverReport`.
+        .preference(key: LaunchCoverKey.self, value: launchCoverReport)
         .task {
             #if DEBUG
             // The cold-start chain is skipped entirely — six sequential
@@ -918,7 +928,10 @@ extension ContentView {
     func applyScreenshotState(_ shot: ScreenshotMode.Screen) {
         // The catalog is seeded rather than fetched, so a frame does not change
         // because a provider repriced something this morning.
-        state.continueWithoutCatalog()      // lifts the splash; bootPhase is private(set)
+        // `splashHandoff` flips it later, below, to exercise the real reveal.
+        if shot != .splashHandoff {
+            state.continueWithoutCatalog()  // lifts the splash; bootPhase is private(set)
+        }
         state.balance = 42
 
         switch shot {
@@ -1151,7 +1164,16 @@ extension ContentView {
         // `deliveryInfo` is the same frame with the explainer raised —
         // `TempScreen` raises it itself when it sees that case, because the
         // sheet is `@State` on that screen and cannot be presented from here.
-        case .verify, .home, .deliveryInfo, .announcement:
+        case .verify, .home, .deliveryInfo, .announcement, .splashHandoff:
+            if shot == .splashHandoff {
+                // The real cover, unpinned, lifted by the real `bootPhase`
+                // flip 2.5s in: clear of the system's own launch animation,
+                // so a screen recording shows the handoff and the rise-in.
+                Task {
+                    try? await Task.sleep(nanoseconds: 2_500_000_000)
+                    state.continueWithoutCatalog()
+                }
+            }
             state.openCodeStore()
             state.lines = []
             // `coldStart` sets it for a real user and is skipped here.
@@ -1278,10 +1300,10 @@ extension ContentView {
             UserDefaults.standard.removeVolatileDomain(forName: argDomain)
             UserDefaults.standard.setVolatileDomain(args, forName: argDomain)
 
-        case .splash:
-            // Rendered by the DEBUG overlay beside the real splash overlay:
-            // `bootPhase` is private(set) and `continueWithoutCatalog` above
-            // has already lifted the real one.
+        case .splash, .splashSlow:
+            // Rendered by `AuthGate`'s one `LaunchCover`, pinned through
+            // `launchCoverReport`: `bootPhase` is private(set) and
+            // `continueWithoutCatalog` above has already made it `.ready`.
             break
 
         case .credits:

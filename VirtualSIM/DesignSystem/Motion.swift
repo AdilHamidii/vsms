@@ -44,6 +44,20 @@ enum RMotion {
         .delay(Double(min(index, cap)) * step)
     }
 
+    /// The launch splash's wordmark while the cold chain loads: a slow
+    /// opacity breath. Loops until the splash stops asking for it; never used
+    /// under Reduce Motion (see `BrandWordmark.breathes`).
+    static let breathe = Animation.easeInOut(duration: 1.6).repeatForever(autoreverses: true)
+
+    /// How long the splash takes to hand off to the first screen. The splash
+    /// host unmounts after exactly this, so the two cannot disagree.
+    static let handoffSeconds: Double = 0.5
+
+    /// The splash handing off: the background fades while the wordmark glides
+    /// up and out. Ease-OUT so the first screen is visibly arriving from the
+    /// first frame of the handoff rather than after a slow start.
+    static let handoff = Animation.easeOut(duration: handoffSeconds)
+
     /// nil under Reduce Motion, so `withAnimation(RMotion.unlessReduced(…))`
     /// and `.animation(RMotion.unlessReduced(…), value:)` change instantly.
     /// Every animation added by the My number overhaul goes through this
