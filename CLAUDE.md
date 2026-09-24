@@ -2057,6 +2057,18 @@ gets unlimited free-domain addresses under `email_sub_daily_cap` — a stated
 hard stop, not a throttle, because the free pool is scarce and shared and one
 looping subscriber could drain it for everyone.
 
+✅ **CAPS RAISED 2026-09-24 (owner): daily 8 → 10, rolling 30-day 60 → 100**, written
+live to `app_config` and read back through `email_usage` (10 / 100). The history
+below explains how 8 and 60 were derived and stays as the record. 🔴 **The
+break-even arithmetic moves with the price:** 100 × ~4.2c ≈ $4.20 against the
+**$4.99** monthly price the owner set the same day ($4.24 net), which is **NOT LIVE YET**.
+Until it ships, a $2.99 subscriber who uses all 100 addresses nets about −$1.70 a month. Owner decisions
+of 2026-09-24, pending a release that updates the wording: **remove the free lifetime address**
+(`email_free_lifetime_grants` 1 → 0), **mail.monthly $2.99 → $4.99 for NEW
+subscribers only** (current subscribers keep $2.99, so no Apple price-increase consent),
+and **mail.yearly → $39.99**. Do all three together with the release, because
+shipped builds say "your 1 free address".
+
 🔴 **There are TWO caps since 2026-09-21: a DAILY one (8) and a ROLLING
 30-DAY one (60, `app_config.email_sub_monthly_cap`, migration
 `20260921100000`).** Both are read from `app_config` inside
@@ -3350,7 +3362,7 @@ Each has been wrong within a day of being written at least once.
   grace, 4 billing_retry, 2 expired).
 - **Config**: signup grant **0** (owner decision 2026-09-10 — see the grant
   section above; `app_config.signup_bonus_credits`), free e-mail cap
-  **1**/user/day, **subscriber e-mail cap 8/day AND 60 per rolling 30 days,
+  **1**/user/day, **subscriber e-mail cap 10/day AND 100 per rolling 30 days (raised from 8/60 on 2026-09-24),
   both counting DELIVERED addresses only since 2026-09-21
   (the monthly one added 2026-09-21 because the 25 → 8 daily cut did not stop
   the TikTok farm — see the temp-e-mail section)**, swap **8**
