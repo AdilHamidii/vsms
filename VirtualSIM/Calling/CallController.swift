@@ -1153,3 +1153,16 @@ extension CallController {
         }
     }
 }
+
+#if DEBUG
+extension CallController {
+    /// Screenshot harness ONLY: put the controller in an answered call with
+    /// no SDK, CallKit or network involved, so a frame can prove where
+    /// `InCallOverlay` draws (telephony trap 5). Compiled out of Release.
+    func screenshotLiveCall(peer: String) {
+        self.peer = peer
+        self.startedAt = Date().addingTimeInterval(-42)
+        self.phase = .active
+    }
+}
+#endif

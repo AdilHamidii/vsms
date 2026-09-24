@@ -78,12 +78,15 @@ struct LineScreen: View {
 
 extension View {
     /// Registers every `LineRoute` destination on the enclosing
-    /// `NavigationStack` — the tab's and `LineStoreCover`'s.
+    /// `NavigationStack` — the tab's and `LineStoreCover`'s. Only the tab's
+    /// stack ever holds `.thread` / `.compose`; the cover pushes place pages.
     func lineRouteDestinations() -> some View {
         navigationDestination(for: LineRoute.self) { route in
             switch route {
-            case .countries: LineCountriesPage()
-            case .cities:    LineCitiesPage()
+            case .countries:      LineCountriesPage()
+            case .cities:         LineCitiesPage()
+            case .thread(let id): ThreadScreen(threadId: id)
+            case .compose:        ComposeScreen()
             }
         }
     }
@@ -255,7 +258,7 @@ private struct LiveLineView: View {
         switch seg {
         case .messages:
             roundButton(icon: "square.and.pencil", label: Text("New message")) {
-                state.flow = .compose
+                state.linePath.append(.compose)
             }
         case .calls:
             if calling.isVoiceAvailable {
@@ -391,10 +394,7 @@ private struct LiveLineView: View {
                         onAddName: { naming = PeerRef(id: thread.peerE164) },
                         onCopy: { UIPasteboard.general.string = thread.peerE164
                                   RHaptic.select() },
-                        onTap: {
-                            state.openThreadId = thread.id
-                            state.flow = .thread       // Task 6 turns this into a push
-                        })
+                        onTap: { state.linePath.append(.thread(thread.id)) })
                     // Capped stagger on entry; a new thread (an inbound
                     // message from a new peer) drops in at the top.
                     .riseIn(listShown, index: index)

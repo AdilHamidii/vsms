@@ -31,24 +31,19 @@ enum LineRoute: Hashable {
     case countries
     /// The current country's localities ("Other city").
     case cities
+    /// A conversation, by `LineThread.id`.
+    case thread(String)
+    /// A new conversation.
+    case compose
 }
 
 enum FlowStage: String, Hashable, Identifiable {
     case checkout, waiting, otp, recovery, esimCheckout, esimDetail
     case emailWaiting, emailCode
-    /// The rented line. `thread` and `dialer` are covers rather than navigation
-    /// pushes. That was forced by the old custom `TabBar` (a ZStack overlay
-    /// that would have sat on top of the message composer); the native
-    /// `TabView` since 2026-09-24 no longer forces it, but they stay covers.
-    case lineCheckout, lineProvisioning, thread, dialer
-    /// Start a conversation with a number that has never texted us.
-    ///
-    /// Removed 2026-08-18 with the outbound-SMS retirement and RESTORED
-    /// 2026-09-08 with it. `line_threads` rows are created by an inbound
-    /// message or by an outbound send, so without this the Messages segment
-    /// can only ever reply — every path into `ThreadScreen` needs a thread
-    /// that already exists.
-    case compose
+    /// The rented line's covers. The thread and compose are PUSHED on the My
+    /// number stack (`LineRoute`) since 2026-09-24, so the back swipe works
+    /// and the tab bar stays; the dialer stays a cover.
+    case lineCheckout, lineProvisioning, dialer
     /// The number store, opened OVER a live line to rent an additional one.
     /// The tab itself only shows the store when there is no line at all, so
     /// without this a second number is unreachable — which made the whole
@@ -335,8 +330,10 @@ final class AppState {
     /// a product. See CLAUDE.md, "Home leads the app".
     var tab: AppTab = .verify
 
-    /// Navigation inside the My number tab. Not persisted. Emptied when the
-    /// tab's ROOT changes (store ↔ live line) — see `LineScreen`.
+    /// Navigation inside the My number tab: place pages, a conversation,
+    /// compose. Not persisted. Emptied when the tab's ROOT changes (store ↔
+    /// live line) — see `LineScreen` — and on leaving the tab (ContentView),
+    /// so an open conversation closes with the tab the way its cover used to.
     var linePath: [LineRoute] = []
 
     /// Open the temp code store (SMS, or e-mail when `email`), from anywhere.
@@ -348,6 +345,22 @@ final class AppState {
     func openCodeStore(email: Bool = false) {
         emailMode = email
         tab = .verify
+    }
+
+    /// Open one conversation in the My number tab, from anywhere — a push, a
+    /// fixture. Closes any cover first: the thread used to BE a cover
+    /// (a `FlowStage` case), which replaced whatever was up, and a push tapped
+    /// over a checkout must still land on the conversation.
+    ///
+    /// The order of `tab` and `linePath` does not matter to ContentView's
+    /// tab-leave handler: `onChange(of: state.tab)` runs after this whole
+    /// body, sees `.line`, and pops nothing (it clears the stack only when the
+    /// NEW tab is not `.line`).
+    func openLineThread(_ threadId: String) {
+        flow = nil
+        tab = .line
+        intent = .line
+        linePath = [.thread(threadId)]
     }
     var balance: Int = 0
     var services: [Service] = SeedData.services
@@ -524,7 +537,9 @@ final class AppState {
                 // flow exit would throw away the held number the moment the
                 // user closed the paywall. It is cleared on leaving the tab
                 // instead, in ContentView's `.onChange(of: state.tab)`.
-                openThreadId = nil
+                // `openThreadId` is no longer a cover's: `ThreadScreen` sets it
+                // on appear and before every send, and clears it on disappear.
+                //
                 // `dialerDigits` was cleared here and lived on AppState — but
                 // `DialerScreen` keeps its own `@State private var digits`, so
                 // the AppState copy was written by exactly one line and read by
@@ -741,7 +756,9 @@ final class AppState {
     /// Set when a search came back empty so the store can say WHICH of the two
     /// causes it knows about, instead of rendering a blank screen.
     var lineUnavailableReason: LineUnavailableReason?
-    /// Thread open in the `.thread` cover. Cleared in `flow.didSet`.
+    /// The conversation on screen, for `sendLineMessage`'s choice of sending
+    /// line. Set by `ThreadScreen` (appear and every send), cleared by it on
+    /// disappear, nil'd by `ComposeScreen` on open.
     var openThreadId: String?
 
     var esimPlans: [EsimPlan] = []

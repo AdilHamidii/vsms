@@ -42,6 +42,8 @@ enum ScreenshotMode {
         case lineStore       // the store with three inline numbers and the StoreKit price
         case lineStoreError  // the store after a failed search: fail-tinted empty state, Try again
         case thread          // a real conversation on a rented number
+        case lineInCall      // a live call over a PUSHED thread: the call screen must cover it (trap 5)
+        case linePushThread  // a line-SMS push tapped over an open cover: tab .line, thread pushed
         case email           // temp e-mail, code delivered
         case emailStore      // temp e-mail, choosing a free domain
         // The domain picker sheet itself, over the e-mail store. Reachable

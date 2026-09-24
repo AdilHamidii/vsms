@@ -2,9 +2,9 @@ import SwiftUI
 
 /// One conversation on the rented line.
 ///
-/// A cover rather than a navigation push. That was forced by the old custom
-/// `TabBar` (a ZStack overlay that would have sat on top of the composer); the
-/// native `TabView` since 2026-09-24 no longer forces it, but it stays a cover.
+/// Pushed on the My number stack (since 2026-09-24): the back swipe works and
+/// the tab bar stays. It was a cover because the old custom tab bar would have
+/// sat on the composer; the native `TabView` removed that reason.
 ///
 /// ── The composer's history, because it governs what this screen may say ───
 ///
@@ -43,11 +43,15 @@ struct ThreadScreen: View {
     @State private var didLoad = false
     @FocusState private var composerFocused: Bool
 
-    private var thread: LineThread? {
-        state.lineThreads.first { $0.id == state.openThreadId }
-    }
-    private var messages: [LineMessage] {
-        state.openThreadId.flatMap { state.lineMessages[$0] } ?? []
+    let threadId: String
+
+    private var thread: LineThread? { state.lineThreads.first { $0.id == threadId } }
+    private var messages: [LineMessage] { state.lineMessages[threadId] ?? [] }
+    /// The number this conversation belongs to — what a reply is sent from and
+    /// whose allowance it spends. Falls back to the visible line only while the
+    /// thread itself is unresolved.
+    private var threadLine: Line? {
+        thread.flatMap { t in state.lines.first { $0.id == t.lineId } } ?? state.line
     }
     private var peer: String { thread?.peerE164 ?? "" }
     private var peerName: String? { state.contactName(for: peer) }
@@ -56,27 +60,53 @@ struct ThreadScreen: View {
         ZStack {
             theme.bg.ignoresSafeArea()
             VStack(spacing: 0) {
-                header
-                Divider().overlay(theme.sep)
                 transcript
                 composer
             }
         }
-        .task {
-            guard let id = state.openThreadId else { return }
-            await state.loadLineMessages(using: LineAPI(client: api), threadId: id)
-            await state.markThreadRead(using: LineAPI(client: api), threadId: id)
+        .navigationTitle(Text(verbatim: peerName ?? PhoneFormat.national(peer)))
+        .navigationBarTitleDisplayMode(.inline)
+        .containerBackground(theme.bg, for: .navigation)
+        .toolbar {
+            ToolbarItem(placement: .principal) { identity }
+            ToolbarItemGroup(placement: .topBarTrailing) {
+                // Hidden, not disabled, without a voice client — the same gate
+                // and reasoning as the Number tab's keypad: a greyed control
+                // still advertises a capability the build lacks.
+                if calls.isVoiceAvailable {
+                    Button(action: callPeer) { Image(systemName: RIcon.phone) }
+                        .accessibilityLabel(Text("Call this number"))
+                }
+                Button { showActions = true } label: { Image(systemName: "ellipsis") }
+                    .accessibilityLabel(Text("Options"))
+            }
+        }
+        .tint(theme.text)   // toolbar controls are neutral (one green)
+        .onAppear { state.openThreadId = threadId }
+        .onDisappear { if state.openThreadId == threadId { state.openThreadId = nil } }
+        // Telephony trap 5: a sheet or a dialog is presented ABOVE the root
+        // call overlay, so neither may stay up once a call is live.
+        .onChange(of: calls.isLive) { _, live in
+            if live {
+                showNameSheet = false
+                showActions = false
+            }
         }
         // Inbound arrives by push, but a thread left open while the other side
         // replies must fill in on its own. Polling rather than Realtime, which
         // is used nowhere in this codebase and would be a second large bet in
         // one release.
-        .task(id: state.openThreadId) {
-            guard let id = state.openThreadId else { return }
-            while !Task.isCancelled, state.flow == .thread {
+        .task(id: threadId) {
+            await state.loadLineMessages(using: LineAPI(client: api), threadId: threadId)
+            await state.markThreadRead(using: LineAPI(client: api), threadId: threadId)
+            // `.task` is cancelled when the page is popped or the tab hides it;
+            // a cover over it (the dialer) pauses the poll.
+            while !Task.isCancelled {
                 try? await Task.sleep(for: .seconds(6))
-                guard state.flow == .thread else { return }
-                await state.loadLineMessages(using: LineAPI(client: api), threadId: id)
+                guard !Task.isCancelled else { return }
+                if state.flow == nil {
+                    await state.loadLineMessages(using: LineAPI(client: api), threadId: threadId)
+                }
             }
         }
         .confirmationDialog("Options", isPresented: $showActions, titleVisibility: .hidden) {
@@ -99,11 +129,9 @@ struct ThreadScreen: View {
             }
             Button("Cancel", role: .cancel) { }
         }
-        // Presented from HERE, not from `ContentView`: this screen is itself a
-        // `fullScreenCover`, and a sheet raised from the root while a cover is
-        // up does not appear at all. The environment objects are injected
-        // explicitly for the same reason `EnvBundle` exists — sheet content
-        // does not reliably inherit `@Observable` objects from its presenter.
+        // Presented from here: a page's sheet, with the environment injected
+        // explicitly (sheet content does not reliably inherit `@Observable`
+        // objects).
         .sheet(isPresented: $showNameSheet) {
             PeerNameSheet(e164: peer)
                 .environment(\.theme, theme)
@@ -114,103 +142,51 @@ struct ThreadScreen: View {
         }
     }
 
-    /// Hand this conversation to the keypad, pre-filled.
-    ///
-    /// `flow` drives a `fullScreenCover(item:)`, and swapping one identity for
-    /// another while the cover is up is not a transition SwiftUI performs
-    /// reliably — the second stage can simply never appear. So the cover is
-    /// dismissed first and the dialer raised on the next runloop, once the
-    /// dismissal has actually committed. The prefill is set BEFORE either, so
-    /// the dialer can never come up empty if the hop is coalesced.
+    /// Hand this conversation to the keypad, pre-filled. The thread is a
+    /// pushed page, not a cover, so the dialer cover goes straight up over it
+    /// — no dismiss-then-raise hop. The prefill is set first so the dialer can
+    /// never come up empty.
     private func callPeer() {
         RHaptic.select()
         state.dialerPrefill = peer
-        state.flow = nil
-        Task { @MainActor in
-            try? await Task.sleep(for: .milliseconds(320))
-            state.flow = .dialer
-        }
+        state.flow = .dialer
     }
 
-    // MARK: - Header
+    // MARK: - Identity
 
-    private var header: some View {
-        HStack(spacing: 12) {
-            Button { state.flow = nil } label: {
-                Image(systemName: RIcon.close)
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(theme.text2)
-                    .frame(width: 34, height: 34)
-                    .background(theme.chipBg, in: .circle)
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel(Text("Close"))
-
-            // The identity is one tap target — avatar and name together, the
-            // way every phone app opens a contact from its thread header.
-            Button { showNameSheet = true } label: {
-                HStack(spacing: 10) {
-                    PeerAvatar(e164: peer, name: peerName, size: 36)
-                    VStack(alignment: .leading, spacing: 1) {
-                        // The nickname when there is one, the number when there
-                        // is not — never a guessed name, and never both stacked,
-                        // which is what makes a header feel cluttered.
-                        Text(verbatim: peerName ?? PhoneFormat.national(peer))
-                            .font(RFont.display(17, weight: .semibold))
-                            .tracking(-0.3)
-                            .foregroundStyle(theme.text)
+    /// The toolbar's principal item. The identity is one tap target — avatar
+    /// and name together, the way every phone app opens a contact from its
+    /// thread header.
+    private var identity: some View {
+        Button { showNameSheet = true } label: {
+            HStack(spacing: RSpace.sm) {
+                PeerAvatar(e164: peer, name: peerName, size: 28, neutral: true)
+                VStack(alignment: .leading, spacing: 0) {
+                    // The nickname when there is one, the number when there is
+                    // not — never a guessed name.
+                    Text(verbatim: peerName ?? PhoneFormat.national(peer))
+                        .font(RFont.text(16, weight: .semibold))
+                        .foregroundStyle(theme.text)
+                        .lineLimit(1)
+                    if thread?.blocked == true {
+                        Text("Blocked")
+                            .font(RFont.text(11, weight: .medium))
+                            .foregroundStyle(theme.fail)
+                    } else if reported {
+                        Text("Reported. Thanks, we'll take a look")
+                            .font(RFont.text(11))
+                            .foregroundStyle(theme.text3)
                             .lineLimit(1)
-                        if thread?.blocked == true {
-                            Text("Blocked")
-                                .font(RFont.text(11, weight: .medium))
-                                .foregroundStyle(theme.fail)
-                        } else if reported {
-                            Text("Reported. Thanks, we'll take a look")
-                                .font(RFont.text(11))
-                                .foregroundStyle(theme.text3)
-                                .lineLimit(1)
-                        } else if peerName != nil {
-                            Text(verbatim: PhoneFormat.national(peer))
-                                .numberStyle(size: 11, weight: .regular, color: theme.text3)
-                                .lineLimit(1)
-                        }
+                    } else if peerName != nil {
+                        Text(verbatim: PhoneFormat.national(peer))
+                            .numberStyle(size: 11, weight: .regular, color: theme.text3)
+                            .lineLimit(1)
                     }
-                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
-                .contentShape(.rect)
             }
-            .buttonStyle(.plain)
-            .accessibilityHint(Text("Name this number"))
-
-            // Hidden, not disabled, when no voice client is attached — the same
-            // gate and the same reasoning as the Number tab's dial button: a
-            // greyed control still advertises a capability the build lacks.
-            if calls.isVoiceAvailable {
-                Button(action: callPeer) {
-                    Image(systemName: RIcon.phone)
-                        .font(.system(size: 15, weight: .semibold))
-                        .foregroundStyle(theme.text2)
-                        .frame(width: 34, height: 34)
-                        .background(theme.chipBg, in: .circle)
-                        .contentShape(.circle)
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel(Text("Call this number"))
-            }
-
-            Button { showActions = true } label: {
-                Image(systemName: "ellipsis")
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(theme.text2)
-                    .frame(width: 34, height: 34)
-                    .background(theme.chipBg, in: .circle)
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel(Text("Options"))
         }
-        .padding(.horizontal, RSpace.gutter)
-        .padding(.top, 12)
-        .padding(.bottom, 10)
+        .buttonStyle(.plain)
+        .accessibilityHint(Text("Name this number"))
     }
 
     // MARK: - Transcript
@@ -356,7 +332,8 @@ struct ThreadScreen: View {
                 .accessibilityLabel(Text("Send"))
             }
 
-            if blockReason == nil, let left = state.line?.smsRemaining {
+            // Only at 10 or fewer (spec §4.4), and the THREAD's line's count.
+            if blockReason == nil, let left = threadLine?.smsRemaining, left <= 10 {
                 Text("\(left) texts left this month")
                     .font(RFont.text(11))
                     .foregroundStyle(theme.text3)
@@ -395,7 +372,7 @@ struct ThreadScreen: View {
         // from the thread's line, so reading `state.line` here refused valid
         // sends and permitted ones the server refuses, for anyone holding two
         // numbers.
-        guard let line = state.lines.first(where: { $0.id == thread.lineId }) ?? state.line else {
+        guard let line = threadLine else {
             return "Your number isn't ready yet."
         }
         switch line.sendBlock {
@@ -433,6 +410,7 @@ struct ThreadScreen: View {
         guard let peer = thread?.peerE164 else { return }
         let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return }
+        state.openThreadId = threadId  // the reply leaves from THIS thread's line
         isSending = true
         Task {
             defer { isSending = false }

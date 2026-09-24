@@ -153,8 +153,7 @@ struct LineRecentsView: View {
     private func open(_ thread: LineThread?) {
         guard let thread else { return }
         RHaptic.select()
-        state.openThreadId = thread.id
-        state.flow = .thread
+        state.linePath.append(.thread(thread.id))
     }
 
     private func copy(_ call: LineCall) {

@@ -174,6 +174,9 @@ struct ContentView: View {
         // `ErrorBanner` is already duplicated into it. Sheets are detented, so
         // hosting a call screen inside one would render it at sheet height —
         // they are dismissed instead, below.
+        //
+        // A pushed thread or compose is not a flow, so this copy covers them,
+        // tab bar included (verified by `-screenshot lineInCall`).
         .overlay {
             if calls.isLive, state.flow == nil {
                 InCallOverlay()
@@ -445,9 +448,8 @@ struct ContentView: View {
             }
         }
         // Tapping an inbound-text push opens that conversation. Sets the tab
-        // too: the thread cover renders over whatever tab is behind it, and
-        // closing it should land the user on their number rather than back on
-        // an unrelated product.
+        // and pushes the conversation on the My number stack
+        // (`openLineThread`), closing any cover first.
         //
         // 🔴 `initial: true` IS LOAD-BEARING, ON BOTH THIS AND THE ORDER
         // HANDLER. A notification tapped from a TERMINATED app is already
@@ -463,8 +465,16 @@ struct ContentView: View {
             guard let threadId = newValue else { return }
             push.pendingLineThreadId = nil
             Task {
+                // The line FIRST, then the stack. `LineScreen` empties
+                // `linePath` whenever the line's liveness changes, and on a
+                // cold launch from a push the first `my_line` read (coldStart's,
+                // or the tab's own `.task`) could otherwise land AFTER the push
+                // and flip it false → true, popping the thread just pushed.
+                // Reading it here settles liveness before anything is pushed;
+                // a later read returns the same value and changes nothing.
+                await state.loadLine(using: LineAPI(client: api))
                 await state.loadLineThreads(using: LineAPI(client: api))
-                // Never open a thread we could not load. `ThreadScreen`
+                // Never open a thread we could not load: `ThreadScreen`
                 // resolves its peer from `lineThreads`, so an unresolvable id
                 // renders an ENABLED composer over an empty peer whose send
                 // button silently does nothing.
@@ -473,10 +483,8 @@ struct ContentView: View {
                     state.intent = .line
                     return
                 }
-                state.tab = .line
-                state.intent = .line
-                state.openThreadId = threadId
-                state.flow = .thread
+                // Tab `.line`, the thread PUSHED on its stack, any cover closed.
+                state.openLineThread(threadId)
             }
         }
         .onChange(of: push.pendingOrderId, initial: true) { _, newValue in
@@ -585,9 +593,9 @@ struct ContentView: View {
                         .presentationBackground(theme.bg)
                 }
                 // The cover's own copy of the call screen. Without it a call
-                // arriving while ANY cover is open — a thread, a checkout, the
-                // dialer itself — is rendered underneath that cover and cannot
-                // be seen or ended.
+                // arriving while ANY cover is open — a checkout, the dialer
+                // itself — is rendered underneath that cover and cannot be seen
+                // or ended.
                 .overlay {
                     if calls.isLive {
                         InCallOverlay()
@@ -724,11 +732,10 @@ struct ContentView: View {
             EmailWaitingScreen()
         case .emailCode:
             EmailCodeScreen()
-        // The rented line's covers land with the purchase, messaging and voice
-        // steps. They are routed rather than omitted because `ThreadRow`
-        // already assigns `flow = .thread`, and because a cover with no case
-        // presents `emptyFlow` — a blank screen with no way out, which is the
-        // exact failure the eSIM empty state was rebuilt to avoid.
+        // The rented line's covers. Every case is routed rather than omitted
+        // because a cover with no case presents `emptyFlow` — a blank screen
+        // with no way out, which is the exact failure the eSIM empty state was
+        // rebuilt to avoid.
         case .lineStoreMore:
             // The same store, presented as a cover so it inherits EnvBundle —
             // covers do NOT reliably inherit @Observable env objects, which is
@@ -738,10 +745,6 @@ struct ContentView: View {
             LineCheckoutScreen()
         case .lineProvisioning:
             LineProvisioningScreen()
-        case .thread:
-            ThreadScreen()
-        case .compose:
-            ComposeScreen()
         case .orders:
             // Was a tab until 2026-08-06. As a cover it needs its own way out,
             // which a tab never did — the tab bar WAS the way out.
@@ -1068,13 +1071,23 @@ extension ContentView {
             // fetches `app_config`); 8 is what it read on 2026-09-01.
             state.appStatus = AppStatus(announcement: nil, esimPaused: false, lineSwapCredits: 8)
 
-        case .thread:
-            state.tab = .line
+        case .thread, .lineInCall, .linePushThread:
             state.lines = [ScreenshotMode.sampleLine]
             state.lineThreads = ScreenshotMode.sampleThreads
             state.lineMessages = ["t1": ScreenshotMode.sampleMessages]
-            state.openThreadId = "t1"
-            state.flow = .thread
+            switch shot {
+            case .linePushThread:
+                // Exercise the REAL handler (`onChange(initial: true)`), over
+                // an open cover, from another tab.
+                state.tab = .verify
+                state.flow = .orders
+                push.pendingLineThreadId = "t1"
+            case .lineInCall:
+                state.openLineThread("t1")
+                calls.screenshotLiveCall(peer: "+18885550111")
+            default:
+                state.openLineThread("t1")
+            }
 
         // The Verify tab's root — the code store — with no line (was
         // `homeRouter`). `home` (the old pushed store's frame) is an ALIAS:

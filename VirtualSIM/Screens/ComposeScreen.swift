@@ -29,6 +29,7 @@ struct ComposeScreen: View {
     @Environment(\.theme) private var theme
     @Environment(AppState.self) private var state
     @Environment(APIClient.self) private var api
+    @Environment(\.dismiss) private var dismiss
 
     @State private var to = ""
     @State private var text = ""
@@ -77,9 +78,13 @@ struct ComposeScreen: View {
         ZStack {
             theme.bg.ignoresSafeArea()
             VStack(spacing: 0) {
-                header
                 ScrollView {
                     VStack(alignment: .leading, spacing: 12) {
+                        if let line = state.line {
+                            Text("From \(PhoneFormat.national(line.e164))")
+                                .font(RFont.text(13))
+                                .foregroundStyle(theme.text2)
+                        }
                         toField
                         bodyField
                         if let note { notice(note, warning: isWarning) }
@@ -96,6 +101,9 @@ struct ComposeScreen: View {
                 .padding(.bottom, 12)
             }
         }
+        .navigationTitle(Text("New message"))
+        .navigationBarTitleDisplayMode(.inline)
+        .containerBackground(theme.bg, for: .navigation)
         .task {
             // 🔴 Load-bearing. `sendLineMessage` takes the sending line from
             // the OPEN THREAD when there is one, which is correct for a reply
@@ -107,37 +115,7 @@ struct ComposeScreen: View {
         }
     }
 
-    // MARK: - Chrome
-
-    private var header: some View {
-        HStack(spacing: 12) {
-            Button { state.flow = nil } label: {
-                Image(systemName: RIcon.close)
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(theme.text2)
-                    .frame(width: 34, height: 34)
-                    .background(theme.chipBg, in: .circle)
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel(Text("Close"))
-
-            VStack(alignment: .leading, spacing: 1) {
-                Text("New message")
-                    .font(RFont.display(19, weight: .bold))
-                    .tracking(-0.4)
-                    .foregroundStyle(theme.text)
-                if let line = state.line {
-                    Text("From \(PhoneFormat.national(line.e164))")
-                        .font(RFont.text(12))
-                        .foregroundStyle(theme.text2)
-                }
-            }
-            Spacer(minLength: 0)
-        }
-        .padding(.horizontal, RSpace.gutter)
-        .padding(.top, 8)
-        .padding(.bottom, 12)
-    }
+    // MARK: - Fields
 
     private var toField: some View {
         Card(radius: RRadius.group, elevation: .flat) {
@@ -237,21 +215,13 @@ struct ComposeScreen: View {
             if ok {
                 RHaptic.success()
                 // `sendLineMessage` set `openThreadId` from the server's
-                // response, so the conversation the user just started is what
-                // opens — not the list they came from. It is also where the
-                // delivery receipt will land, which is the only place the
-                // send's real outcome is ever stated.
-                //
-                // ⚠️ DISMISS FIRST, THEN RAISE. Swapping one
-                // `fullScreenCover(item:)` identity for another in a single
-                // step is not a transition SwiftUI performs reliably — the
-                // second stage can simply never appear, and a successful send
-                // is the one moment the user must not land on a blank screen.
-                // Same hop, and the same reason, as `ThreadScreen.callPeer()`.
-                state.flow = nil
-                Task { @MainActor in
-                    try? await Task.sleep(for: .milliseconds(320))
-                    state.flow = .thread
+                // response: open that conversation IN PLACE of this page — it
+                // is where the delivery receipt, the send's real outcome, lands.
+                if let tid = state.openThreadId,
+                   let i = state.linePath.lastIndex(of: .compose) {
+                    state.linePath[i] = .thread(tid)
+                } else {
+                    dismiss()
                 }
             } else {
                 RHaptic.warn()
