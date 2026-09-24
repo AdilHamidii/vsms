@@ -122,8 +122,8 @@ struct SplashScreen: View {
             failure
         case .indeterminate:
             // Session bootstrap: a Keychain read and maybe one refresh. There
-            // are no countable steps, so the track shows a fixed short segment
-            // rather than a fill that would claim progress.
+            // are no countable steps, so the track stays empty rather than
+            // showing a fill that would claim progress.
             loading(nil)
         case .progress(let value):
             loading(value)
@@ -142,15 +142,19 @@ struct SplashScreen: View {
 
     /// A 2pt track under the wordmark. Determinate: filled by steps that
     /// finished (see `AppState.coldStart`), floored at 4% so a started load
-    /// is never an empty track. Indeterminate (`nil`): a fixed quarter.
+    /// is never an empty track. Indeterminate (`nil`): the empty track only —
+    /// with no countable steps, any fill would claim progress that is not
+    /// happening, the same lie as a bar filled on a timer.
     private func hairline(_ fraction: Double?) -> some View {
         GeometryReader { geo in
             ZStack(alignment: .leading) {
                 Capsule().fill(theme.track)
-                Capsule()
-                    .fill(theme.ink)
-                    .frame(width: geo.size.width * max(0.04, min(1, fraction ?? 0.25)))
-                    .animation(RMotion.value, value: fraction)
+                if let fraction {
+                    Capsule()
+                        .fill(theme.ink)
+                        .frame(width: geo.size.width * max(0.04, min(1, fraction)))
+                        .animation(RMotion.value, value: fraction)
+                }
             }
         }
         .frame(width: 120, height: 2)
