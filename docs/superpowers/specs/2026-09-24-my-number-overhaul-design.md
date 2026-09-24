@@ -161,12 +161,16 @@ Top to bottom:
 The owner, after seeing the first spec: "switch number button should still be very
 visible". Swaps are what some subscribers actually buy (CLAUDE.md), so the button
 keeps a prominent place.
-- A **"Switch number"** button sits directly under the number card, on the
-  subscriber home, full width and 56pt tall, with the `arrow.triangle.2.circlepath` symbol.
-- Style: `theme.chipBg` fill with `theme.text` label and a 1pt accent
-  border, not accent-filled. That keeps it the most visible thing after the number
-  itself, without breaking rule 2's one-green rule. When
-  the Messages list is empty, it is the screen's only strong control.
+- **Revised by the owner the same day: "it can be a button to the right of the number
+  saying Switch".** It is a compact capsule labelled **"Switch"**, placed on the number
+  card to the right of the formatted number, with the number and the button sharing one row.
+  - Style: 36pt tall, `RFont.text(15, .semibold)`, `theme.text` label on
+    `theme.chipBg` with a 1pt accent border, plus the `arrow.triangle.2.circlepath` glyph at 13pt.
+  - It is visible without competing: never accent-filled, and it keeps the one-green rule.
+  - When the number is too long for one row (large Dynamic Type), the button wraps below it,
+    trailing-aligned.
+  - Copy and Share stay as smaller icon buttons in the card's second row.
+  - Accessibility label: "Switch number".
 - It opens the swap sheet in one tap. **The confirm page is the safety net**: it shows
   the current and new numbers, the price, the balance, and "Your current number is given up for
   good." The price never appears on the button.
@@ -214,7 +218,7 @@ Each item below is a plan task.
 2. Copy corrections and the ledger. The single-list rule stays; the swap-sheet notice is added.
 3. Store rebuild: inline numbers, country segment, pushed city pages, price row, proof line.
 4. Paywall rebuild to D4.
-5. Subscriber home: title, number card, the visible Switch number button, Messages · Calls · Number segments, FAB removed, toolbar buttons.
+5. Subscriber home: title, number card with the compact "Switch" button beside the number, Messages · Calls · Number segments, FAB removed, toolbar buttons.
 5a. Motion pass (§3a) across the store, paywall, home, lists and thread.
 6. Thread and compose pushed on a stack; push-notification routing.
 7. Fixtures, and CLAUDE.md / `telephony.md` / `ios-client.md` updates.
