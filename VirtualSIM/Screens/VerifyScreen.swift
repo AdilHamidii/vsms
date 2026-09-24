@@ -60,18 +60,18 @@ struct VerifyScreen: View {
                     .padding(.top, RSpace.lg)
                 }
                 searchField.padding(.top, RSpace.xl)
+                // ONE chip row, at one position in every state: an instance per
+                // branch was a new horizontal ScrollView on every selection,
+                // reset to offset 0, so a chip scrolled into view jumped away
+                // from under the finger.
+                chips.padding(.top, RSpace.md)
                 if isSearching {
-                    // The chips stay on screen while a category (or query) is
-                    // active, so the selected one reads as selected and the
-                    // user can switch straight to another.
-                    chips.padding(.top, RSpace.md)
                     results.padding(.top, RSpace.md)
                 } else {
                     if !recentServices.isEmpty {
                         recentRow.padding(.top, RSpace.xl)
                     }
                     grid.padding(.top, RSpace.xl)
-                    chips.padding(.top, RSpace.lg)
                     if hasLiveLine, let line = state.line {
                         lineStrip(line).padding(.top, RSpace.xl)
                     } else if state.linesLoaded {
@@ -122,9 +122,8 @@ struct VerifyScreen: View {
             // noun is ever interpolated.
             if state.balance > 0 {
                 CreditPill(value: state.balance, action: openCredits)
-                    .accessibilityElement(children: .ignore)
                     .accessibilityLabel(Text("Credits: \(state.balance)"))
-                    .accessibilityAddTraits(.isButton)
+                    .accessibilityHint(Text("Buy credits"))
             }
         }
         .padding(.top, RSpace.lg)
@@ -177,7 +176,8 @@ struct VerifyScreen: View {
         let q = trimmedQuery
         return state.services.filter { s in
             (ignoringCategory || category == nil || s.category == category)
-                && (q.isEmpty || s.name.localizedStandardContains(q))
+                && (q.isEmpty || s.name.localizedStandardContains(q)
+                    || s.category.localizedStandardContains(q))
         }
     }
 
@@ -346,23 +346,34 @@ struct VerifyScreen: View {
     }
 
     private var chips: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: RSpace.sm) {
-                ForEach(Self.chipCategories, id: \.self) { c in
-                    Button {
-                        RHaptic.select()
-                        category = (category == c) ? nil : c
-                    } label: {
-                        Text(Self.chipLabel(c))
-                            .font(RFont.text(14, weight: .semibold))
-                            .foregroundStyle(category == c ? theme.onInk : theme.text)
-                            .padding(.horizontal, RSpace.md)
-                            .padding(.vertical, RSpace.sm)
-                            .background(category == c ? theme.ink : theme.chipBg, in: .capsule)
+        ScrollViewReader { proxy in
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: RSpace.sm) {
+                    ForEach(Self.chipCategories, id: \.self) { c in
+                        Button {
+                            RHaptic.select()
+                            category = (category == c) ? nil : c
+                        } label: {
+                            Text(Self.chipLabel(c))
+                                .font(RFont.text(14, weight: .semibold))
+                                .foregroundStyle(category == c ? theme.onInk : theme.text)
+                                .padding(.horizontal, RSpace.md)
+                                .padding(.vertical, RSpace.sm)
+                                .background(category == c ? theme.ink : theme.chipBg, in: .capsule)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityAddTraits(category == c ? .isSelected : [])
+                        .id(c)
                     }
-                    .buttonStyle(.plain)
-                    .accessibilityAddTraits(category == c ? .isSelected : [])
                 }
+            }
+            // A selected chip is always on screen, whichever end it sits at.
+            .onAppear {
+                if let category { proxy.scrollTo(category, anchor: .center) }
+            }
+            .onChange(of: category) { _, selected in
+                guard let selected else { return }
+                withAnimation(RMotion.select) { proxy.scrollTo(selected, anchor: .center) }
             }
         }
     }

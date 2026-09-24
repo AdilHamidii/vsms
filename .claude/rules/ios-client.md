@@ -46,10 +46,12 @@ VirtualSIM/
                                  badge; see the steering section)
   Screens/                       VerifyScreen (the Verify tab on
                                  `design-overhaul`: one question, the credit
-                                 pill (hidden at 0), search over the catalog,
-                                 Recent, an eight-app grid (Recent apps are
-                                 excluded and backfilled) and category chips,
-                                 then "Your own number" — the subscriber's
+                                 pill (hidden at 0), search over the catalog
+                                 with ONE category-chip row directly under it
+                                 in every state (one instance, so its scroll
+                                 offset survives a selection), Recent, an
+                                 eight-app grid (Recent apps are excluded and
+                                 backfilled), then "Your own number" — the subscriber's
                                  strip, or for a non-subscriber (once
                                  `linesLoaded`) a quiet row to the My number
                                  tab; a pick goes through

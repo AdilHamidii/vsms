@@ -211,7 +211,17 @@ struct AccountScreen: View {
                     .foregroundStyle(theme.text3)
                     .accessibilityHidden(true)
             }
-            .contentShape(.rect)
+            // A 44pt tap target WITHOUT a 44pt layout: a `minHeight` frame on
+            // the label itself pushed the subtitle ~19pt down and grew the
+            // card (measured in the simulator). The hit area lives in a
+            // background, centred on the name and overflowing it, so the text
+            // and the card keep their size. No `contentShape` on the label
+            // itself — that would override the larger shape below.
+            .background {
+                Color.clear
+                    .frame(minHeight: 44)
+                    .contentShape(.rect)
+            }
         }
         .buttonStyle(PressScaleStyle(scale: 0.97))
         .accessibilityHint(Text("Set your name"))
