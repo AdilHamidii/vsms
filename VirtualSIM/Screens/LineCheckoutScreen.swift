@@ -175,10 +175,21 @@ struct LineCheckoutScreen: View {
     /// offered.
     private var header: some View {
         ZStack {
-            Text("Your own number")
-                .font(RFont.text(17, weight: .semibold))
-                .foregroundStyle(theme.text)
-                .padding(.horizontal, RSpace.gutter)
+            // Centred on the screen, but only in the width the ✕ and Restore
+            // leave: both sides reserve the WIDER control, so the title stays
+            // centred and can never run under either. When it does not fit
+            // there (German: "Ihre eigene Nummer" beside "Wiederherstellen")
+            // it is DROPPED rather than truncated — `ViewThatFits` compares
+            // its one-line ideal width against that space. The number card
+            // below says what this screen is about.
+            ViewThatFits(in: .horizontal) {
+                Text("Your own number")
+                    .font(RFont.text(17, weight: .semibold))
+                    .foregroundStyle(theme.text)
+                    .lineLimit(1)
+                Color.clear.frame(width: 0, height: 0)
+            }
+            .padding(.horizontal, titleInset)
             HStack {
                 Button { state.flow = nil } label: {
                     Image(systemName: RIcon.close)
@@ -195,6 +206,9 @@ struct LineCheckoutScreen: View {
                 restoreButton
                     .font(RFont.text(15, weight: .medium))
                     .foregroundStyle(theme.text)
+                    .onGeometryChange(for: CGFloat.self) { $0.size.width } action: {
+                        restoreWidth = $0
+                    }
             }
             // The ✕ circle is 36pt inside a 44pt hit frame, so its visual
             // edge sits 4pt in from the frame: pull the frame out by 4 and
@@ -207,6 +221,16 @@ struct LineCheckoutScreen: View {
         .overlay(alignment: .bottom) {
             Rectangle().fill(theme.sep).frame(height: 0.5)
         }
+    }
+
+    /// The header Restore button's measured width (its label is localized).
+    @State private var restoreWidth: CGFloat = 0
+
+    /// What each side of the header title must keep clear: the wider of the
+    /// ✕ (a 44pt frame pulled 4pt into the gutter) and Restore (plus the
+    /// gutter), and a small gap.
+    private var titleInset: CGFloat {
+        max(44 + RSpace.gutter - 4, restoreWidth + RSpace.gutter) + RSpace.sm
     }
 
     private var restoreButton: some View {

@@ -93,7 +93,8 @@ main's names). My number: `lineIntro`, `lineStore`, `lineStoreError`,
 `linePaywall` / `linePaywallYearly` (a Canadian number, Toronto),
 `linePaywallUS`, `lineInbox`, `lineInboxEmpty`, `lineInboxMulti`,
 `lineCalls`, `lineNumber`, `lineBanner`, `lineSwapConfirm`, `lineDialer`,
-`thread`, `threadResume` (a thread with ResumeBar showing), `lineInCall`,
+`thread`, `threadResume` / `composeResume` (a pushed thread / compose page
+with a temp-SMS order in flight: ResumeBar must be hidden), `lineInCall`,
 `linePushThread`, and `lineSwitchGlow` (its Switch lands through a
 DEBUG-only hook, so the frame catches the card's glow mid-fade). Detail in
 `.claude/rules/ios-client.md`, "The My number tab".
@@ -3677,25 +3678,6 @@ Genuinely open items only. Resolved history is in `docs/decisions-archive.md`.
 - ⚠️ **The store names the monthly price again on branch `design-overhaul`**
   (StoreKit only, hidden until it loads), reversing the 2026-09-09 'no price
   on the store' decision by the approved 2026-09-24 design.
-- ⚠️ **Four defects on branch `design-overhaul`, found by the 2026-09-24
-  capture and NOT fixed:**
-  1. **ResumeBar covers a pushed thread's composer.** With a temp-SMS order
-     in flight, `-screenshot threadResume` shows the bar exactly where the
-     composer sits; the "Message" field is in the accessibility tree but not
-     on screen. Observed. The cause is INFERRED: the tab root's
-     `.safeAreaInset` (`TabChrome` in `ContentView`) does not lift a page
-     pushed on the My number stack. `ComposeScreen`'s Send button is the
-     likely second case (not captured). The keyboard + ResumeBar case needs a
-     device.
-  2. **German: the paywall header's title and "Wiederherstellen" overlap.**
-     `LineCheckoutScreen.header` centres the title in a `ZStack` with no
-     room reserved for the trailing Restore button.
-  3. **German: the store's selected country segment truncates to
-     "Vereinigte Staat…"** instead of falling back to the menu. Likely cause
-     (not verified): `ViewThatFits` measures the ideal width of the labels,
-     but the segments are laid out in equal thirds.
-  4. **German: the number card's meta row truncates to "Vereinigte Staat…"**
-     and drops the area code.
 
 **Correctness / hygiene**
 

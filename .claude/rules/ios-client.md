@@ -177,17 +177,31 @@ pushed thread) are in `.claude/rules/telephony.md` and CLAUDE.md.
    `openLineThread` sets `flow = nil`, which closes a Waiting cover raised
    first; `resumeInFlightOrder` raises the cover only while `flow == nil`, so
    it lands over a thread pushed first.
-7. **ResumeBar covers a pushed thread's composer** (open; observed in
-   `-screenshot threadResume`, cause inferred). The bar rides the tab root's
-   `safeAreaInset` (`TabChrome`), and that inset does not lift pages pushed on
-   the My number stack. See CLAUDE.md Known-open.
+7. **ResumeBar is HIDDEN while a thread or the compose page is on top of
+   `linePath`** (`resumeBarInset(yieldsToLineComposer:)`, the My number tab
+   only). The bar rides the tab root's `safeAreaInset` (`TabChrome`), and that
+   inset does not reach a page pushed on the stack: measured 2026-09-24, a
+   pushed `ThreadScreen` read `safeAreaInsets.bottom` 83 with the bar up and
+   without it, and the bar drew over the composer. Re-hosting the bar inside
+   the page was rejected because it would sit between the composer and the
+   keyboard while typing. The bar returns when the page pops. Proof frames:
+   `threadResume`, and `composeResume` (the To field focuses on appear, so
+   that frame also shows Send clear of the keyboard).
+   - **Two German-width rules found by the same capture.** The paywall header
+     title gets only the width the ✕ and Restore leave, and is DROPPED rather
+     than overlapping ("Wiederherstellen"). `CapsuleSegmentedControl` reports
+     an ideal width of widest label × count (`EqualWidthRow`), so the store's
+     `ViewThatFits` falls back to the country menu instead of truncating
+     "Vereinigte Staaten" in an equal third. The number card's area code never
+     truncates; the country name gives way first.
 8. **Screenshot fixtures:** `lineIntro` (loading, no price shim), `lineStore`,
    `lineStoreError`, `linePaywall` / `linePaywallYearly` (a Canadian number:
    `lineCountry = "CA"`, scrolled to the plans), `linePaywallUS` (the top of
    the paywall with the US/PR note), `lineInbox`, `lineInboxEmpty`,
    `lineInboxMulti`, `lineCalls`, `lineNumber`, `lineBanner`,
-   `lineSwapConfirm`, `lineDialer`, `thread`, `threadResume` (a thread with a
-   temp-SMS order in flight), `lineInCall` (a DEBUG-only
+   `lineSwapConfirm`, `lineDialer`, `thread`, `threadResume` /
+   `composeResume` (a pushed thread / compose page with a temp-SMS order in
+   flight), `lineInCall` (a DEBUG-only
    `CallController.screenshotLiveCall(peer:)` fakes the answered call),
    `linePushThread` (sets `pendingLineThreadId` from `ContentView`'s `.task`,
    so it exercises the handler's CHANGE path, not the `initial: true`

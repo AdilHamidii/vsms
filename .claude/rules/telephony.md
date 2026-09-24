@@ -47,7 +47,8 @@ copy still covers the dialer, paywall and provisioning. Verified with
 `-screenshot lineInCall` (a DEBUG-only `CallController.screenshotLiveCall(peer:)`
 fakes the answered call). Because the keyboard lives in its own window above
 that overlay, `ThreadScreen` and `ComposeScreen` drop their text-field focus
-when a call goes live (code-verified only: `simctl` cannot focus a field).
+when a call goes live (code-verified only: no fixture combines a focused
+field with a live call).
 
 ✅ **SUPERSEDED 2026-09-07: OUTBOUND CALLING IS PROVEN AT VOLUME.** Read
 from `line_calls` that morning: **131 completed outbound calls settled from
@@ -373,7 +374,8 @@ repo, so they are kept here — losing them costs a device-only debugging sessio
    `-screenshot lineInCall` (a DEBUG-only `CallController.screenshotLiveCall(peer:)`
    fakes the answered call). Because the keyboard lives in its own window above
    that overlay, `ThreadScreen` and `ComposeScreen` drop their text-field focus
-   when a call goes live (code-verified only: `simctl` cannot focus a field).
+   when a call goes live (code-verified only: no fixture combines a focused
+   field with a live call).
 
 7. 🔴 **LONG-PRESSING 0 TYPED `+0` THROUGH TWO SHIPPED FIXES (1725a73,
    7a65606 — both in 2.7 build 48, and the owner's phone still did it).**

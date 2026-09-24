@@ -123,7 +123,7 @@ struct ContentView: View {
             }
             Tab("My number", systemImage: "phone", value: AppTab.line) {
                 LineScreen(onOpenSms: { state.openCodeStore() })
-                    .resumeBarInset()
+                    .resumeBarInset(yieldsToLineComposer: true)
             }
             .badge(state.lineUnreadCount)
             Tab("Activity", systemImage: "clock.arrow.circlepath", value: AppTab.activity) {
@@ -1077,11 +1077,11 @@ extension ContentView {
             // fetches `app_config`); 8 is what it read on 2026-09-01.
             state.appStatus = AppStatus(announcement: nil, esimPaused: false, lineSwapCredits: 8)
 
-        case .thread, .lineInCall, .linePushThread, .threadResume:
+        case .thread, .lineInCall, .linePushThread, .threadResume, .composeResume:
             state.lines = [ScreenshotMode.sampleLine]
             state.lineThreads = ScreenshotMode.sampleThreads
             state.lineMessages = ["t1": ScreenshotMode.sampleMessages]
-            if shot == .threadResume {
+            if shot == .threadResume || shot == .composeResume {
                 // `uk`, not `gb`: see the `.verifyLine` note on catalog ids.
                 state.orders = [state.resolve(ScreenshotMode.sampleOrder(
                     status: .waiting, otp: nil, id: "sample-waiting",
@@ -1102,6 +1102,9 @@ extension ContentView {
             case .lineInCall:
                 state.openLineThread("t1")
                 calls.screenshotLiveCall(peer: "+18885550111")
+            case .composeResume:
+                state.tab = .line
+                state.linePath = [.compose]
             default:
                 state.openLineThread("t1")
             }
@@ -1407,18 +1410,29 @@ private extension View {
     /// light theme's white cards on a white page. A `NavigationStack` root
     /// paints its own too, so pushed and root views inside one also need
     /// `.containerBackground(theme.bg, for: .navigation)`.
-    func resumeBarInset() -> some View {
-        modifier(TabChrome())
+    ///
+    /// `yieldsToLineComposer` (the My number tab only): the bar is HIDDEN
+    /// while a thread or the compose page is on top of `linePath`. This inset
+    /// does not reach a page pushed on that stack — measured 2026-09-24, a
+    /// pushed `ThreadScreen` read `safeAreaInsets.bottom` 83 with the bar up
+    /// and without it — so the bar drew over the composer and hid it
+    /// (`-screenshot threadResume`). Hiding it rather than re-hosting it in
+    /// the page: a bar inside the page's own inset would sit between the
+    /// composer and the keyboard while typing. The order stays one tap away:
+    /// the bar is back the moment the page pops, and on every other tab.
+    func resumeBarInset(yieldsToLineComposer: Bool = false) -> some View {
+        modifier(TabChrome(yieldsToLineComposer: yieldsToLineComposer))
     }
 }
 
 private struct TabChrome: ViewModifier {
     @Environment(\.theme) private var theme
+    let yieldsToLineComposer: Bool
 
     func body(content: Content) -> some View {
         content
             .safeAreaInset(edge: .bottom, spacing: 0) {
-                ResumeBarSlot()
+                ResumeBarSlot(yieldsToLineComposer: yieldsToLineComposer)
             }
             .background(theme.bg.ignoresSafeArea())
     }
@@ -1431,12 +1445,25 @@ private struct TabChrome: ViewModifier {
 /// nothing, so the inset collapses to zero height.
 private struct ResumeBarSlot: View {
     @Environment(AppState.self) private var state
+    let yieldsToLineComposer: Bool
+
+    /// A thread or the compose page is the top of the My number stack: its
+    /// composer owns the bottom edge (see `resumeBarInset`).
+    private var composerOnTop: Bool {
+        guard yieldsToLineComposer, let top = state.linePath.last else { return false }
+        switch top {
+        case .thread, .compose: return true
+        case .countries, .cities: return false
+        }
+    }
 
     var body: some View {
-        ResumeBar()
-            .padding(.horizontal, RSpace.gutter)
-            .padding(.bottom, RSpace.sm)
-            .animation(RMotion.standard, value: state.flow)
+        if !composerOnTop {
+            ResumeBar()
+                .padding(.horizontal, RSpace.gutter)
+                .padding(.bottom, RSpace.sm)
+                .animation(RMotion.standard, value: state.flow)
+        }
     }
 }
 

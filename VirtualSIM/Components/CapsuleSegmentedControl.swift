@@ -26,7 +26,7 @@ struct CapsuleSegmentedControl<Tag: Hashable, Label: View>: View {
     private var thumbFill: Color { theme.isDark ? theme.track : theme.elev }
 
     var body: some View {
-        HStack(spacing: 0) {
+        EqualWidthRow {
             ForEach(tags, id: \.self) { tag in
                 let active = tag == selection
                 Button {
@@ -58,5 +58,35 @@ struct CapsuleSegmentedControl<Tag: Hashable, Label: View>: View {
         }
         .padding(4)
         .background(theme.chipBg, in: .capsule)
+    }
+}
+
+/// Equal-width segments, and an IDEAL width that says so: the widest label
+/// times the count. An `HStack` reported the SUM of the labels, so the store's
+/// `ViewThatFits` kept the control whenever the labels fit in total — then
+/// laid it out in equal thirds, where German "Vereinigte Staaten" shrank and
+/// truncated instead of falling back to the menu. Given a finite width, the
+/// row fills it and splits it evenly, exactly as before.
+private struct EqualWidthRow: Layout {
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews,
+                      cache: inout ()) -> CGSize {
+        let ideals = subviews.map { $0.sizeThatFits(.unspecified) }
+        let height = ideals.map(\.height).max() ?? 0
+        if let width = proposal.width, width.isFinite {
+            return CGSize(width: width, height: height)
+        }
+        let widest = ideals.map(\.width).max() ?? 0
+        return CGSize(width: widest * CGFloat(subviews.count), height: height)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize,
+                       subviews: Subviews, cache: inout ()) {
+        guard !subviews.isEmpty else { return }
+        let width = bounds.width / CGFloat(subviews.count)
+        for (index, subview) in subviews.enumerated() {
+            subview.place(at: CGPoint(x: bounds.minX + width * CGFloat(index), y: bounds.midY),
+                          anchor: .leading,
+                          proposal: ProposedViewSize(width: width, height: bounds.height))
+        }
     }
 }

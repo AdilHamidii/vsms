@@ -51,10 +51,22 @@ struct LineNumberCard: View {
             HStack(spacing: RSpace.sm) {
                 LiveDot(tint: statusTint, pulses: line.status == .active)
                 CodeFlag(code: line.countryCode, size: 20)
-                Text(verbatim: placeLabel)
-                    .font(RFont.text(14))
-                    .foregroundStyle(theme.text2)
-                    .lineLimit(1)
+                // The area code is the part that identifies THIS number, so
+                // it never truncates: the country name gives way first (German
+                // "Vereinigte Staaten" beside "Kopieren" dropped "· 212").
+                HStack(spacing: 0) {
+                    Text(verbatim: countryName)
+                        .lineLimit(1)
+                    if let areaCode {
+                        Text(verbatim: " · \(areaCode)")
+                            .lineLimit(1)
+                            .fixedSize()
+                            .layoutPriority(1)
+                    }
+                }
+                .font(RFont.text(14))
+                .foregroundStyle(theme.text2)
+                .accessibilityElement(children: .combine)
                 Spacer(minLength: RSpace.sm)
                 copyButton
                 shareButton
@@ -188,11 +200,15 @@ struct LineNumberCard: View {
 
     // MARK: Row 2
 
-    private var placeLabel: String {
-        let country = Locale.current.localizedString(forRegionCode: line.countryCode) ?? line.countryCode
+    private var countryName: String {
+        Locale.current.localizedString(forRegionCode: line.countryCode) ?? line.countryCode
+    }
+
+    /// The NANP area code, or nil for any other shape of number.
+    private var areaCode: String? {
         let digits = line.e164.filter(\.isNumber)
-        guard line.e164.hasPrefix("+1"), digits.count == 11 else { return country }
-        return "\(country) · \(digits.dropFirst().prefix(3))"
+        guard line.e164.hasPrefix("+1"), digits.count == 11 else { return nil }
+        return String(digits.dropFirst().prefix(3))
     }
 
     /// Matches `LineStatusBanner`'s tint for the same status, which explains
