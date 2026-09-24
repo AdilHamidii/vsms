@@ -44,6 +44,11 @@ enum ScreenshotMode {
         case thread          // a real conversation on a rented number
         case lineInCall      // a live call over a PUSHED thread: the call screen must cover it (trap 5)
         case linePushThread  // a line-SMS push tapped over an open cover: tab .line, thread pushed
+        // `thread` with a temp-SMS order in flight, so ResumeBar floats above
+        // the tab bar UNDER the thread's composer. No keyboard: `simctl`
+        // cannot focus a field, so the keyboard + ResumeBar case stays a
+        // device walk.
+        case threadResume
         case email           // temp e-mail, code delivered
         case emailStore      // temp e-mail, choosing a free domain
         // The domain picker sheet itself, over the e-mail store. Reachable

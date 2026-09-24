@@ -1077,10 +1077,16 @@ extension ContentView {
             // fetches `app_config`); 8 is what it read on 2026-09-01.
             state.appStatus = AppStatus(announcement: nil, esimPaused: false, lineSwapCredits: 8)
 
-        case .thread, .lineInCall, .linePushThread:
+        case .thread, .lineInCall, .linePushThread, .threadResume:
             state.lines = [ScreenshotMode.sampleLine]
             state.lineThreads = ScreenshotMode.sampleThreads
             state.lineMessages = ["t1": ScreenshotMode.sampleMessages]
+            if shot == .threadResume {
+                // `uk`, not `gb`: see the `.verifyLine` note on catalog ids.
+                state.orders = [state.resolve(ScreenshotMode.sampleOrder(
+                    status: .waiting, otp: nil, id: "sample-waiting",
+                    serviceId: "google", countryId: "uk", ageSeconds: 40))]
+            }
             switch shot {
             case .linePushThread:
                 // Exercise the REAL handler, over an open cover, from another
