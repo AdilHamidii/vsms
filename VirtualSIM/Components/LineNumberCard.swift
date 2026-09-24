@@ -21,8 +21,9 @@ struct LineNumberCard: View {
     /// First appearance only: `TabView` keeps this view alive, so the rise
     /// does not replay on every tab switch.
     @State private var appeared = false
-    /// The switch-success border glow (spec §3a), 0 at rest.
-    @State private var glow: Double = 0
+    /// Bumped once per Switch success (never under Reduce Motion); each bump
+    /// plays the border glow's keyframes once.
+    @State private var glowTrigger = 0
     /// Drives the Copy icon's bounce; bumped once per tap.
     @State private var copyTick = 0
 
@@ -68,23 +69,42 @@ struct LineNumberCard: View {
         .padding(RSpace.lg)
         .background(theme.elev, in: .rect(cornerRadius: RRadius.card, style: .continuous))
         .overlay {
+            // Switch success: a short mint glow — jump to 0.6, ease out to 0
+            // over 1.2s. Keyframes, not `glow = 0.6` then
+            // `withAnimation { glow = 0 }` in one closure: those two writes
+            // coalesce into a single 0 → 0 update and nothing ever draws.
             RoundedRectangle(cornerRadius: RRadius.card, style: .continuous)
-                .strokeBorder(theme.live.opacity(glow), lineWidth: 2)
+                .strokeBorder(theme.live, lineWidth: 2)
+                .keyframeAnimator(initialValue: 0.0, trigger: glowTrigger) { border, opacity in
+                    border.opacity(opacity)
+                } keyframes: { _ in
+                    MoveKeyframe(0.6)
+                    LinearKeyframe(0.0, duration: 1.2, timingCurve: .easeOut)
+                }
                 .allowsHitTesting(false)
         }
         .opacity(appeared ? 1 : 0)
         .offset(y: appeared || reduceMotion ? 0 : 12)
         .onAppear {
+            #if DEBUG
+            // Screenshot harness only: a Switch "lands" 4s in, through the
+            // real `swappedTo` path, so a burst of stills can catch the glow
+            // mid-fade and the confirmation line under the card.
+            if ScreenshotMode.screen == .lineSwitchGlow, swappedTo == nil {
+                Task {
+                    try? await Task.sleep(for: .seconds(4))
+                    swappedTo = "+12125550199"
+                }
+            }
+            #endif
             guard !appeared else { return }
             withAnimation(RMotion.unlessReduced(RMotion.standard, reduceMotion)) { appeared = true }
         }
-        // Switch success: a short mint glow (0.6 → 0 over 1.2s). The roll
-        // itself is the number's `.animation(value: line.e164)` below —
-        // the line reloads only after the swap sheet has gone.
+        // The roll itself is the number's `.animation(value: line.e164)`
+        // below — the line reloads only after the swap sheet has gone.
         .onChange(of: swappedTo) { _, new in
             guard new != nil, !reduceMotion else { return }
-            glow = 0.6
-            withAnimation(.easeOut(duration: 1.2)) { glow = 0 }
+            glowTrigger += 1
         }
     }
 
@@ -130,7 +150,9 @@ struct LineNumberCard: View {
             ForEach(state.lines.filter { $0.status.isLive }) { l in
                 Button {
                     RHaptic.select()
-                    withAnimation(RMotion.select) { state.selectedLineId = l.id }
+                    withAnimation(RMotion.unlessReduced(RMotion.select, reduceMotion)) {
+                        state.selectedLineId = l.id
+                    }
                 } label: {
                     let unread = state.lineThreads
                         .filter { $0.lineId == l.id }
@@ -192,7 +214,10 @@ struct LineNumberCard: View {
                 Image(systemName: copied ? RIcon.check : RIcon.copy)
                     .font(.system(size: 12, weight: .semibold))
                     .contentTransition(.symbolEffect(.replace))
-                    .symbolEffect(.bounce, value: reduceMotion ? 0 : copyTick)
+                    // Keyed on the tap count alone, so toggling Reduce Motion
+                    // can never fire a bounce; removed outright while it is on.
+                    .symbolEffect(.bounce, options: .nonRepeating, value: copyTick)
+                    .symbolEffectsRemoved(reduceMotion)
                 Text(copied ? "Copied" : "Copy")
                     .font(RFont.text(14, weight: .semibold))
             }
@@ -236,24 +261,64 @@ struct LineNumberCard: View {
 /// The status dot. Pulses gently (2s ease-in-out opacity loop) while the
 /// line is live — the tab's ONE looping animation (spec §3a). Still under
 /// Reduce Motion.
+///
+/// ── Why it restarts rather than toggles ─────────────────────────────────
+/// A `repeatForever` loop is not reliably stopped or resumed by writing its
+/// value again: `TabView` keeps this view alive across tab switches, the
+/// loop is suspended off screen, and a second `dim = true` is no change at
+/// all — so the dot could come back frozen at 0.35. Every entry point
+/// therefore goes through `restart()`: it drops the circle's identity
+/// (`cycle`, so no in-flight animation survives), puts `dim` back to false
+/// with animations disabled, and only on the NEXT main-queue turn — after
+/// that reset has committed — starts a fresh loop from opacity 1.
 struct LiveDot: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let tint: Color
     let pulses: Bool
     @State private var dim = false
+    /// The circle's identity; bumped on every reset.
+    @State private var cycle = 0
+    /// Guards the deferred start: a loop never begins off screen.
+    @State private var visible = false
 
     var body: some View {
-        Circle()
-            .fill(tint)
-            .frame(width: 8, height: 8)
-            .opacity(dim ? 0.35 : 1)
-            .animation(pulses && !reduceMotion
-                       ? .easeInOut(duration: 1).repeatForever(autoreverses: true)
-                       : nil,
-                       value: dim)
-            .onAppear { dim = pulses && !reduceMotion }
-            .onChange(of: pulses) { _, p in dim = p && !reduceMotion }
-            .onChange(of: reduceMotion) { _, r in dim = pulses && !r }
+        // The lifecycle hooks sit on a container whose identity never
+        // changes, so bumping the circle's `id` cannot re-fire `onAppear`
+        // (which would reset, bump and re-fire forever).
+        ZStack {
+            Circle()
+                .fill(tint)
+                .opacity(dim ? 0.35 : 1)
+                .id(cycle)
+        }
+        .frame(width: 8, height: 8)
+        .onAppear { visible = true; restart() }
+            .onDisappear { visible = false; reset() }
+            .onChange(of: pulses) { _, _ in restart() }
+            .onChange(of: reduceMotion) { _, _ in restart() }
             .accessibilityHidden(true)
+    }
+
+    /// Full opacity, no animation, fresh identity.
+    private func reset() {
+        var t = Transaction()
+        t.disablesAnimations = true
+        withTransaction(t) {
+            dim = false
+            cycle += 1
+        }
+    }
+
+    private func restart() {
+        reset()
+        guard pulses, !reduceMotion else { return }
+        // Any later reset bumps `cycle`, which cancels this pending start —
+        // so a start queued while the line was live cannot fire after it
+        // stopped being live (this copy's `pulses` would be stale).
+        let generation = cycle
+        DispatchQueue.main.async {
+            guard visible, cycle == generation else { return }
+            withAnimation(.easeInOut(duration: 1).repeatForever(autoreverses: true)) { dim = true }
+        }
     }
 }

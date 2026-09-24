@@ -117,7 +117,9 @@ private struct LiveLineView: View {
     /// +1 when the new segment is to the right of the old one, -1 to the
     /// left, so the content slides the way the capsule glides.
     @State private var segDirection: CGFloat = 1
-    /// The thread list's entrance stagger (spec §3a), once per visit.
+    /// The thread list's entrance stagger (spec §3a). Plays ONCE per view
+    /// lifetime, not per visit: `TabView` keeps this view alive across tab
+    /// switches, so the flag stays true until the view is rebuilt.
     @State private var listShown = false
 
     /// Screenshot harness: `lineCalls` / `lineNumber` open on their segment.
@@ -379,8 +381,8 @@ private struct LiveLineView: View {
             // Lazy: the thread list is uncapped, and the tab's ScrollView is
             // the scroll container, so rows off screen are not built.
             LazyVStack(spacing: 0) {
-                ForEach(threads) { thread in
-                    if thread.id != threads.first?.id {
+                ForEach(Array(threads.enumerated()), id: \.element.id) { index, thread in
+                    if index > 0 {
                         RowRule(inset: RSpace.lg + 40 + RSpace.md)
                     }
                     ThreadRow(
@@ -395,12 +397,17 @@ private struct LiveLineView: View {
                         })
                     // Capped stagger on entry; a new thread (an inbound
                     // message from a new peer) drops in at the top.
-                    .riseIn(listShown, index: threads.firstIndex(of: thread) ?? 0)
+                    .riseIn(listShown, index: index)
                     .transition(.move(edge: .top).combined(with: .opacity))
                 }
             }
             .background(theme.elev, in: .rect(cornerRadius: RRadius.group, style: .continuous))
             .animation(RMotion.unlessReduced(RMotion.standard, reduceMotion), value: threads.map(\.id))
+            // Keyed on the line: a multi-line user switching lines replaces
+            // the whole list, which crossfades (the container's default
+            // transition) instead of every row sliding in from the top. The
+            // move-from-top is for a new thread on the SAME line only.
+            .id(line.id)
             .onAppear { listShown = true }
         }
     }

@@ -1013,7 +1013,7 @@ extension ContentView {
             mailStore.screenshotPricing = .init()
             mailStore.selectedPlan = shot == .mailPaywallYearly ? .yearly : .monthly
 
-        case .lineInbox:
+        case .lineInbox, .lineSwitchGlow:
             state.tab = .line
             state.lines = [ScreenshotMode.sampleLine]
             state.lineThreads = ScreenshotMode.sampleThreads

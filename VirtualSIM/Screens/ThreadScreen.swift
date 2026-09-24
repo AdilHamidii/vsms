@@ -35,6 +35,12 @@ struct ThreadScreen: View {
     @State private var showActions = false
     @State private var reported = false
     @State private var showNameSheet = false
+    /// False until the transcript has rendered its first batch of messages.
+    /// Only messages inserted AFTER that grow in; opening a thread does not
+    /// scale every bubble at once. Flipped in `onChange` / `onAppear`, i.e.
+    /// after the render that showed them, so it can never coalesce with the
+    /// first load into one animated update.
+    @State private var didLoad = false
     @FocusState private var composerFocused: Bool
 
     private var thread: LineThread? {
@@ -268,9 +274,11 @@ struct ThreadScreen: View {
                             message: row.message,
                             sentFromUnreliableCountry: sendsFromUnreliableCountry(row.message))
                             // A new bubble grows in from its sender's side.
-                            .transition(.scale(scale: 0.94,
-                                               anchor: row.message.isOutbound ? .bottomTrailing : .bottomLeading)
-                                        .combined(with: .opacity))
+                            .transition(didLoad
+                                        ? .scale(scale: 0.94,
+                                                 anchor: row.message.isOutbound ? .bottomTrailing : .bottomLeading)
+                                          .combined(with: .opacity)
+                                        : .identity)
                             .id(row.id)
                     }
                     // Anchor for the scroll-to-bottom, so a new message does
@@ -279,12 +287,18 @@ struct ThreadScreen: View {
                 }
                 .padding(.horizontal, RSpace.gutter)
                 .padding(.vertical, 14)
-                .animation(RMotion.unlessReduced(RMotion.standard, reduceMotion), value: messages.count)
+                .animation(didLoad ? RMotion.unlessReduced(RMotion.standard, reduceMotion) : nil,
+                           value: messages.count)
             }
             .onChange(of: messages.count) { _, _ in
                 withAnimation(RMotion.content) { proxy.scrollTo("bottom", anchor: .bottom) }
+                didLoad = true
             }
-            .onAppear { proxy.scrollTo("bottom", anchor: .bottom) }
+            .onAppear {
+                proxy.scrollTo("bottom", anchor: .bottom)
+                // Already cached when the thread opened: that batch has rendered.
+                if !messages.isEmpty { didLoad = true }
+            }
         }
     }
 
@@ -501,7 +515,10 @@ struct MessageBubble: View {
                             Image(systemName: copiedCode ? RIcon.check : "doc.on.doc")
                                 .font(.system(size: 10, weight: .semibold))
                                 .contentTransition(.symbolEffect(.replace))
-                                .symbolEffect(.bounce, value: reduceMotion ? 0 : copyTick)
+                                // Keyed on the tap count alone, so toggling
+                                // Reduce Motion never fires a bounce.
+                                .symbolEffect(.bounce, options: .nonRepeating, value: copyTick)
+                                .symbolEffectsRemoved(reduceMotion)
                             Text(copiedCode ? "Copied" : "Copy \(code)")
                                 .font(RFont.text(11, weight: .semibold))
                         }

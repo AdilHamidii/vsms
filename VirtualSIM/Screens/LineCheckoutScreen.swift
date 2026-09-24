@@ -142,7 +142,7 @@ struct LineCheckoutScreen: View {
                 // Whether the $3.99 first month was on this screen — the
                 // denominator for reading the 2026-09-10 intro offer.
                 "intro": .bool(subs.monthlyIntroPriceDisplay != nil)])
-            withAnimation(RMotion.content) { appeared = true }
+            withAnimation(RMotion.unlessReduced(RMotion.content, reduceMotion)) { appeared = true }
         }
         // ⚠️ Ticks ONLY while there is a countdown to tick.
         //
@@ -776,7 +776,8 @@ struct LineCheckoutScreen: View {
                 Text(verbatim: "·").foregroundStyle(theme.text3)
                 restoreButton.underline()
             }
-            VStack(alignment: .leading, spacing: RSpace.sm) {
+            // No spacing: each link is a 44pt row, which is the rhythm.
+            VStack(alignment: .leading, spacing: 0) {
                 eulaLink
                 privacyLink
                 restoreButton.underline()
@@ -788,11 +789,20 @@ struct LineCheckoutScreen: View {
     }
 
     private var eulaLink: some View {
-        Link(destination: LegalLinks.eula) { Text("Terms of Use (EULA)").underline() }
+        Link(destination: LegalLinks.eula) {
+            // 44pt tap target, matching Restore beside it.
+            Text("Terms of Use (EULA)").underline()
+                .frame(minHeight: 44)
+                .contentShape(.rect)
+        }
     }
 
     private var privacyLink: some View {
-        Link(destination: LegalLinks.privacy) { Text("Privacy Policy").underline() }
+        Link(destination: LegalLinks.privacy) {
+            Text("Privacy Policy").underline()
+                .frame(minHeight: 44)
+                .contentShape(.rect)
+        }
     }
 
     // MARK: - Action

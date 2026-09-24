@@ -77,6 +77,10 @@ enum ScreenshotMode {
         // cover reached only by a tap, so without a frame it ships unseen.
         case lineDialer
         case lineSwapConfirm   // the swap sheet's last page: price, balance, given up for good, US ✗ row
+        // `lineInbox`, then a Switch "lands" 4s in through the real
+        // `swappedTo` path: the card's mint glow (a 1.2s fade, so capture a
+        // burst of stills) and the confirmation line. Proof the glow draws.
+        case lineSwitchGlow
         case home         // the temp-SMS store
         // The delivery explainer, opened over the temp-SMS store. It exists
         // because `DeliveryInfoSheet` is otherwise reachable only by a TAP,
