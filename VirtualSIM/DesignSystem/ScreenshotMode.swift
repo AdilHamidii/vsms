@@ -39,6 +39,10 @@ enum ScreenshotMode {
         case thread          // a real conversation on a rented number
         case email           // temp e-mail, code delivered
         case emailStore      // temp e-mail, choosing a free domain
+        // The domain picker sheet itself, over the e-mail store. Reachable
+        // otherwise only by a tap, so without a frame its height and stock
+        // labels could ship unseen.
+        case emailDomains
         case linePaywall     // the subscription screen, monthly selected
         // The same screen with the YEARLY plan selected. Two frames rather
         // than one because each App Store Connect subscription wants a review
@@ -290,25 +294,25 @@ extension ScreenshotMode {
         ]
     }
 
-    /// The domain picker, which is what the e-mail line actually IS: two free
-    /// consumer domains and one paid. Stock figures are realistic rather than
-    /// flattering — the free tier is genuinely the scarcest inventory, and a
-    /// picker showing thousands of free addresses would be a claim we cannot
-    /// keep.
+    /// The domain picker, which is what the e-mail line actually IS: the five
+    /// included domains on sale since 2026-09-24, in the server's order. Stock
+    /// figures are shaped like a live read on that date — hundreds of
+    /// thousands on the three new domains, a thin outlook.com and an empty
+    /// hotmail.com — so one frame shows all three labels the sheet can wear
+    /// (High stock, Low stock, Out of stock right now).
     ///
     /// ⚠️ icloud.com must never appear here. It was removed from `PRICING` on
     /// 2026-07-31 because handing out throwaway addresses on Apple's own
     /// consumer domain, from an app on Apple's store, is an avoidable review
     /// risk — putting it in a screenshot would reintroduce exactly that.
+    /// gmail.com was removed from sale 2026-08-26 and must not appear either.
     static var sampleEmailDomains: [EmailDomainOption] {
         [
-            EmailDomainOption(domain: "outlook.com", credits: 0, available: 128),
-            EmailDomainOption(domain: "hotmail.com", credits: 0, available: 64),
-            // gmail.com was REMOVED from sale 2026-08-26 (its HeroSMS pool went
-            // dead — 0 codes in its last 36 orders) and `create-email-order`
-            // refuses it with `domain_unavailable`. It was the only PAID tier,
-            // so a screenshot showing it advertised both a domain we cannot
-            // deliver and a price that no longer exists.
+            EmailDomainOption(domain: "mail.com", credits: 0, available: 573_000),
+            EmailDomainOption(domain: "gmx.com", credits: 0, available: 742_000),
+            EmailDomainOption(domain: "email.com", credits: 0, available: 622_000),
+            EmailDomainOption(domain: "outlook.com", credits: 0, available: 20),
+            EmailDomainOption(domain: "hotmail.com", credits: 0, available: 0),
         ]
     }
 

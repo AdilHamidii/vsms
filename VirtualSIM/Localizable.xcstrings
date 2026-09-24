@@ -5638,42 +5638,42 @@
         }
       }
     },
-    "Any domain works the same. The free ones run out most often, so stock is checked live.": {
+    "Any domain works the same. Stock is checked live.": {
       "localizations": {
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Jede Domain funktioniert gleich. Die kostenlosen sind am schnellsten vergriffen, daher wird der Bestand live geprüft."
+            "value": "Jede Domain funktioniert gleich. Der Bestand wird live geprüft."
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "Todos los dominios funcionan igual. Los gratuitos se agotan más a menudo, así que el stock se comprueba en vivo."
+            "value": "Todos los dominios funcionan igual. El stock se comprueba en vivo."
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Tous les domaines fonctionnent pareil. Les gratuits s'épuisent le plus souvent, le stock est donc vérifié en direct."
+            "value": "Tous les domaines fonctionnent pareil. Le stock est vérifié en direct."
           }
         },
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "Ogni dominio funziona allo stesso modo. Quelli gratuiti si esauriscono più spesso, quindi la disponibilità è verificata in tempo reale."
+            "value": "Ogni dominio funziona allo stesso modo. La disponibilità è verificata in tempo reale."
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "どのドメインでも仕組みは同じです。無料のものは在庫切れになりやすいため、在庫はリアルタイムで確認しています。"
+            "value": "どのドメインでも仕組みは同じです。在庫はリアルタイムで確認しています。"
           }
         },
         "pt-BR": {
           "stringUnit": {
             "state": "translated",
-            "value": "Qualquer domínio funciona igual. Os grátis acabam com mais frequência, por isso o estoque é verificado em tempo real."
+            "value": "Qualquer domínio funciona igual. O estoque é verificado em tempo real."
           }
         }
       }
@@ -16701,6 +16701,46 @@
         }
       }
     },
+    "High stock": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Viel verfügbar"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mucho stock"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Stock élevé"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ampia disponibilità"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在庫多数"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Estoque alto"
+          }
+        }
+      }
+    },
     "Hit or miss for %@": {
       "extractionState": "stale",
       "localizations": {
@@ -18974,6 +19014,46 @@
           "stringUnit": {
             "state": "translated",
             "value": "Baixo"
+          }
+        }
+      }
+    },
+    "Low stock": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Wenig verfügbar"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Poco stock"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Stock faible"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Disponibilità limitata"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在庫わずか"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Estoque baixo"
           }
         }
       }

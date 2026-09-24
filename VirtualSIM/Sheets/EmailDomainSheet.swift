@@ -23,12 +23,13 @@ import SwiftUI
 /// shape". The list is 2–4 rows, so the skeleton is nearly free and removes
 /// the layout jump when it lands.
 ///
-/// **The detent is `.large` for a list of 2–4 rows** — about 80% empty space
-/// over a decision that takes one tap. This view now requests `.medium` first.
-/// ⚠️ `ContentView` applies `.presentationDetents([.large])` to every sheet it
-/// presents, OUTSIDE this view, and the outer application wins — so this
-/// request has no effect until that line stops hard-coding `.large` for the
-/// e-mail sheet.
+/// **The detent is `.large` (2026-09-24).** It was `.medium` while the list
+/// held 2–4 rows; with five domains on sale the medium detent cut the last row
+/// off below the fold. Detents are set at the presentation site
+/// (`ActiveSheet.detents` in `ContentView`) — an OUTER `.presentationDetents`
+/// wins over one applied inside this body, so none is requested here. The
+/// list still scrolls, which is what keeps every row reachable at large
+/// Dynamic Type.
 struct EmailDomainSheet: View {
     @Environment(\.theme) private var theme
     @Environment(\.dismiss) private var dismiss
@@ -44,6 +45,9 @@ struct EmailDomainSheet: View {
     /// `EmailCodeScreen` uses.
     @State private var showPaywall = false
 
+    /// Stock ranges from 20 to 740k across domains (2026-09-24); a label, never a raw count, because counts move by the minute and differ per app.
+    static let highStockThreshold = 500
+
     var body: some View {
         VStack(spacing: 0) {
             SheetHeader(title: "Choose an email domain")
@@ -57,7 +61,6 @@ struct EmailDomainSheet: View {
             }
         }
         .background(theme.bg)
-        .presentationDetents([.medium, .large])
         .sheet(isPresented: $showPaywall) {
             MailPaywallScreen(source: "domain_sheet")
                 .environment(\.theme, theme)
@@ -127,7 +130,7 @@ struct EmailDomainSheet: View {
                 // What actually differs between these rows, said once. Without
                 // it the only visible difference is the price, and a user has
                 // no way to know the address behaves identically either way.
-                Text("Any domain works the same. The free ones run out most often, so stock is checked live.")
+                Text("Any domain works the same. Stock is checked live.")
                     .font(RFont.text(12))
                     .foregroundStyle(theme.text2)
                     .lineSpacing(2)
@@ -209,8 +212,10 @@ struct EmailDomainSheet: View {
                 .font(RFont.display(16, weight: .semibold))
                 .tracking(-0.3)
                 .foregroundStyle(option.inStock ? theme.text : theme.text2)
-            if option.inStock {
-                StatusPill(text: "Available now")
+            if option.available >= Self.highStockThreshold {
+                StatusPill(text: "High stock")
+            } else if option.inStock {
+                StatusPill(text: "Low stock", tint: theme.warn, soft: theme.warnSoft)
             } else {
                 StatusPill(text: "Out of stock right now",
                            tint: theme.text3, soft: theme.chipBg, dot: false)

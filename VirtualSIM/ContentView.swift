@@ -10,21 +10,14 @@ enum ActiveSheet: String, Identifiable {
     case services, country, credits, emailDomain
     var id: String { rawValue }
 
-    /// Height belongs to the SHEET, not to the presenter.
+    /// Height belongs to the SHEET, not to the presenter — an OUTER
+    /// `.presentationDetents` wins over one applied to the content, so a
+    /// sheet's height has to be decided here, at the presentation site.
     ///
-    /// Every sheet was presented `.large` from one place out here, which is
-    /// right for a 265-row service list and wrong for the domain picker: that
-    /// one typically renders two to four rows, so roughly 80% of a full-height
-    /// sheet was empty. The domain sheet asked for its own detents from inside
-    /// its body and it had no effect — an OUTER `.presentationDetents` wins
-    /// over one applied to the content, so the fix has to live at the
-    /// presentation site.
-    var detents: Set<PresentationDetent> {
-        switch self {
-        case .emailDomain: [.medium, .large]
-        default:           [.large]
-        }
-    }
+    /// Every sheet is `.large`. The domain picker was `.medium` while it held
+    /// two to four rows; with five domains on sale (2026-09-24) the medium
+    /// detent cut the last one off, so it went back to full height.
+    var detents: Set<PresentationDetent> { [.large] }
 }
 
 struct ContentView: View {
@@ -1205,6 +1198,25 @@ extension ContentView {
                 if let svc = state.services.first(where: { $0.id == "leboncoin" }) {
                     state.lastService = svc
                 }
+            }
+
+        case .emailDomains:
+            // The domain sheet over the e-mail store. Entering e-mail mode
+            // fires `loadEmailDomains`, which `simctl` cannot authenticate and
+            // which clears the list when it fails — so the sample list is
+            // written AFTER that settles, and the sheet opens on it.
+            state.openCodeStore()
+            state.emailMode = true
+            Task { @MainActor in
+                await state.loadCatalog(using: CatalogAPI(client: api))
+                if let svc = state.services.first(where: { $0.id == "leboncoin" }) {
+                    state.lastService = svc
+                }
+                try? await Task.sleep(for: .seconds(2))
+                state.lastError = nil
+                state.emailDomains = ScreenshotMode.sampleEmailDomains
+                state.emailDomain = ScreenshotMode.sampleEmailDomains.first
+                sheet = .emailDomain
             }
         }
     }
