@@ -12,7 +12,7 @@ The goal is one coherent tab that looks like Verify, sells the number honestly, 
 
 **Success:**
 - the line checkout → Apple sheet rate (`line_checkout_view` → `line_purchase_result`)
-- `line_swap_open` counts from settings, compared with the old hero button (an accidental-tap proxy)
+- `line_swap_result{success}` per `line_swap_open` (the confirm page should keep accidental opens from becoming swaps)
 - no increase in `line_checkout_exit{how: back}`
 - guardrails: Apple refund notifications, and the ratings average from `scripts/app-ratings.py`
 
@@ -46,6 +46,39 @@ The goal is one coherent tab that looks like Verify, sells the number honestly, 
    - Titles use `.displayType(30)`.
    - Every phone number and price uses `numberStyle(...)`. SF Mono is removed from the tab, from `Buttons.swift`'s price sub-label, and from `InCallOverlay`.
    - Headers use `PhoneFormat.national`; rows use `PhoneFormat.compact`.
+
+## 3a. Motion and polish (owner, 2026-09-24: "pretty … with nice animations")
+
+The owner wants this tab to feel good to use. Every animation uses the overhaul's one spring,
+`RMotion.standard` (0.35 / 0.85), or an existing `RMotion` token, and every one is
+skipped under Reduce Motion (`accessibilityReduceMotion`: instant change).
+- **Number card (subscriber home).**
+  - On first appearance it rises in (offset 12 → 0, opacity 0 → 1).
+  - The live dot pulses gently (a 2s ease-in-out opacity loop) while the line is live.
+  - Copy: the label morphs to "Copied" with `.contentTransition(.symbolEffect(.replace))` on the
+    icon, a `.symbolEffect(.bounce)`, and the selection haptic.
+- **Switch number success.** The old number rolls into the new one digit by digit
+  (`.contentTransition(.numericText())` on the formatted number), with a success haptic
+  and a short mint glow on the card border (fading 0.6 → 0 over 1.2s).
+- **Segments.** Messages · Calls · Number switch with a matched-geometry selection capsule
+  (`matchedGeometryEffect`) and a crossfade plus slight horizontal slide of the content
+  (`.transition(.opacity.combined(with: .offset(x: ±8)))`, direction following the segment order).
+- **Lists.**
+  - Rows enter with the existing capped stagger (`RMotion` list stagger, ≤ 8 rows).
+  - A new inbound message inserts at the top with `.transition(.move(edge: .top).combined(with: .opacity))`.
+  - Pull to refresh (`.refreshable`) reloads threads and the line.
+- **Store.**
+  - Number rows fade and stagger in when loaded.
+  - Changing country or "Show different numbers" crossfades the list (the skeleton
+    shimmers while loading).
+  - The selected row scales to 0.98 on press (`.pressable()`).
+- **Paywall.**
+  - Selecting a plan springs the border between rows (matched geometry).
+  - The price block re-renders with `numericText` when the plan changes.
+- **Thread.** Bubbles appear with a small scale-and-fade from the sender's side. The code chip's
+  Copy bounces.
+- **No gratuitous motion.** No confetti, no looping decorative animation other than the live dot,
+  nothing that delays a tap.
 
 ## 4. Information architecture
 
@@ -108,7 +141,7 @@ Top to bottom:
     - The keypad is a toolbar button, hidden without a voice client.
   - **Number:**
     - Usage: texts and minutes left.
-    - A plain "Change number…" row (see 4.5).
+    - A "Switch number…" row (see 4.5).
     - "Rent another number".
     - The Important card with 911.
     - No renewal or subscription rows (owner decision).
@@ -123,11 +156,26 @@ Top to bottom:
   - Dialer: entry in `numberStyle`; the call button uses the accent colour (the one primary action); the emergency line is kept.
 - **Swap stays a sheet.** Pages are unchanged, **plus the ledger's ✗ line when the target number is in US/PR**.
 
-### 4.5 Change number (swap)
+### 4.5 Switch number (swap) — stays very visible (owner, 2026-09-24)
 
-- Reached in two taps: Number segment → "Change number…" → sheet. It is never the primary action on any screen.
-- The confirm page shows the current and new numbers, the price, the balance, and "Your current number is given up for good."
-- The existing Top-up path is unchanged.
+The owner, after seeing the first spec: "switch number button should still be very
+visible". Swaps are what some subscribers actually buy (CLAUDE.md), so the button
+keeps a prominent place.
+- A **"Switch number"** button sits directly under the number card, on the
+  subscriber home, full width and 56pt tall, with the `arrow.triangle.2.circlepath` symbol.
+- Style: `theme.chipBg` fill with `theme.text` label and a 1pt accent
+  border, not accent-filled. That keeps it the most visible thing after the number
+  itself, without breaking rule 2's one-green rule. When
+  the Messages list is empty, it is the screen's only strong control.
+- It opens the swap sheet in one tap. **The confirm page is the safety net**: it shows
+  the current and new numbers, the price, the balance, and "Your current number is given up for
+  good." The price never appears on the button.
+- It stays hidden (not disabled) when `lineSwapCredits` is nil or the line is not
+  `.active`, as it is today. The "Your new number is …" line after a swap stays.
+- It is also a row in the Number segment ("Switch number…"). Both entry points fire
+  `line_swap_open` with `from: "home" | "number_segment"`.
+- This overrides the consultants' "never the primary action" advice by owner decision.
+  The confirm page carries the protection against an accidental tap.
 
 ## 5. Copy corrections (false today)
 
@@ -141,7 +189,7 @@ Top to bottom:
 - All existing events are kept (audit §1.2).
 - **New:**
   - `line_numbers_shown` fires on the inline list; `source: "store_inline"` replaces the sheet's value.
-  - `line_swap_open{from: "number_segment"}`.
+  - `line_swap_open{from: "home" | "number_segment"}`.
 - **Retired:**
   - `line_choose_number_tapped`. The inline list replaces the button. This is noted in CLAUDE.md.
 
@@ -166,7 +214,8 @@ Each item below is a plan task.
 2. Copy corrections and the ledger. The single-list rule stays; the swap-sheet notice is added.
 3. Store rebuild: inline numbers, country segment, pushed city pages, price row, proof line.
 4. Paywall rebuild to D4.
-5. Subscriber home: title, number card, Messages · Calls · Number segments, FAB removed, toolbar buttons.
+5. Subscriber home: title, number card, the visible Switch number button, Messages · Calls · Number segments, FAB removed, toolbar buttons.
+5a. Motion pass (§3a) across the store, paywall, home, lists and thread.
 6. Thread and compose pushed on a stack; push-notification routing.
 7. Fixtures, and CLAUDE.md / `telephony.md` / `ios-client.md` updates.
 
