@@ -22,7 +22,7 @@ struct LineNumberCard: View {
         VStack(alignment: .leading, spacing: RSpace.md) {
             if typeSize.isAccessibilitySize {
                 VStack(alignment: .trailing, spacing: RSpace.sm) {
-                    numberLine.frame(maxWidth: .infinity, alignment: .leading)
+                    numberLine.frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
                     switchControl
                 }
             } else {
@@ -35,6 +35,9 @@ struct LineNumberCard: View {
                         .layoutPriority(1)
                     switchControl
                 }
+                // The capsule's hit height, held when Switch is hidden (a
+                // past-due line), so the card keeps one height.
+                .frame(minHeight: 44)
             }
             HStack(spacing: RSpace.sm) {
                 Circle().fill(statusTint).frame(width: 8, height: 8)
@@ -130,13 +133,16 @@ struct LineNumberCard: View {
         return "\(country) · \(digits.dropFirst().prefix(3))"
     }
 
-    /// Matches `LineStatusBanner`, which explains a fault in a sentence.
+    /// Matches `LineStatusBanner`'s tint for the same status, which explains
+    /// the fault in a sentence: grace (everything still works) is `warn`;
+    /// past-due (sending and calling out withdrawn), suspended and failed are
+    /// `fail`.
     private var statusTint: Color {
         switch line.status {
-        case .active:             theme.live
-        case .grace, .pastDue:    theme.warn
-        case .suspended, .failed: theme.fail
-        default:                  theme.text3
+        case .active:                       theme.live
+        case .grace:                        theme.warn
+        case .pastDue, .suspended, .failed: theme.fail
+        default:                            theme.text3
         }
     }
 

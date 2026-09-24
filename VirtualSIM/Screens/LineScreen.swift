@@ -340,7 +340,9 @@ private struct LiveLineView: View {
                 .padding(.vertical, RSpace.xxl)
             }
         } else {
-            VStack(spacing: 0) {
+            // Lazy: the thread list is uncapped, and the tab's ScrollView is
+            // the scroll container, so rows off screen are not built.
+            LazyVStack(spacing: 0) {
                 ForEach(threads) { thread in
                     if thread.id != threads.first?.id {
                         RowRule(inset: RSpace.lg + 40 + RSpace.md)

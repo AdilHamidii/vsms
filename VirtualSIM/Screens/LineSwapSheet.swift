@@ -49,8 +49,11 @@ struct LineSwapSheet: View {
     /// `line_swap_open.from`: "home" (the card's capsule) or "number_segment"
     /// (the Number segment's row).
     let from: String
-    /// Called the moment the cutover lands (so a swipe-dismiss still confirms
-    /// it); the presenter reloads the line after the sheet has gone.
+    /// Called the moment the cutover lands, whether or not this sheet is
+    /// still presented (`perform` runs in an unstructured task, so a
+    /// swipe-dismiss or a live call can close the sheet first). The presenter
+    /// reports it and reloads the line after the sheet has gone — or at once,
+    /// if it already has.
     var onSwapped: (String) -> Void
 
     private enum Page: Equatable {
@@ -487,9 +490,11 @@ struct LineSwapSheet: View {
     /// Buy the chosen number for this line.
     ///
     /// `swapping` is the re-entrancy guard as well as the button's busy state.
-    /// The line is NOT reloaded here: the presenter (`LineSwitchNumberButton`)
-    /// reloads it once the sheet has gone, so the card's number visibly rolls
-    /// to the new one. It still must be reloaded — every other surface (the
+    /// The line is NOT reloaded here: `onSwapped` hands the new number to the
+    /// presenter (`LineSwitchNumberButton`), which reloads it after the sheet
+    /// has gone — so the card's number visibly rolls to the new one — or
+    /// immediately, when the sheet was already closed before the cutover
+    /// landed. It must be reloaded on both paths: every other surface (the
     /// card, the share sheet, the thread list) reads `state.line`, and skipping
     /// it would leave the tab showing a number we just gave away.
     @MainActor

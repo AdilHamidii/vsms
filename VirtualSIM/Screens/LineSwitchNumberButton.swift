@@ -31,7 +31,9 @@ struct LineSwitchNumberButton: View {
     enum Style { case compact, row }
 
     @State private var choosing = false
-    /// Set by the sheet the moment the cutover lands; reported on dismiss.
+    /// A swap that landed while the sheet was still up, reported (and
+    /// cleared) on dismiss. Cleared on every dismiss and every open, so it
+    /// can never be read by a later, unrelated sheet.
     @State private var completedSwap: String?
 
     /// The one definition of "the swap is offered", for callers that lay out
@@ -44,18 +46,24 @@ struct LineSwitchNumberButton: View {
         if let cost = state.appStatus.lineSwapCredits, line.status == .active {
             trigger
                 // The picker borrows the tab's search state; clearing it on the
-                // way out keeps the store from inheriting a swap's place. The
-                // line reload happens HERE, after the sheet has gone, so the
-                // card's number visibly rolls to the new one (spec §3a) — the
-                // sheet's own last page shows the new number meanwhile.
+                // way out keeps the store from inheriting a swap's place.
+                //
+                // A swap is reported ONCE, and the line reloaded, in one of two
+                // places depending on when the cutover lands:
+                // - sheet still up (the normal case): parked in `completedSwap`
+                //   and reported HERE, after the sheet has gone, so the card's
+                //   number visibly rolls to the new one (spec §3a) — the
+                //   sheet's own last page shows the new number meanwhile;
+                // - sheet already gone (a swipe-dismiss mid-request, or a live
+                //   call closing it): reported straight from the callback in
+                //   `swapLanded`, because no `onDismiss` is left to read it.
                 .sheet(isPresented: $choosing, onDismiss: {
                     state.clearLineDraft()
-                    guard let number = completedSwap else { return }
-                    completedSwap = nil
-                    onSwapped(number)
-                    Task { await state.loadLine(using: LineAPI(client: api)) }
+                    let number = completedSwap
+                    completedSwap = nil          // never outlives this sheet
+                    if let number { report(number) }
                 }) {
-                    LineSwapSheet(line: line, cost: cost, from: from) { completedSwap = $0 }
+                    LineSwapSheet(line: line, cost: cost, from: from, onSwapped: swapLanded)
                         // 🔴 Sheet content does NOT inherit `@Observable`
                         // environment objects. `IAPStore` is what the top-up
                         // path needs, and it is a crash, not a blank screen.
@@ -126,6 +134,24 @@ struct LineSwitchNumberButton: View {
 
     private func open() {
         RHaptic.select()
+        completedSwap = nil
         choosing = true
+    }
+
+    /// The sheet's success callback. `perform` runs in an unstructured task,
+    /// so the sheet can already be closed when the cutover lands; parking the
+    /// number then would leave the card on the given-up number and fire a
+    /// stray confirmation on the next unrelated dismiss.
+    private func swapLanded(_ number: String) {
+        if choosing {
+            completedSwap = number
+        } else {
+            report(number)
+        }
+    }
+
+    private func report(_ number: String) {
+        onSwapped(number)
+        Task { await state.loadLine(using: LineAPI(client: api)) }
     }
 }
