@@ -396,6 +396,12 @@ struct ContentView: View {
                 state.intent = .line
             } else {
                 state.clearLineDraft()
+                // The tab's pushed place pages describe the draft just
+                // cleared: returning onto a Cities page with no country would
+                // mis-scope the next search. Here and not in `clearLineDraft`,
+                // whose other caller (the swap sheet's dismiss) runs while the
+                // tab is on screen and must not pop its stack.
+                state.linePath = []
                 // `.call` belongs to the dialer, which lives inside this tab —
                 // so leaving the tab must retire it exactly as it retires
                 // `.line`. Resetting only `.line` would strand a `.call` intent
@@ -889,8 +895,11 @@ extension ContentView {
             // the server's; 8 is what it read on 2026-09-01.
             state.appStatus = AppStatus(announcement: nil, esimPaused: false, lineSwapCredits: 8)
             if shot == .lineIntro {
-                // No pricing shim: the price row must be HIDDEN until
-                // StoreKit answers (Review Focus 5).
+                // No pricing shim. The price row is hidden until StoreKit
+                // answers — code-verified: `priceRow` is an `if let` on
+                // `monthlyPriceDisplay` (Review Focus 5). The frame itself
+                // shows a price, because the iOS 27 simulator's StoreKit DOES
+                // answer from the sandbox.
                 state.isLoadingLineNumbers = true
             }
             if shot == .lineStoreError {
@@ -902,14 +911,15 @@ extension ContentView {
             if shot == .lineStore {
                 // The store prints the monthly price (see
                 // `LineStoreScreen.priceRow`), and it renders NOTHING until
-                // StoreKit answers — which `simctl` never makes it do, because
-                // it does not apply the scheme's StoreKit configuration. Same
-                // shim, same reason, as the paywall frames below.
+                // StoreKit answers. `simctl` does not apply the scheme's
+                // StoreKit configuration; the iOS 27 simulator does reach the
+                // sandbox (see `.lineIntro`), but the shim keeps the frame
+                // deterministic. Same shim as the paywall frames below.
                 subs.screenshotPricing = .init()
                 // The store is ONE screen as of 2026-09-03, so this frame is
                 // the numbers themselves rather than a city list — and the
                 // search that would fill them is skipped in screenshot mode
-                // (see `LineStoreScreen.searchIfNeeded()`), so the offers are
+                // (see `LineStoreSearch.beginVisit`), so the offers are
                 // seeded here or the frame renders its empty state.
                 //
                 // ⚠️ 555 numbers, as everywhere in this harness: a screenshot

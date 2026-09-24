@@ -2713,6 +2713,12 @@ final class AppState {
         lineCity = nil
         lineCountry = nil
         lineSearchCountry = nil
+        // The cities belong to the country just cleared. A search only
+        // REPLACES them when its country has localities, so a stale list
+        // would otherwise survive under a country that has none. Empty, not
+        // `LineCity.seeded` (Canadian): the next search fills it, and the
+        // Cities page shows its skeleton / country-wide row meanwhile.
+        lineCities = []
         // The composed call's price goes with the draft. Leaving it set would
         // let `creditsShortfall` keep sizing packs for a call that is no longer
         // on screen — the same shape as the stale `checkoutEsimPlan` and the

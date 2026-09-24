@@ -6,8 +6,8 @@ import SwiftUI
 /// the My number tab: the store's country choice and the subscriber's
 /// Messages · Calls · Number.
 ///
-/// Neutral by the one-green rule: an `elev` capsule on a `chipBg` track, no
-/// accent, no shadow. 44pt tall including the track.
+/// Neutral by the one-green rule: a lighter capsule on a `chipBg` track (see
+/// `thumbFill`), no accent, no shadow. 44pt tall including the track.
 struct CapsuleSegmentedControl<Tag: Hashable, Label: View>: View {
     @Environment(\.theme) private var theme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -17,6 +17,13 @@ struct CapsuleSegmentedControl<Tag: Hashable, Label: View>: View {
     @ViewBuilder let label: (Tag, Bool) -> Label
 
     @Namespace private var thumb
+
+    /// The selected capsule must sit ABOVE the track on the value ladder
+    /// (`bg` → `elev` → `elev2` → `track`). Light: white `elev` on the grey
+    /// `chipBg` track. Dark: `elev` (#151518) is DARKER than the track there
+    /// (`chipBg` over `bg` ≈ #1B1B1C) and read as a hole, so dark takes the
+    /// top rung, `track` (#2A2A31). Neutral either way: no accent fill.
+    private var thumbFill: Color { theme.isDark ? theme.track : theme.elev }
 
     var body: some View {
         HStack(spacing: 0) {
@@ -39,7 +46,7 @@ struct CapsuleSegmentedControl<Tag: Hashable, Label: View>: View {
                         .background {
                             if active {
                                 Capsule()
-                                    .fill(theme.elev)
+                                    .fill(thumbFill)
                                     .matchedGeometryEffect(id: "thumb", in: thumb)
                             }
                         }

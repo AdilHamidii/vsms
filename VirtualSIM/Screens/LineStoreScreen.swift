@@ -62,12 +62,16 @@ struct LineStoreScreen: View {
     /// How many numbers the screen offers at once.
     ///
     /// Three, not the whole search. This list is one section of a scrolling
-    /// page rather than the page itself, and every row past the third pushes
-    /// the price — the thing a subscriber has to have read — below the fold.
-    /// "Show different numbers" re-rolls the search for anyone who dislikes
-    /// all three.
+    /// page rather than the page itself, and every extra row pushes the price
+    /// further down. ⚠️ With the ledger above the numbers (the approved
+    /// 2026-09-24 order), the price row already sits BELOW the fold on an
+    /// iPhone 17 Pro Max with three rows; three keeps it one short scroll
+    /// away. "Show different numbers" re-rolls the search for anyone who
+    /// dislikes all three.
     private static let visibleOffers = 3
 
+    /// Whether the numbers section renders at all. The SEARCH is guarded
+    /// separately, in `LineStoreSearch.reload`, so no path can bypass it.
     private var hasSession: Bool { session.accessToken != nil }
 
     var body: some View {
@@ -87,30 +91,15 @@ struct LineStoreScreen: View {
         }
         .scrollIndicators(.hidden)
         .background(theme.bg.ignoresSafeArea())
-        // `appeared` is set BEFORE any await: nothing above the numbers needs
-        // the network, and awaiting first left the screen at opacity 0.
-        .task {
+        // Only the entrance lives here. `line_store_view`, the catalogue and
+        // the first search are once per VISIT and run from the HOST
+        // (`LineScreen` / `LineStoreCover` → `LineStoreSearch.beginVisit`):
+        // this root re-appears on every pop of a place page, and a push
+        // would cancel anything it awaited. Nothing above the numbers needs
+        // the network, so nothing waits on it to appear.
+        .onAppear {
             withAnimation(RMotion.unlessReduced(RMotion.content, reduceMotion)) { appeared = true }
-            Analytics.shared.track("line_store_view")
-            async let product: () = subs.loadProduct()   // the price row; idempotent
-            await state.loadLineCountries(using: LineAPI(client: api))
-            if state.lineCountry == nil, let iso = defaultCountry() {
-                state.lineCountry = iso
-            }
-            await searchIfNeeded()
-            _ = await product
         }
-    }
-
-    /// Runs the inline search once per visit (leaving the tab clears the
-    /// draft, so the next visit searches again). Screenshot frames seed the
-    /// offers themselves; a live search from `simctl` would wipe them.
-    /// 🔴 `search-line-numbers` needs a session: a guest (a later plan) must
-    /// not hit it, and a 401 would render as "We couldn't load any numbers".
-    private func searchIfNeeded() async {
-        guard !ScreenshotMode.isActive, hasSession,
-              state.lineOffers.isEmpty, !state.isLoadingLineNumbers else { return }
-        await LineStoreSearch.reload(state, api: api)
     }
 
     /// Where an untouched store looks first: the United States, for everyone.
@@ -129,9 +118,10 @@ struct LineStoreScreen: View {
     /// on a country the first search would refuse.
     private static let defaultCountryCode = "US"
 
-    private func defaultCountry() -> String? {
-        sellableCountries.contains(where: { $0.countryCode == Self.defaultCountryCode })
-            ? Self.defaultCountryCode : nil
+    /// Static so the visit (`LineStoreSearch.beginVisit`) can apply it.
+    static func defaultCountry(in sellable: [LineCountry]) -> String? {
+        sellable.contains(where: { $0.countryCode == defaultCountryCode })
+            ? defaultCountryCode : nil
     }
 
     // MARK: - Header
@@ -338,7 +328,8 @@ struct LineStoreScreen: View {
     }
 
     /// Three available numbers, inline. Four states:
-    /// - no session: nothing (a guest never searches — a later plan adds sign-in);
+    /// - no session: nothing (a guest never searches — `LineStoreSearch.reload`
+    ///   refuses without a session on every path; a later plan adds sign-in);
     /// - loading, or not answered yet (empty with no reason): the skeleton;
     /// - answered empty or failed: the three-cause empty state, with Try again
     ///   when the cause is unknown (a load failure must not look healthy);
@@ -365,6 +356,8 @@ struct LineStoreScreen: View {
                                 fillsWidth: false) {
                         Task { await LineStoreSearch.reload(state, api: api) }
                     }
+                    .disabled(state.isLoadingLineNumbers)
+                    .opacity(state.isLoadingLineNumbers ? 0.5 : 1)
                     .padding(.top, RSpace.xs)
                 }
             }
@@ -421,9 +414,12 @@ struct LineStoreScreen: View {
     /// ⚠️ `monthlyPriceDisplay`, not `displayPrice`: the latter follows the
     /// paywall's `selectedPlan`, so a user who had tapped Yearly would read
     /// the yearly figure "a month" here.
+    ///
+    /// Hidden while new numbers are PAUSED: no price is quoted for something
+    /// that cannot be bought.
     @ViewBuilder
     private var priceRow: some View {
-        if let regular = subs.monthlyPriceDisplay {
+        if state.lineUnavailableReason != .paused, let regular = subs.monthlyPriceDisplay {
             VStack(alignment: .leading, spacing: 2) {
                 Text("\(regular)/month")
                     .numberStyle(size: 20, color: theme.text)

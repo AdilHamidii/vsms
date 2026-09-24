@@ -19,6 +19,11 @@ final class APIClient {
 
     func attach(_ store: Session) { self.sessionStore = store }
 
+    /// Whether a signed-in session is attached — the same token `send` puts in
+    /// the `Authorization` header. The guard for calls that need a user
+    /// (`LineStoreSearch.reload`), so a guest cannot reach them by any path.
+    var hasSession: Bool { sessionStore?.accessToken != nil }
+
     // `put` exists for exactly one caller: GoTrue routes `/auth/v1/user` on
     // PUT and does not answer PATCH there, so a password change sent as PATCH
     // fails with a routing error that looks nothing like a password problem.

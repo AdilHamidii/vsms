@@ -11,8 +11,15 @@ enum LineStoreSearch {
     /// event meant "the reader opened the picker"; here it fires whenever the
     /// store renders a fresh search (every visit that searches). `source`
     /// marks the new series; do not compare it with main's.
+    ///
+    /// 🔴 THE ONE SESSION GUARD. `search-line-numbers` needs a user, and every
+    /// path into a search — the visit, the country control, the Cities page,
+    /// "Show different numbers", Try again — ends here, so a guest (a later
+    /// plan) never searches and never sees a 401 rendered as "We couldn't load
+    /// any numbers". No event fires for a search that did not run.
     static func reload(_ state: AppState, api: APIClient,
                        city: String? = nil, country: String? = nil) async {
+        guard api.hasSession else { return }
         await state.loadLineNumbers(using: LineAPI(client: api), city: city, country: country)
         Analytics.shared.track("line_numbers_shown", [
             "country": .string(state.lineCountry ?? "unknown"),
@@ -21,6 +28,40 @@ enum LineStoreSearch {
             "city": .string(state.lineCity ?? "any"),
             "count": .int(state.lineOffers.count),
             "source": .string("store_inline")])
+    }
+
+    /// Once per VISIT to the store: `line_store_view`, the price, the country
+    /// catalogue, the default country and the first search.
+    ///
+    /// A visit is an appearance of the store's HOST, never of the store view:
+    /// the My number tab's `NavigationStack` while its root is the store
+    /// (`LineScreen`, keyed on that root), or one presentation of
+    /// `LineStoreCover`. Pushing a place page does not make the host
+    /// disappear, so a push and its pop are not visits. (The store root's own
+    /// `.task` DID re-run on every pop, and a push cancelled a search in
+    /// flight, which rendered as the fail-tinted "We couldn't load any
+    /// numbers".)
+    ///
+    /// The work runs in UNSTRUCTURED tasks, so nothing on screen can cancel
+    /// it. A visit that ended before the catalogue answered (the tab was left)
+    /// does not go on to search.
+    static func beginVisit(_ state: AppState, api: APIClient, subs: SubscriptionStore) {
+        Analytics.shared.track("line_store_view")
+        Task { await subs.loadProduct() }   // the price row; idempotent
+        Task {
+            await state.loadLineCountries(using: LineAPI(client: api))
+            guard state.tab == .line else { return }   // the visit is over
+            if state.lineCountry == nil,
+               let iso = LineStoreScreen.defaultCountry(in: state.lineCountries.sellable) {
+                state.lineCountry = iso
+            }
+            // Screenshot frames seed the offers themselves; a live search from
+            // `simctl` would wipe them. Leaving the tab clears the draft, so
+            // the next visit searches again.
+            guard !ScreenshotMode.isActive,
+                  state.lineOffers.isEmpty, !state.isLoadingLineNumbers else { return }
+            await reload(state, api: api)
+        }
     }
 
     /// One definition of "the user chose somewhere else".
@@ -130,6 +171,8 @@ struct LineCitiesPage: View {
 struct LineStoreCover: View {
     @Environment(\.theme) private var theme
     @Environment(AppState.self) private var state
+    @Environment(APIClient.self) private var api
+    @Environment(SubscriptionStore.self) private var subs
     @State private var path: [LineRoute] = []
 
     var body: some View {
@@ -142,5 +185,7 @@ struct LineStoreCover: View {
                 .navigationTitle(Text("Your own number"))
                 .lineRouteDestinations()
         }
+        // One presentation of the cover is one visit; see `beginVisit`.
+        .task { LineStoreSearch.beginVisit(state, api: api, subs: subs) }
     }
 }

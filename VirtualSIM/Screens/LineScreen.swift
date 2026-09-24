@@ -10,6 +10,7 @@ struct LineScreen: View {
     @Environment(\.theme) private var theme
     @Environment(AppState.self) private var state
     @Environment(APIClient.self) private var api
+    @Environment(SubscriptionStore.self) private var subs
 
     var onOpenSms: () -> Void
 
@@ -27,12 +28,27 @@ struct LineScreen: View {
             // entirely outside the app.
             await state.loadLine(using: LineAPI(client: api))
         }
+        // One store VISIT per appearance of this stack with the store as its
+        // root (a tab visit, or the root turning into the store). Hosted HERE,
+        // not in `LineStoreScreen`, because the stack stays on screen while a
+        // place page is pushed: a push and its pop are not a visit, and a push
+        // cannot cancel the first search. See `LineStoreSearch.beginVisit`.
+        .task(id: showsStore) {
+            guard showsStore else { return }
+            LineStoreSearch.beginVisit(state, api: api, subs: subs)
+        }
         // A purchase (store → live line) or a lapse (live line → store)
         // replaces the stack's ROOT; a page pushed over the old root means
         // nothing over the new one.
         .onChange(of: state.line?.status.isLive ?? false) { _, _ in
             state.linePath = []
         }
+    }
+
+    /// The root is the store: the first line read has answered and there is
+    /// no live line. Mirrors `root`'s branches.
+    private var showsStore: Bool {
+        state.linesLoaded && !(state.line?.status.isLive ?? false)
     }
 
     @ViewBuilder

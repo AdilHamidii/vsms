@@ -34,7 +34,11 @@ enum ScreenshotMode {
     /// Which screen to open. One launch per value.
     enum Screen: String {
         case onboarding      // page 1, the product pitch
-        case lineIntro       // the store while its numbers load (skeleton, no price)
+        // The store while its numbers load (skeleton). No pricing shim, but
+        // the iOS 27 simulator's StoreKit DOES answer from the sandbox, so the
+        // frame shows the live price. "Hidden until StoreKit answers" is
+        // code-verified (`if let` on `monthlyPriceDisplay`), not frame-verified.
+        case lineIntro
         case lineStore       // the store with three inline numbers and the StoreKit price
         case lineStoreError  // the store after a failed search: fail-tinted empty state, Try again
         case thread          // a real conversation on a rented number
