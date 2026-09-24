@@ -235,7 +235,7 @@ struct OrdersScreen: View {
                 title: "No orders yet",
                 message: "Numbers and email addresses you buy show up here, with the code and with the refund if one never arrived.",
                 primary: (label: String(localized: "Get a number"),
-                          action: { state.openCodeStore() })
+                          action: { onClose?(); state.openCodeStore() })
             )
         case .active:
             EmptyState(

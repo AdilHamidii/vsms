@@ -19,7 +19,9 @@ VirtualSIM/
   VirtualSIMApp.swift            App entry; resizes URLCache (32MB mem / 64MB disk
                                  for brand logos + flag PNGs); installs AppDelegate
   ContentView.swift              native TabView, 4 tabs (verify/line/activity/
-                                 account, `AppTab.order`); the temp store is
+                                 account; the order is the Tab declaration
+                                 order in ContentView, `AppTab.order` mirrors
+                                 it); the temp store is
                                  pushed inside Verify (`VerifyRoute.store`,
                                  `AppState.openCodeStore`); `ResumeBar` rides a
                                  bottom `safeAreaInset` on every tab

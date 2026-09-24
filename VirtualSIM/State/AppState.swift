@@ -6,8 +6,8 @@ import SwiftUI
 ///
 /// ⚠️ `app_config.launch_tab` (`/tabs number|temp`) no longer orders anything
 /// in this build: Home and Temp are gone, so there is nothing for it to
-/// reorder. The key is still read and stored by `refreshAppStatus` so older
-/// builds keep honouring it.
+/// reorder. The key is still read and stored by `refreshAppStatus`,
+/// unchanged, so reverting to a server-ordered bar needs no data migration.
 ///
 /// `tab` is not persisted, so changing this enum carries no decode risk —
 /// nothing builds an `AppTab` from a stored or server string.
@@ -18,6 +18,8 @@ import SwiftUI
 enum AppTab: String, Hashable, CaseIterable {
     case verify, line, activity, account
 
+    /// Mirrors the `Tab` declaration order in `ContentView`, which is what
+    /// actually orders the bar; keep the two in step.
     static let order: [AppTab] = [.verify, .line, .activity, .account]
 }
 

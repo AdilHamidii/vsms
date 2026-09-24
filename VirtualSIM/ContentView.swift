@@ -97,6 +97,8 @@ struct ContentView: View {
             },
             onSeeAllOrders: { state.tab = .activity }
         )
+        // A pushed view gets its own hosting background; see `TabChrome`.
+        .containerBackground(theme.bg, for: .navigation)
     }
 
     var body: some View {
@@ -110,6 +112,7 @@ struct ContentView: View {
                     // so the More tile and the store's picker raise one sheet.
                     HomeScreen(openCredits: { sheet = .credits },
                                openServices: { sheet = .services })
+                        .containerBackground(theme.bg, for: .navigation)
                         .navigationDestination(for: VerifyRoute.self) { route in
                             switch route {
                             case .store: codeStore
@@ -1210,10 +1213,27 @@ private extension View {
     /// rather than iOS 26's `tabViewBottomAccessory`: the accessory is not yet
     /// verified to disappear when nothing is in flight (spec §4), and an empty
     /// glass capsule on every screen would be worse than no accessory.
+    ///
+    /// Also paints `theme.bg` behind the tab's content. 🔴 A `.background` on
+    /// the `TabView` itself does NOT show: each tab is hosted separately and
+    /// the system paints pure black / pure white behind it, which put the
+    /// light theme's white cards on a white page. A `NavigationStack` root
+    /// paints its own too, so pushed and root views inside one also need
+    /// `.containerBackground(theme.bg, for: .navigation)`.
     func resumeBarInset() -> some View {
-        safeAreaInset(edge: .bottom, spacing: 0) {
-            ResumeBarSlot()
-        }
+        modifier(TabChrome())
+    }
+}
+
+private struct TabChrome: ViewModifier {
+    @Environment(\.theme) private var theme
+
+    func body(content: Content) -> some View {
+        content
+            .safeAreaInset(edge: .bottom, spacing: 0) {
+                ResumeBarSlot()
+            }
+            .background(theme.bg.ignoresSafeArea())
     }
 }
 
