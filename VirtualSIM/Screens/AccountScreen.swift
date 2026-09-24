@@ -406,8 +406,13 @@ struct AccountScreen: View {
                             track("vroam")
                         })
                     }
+                    .padding(18)
                 }
             }
+            // Same insets as `invite`: this card was moved here from Home on
+            // 2026-09-21 without them, and ran edge to edge on Account.
+            .padding(.horizontal, 16)
+            .padding(.top, 22)
         }
     }
 
