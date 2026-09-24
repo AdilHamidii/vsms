@@ -46,26 +46,33 @@ struct SplashScreen: View {
     @State private var slow = false        // ~1.2s: show the progress bar
     @State private var verySlow = false    // ~3.5s: say it out loud
 
-    private let barWidth: CGFloat = 132
+    /// Room held under the wordmark for the loading footer: the gap, the
+    /// hairline, a second gap and two caption lines. The same amount is
+    /// reserved ABOVE the wordmark, so on a loading launch it sits at the
+    /// exact centre and never moves when the bar or the caption fades in.
+    private let footerReserve: CGFloat = 80
 
     var body: some View {
         ZStack {
             theme.bg.ignoresSafeArea()
 
             VStack(spacing: 0) {
-                Spacer()
+                Spacer(minLength: 0)
+                // minHeight, NOT height, below: the failure footer — title,
+                // body and two buttons — is far taller than the reserve and
+                // must be free to grow. It is not mirrored above, so the
+                // wordmark rises instead of the buttons being pushed onto the
+                // bottom edge (a flat 96 once pushed "Continue anyway" there).
+                if state != .failed {
+                    Color.clear.frame(height: footerReserve)
+                }
                 lockup
-                Spacer()
-                // minHeight, NOT height: the loading footer reserves enough
-                // room that the lockup does not jump when the slow-connection
-                // line fades in, while the failure footer — title, body, a
-                // button and a link — is free to grow past it. Pinned at a flat
-                // 96 it overflowed the safe area and pushed "Continue anyway"
-                // onto the screen edge.
                 footer
-                    .frame(minHeight: 96, alignment: .top)
-                    .padding(.horizontal, 32)
+                    .padding(.top, RSpace.xl)
+                    .frame(minHeight: footerReserve, alignment: .top)
+                Spacer(minLength: 0)
             }
+            .padding(.horizontal, RSpace.xxl)
             .padding(.bottom, 28)
         }
         .onAppear {
@@ -100,7 +107,6 @@ struct SplashScreen: View {
             // under the words "Couldn't reach the server" would be absurd.
             BrandWordmark(size: 46, spins: state != .failed)
         }
-        .frame(height: 150)
     }
 
     // MARK: - Footer
@@ -116,30 +122,44 @@ struct SplashScreen: View {
             failure
         case .indeterminate:
             // Session bootstrap: a Keychain read and maybe one refresh. There
-            // are no countable steps, so there is nothing honest to draw.
-            caption
+            // are no countable steps, so the track shows a fixed short segment
+            // rather than a fill that would claim progress.
+            loading(nil)
         case .progress(let value):
-            VStack(spacing: 14) {
-                if slow { progressBar(value) }
-                caption
-            }
+            loading(value)
         }
     }
 
-    /// Determinate: filled by steps that finished. See `AppState.coldStart`.
-    private func progressBar(_ value: Double) -> some View {
-        ZStack(alignment: .leading) {
-            Capsule().fill(theme.sep)
-                .frame(width: barWidth, height: 3)
-            Capsule().fill(theme.ink)
-                .frame(width: barWidth * max(0.04, min(1, value)), height: 3)
+    /// The hairline's slot is held even before it fades in at ~1.2s, so the
+    /// caption under it never shifts.
+    private func loading(_ fraction: Double?) -> some View {
+        VStack(spacing: RSpace.lg) {
+            hairline(fraction)
+                .opacity(slow ? 1 : 0)
+            caption
         }
-        .animation(.easeOut(duration: 0.45), value: value)
+    }
+
+    /// A 2pt track under the wordmark. Determinate: filled by steps that
+    /// finished (see `AppState.coldStart`), floored at 4% so a started load
+    /// is never an empty track. Indeterminate (`nil`): a fixed quarter.
+    private func hairline(_ fraction: Double?) -> some View {
+        GeometryReader { geo in
+            ZStack(alignment: .leading) {
+                Capsule().fill(theme.track)
+                Capsule()
+                    .fill(theme.ink)
+                    .frame(width: geo.size.width * max(0.04, min(1, fraction ?? 0.25)))
+                    .animation(RMotion.value, value: fraction)
+            }
+        }
+        .frame(width: 120, height: 2)
+        .accessibilityHidden(true)
     }
 
     private var caption: some View {
         Text("Still loading. A slow connection can take a moment.")
-            .font(RFont.text(12))
+            .font(RFont.text(13))
             .multilineTextAlignment(.center)
             .foregroundStyle(theme.text3)
             .opacity(verySlow ? 1 : 0)
@@ -155,29 +175,26 @@ struct SplashScreen: View {
     /// is indistinguishable from "this product is broken". Saying we could not
     /// reach the server is both true and far less damaging.
     private var failure: some View {
-        VStack(spacing: 10) {
+        VStack(spacing: RSpace.sm) {
             Text("Couldn't reach the server")
                 .font(RFont.display(15, weight: .semibold))
                 .foregroundStyle(theme.text)
             Text("Check your connection and try again.")
-                .font(RFont.text(12))
+                .font(RFont.text(13))
                 .multilineTextAlignment(.center)
                 .foregroundStyle(theme.text2)
 
-            if let onRetry {
-                PrimaryButton(label: "Try again", icon: RIcon.refresh, action: onRetry)
-                    .padding(.top, 4)
-            }
-            // Never trap the user behind a failed fetch: orders, credits and
-            // account still work off already-fetched data.
-            if let onContinue {
-                Button(action: onContinue) {
-                    Text("Continue anyway")
-                        .font(RFont.text(13, weight: .medium))
-                        .foregroundStyle(theme.text2)
+            VStack(spacing: RSpace.md) {
+                if let onRetry {
+                    PrimaryButton(label: "Try again", icon: RIcon.refresh, action: onRetry)
                 }
-                .buttonStyle(.plain)
+                // Never trap the user behind a failed fetch: orders, credits
+                // and account still work off already-fetched data.
+                if let onContinue {
+                    GhostButton(label: "Continue anyway", action: onContinue)
+                }
             }
+            .padding(.top, RSpace.lg)
         }
     }
 }
