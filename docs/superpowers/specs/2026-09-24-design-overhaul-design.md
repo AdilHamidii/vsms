@@ -41,10 +41,17 @@ artefactual reasons. Judge activation per install only.
 - **Backend untouched.** No file under `supabase/` changes; `git diff main --
   supabase` must be empty before every commit. No new endpoint, column, grant,
   price, cron or config key. Verified 2026-09-24: services, countries, the
-  client's `routes` columns, the `app_config` whitelist and `line_country_menu` /
-  `line_locality_menu` are anon-readable; `email-domains`, `search-line-numbers`,
-  `record-events`, `service_country_ranks` and every write need a session.
-  StoreKit products load without a session.
+  client's `routes` columns and `line_country_menu` / `line_locality_menu` are
+  anon-readable; `email-domains`, `search-line-numbers`, `record-events`,
+  `service_country_ranks` and every write need a session. StoreKit products
+  load without a session. ⚠️ **Corrected 2026-09-24 (Plan 1 Task 4 review,
+  checked live in `pg_policies`): `app_config` is NOT anon-readable** — its
+  `app_config_read` policy is `to authenticated`, and `MaintenanceAPI` /
+  `AppStatusAPI` refuse client-side without a session. So a guest sees no
+  maintenance notice, banner or `support_url` until sign-in; guest mode must
+  re-run both reads right after sign-in (§10 step 5). Widening the policy to
+  `anon` is a backend change and stays out of this branch unless the owner
+  asks for it.
 - **Onboarding untouched** (`Onboarding/OnboardingScreen.swift`), owner request.
 - **Owner rules kept:** nothing pre-selected on first run (user picks service
   AND country; the app may rank and recommend with a reason); no supplier named
