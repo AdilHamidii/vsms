@@ -216,3 +216,59 @@ https://chernev.com/wp-content/uploads/2017/02/ChoiceOverload_JCP_2015.pdf
   background or give the logos a hairline. If this frame is iOS 26, ResumeBar
   should be the `tabViewBottomAccessory` (§4), not a floating card. Confirm
   which OS the frame came from before accepting it.
+
+## My number direction 1 (2026-09-24)
+
+**1. Information architecture**
+
+*Non-subscriber.*
+- **Store:** a 30pt title "Your own number" with no kicker, a native segmented
+  US | Canada, the sending notice inline under it, three numbers as one grouped
+  list ("Other city ›", "Show different numbers"), four "What you get" rows,
+  and the one-code link. **SPEC CHANGE:** the picker sheet goes away.
+- **Tap a number, see the paywall, tap Subscribe, reach Apple's sheet: 3 taps
+  (today it is 4, plus a sheet).**
+
+*Subscriber.*
+- Large title "My number" and a number card: formatted number, flag and city,
+  Copy and Share at 44pt.
+- Native segments **Messages · Calls · Number** (§6.10), Messages the default.
+  Compose is a toolbar button on Messages, the dialer one on Calls.
+  **The FAB is removed.**
+- The **Number** segment holds usage with its reset date, **Manage
+  subscription**, a plain **"Change number…"** row (replacing the green hero
+  button), Rent another, and 911.
+- **Thread and compose are pushed on a NavigationStack (SPEC CHANGE; push
+  notifications route to the stack).** The paywall, provisioning and dialer stay
+  covers; swap stays a sheet.
+
+**2. Screens**
+- **Store:** as above; the reach note becomes readable secondary text.
+- **Picker rows:** the number in `numberStyle` at 20pt over the city; tap goes
+  to the paywall.
+- **Paywall:** number card, then the uncollapsed US/PR note, then plans:
+  "{regular}/month" with "{intro} your first month · new subscribers" beneath
+  (D4). **Subscribe**, one price sentence, Terms · Privacy · Restore in one row,
+  a `.bar` header, only the selected plan bordered.
+- **Inbox:** one inset-grouped list, neutral monograms, unread as a bold title
+  plus a dot.
+- **Thread:** national-format title, a neutral code chip, "texts left" only at
+  ≤10.
+- **Calls:** grouped by day; missed shows a red glyph, not a red name; the
+  allowance footer shows the reset date.
+- **Dialer:** `numberStyle`; the call button is accent, not mint; the emergency
+  line stays.
+- **Number:** grouped sections Usage · Subscription · Number · Important.
+- **Swap:** unchanged pages, **plus the sending notice when the target is
+  US/PR**.
+
+**3. Three visual rules**
+1. **One column:** 16pt gutter, 20pt cards, 14pt groups, grouped lists not a
+   card per row, no shadows.
+2. **One green per screen:** accent only on the primary action, mint only for
+   success.
+3. **One number voice:** `displayType(30)` titles, `numberStyle` everywhere (SF
+   Mono gone), `PhoneFormat.national` in headers and `.compact` in rows.
+
+**For the owner first:** "a Canadian number sends reliably" is false (CA→US 0
+of 8), and naming TikTok and DoorDash exceeds D3.

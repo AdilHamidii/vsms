@@ -174,3 +174,28 @@ the red lines. Three changes, most important first:
 
 Nothing here contradicts the red lines except item 2, which is a moderate
 capability implication, not a false statement.
+
+## My number direction 1 (2026-09-24)
+
+**1. Store and paywall**
+- **Lead with what is proven:** "A number that stays yours. Receive codes and calls here." Sending comes second. [L/L/L]
+- **Proof line:** past tense, only services that meet the bar: "Has received codes from WhatsApp". Never "Great for", "Works with", "any app" or odds. The audit reads D3 as WhatsApp only, so confirm before naming TikTok or DoorDash. "Great for": [L/M/H]; past tense: [L/L/L].
+- **Texting, disclosed on the store page before the picker:** a ✓/✗ ledger. ✓ receive texts and codes · ✓ calls · ✗ "Texts you send to US numbers usually don't arrive, from US or Canadian numbers." This also deletes the false "a Canadian number sends reliably" (3 places). As is: [M/M/H]; fixed: [L/L/L].
+- **Price on the store:** "{regular}/month · {intro} first month for new subscribers", with regular larger (D4). Put the monthly text allowance beside it; today it appears only after purchase, a material omission under UCPD Art. 7. [L/L-M/L]
+
+**2. Subscriber home**
+- **Should feel "mine, and live".** Title "Your own number", formatted digits, and full-size Copy and Share. The empty inbox says "Codes and texts sent to this number appear here." [L/L/L]
+- **Swap:** remove it from the hero. It becomes a Number settings / ⋯ row, "Get a different number · {n} credits". The confirm page shows the old number, "given up for good" and the balance: two taps to reach, never one. As hero: [L/L/H]; moved: [L/L/L].
+- **The month, honestly.**
+  - Paywall: "Only need it for a month? Turn off renewal after buying — it stays yours until the end of the month you paid for."
+  - Settings: "Renews {date} at {regular}/month", or "Renewal off · ends {date}; then released for good", plus "Manage subscription".
+  - This reverses the owner's 2026-09-01 "no plan talk" rule, so it needs the owner's yes. [L/L/L]
+
+**3. Red lines**
+1. No capability claim beyond what has been measured.
+2. Never soften the US-texting warning without `force_block` on US/PR in the same commit.
+3. The swap is never the primary action.
+4. The intro is never more prominent than the regular price.
+5. No friction or guilt around turning off renewal.
+6. Never promise a released number back.
+7. Allowances are disclosed before purchase.
