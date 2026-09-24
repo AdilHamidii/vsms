@@ -2110,15 +2110,32 @@ looping subscriber could drain it for everyone.
 
 ✅ **CAPS RAISED 2026-09-24 (owner): daily 8 → 10, rolling 30-day 60 → 100**, written
 live to `app_config` and read back through `email_usage` (10 / 100). The history
-below explains how 8 and 60 were derived and stays as the record. 🔴 **The
-break-even arithmetic moves with the price:** 100 × ~4.2c ≈ $4.20 against the
-**$4.99** monthly price the owner set the same day ($4.24 net), which is **NOT LIVE YET**.
-Until it ships, a $2.99 subscriber who uses all 100 addresses nets about −$1.70 a month. Owner decisions
-of 2026-09-24, pending a release that updates the wording: **remove the free lifetime address**
-(`email_free_lifetime_grants` 1 → 0), **mail.monthly $2.99 → $4.99 for NEW
-subscribers only** (current subscribers keep $2.99, so no Apple price-increase consent),
-and **mail.yearly → $39.99**. Do all three together with the release, because
-shipped builds say "your 1 free address".
+below explains how 8 and 60 were derived and stays as the record.
+
+🔴 **The wholesale price of an address fell ~15× on 2026-09-23: $0.051 → $0.0034**
+(read from the provider dashboard by the owner, and matched by our rows: `actual_cost_cents`
+is 5 through 2026-09-22 and 0 from 2026-09-23). So the "~4.2c/address" figure and the
+60-a-month break-even below describe the OLD price. At $0.0034, 100 addresses cost
+≈ $0.34 against $2.54 net at $2.99. ⚠️ **The price moves without notice.** It has
+changed once already, and at the old $0.051 a full 100-address month costs ≈ $5.10,
+more than even $4.99 nets ($4.24). Re-read the real cost before judging the caps:
+```sql
+select date_trunc('day',created_at)::date d, count(*) filter (where actual_cost_cents=0) sub_cent,
+       count(*) filter (where actual_cost_cents>=5) five_plus
+from email_orders where created_at > now()-interval '14 days' group by 1 order by 1;
+```
+⚠️ **`email_orders.actual_cost_cents` is an INTEGER, so a sub-cent price records as 0.**
+Every cost and profit figure built on it (`/profit`, `ops_snapshot`) shows mail as
+free from 2026-09-23. That is a rounding artefact, not a zero cost. Fixing it needs a
+fractional column, a backend change that has not been made.
+
+Owner decisions of 2026-09-24, pending a release that updates the wording:
+- **remove the free lifetime address** (`email_free_lifetime_grants` 1 → 0)
+- **mail.monthly $2.99 → $4.99 for NEW subscribers only** (current subscribers keep $2.99,
+  so Apple sends no price-increase consent requests)
+- **mail.yearly → $39.99**
+
+Do all three together with the release, because shipped builds say "your 1 free address".
 
 🔴 **There are TWO caps since 2026-09-21: a DAILY one (8) and a ROLLING
 30-DAY one (60, `app_config.email_sub_monthly_cap`, migration
