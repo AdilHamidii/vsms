@@ -32,6 +32,10 @@ enum RMotion {
     /// programmatic fly-to is hard to tell from a gesture.
     static let camera = Animation.spring(response: 0.55, dampingFraction: 0.88)
 
+    /// The overhaul's default spring for anything that moves and is not one
+    /// of the cases above (response 0.35, damping 0.85 — spec §5).
+    static let standard = Animation.spring(response: 0.35, dampingFraction: 0.85)
+
     /// Staggered entrance for a list. Capped so a long list does not make the
     /// last row wait — beyond ~8 rows the delay stops reading as sequence and
     /// starts reading as slowness.

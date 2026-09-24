@@ -121,6 +121,9 @@ enum RRadius {
     static let md: CGFloat = 18   // rows, buttons, bubbles
     static let lg: CGFloat = 22   // standard card
     static let xl: CGFloat = 28   // hero surfaces
+    /// Overhaul surfaces (spec §5): cards 20pt, grouped rows 14pt.
+    static let card: CGFloat = 20
+    static let group: CGFloat = 14
 }
 
 /// How far a surface sits off the canvas.
