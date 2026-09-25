@@ -12,8 +12,6 @@ struct LineScreen: View {
     @Environment(APIClient.self) private var api
     @Environment(SubscriptionStore.self) private var subs
 
-    var onOpenSms: () -> Void
-
     var body: some View {
         @Bindable var state = state
         NavigationStack(path: $state.linePath) {
@@ -69,8 +67,7 @@ struct LineScreen: View {
             // A RELEASED line falls here on purpose: the number is gone and
             // cannot come back, so the honest next step is the store. Its
             // history is still readable once a new line exists.
-            LineStoreScreen(onOpenSms: onOpenSms,
-                            push: { state.linePath.append($0) })
+            LineStoreScreen(push: { state.linePath.append($0) })
                 .navigationTitle(Text("Your own number"))
         }
     }

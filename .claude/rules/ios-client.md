@@ -69,8 +69,9 @@ VirtualSIM/
                                  `LineStoreScreen` (inline store:
                                  `CapsuleSegmentedControl` country choice,
                                  ✓/✗ `LineLedger`, three inline numbers
-                                 searched on appear behind a session guard,
-                                 StoreKit price row) + `LineStorePages`
+                                 searched on appear behind a session guard;
+                                 no price, no one-off-code link since
+                                 2026-09-25) + `LineStorePages`
                                  (`LineStoreSearch`, `LineCountriesPage`,
                                  `LineCitiesPage`, `LineStoreCover`);
                                  `LineNumberSegment` (replaced

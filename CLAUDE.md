@@ -3812,9 +3812,11 @@ Genuinely open items only. Resolved history is in `docs/decisions-archive.md`.
   screenshot-verified only.** Tap automation is unavailable; a device walk
   (store → paywall → Apple sheet, Switch → confirm, thread push from a real
   notification, a real call over a pushed thread) is required before merge.
-- ⚠️ **The store names the monthly price again on branch `design-overhaul`**
-  (StoreKit only, hidden until it loads), reversing the 2026-09-09 'no price
-  on the store' decision by the approved 2026-09-24 design.
+- **The store shows NO price and no "Just need a one-off code?" link on branch
+  `design-overhaul`** (owner, 2026-09-25, from a device screenshot). The
+  2026-09-24 design had added both; the owner removed them. The price appears
+  only on the paywall (`LineCheckoutScreen`), which carries the full 3.1.2(a)
+  disclosure. This matches the 2026-09-09 "no price on the store" decision.
 
 **Correctness / hygiene**
 

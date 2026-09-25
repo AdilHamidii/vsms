@@ -47,7 +47,7 @@ enum LineStoreSearch {
     /// does not go on to search.
     static func beginVisit(_ state: AppState, api: APIClient, subs: SubscriptionStore) {
         Analytics.shared.track("line_store_view")
-        Task { await subs.loadProduct() }   // the price row; idempotent
+        Task { await subs.loadProduct() }   // warms the paywall's price; idempotent
         Task {
             await state.loadLineCountries(using: LineAPI(client: api))
             guard state.tab == .line else { return }   // the visit is over
@@ -177,8 +177,7 @@ struct LineStoreCover: View {
 
     var body: some View {
         NavigationStack(path: $path) {
-            LineStoreScreen(onOpenSms: { state.flow = nil; state.openCodeStore() },
-                            onClose: { state.flow = nil },
+            LineStoreScreen(onClose: { state.flow = nil },
                             push: { path.append($0) })
                 .containerBackground(theme.bg, for: .navigation)
                 .toolbar(.hidden, for: .navigationBar)

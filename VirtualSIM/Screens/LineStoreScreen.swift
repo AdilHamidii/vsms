@@ -1,4 +1,3 @@
-import StoreKit
 import SwiftUI
 
 /// The rented-number store: the My number tab's root for anyone without a
@@ -16,34 +15,24 @@ import SwiftUI
 /// 4. **The proof line** — the three services that have delivered a real code.
 /// 5. **Three available numbers, inline**, as one grouped list, with "Show
 ///    different numbers". Tapping one goes straight to the paywall.
-/// 6. **The price row** — StoreKit only.
-/// 7. **"Just need a one-off code?"** — the way to the temp code store.
 ///
 /// The picker SHEET is gone: the numbers are on the page and the place pages
 /// are pushed, so there is no nested presentation to get wrong.
 ///
-/// ⚠️ **THE PRICE IS BACK ON THE STORE** by the approved 2026-09-24 design,
-/// reversing the 2026-09-09 "no price on this screen" decision. It is never a
-/// literal: `priceRow` renders `SubscriptionStore`'s localized display prices
-/// and renders NOTHING until StoreKit answers. There is deliberately **no
-/// credit pill** anywhere: this product is paid entirely through a StoreKit
-/// subscription and never touches the wallet.
-///
-/// The full 3.1.2(a) disclosure — price, period, renewal terms, Terms/Privacy —
-/// is still `LineCheckoutScreen`'s job alone, because that is the screen
-/// immediately before the purchase.
+/// 🔴 **No price and no "one-off code" link on this screen (owner,
+/// 2026-09-25).** The 2026-09-24 design put a StoreKit price row and a
+/// "Just need a one-off code?" button below the numbers; the owner removed
+/// both from a device screenshot. The price is stated once, on
+/// `LineCheckoutScreen`, together with the full 3.1.2(a) disclosure (price,
+/// period, renewal terms, Terms/Privacy), because that is the screen
+/// immediately before the purchase. There is deliberately **no credit pill**
+/// either: this product is paid entirely through a StoreKit subscription.
 struct LineStoreScreen: View {
     @Environment(\.theme) private var theme
     @Environment(AppState.self) private var state
     @Environment(APIClient.self) private var api
-    @Environment(SubscriptionStore.self) private var subs
     @Environment(Session.self) private var session
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-
-    /// Jump to the temp-SMS product. Passed in rather than reaching for
-    /// `state.tab` directly so the caller owns navigation, matching
-    /// `TempScreen(onOpenEsim:)`.
-    var onOpenSms: () -> Void
 
     /// Present only when the store is a COVER (`flow == .lineStoreMore`,
     /// "Rent another number" from a live line's settings). As a tab the tab
@@ -62,12 +51,9 @@ struct LineStoreScreen: View {
     /// How many numbers the screen offers at once.
     ///
     /// Three, not the whole search. This list is one section of a scrolling
-    /// page rather than the page itself, and every extra row pushes the price
-    /// further down. ⚠️ With the ledger above the numbers (the approved
-    /// 2026-09-24 order), the price row already sits BELOW the fold on an
-    /// iPhone 17 Pro Max with three rows; three keeps it one short scroll
-    /// away. "Show different numbers" re-rolls the search for anyone who
-    /// dislikes all three.
+    /// page rather than the page itself, and three rows keep the whole store
+    /// about one screen tall. "Show different numbers" re-rolls the search for
+    /// anyone who dislikes all three.
     private static let visibleOffers = 3
 
     /// Whether the numbers section renders at all. The SEARCH is guarded
@@ -82,8 +68,6 @@ struct LineStoreScreen: View {
                 ledger.padding(.top, RSpace.lg).riseIn(appeared, index: 1)
                 proofLine.padding(.top, RSpace.md).riseIn(appeared, index: 2)
                 numbers.padding(.top, RSpace.xl).riseIn(appeared, index: 2)
-                priceRow.padding(.top, RSpace.lg).riseIn(appeared, index: 3)
-                oneOffLink.padding(.top, RSpace.xl).riseIn(appeared, index: 4)
             }
             .padding(.horizontal, RSpace.gutter)
             .padding(.top, RSpace.lg)
@@ -412,41 +396,6 @@ struct LineStoreScreen: View {
             tint: isFailure ? theme.fail : theme.text2,
             primary: retry,
             secondary: elsewhere)
-    }
-
-    /// The monthly price, StoreKit only (spec §4.1). "{regular}/month" leads;
-    /// the intro sits beneath, only behind the eligibility gate
-    /// (`monthlyIntroPriceDisplay` is nil for an ineligible Apple ID). Hidden
-    /// until StoreKit answers — never a placeholder price.
-    ///
-    /// ⚠️ `monthlyPriceDisplay`, not `displayPrice`: the latter follows the
-    /// paywall's `selectedPlan`, so a user who had tapped Yearly would read
-    /// the yearly figure "a month" here.
-    ///
-    /// Hidden while new numbers are PAUSED: no price is quoted for something
-    /// that cannot be bought.
-    @ViewBuilder
-    private var priceRow: some View {
-        if state.lineUnavailableReason != .paused, let regular = subs.monthlyPriceDisplay {
-            VStack(alignment: .leading, spacing: 2) {
-                Text("\(regular)/month")
-                    .numberStyle(size: 20, color: theme.text)
-                if let intro = subs.monthlyIntroPriceDisplay {
-                    Text("\(intro) your first month · new subscribers")
-                        .font(RFont.text(13))
-                        .foregroundStyle(theme.text2)
-                        .monospacedDigit()
-                }
-            }
-            .accessibilityElement(children: .combine)
-        }
-    }
-
-    /// Temp SMS is second in the business, not retired: this is the only
-    /// thing standing between a user who wants a one-off code and a monthly
-    /// subscription pitch.
-    private var oneOffLink: some View {
-        GhostButton(label: "Just need a one-off code?", action: onOpenSms)
     }
 
     // MARK: - Pick

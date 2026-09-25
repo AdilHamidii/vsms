@@ -163,7 +163,7 @@ struct ContentView: View {
                 .resumeBarInset()
             }
             Tab("My number", systemImage: "phone", value: AppTab.line) {
-                LineScreen(onOpenSms: { state.openCodeStore() })
+                LineScreen()
                     .resumeBarInset(yieldsToPushedLinePages: true)
             }
             .badge(state.lineUnreadCount)
