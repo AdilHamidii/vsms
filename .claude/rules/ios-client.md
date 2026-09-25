@@ -279,15 +279,20 @@ expensive here specifically, because activation is a single-session event
   opacity the glyphs ghosted over the store's cards while the background had
   already vanished into the identical colour behind it (seen in a recording).
   `LaunchCover` unmounts exactly `handoffSeconds` later and keeps drawing the
-  last COVERING state meanwhile, so "Continue anyway" fades the failure footer
-  out instead of swapping it mid-fade. Under Reduce Motion: no glide, no
+  last COVERING state meanwhile — its retry / continue closures latched with
+  it, because `ContentView` stops sending them once `bootPhase` leaves
+  `.failed` and the footer's `if let` buttons would otherwise vanish on the
+  first fade frame (the footer collapsed and the mark dropped ~130 pt) — so
+  "Continue anyway" fades the failure footer out whole (code-verified only). Under Reduce Motion: no glide, no
   breath, a plain crossfade (the store's `riseIn` is already off there) —
   ⚠️ code-verified only; simctl has no Reduce Motion switch.
 - **Remount and churn.** If the cover has handed off onto MAINTENANCE and
   maintenance ends mid-load, it fades back in (`.transition(.opacity)` +
   `withAnimation(RMotion.handoff)`; code-verified only). A handoff onto a
   READY app is `settled` (`bootPhase == .ready` never goes back), and
-  `LaunchCover.onFinished` latches `AuthGate.launchCoverDone`, so the cover
+  `LaunchCover.onFinished` latches `AuthGate.launchCoverDone` (the handoff
+  task is keyed on `revealed` AND `settled`, so maintenance → ready while
+  maintenance is still on still latches), so the cover
   never renders again that session; it resets on sign-out. `ContentView`
   sends the retry / continue closures ONLY in the failure state: a fresh
   closure per body made every report differ, so the overlay re-ran on every

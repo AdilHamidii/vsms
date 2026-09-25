@@ -321,6 +321,13 @@ struct LaunchCover: View {
     /// "Continue anyway" fades the failure footer out rather than swapping it
     /// for the loading footer mid-fade (which would also move the mark).
     @State private var lastCovering: SplashState = .indeterminate
+    /// The failure footer's actions, latched with `lastCovering`.
+    /// `ContentView` stops sending them once `bootPhase` leaves `.failed`, so
+    /// without the latch "Continue anyway" lost both buttons on the first
+    /// frame of the fade, the footer collapsed and the mark dropped ~130 pt
+    /// while gliding up. They stay inert: hit-testing is off while revealing.
+    @State private var lastRetry: (() -> Void)?
+    @State private var lastContinue: (() -> Void)?
 
     var body: some View {
         ZStack {
@@ -329,8 +336,8 @@ struct LaunchCover: View {
                     state: phase.revealed ? lastCovering : phase.state,
                     revealing: phase.revealed,
                     pinned: phase.pinned,
-                    onRetry: onRetry,
-                    onContinue: onContinue
+                    onRetry: phase.revealed ? lastRetry : onRetry,
+                    onContinue: phase.revealed ? lastContinue : onContinue
                 )
                 // Only ever seen on a REMOUNT (below): the first mount is
                 // already on screen, and the unmount happens after the cover
@@ -339,9 +346,16 @@ struct LaunchCover: View {
             }
         }
         .onChange(of: phase, initial: true) { _, phase in
-            if !phase.revealed { lastCovering = phase.state }
+            guard !phase.revealed else { return }
+            lastCovering = phase.state
+            lastRetry = onRetry
+            lastContinue = onContinue
         }
-        .task(id: phase.revealed) {
+        // Keyed on `settled` as well: a handoff onto MAINTENANCE (revealed,
+        // not settled) that later reaches `.ready` while maintenance is still
+        // on never changes `revealed`, so a task keyed on it alone kept the
+        // stale phase and never latched `onFinished`.
+        .task(id: [phase.revealed, phase.settled]) {
             // Covering again (maintenance ended mid-load): fade back in, as
             // the pre-2026-09-24 overlay did.
             guard phase.revealed else {
