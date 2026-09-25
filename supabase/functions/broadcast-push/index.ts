@@ -203,35 +203,57 @@ Deno.serve(async (req) => {
   // killed halfway is unrecoverable — a resend double-notifies everyone who
   // already got it, and nothing records who that was.
   let pushed = 0, failed = 0, unregistered = 0;
+  let abort: string | null = null;
   const started = Date.now();
 
-  for (let i = 0; i < targets.length; i += CONCURRENCY) {
-    await Promise.all(targets.slice(i, i + CONCURRENCY).map(async (d) => {
-      try {
-        const r = await sendPush(
-          d.token as string,
-          { alertTitle: title, alertBody, customData: { broadcast: segment } },
-          d.environment as "sandbox" | "production",
-        );
-        if (r.ok) { pushed++; return; }
-        failed++;
-        // 410 Unregistered is APNs stating the app is GONE from that device.
-        // Counted separately so a broadcast's failure number is readable:
-        // dead installs are not a delivery problem to go chasing.
-        if (r.status === 410) unregistered++;
-        else console.error("broadcast-push APNs", r.status, r.body);
-      } catch (e) {
-        failed++;
-        console.error("broadcast-push APNs threw:", e);
-      }
-    }));
+  const sendOne = async (d: typeof targets[number]) => {
+    try {
+      const r = await sendPush(
+        d.token as string,
+        { alertTitle: title, alertBody, customData: { broadcast: segment } },
+        d.environment as "sandbox" | "production",
+      );
+      if (r.ok) { pushed++; return; }
+      failed++;
+      // 410 Unregistered is APNs stating the app is GONE from that device.
+      // Counted separately so a broadcast's failure number is readable:
+      // dead installs are not a delivery problem to go chasing.
+      if (r.status === 410) { unregistered++; return; }
+      console.error("broadcast-push APNs", r.status, r.body);
+      // 🔴 A 403 (provider token rejected) or 429 (APNs throttling us) refuses
+      // EVERY remaining send the same way. Stop instead of repeating it for the
+      // whole install base: on 2026-09-25 one broadcast drew 656 consecutive
+      // 429 `TooManyProviderTokenUpdates`, delivered nothing, and hammering
+      // APNs through a throttle is how it stays throttled.
+      if (r.status === 403 || r.status === 429) abort ??= `${r.status} ${r.body ?? ""}`.trim();
+    } catch (e) {
+      failed++;
+      console.error("broadcast-push APNs threw:", e);
+    }
+  };
+
+  // ONE push alone first: it opens the APNs connection and presents the
+  // provider token once, and if APNs refuses it nobody else is attempted. The
+  // 2026-09-25 broadcast opened with 25 in flight and every send was refused;
+  // the sequential winback on 2026-09-24 was not. Which of the two differences
+  // Apple objected to is unproven — this avoids both.
+  if (targets.length) await sendOne(targets[0]);
+
+  for (let i = 1; i < targets.length && !abort; i += CONCURRENCY) {
+    await Promise.all(targets.slice(i, i + CONCURRENCY).map(sendOne));
+    // A running total, so a run killed by the edge runtime's timeout still says
+    // how far it got — a resend otherwise double-notifies an unknown set.
+    console.log(`broadcast-push: progress ${Math.min(i + CONCURRENCY, targets.length)}`
+      + `/${targets.length} pushed=${pushed} failed=${failed}`);
   }
 
   const elapsedMs = Date.now() - started;
   console.log(`broadcast-push: segment=${segment} pushed=${pushed}/${targets.length} `
-    + `failed=${failed} unregistered=${unregistered} elapsed_ms=${elapsedMs}`);
+    + `failed=${failed} unregistered=${unregistered} aborted=${abort ?? "no"} `
+    + `elapsed_ms=${elapsedMs}`);
   return json({
     segment, devices: targets.length, pushed, failed, unregistered,
+    aborted: abort,
     elapsed_ms: elapsedMs,
   });
 });

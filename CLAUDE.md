@@ -3285,6 +3285,15 @@ re-add it**: with no way to close a thread, one stale pre-2.9 question paged
   who already got it.** Fixed by sending `CONCURRENCY = 25` in flight. The
   lesson generalises: **a loop over a growing table is a time bomb with no
   alarm** — it was written for ~200 devices and silently outgrew its runtime.
+  🔴 **The first concurrent broadcast (2026-09-25) delivered NOTHING**: APNs
+  answered 656 consecutive sends with 429 `TooManyProviderTokenUpdates`, and
+  the run died at ~200 s with ~1,200 devices never tried. The same day's
+  sequential `winback` had worked. The cause is NOT proven. It is not a
+  token-signing race: ES256 signing is deterministic in Deno, so concurrent
+  signings in the same second yield one token. `broadcast-push` now sends
+  ONE push alone first, aborts on the first 403/429 instead of repeating it,
+  and logs a running `progress` total so a killed run shows how far it got.
+  Wait ≥20 minutes after a `TooManyProviderTokenUpdates` before retrying.
 - 🔴 **`push_devices` holds PushKit `.voip` tokens ALONGSIDE ordinary alert
   tokens** (`bundle_id` `com.anthersystems.VirtualSIM.voip`, 225 of them on
   2026-09-11, registered by the line product for incoming calls). **An alert
