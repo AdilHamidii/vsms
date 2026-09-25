@@ -3495,13 +3495,15 @@ Each has been wrong within a day of being written at least once.
 
 **Verified 2026-09-09:**
 
-- **iOS**: **2.19 is `DEVELOPER_REJECTED` with build 71 attached and NO open
-  submission** — the owner cancelled review on 2026-09-25 to ship it
-  together with the Arabic localization and new light-mode screenshots, which
-  need a new build. Submission `b617da1a-…` reads `COMPLETE`; version
-  `979f8838-…`. Recover with `asc-release.py build 2.19 <n> --apply` then
-  `submit 2.19 --apply`. History: resubmitted 2026-09-25 07:23Z as one item,
-  the app version. The first submission (`a530c264-…`, 07:16Z) was
+- **iOS**: **2.19 is `PREPARE_FOR_SUBMISSION` with build 72 attached and NO
+  open submission** (version `979f8838-…`). The owner cancelled review of
+  build 71 on 2026-09-25 to ship the Arabic localization with new light-mode
+  screenshots; build 72 (commit `a05f789`, the Arabic build) was archived,
+  `BuildMachineOSBuild` patched to `25F84` and read back in the IPA with
+  `UIBackgroundModes` [audio, voip], uploaded and attached the same day. The
+  owner uploads the screenshots and submits from the ASC web UI themselves — read
+  ASC before assuming it is in review. History: build 71 was submitted
+  2026-09-25 07:23Z as `b617da1a-…` (now `COMPLETE`). The first submission (`a530c264-…`, 07:16Z) was
   cancelled and resubmitted the same day (owner approval) to fix the description and the
   review notes. The description, all 13 locales, lost four false claims:
   "code arrives within seconds"; texting back to US numbers (now
