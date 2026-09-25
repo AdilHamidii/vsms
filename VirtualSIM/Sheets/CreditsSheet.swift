@@ -374,7 +374,9 @@ struct CreditsSheet: View {
         switch state.intent {
         case .sms:   state.configuringService.name
         case .esim:  state.checkoutEsimPlan?.name ?? String(localized: "eSIM data plan")
-        case .email: state.emailDomain?.displayName ?? String(localized: "Temporary e-mail")
+        // The order's domain inside an e-mail flow, the selection only in
+        // e-mail mode — never a domain unrelated to what is on screen.
+        case .email: state.emailIntentDomainName ?? String(localized: "Temporary e-mail")
         case .line:  String(localized: "Second number")
         // The destination is what the user is buying credits FOR, so name it.
         // A generic "International call" would leave them checking whether the
@@ -411,7 +413,7 @@ struct CreditsSheet: View {
         switch state.intent {
         case .sms:   routeCost
         case .esim:  state.checkoutEsimPlan?.retailCredits
-        case .email: state.emailDomain?.credits
+        case .email: state.emailIntentDomainCredits
         case .line:  nil
         // What the CALL costs to start, not the wallet's shortfall — the sheet
         // renders cost and balance separately.

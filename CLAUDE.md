@@ -2118,10 +2118,13 @@ snapped to the answer, growing the card twice. What is true now:
   `startupService` (the rule `applyStartupSelection` applies — the last
   order's service, else `lastService`, which is what a first-run user's
   E-mail mode shows) plus `loadEmailOrders`, which no longer waits behind the
-  eSIM loads, so `hasUsedFreeEmail` is right before the first e-mail frame.
+  eSIM loads, so `hasUsedFreeEmail` is LIKELY (not guaranteed — nothing waits
+  on it) right by the first e-mail frame; a late answer changes the label.
   Nothing on the reveal path awaits either; a failed prefetch is SILENT (no
-  banner). `mailStore.load(reportingFailure: false)` warms the mail plan's
-  StoreKit price on `bootPhase == .ready`.
+  banner) unless a user's entry joined it and nothing can be shown — then
+  the banner shows, as for any user-asked failure.
+  `mailStore.load(reportingFailure: false)` warms the mail plan's StoreKit
+  price on `bootPhase == .ready`.
 - 🔴 **A held quote under 10 minutes old is shown AND sold from (owner
   intent, 2026-09-24: tapping E-mail must not show loading).** Entering or
   re-entering e-mail mode, or closing a flow, with such a quote for the
@@ -2135,8 +2138,8 @@ snapped to the answer, growing the card twice. What is true now:
   in `APIError`, so a stale "in stock" costs one refused tap and no money;
   every entry still refetches.
 - **"Pending" now means ONLY: no quote for this service is held, or the held
-  one is older than 10 min.** `AppState.emailQuote` (`idle` / `loading` /
-  `loaded` / `failed`, each naming its service) is set SYNCHRONOUSLY by
+  one is older than 10 min.** `AppState.emailQuote` (`idle`, or `loading` /
+  `loaded` / `failed` naming their service) is set SYNCHRONOUSLY by
   `requestEmailQuote` before any await, so in that case the first frame is
   the pending layout: the answered geometry with redacted content (domain,
   cost, the refund line's fixed two-line slot, a subscriber's meter line) and
@@ -2145,11 +2148,31 @@ snapped to the answer, growing the card twice. What is true now:
 - **Failure:** a failed refresh under a held, in-window quote keeps showing
   it — logged (`print`), no banner. Only with nothing to show does the card
   switch to a "Couldn't load domains · Try again" row in place of the Domain
-  row (plus the error banner, unchanged, when the user asked).
+  row (plus the error banner when the user asked, including a user entry
+  that joined the prefetch).
 - **Staleness guard:** an answer applies only if it is still the latest
   request asked (a generation counter), the user is in e-mail mode or it is
-  the prefetch, and its service is the one on screen. A second request for a
-  service already in flight joins it.
+  the prefetch, and its service is the one on screen; otherwise it is
+  dropped and the status goes `.idle`. A second request for a service
+  already in flight joins it. **A pending card with nothing in flight is
+  re-asked** (`emailQuoteStalled`, observed in ContentView) — that state
+  arose when an answer was dropped while another product's flow covered
+  e-mail mode (Activity's buy-again mid-fetch) and nothing re-asked on close.
+- **A background refresh never writes over newer data or under an order.**
+  `emailUsage` / `emailCreditPrice` sit on a write clock (`writeEmailUsage`):
+  every write carries the tick its request was ASKED at, so a quote asked
+  before an order cannot overwrite `refreshEmailUsage`'s post-order meter or
+  a refusal's `credit_price`. And while an e-mail order is in progress or a
+  paid-retry offer is pending (`flow != nil`, `isBuyingEmail`,
+  `emailPaidOffer`) no refresh moves `emailDomain`
+  (`emailSelectionFrozen`) — the `pay_credits` retry buys what the user
+  agreed to.
+- **The credits context names the ORDER's domain inside an e-mail flow.**
+  `emailIntentDomainName` / `emailIntentDomainCredits` (read by
+  `creditsShortfall` and `CreditsSheet`'s title and cost) use the active
+  e-mail order's domain on the waiting / code screen — which can be opened
+  from Number mode, where `emailDomain` is the prefetch's pick for an
+  unrelated service — and the selection only when buying from e-mail mode.
 - **The domain SELECTION now survives leaving e-mail mode**; `applyEmailQuote`
   re-validates it against the fresh list. The exit branch still clears
   `intent`, `emailCreditsNeeded`, `emailPaidOffer` and `showMailPaywall`.
@@ -2160,10 +2183,11 @@ snapped to the answer, growing the card twice. What is true now:
 - Fixtures: `emailLoading` (pending; screenshot mode skips the fetch),
   `emailReady` (= `emailStore`, seeded through `applyEmailQuote`, which the
   fetch no longer wipes) and `emailFailed` (the retry row). ⚠️ `emailReady`
-  waits on a live catalog fetch; capture at ~12 s, since at 7 s it can
-  still be pending. ⚠️ Build- and screenshot-verified only; the prefetch
-  timing, the silent refresh and the crossfade have never been walked on a
-  device.
+  and `emailFailed` wait on a live catalog fetch, so a capture taken too
+  early still shows the pending card (seen at 7 s and, once, at 12 s);
+  capture at ~20 s. ⚠️ Build- and screenshot-verified only; the prefetch
+  timing, the silent refresh, the crossfade, the stall recovery, the write
+  clock and the frozen selection have never been walked on a device.
 
 **`expire_email_orders()` has two traps** that would make a copied
 `expire_esim_orders()` look like a working deploy while matching nothing:

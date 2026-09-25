@@ -37,9 +37,9 @@ enum LineRoute: Hashable {
     case compose
 }
 
-/// Where the e-mail line's live domain quote (`email-domains`) stands. Each
-/// case names the service it is about, so a status for one service is never
-/// read as the answer for another.
+/// Where the e-mail line's live domain quote (`email-domains`) stands. Every
+/// case but `idle` names the service it is about, so a status for one service
+/// is never read as the answer for another.
 enum EmailQuoteStatus: Equatable {
     /// Nothing asked, or the last answer was discarded as stale.
     case idle
@@ -2007,8 +2007,10 @@ final class AppState {
             // its own price; see `emailCreditsNeeded`.
             if let need = emailCreditsNeeded { return max(0, need - balance) }
             // Free domains can never leave you short, so they contribute 0
-            // rather than a spurious "buy credits" nudge.
-            guard let c = emailDomain?.credits, c > 0 else { return 0 }
+            // rather than a spurious "buy credits" nudge. The ORDER's domain
+            // inside an e-mail flow, the selection only when buying from
+            // e-mail mode — see `emailIntentDomainCredits`.
+            guard let c = emailIntentDomainCredits, c > 0 else { return 0 }
             return max(0, c - balance)
         case .line, .mailSubscription:
             // Both are paid entirely through a StoreKit subscription and never
@@ -2505,7 +2507,47 @@ final class AppState {
         /// The cold-start prefetch, which may land while the user is still in
         /// Number mode — and should, so the quote is there when they switch.
         let prefetch: Bool
+        /// When it was asked, on the `emailUsage` write clock — see
+        /// `writeEmailUsage`.
+        let usageTick: Int
     }
+
+    /// The `emailUsage` / `emailCreditPrice` write clock. Two paths write
+    /// them — a domain quote and `refreshEmailUsage` after an order — and a
+    /// silent quote refresh asked BEFORE an order can land AFTER that order's
+    /// re-read. Each write carries the tick its request was asked at and
+    /// applies only if no later-asked write has landed, so an older answer
+    /// never overwrites a newer one.
+    @ObservationIgnored private var emailUsageTick = 0
+    @ObservationIgnored private var emailUsageAppliedTick = 0
+
+    private func nextEmailUsageTick() -> Int {
+        emailUsageTick += 1
+        return emailUsageTick
+    }
+
+    private func writeEmailUsage(_ usage: EmailUsage?, creditPrice: Int?, askedAt tick: Int) {
+        guard tick > emailUsageAppliedTick else { return }
+        emailUsageAppliedTick = tick
+        emailUsage = usage
+        // Server authority: absent means "no paid fallback offered".
+        emailCreditPrice = creditPrice
+    }
+
+    /// While an e-mail order is in progress or a paid-retry offer is pending,
+    /// a background quote must not move the selection: `confirmGetEmail` and
+    /// the `pay_credits` retry buy `emailDomain`, and a re-pick between a
+    /// refusal and its retry would buy a different address than the one the
+    /// user agreed to. The order re-checks stock anyway.
+    private var emailSelectionFrozen: Bool {
+        flow != nil || isBuyingEmail || emailPaidOffer != nil
+    }
+
+    /// A user-initiated request that JOINED an in-flight prefetch, by the
+    /// prefetch's generation. The prefetch fails silently on its own; if a
+    /// user is waiting on it and nothing can be shown, the failure is theirs
+    /// and gets the banner.
+    @ObservationIgnored private var emailQuoteUserJoined: Int?
 
     /// Ask for a fresh domain quote for `service` (default: the service being
     /// configured). Always refetched, never cached: stock is per (service,
@@ -2533,19 +2575,25 @@ final class AppState {
             // No site to ask the provider about (11 of 265 services): answered
             // here, and it supersedes anything still in flight.
             emailQuoteGeneration += 1
-            emailDomains = []; emailDomain = nil; emailUsage = nil
+            emailDomains = []
+            if !emailSelectionFrozen { emailDomain = nil }
+            writeEmailUsage(nil, creditPrice: emailCreditPrice, askedAt: nextEmailUsageTick())
             emailQuoteServiceId = svc.id
             emailQuoteAnsweredAt = Date()
             emailQuote = .loaded(serviceId: svc.id)
             return nil
         }
-        if emailDomain == nil, holdsFreshEmailQuote(for: svc.id) {
+        if emailDomain == nil, !emailSelectionFrozen, holdsFreshEmailQuote(for: svc.id) {
             emailDomain = emailDomains.first(where: { $0.inStock })
         }
-        if emailQuote == .loading(serviceId: svc.id) { return nil }
+        if emailQuote == .loading(serviceId: svc.id) {
+            if !prefetch { emailQuoteUserJoined = emailQuoteGeneration }
+            return nil
+        }
         emailQuoteGeneration += 1
         let request = EmailQuoteRequest(generation: emailQuoteGeneration,
-                                        serviceId: svc.id, prefetch: prefetch)
+                                        serviceId: svc.id, prefetch: prefetch,
+                                        usageTick: nextEmailUsageTick())
         emailQuote = .loading(serviceId: svc.id)
         #if DEBUG
         // Screenshot frames seed their quote (`applyEmailQuote`) or hold it
@@ -2566,8 +2614,10 @@ final class AppState {
             let res = try await api.domains(serviceId: request.serviceId)
             guard acceptsEmailQuote(request) else { return }
             applyEmailQuote(res.domains, creditPrice: res.creditPrice,
-                            usage: res.usage, for: request.serviceId)
+                            usage: res.usage, for: request.serviceId,
+                            usageTick: request.usageTick)
         } catch {
+            let userJoined = emailQuoteUserJoined == request.generation
             guard acceptsEmailQuote(request) else { return }
             // A background refresh that fails under a quote still inside the
             // window changes nothing on screen: the held quote stays live
@@ -2579,15 +2629,17 @@ final class AppState {
                 return
             }
             emailDomains = []
-            emailDomain = nil
-            emailUsage = nil
+            if !emailSelectionFrozen { emailDomain = nil }
+            writeEmailUsage(nil, creditPrice: emailCreditPrice, askedAt: request.usageTick)
             emailQuoteServiceId = request.serviceId
             emailQuoteAnsweredAt = nil
             emailQuote = .failed(serviceId: request.serviceId)
             // The prefetch fails SILENTLY: nobody asked to see e-mail yet, and
             // a banner over the first screen for a request the user never made
             // would read as the app being broken. Entering the mode asks again.
-            guard !request.prefetch else { return }
+            // Unless a user's own request JOINED it and is waiting on it with
+            // nothing to show: then the failure is theirs, and gets the banner.
+            guard !request.prefetch || userJoined else { return }
             if let apiErr = error as? APIError { showError(apiErr) } else { lastError = nil }
         }
     }
@@ -2617,19 +2669,23 @@ final class AppState {
     /// Re-validates the selection rather than resetting it: the domain the
     /// user had (picked in the sheet, or kept from before they left e-mail
     /// mode) survives if it is still in stock; otherwise the first in-stock
-    /// option, so the CTA is never armed on a dead one.
+    /// option, so the CTA is never armed on a dead one — except while
+    /// `emailSelectionFrozen`, when the selection is left exactly as it is.
+    /// `usageTick` nil (the fixtures) means "asked now".
     func applyEmailQuote(_ domains: [EmailDomainOption], creditPrice: Int?,
-                         usage: EmailUsage?, for serviceId: String) {
+                         usage: EmailUsage?, for serviceId: String,
+                         usageTick: Int? = nil) {
         emailDomains = domains
-        // Server authority: absent means "no paid fallback offered".
-        emailCreditPrice = creditPrice
-        emailUsage = usage
-        if let cur = emailDomain,
-           let same = domains.first(where: { $0.domain == cur.domain }),
-           same.inStock {
-            emailDomain = same
-        } else {
-            emailDomain = domains.first(where: { $0.inStock })
+        writeEmailUsage(usage, creditPrice: creditPrice,
+                        askedAt: usageTick ?? nextEmailUsageTick())
+        if !emailSelectionFrozen {
+            if let cur = emailDomain,
+               let same = domains.first(where: { $0.domain == cur.domain }),
+               same.inStock {
+                emailDomain = same
+            } else {
+                emailDomain = domains.first(where: { $0.inStock })
+            }
         }
         emailQuoteServiceId = serviceId
         emailQuoteAnsweredAt = Date()
@@ -2675,6 +2731,43 @@ final class AppState {
             // Idle, or a status about another service: nothing for this one.
             return .pending
         }
+    }
+
+    /// E-mail mode is on screen, the card is pending, and NOTHING is in
+    /// flight for its service — a state that would otherwise never recover.
+    /// It arises when an answer is discarded (`acceptsEmailQuote` → `.idle`)
+    /// while a flow for another product covered e-mail mode — e.g. Activity's
+    /// buy-again opening an SMS checkout mid-fetch — and nothing re-asks when
+    /// that flow closes. ContentView re-requests whenever this turns true;
+    /// the request itself makes it false (`.loading`), and a failure lands in
+    /// `.failed`, which is not pending, so it cannot loop.
+    var emailQuoteStalled: Bool {
+        guard emailMode, flow == nil, emailSupported else { return false }
+        return emailQuotePresentation == .pending
+            && emailQuote != .loading(serviceId: configuringService.id)
+    }
+
+    /// The domain a `.email` intent is ABOUT, for the credits context and
+    /// `creditsShortfall`. Inside an e-mail flow that is the ORDER on screen
+    /// (waiting / code screen, reached from ResumeBar, Activity or the code
+    /// screen's top-up — possibly from Number mode, where `emailDomain` is
+    /// the prefetch's pick for an unrelated service). At `flow == nil` it is
+    /// the address being bought in e-mail mode: the selection.
+    var emailIntentDomainName: String? {
+        if flow == .emailWaiting || flow == .emailCode {
+            return activeEmailOrder?.domain
+        }
+        return emailMode ? emailDomain?.displayName : nil
+    }
+
+    /// What another address on `emailIntentDomainName` costs, from the live
+    /// quote when it lists that domain; nil when unknown (never a guess).
+    var emailIntentDomainCredits: Int? {
+        if flow == .emailWaiting || flow == .emailCode {
+            guard let d = activeEmailOrder?.domain else { return nil }
+            return emailDomains.first { $0.domain == d }?.credits
+        }
+        return emailMode ? emailDomain?.credits : nil
     }
 
     /// Cold start's e-mail prefetch, started from `loadAccount` and NEVER
@@ -3056,7 +3149,9 @@ final class AppState {
             if !payCredits, let code, EmailPaidOffer.reasons.contains(code),
                case .http(_, let body) = err,
                let price = Self.creditPrice(in: body) {
-                emailCreditPrice = price
+                // The newest price there is: on the write clock, so a quote
+                // asked earlier cannot land over it.
+                writeEmailUsage(emailUsage, creditPrice: price, askedAt: nextEmailUsageTick())
                 let offer = EmailPaidOffer(reason: code, credits: price,
                                            message: err.userMessage)
                 emailPaidOffer = offer
@@ -3105,10 +3200,12 @@ final class AppState {
     @MainActor
     func refreshEmailUsage(using api: EmailAPI) async {
         let svc = configuringService
-        guard !(svc.domain ?? "").isEmpty,
-              let res = try? await api.domains(serviceId: svc.id) else { return }
-        emailUsage = res.usage
-        emailCreditPrice = res.creditPrice
+        guard !(svc.domain ?? "").isEmpty else { return }
+        // Ticked when ASKED, so a silent quote refresh asked before this
+        // order cannot overwrite the post-order meter when it lands later.
+        let tick = nextEmailUsageTick()
+        guard let res = try? await api.domains(serviceId: svc.id) else { return }
+        writeEmailUsage(res.usage, creditPrice: res.creditPrice, askedAt: tick)
     }
 
     /// The server's `credit_price` on a "not covered" refusal, if present.

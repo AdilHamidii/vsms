@@ -411,6 +411,14 @@ struct ContentView: View {
             guard state.emailMode else { return }
             state.requestEmailQuote(using: EmailAPI(client: api))
         }
+        // A pending card with nothing in flight never recovers on its own
+        // (an answer discarded while another product's flow covered e-mail
+        // mode). Re-ask the moment that state appears; see
+        // `AppState.emailQuoteStalled` for why this cannot loop.
+        .onChange(of: state.emailQuoteStalled) { _, stalled in
+            guard stalled else { return }
+            state.requestEmailQuote(using: EmailAPI(client: api))
+        }
         // `flow`'s didSet clears `emailDomain` with the rest of the draft on
         // EVERY `flow = nil` — the code screen's Done, but also a nil → nil
         // assignment such as `openLineThread`'s. In e-mail mode that left a
