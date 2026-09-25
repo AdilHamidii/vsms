@@ -3291,9 +3291,12 @@ re-add it**: with no way to close a thread, one stale pre-2.9 question paged
   sequential `winback` had worked. The cause is NOT proven. It is not a
   token-signing race: ES256 signing is deterministic in Deno, so concurrent
   signings in the same second yield one token. `broadcast-push` now sends
-  ONE push alone first, aborts on the first 403/429 instead of repeating it,
-  and logs a running `progress` total so a killed run shows how far it got.
-  Wait ≥20 minutes after a `TooManyProviderTokenUpdates` before retrying.
+  ONE push alone first, aborts on a 429 or a provider-token 403
+  (`KEY_WIDE_403`; NOT on `BadEnvironmentKeyInToken`, a single debug-build
+  device) instead of repeating it, and logs a running `progress` total so a
+  killed run shows how far it got. The retry 28 minutes later, in that shape,
+  delivered **1,848 of 1,880 in 10.5 s** (27 uninstalled). Wait ≥20 minutes
+  after a `TooManyProviderTokenUpdates` before retrying.
 - 🔴 **`push_devices` holds PushKit `.voip` tokens ALONGSIDE ordinary alert
   tokens** (`bundle_id` `com.anthersystems.VirtualSIM.voip`, 225 of them on
   2026-09-11, registered by the line product for incoming calls). **An alert

@@ -89,6 +89,10 @@ const CONCURRENCY = 25;
  *  user-visible message. */
 const ALERT_BUNDLE_ID = "com.anthersystems.VirtualSIM";
 
+/** APNs 403 reasons that reject the PROVIDER token itself, i.e. every send in
+ *  the run. Other 403s (e.g. `BadEnvironmentKeyInToken`) concern one device. */
+const KEY_WIDE_403 = ["InvalidProviderToken", "ExpiredProviderToken", "MissingProviderToken"];
+
 Deno.serve(async (req) => {
   const pre = handleCors(req);
   if (pre) return pre;
@@ -220,12 +224,17 @@ Deno.serve(async (req) => {
       // dead installs are not a delivery problem to go chasing.
       if (r.status === 410) { unregistered++; return; }
       console.error("broadcast-push APNs", r.status, r.body);
-      // 🔴 A 403 (provider token rejected) or 429 (APNs throttling us) refuses
+      // 🔴 A 429 (APNs throttling us) or a rejected PROVIDER token refuses
       // EVERY remaining send the same way. Stop instead of repeating it for the
       // whole install base: on 2026-09-25 one broadcast drew 656 consecutive
       // 429 `TooManyProviderTokenUpdates`, delivered nothing, and hammering
       // APNs through a throttle is how it stays throttled.
-      if (r.status === 403 || r.status === 429) abort ??= `${r.status} ${r.body ?? ""}`.trim();
+      // ⚠️ Not every 403: `BadEnvironmentKeyInToken` is ONE device whose token
+      // belongs to the other APNs environment (a debug build). Aborting on it
+      // stopped the retry 4 devices short of the end.
+      if (r.status === 429 || KEY_WIDE_403.some((k) => (r.body ?? "").includes(k))) {
+        abort ??= `${r.status} ${r.body ?? ""}`.trim();
+      }
     } catch (e) {
       failed++;
       console.error("broadcast-push APNs threw:", e);
