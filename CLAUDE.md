@@ -48,7 +48,7 @@ iOS app selling four things:
 |---|---|---|
 | **rented second numbers** — a US/CA number the user keeps, with SMS and calling | **StoreKit subscription** ($5.99/mo, $59.99/yr) | live; a need-card on Home for anyone without a line (first while `launch_tab = line`) |
 | **temporary phone numbers** for SMS verification codes | credits | live, the original product |
-| **temporary e-mail addresses** | credits + a $2.99/mo subscription | live |
+| **temporary e-mail addresses** | credits + a $4.99/mo subscription (existing subscribers keep $2.99) | live |
 | **eSIM data plans** | credits | 🔴 **PERMANENTLY PARKED** — see below |
 
 SwiftUI client + Supabase backend (Postgres + Auth + Edge Functions + pg_cron).
@@ -2268,13 +2268,23 @@ Every cost and profit figure built on it (`/profit`, `ops_snapshot`) shows mail 
 free from 2026-09-23. That is a rounding artefact, not a zero cost. Fixing it needs a
 fractional column, a backend change that has not been made.
 
-Owner decisions of 2026-09-24, pending a release that updates the wording:
-- **remove the free lifetime address** (`email_free_lifetime_grants` 1 → 0)
-- **mail.monthly $2.99 → $4.99 for NEW subscribers only** (current subscribers keep $2.99,
-  so Apple sends no price-increase consent requests)
-- **mail.yearly → $39.99**
-
-Do all three together with the release, because shipped builds say "your 1 free address".
+✅ **Mail is $4.99/mo and $39.99/yr for NEW subscribers from 2026-09-27** (owner,
+2026-09-25; was $2.99 / $29.99). Written to ASC in all 175 territories by
+`scripts/asc-reprice-mail-subscriptions.py --start=2026-09-27` (dry-run by default) with
+`preserveCurrentPrice: true`, so every existing subscriber keeps what they pay and
+Apple sends no consent request. Same-numeral rule: 136 territories carry 4.99 /
+39.99, 39 take Apple's equalization (¥800 / ¥6,000, A$7.99 / A$59.99). No release
+was needed: every build renders StoreKit's `displayPrice` and `yearlySavingsPercent`
+live (now ~33%), so all shipped builds show the new price once it takes effect. An
+approved subscription cannot be repriced for today, and the earliest start ASC
+accepts moves: tomorrow on 2026-09-01, the day after on 2026-09-25 at 17:29Z (its
+409 names the earliest date). ASC holds ONE future price per territory: re-pricing a
+territory that already has one is 409 "cannot create more than one future prices"
+until that row is DELETEd (`/v1/subscriptionPrices/<id>`, 204). That is how ALB and
+ARM, which the first apply put on the equalized $5.99, were corrected to $4.99; read
+back 136 × 4.99 and 136 × 39.99 of 175. ⚠️ **The free lifetime address is KEPT** (owner, 2026-09-25):
+`email_free_lifetime_grants` stays 1, so this change is price only. The $2.54-net
+figures below describe the old $2.99 price.
 
 🔴 **There are TWO caps since 2026-09-21: a DAILY one (8) and a ROLLING
 30-DAY one (60, `app_config.email_sub_monthly_cap`, migration
