@@ -3304,6 +3304,11 @@ re-add it**: with no way to close a thread, one stale pre-2.9 question paged
   Any user-visible send MUST filter `bundle_id = 'com.anthersystems.VirtualSIM'`;
   `broadcast-push` did not, and wasted ~13% of every broadcast. A `410
   Unregistered` is different and benign — APNs saying the app is gone.
+  ⚠️ **A development build (Xcode install, `environment = sandbox`) never
+  receives our server's alert pushes**: APNs answers `403
+  BadEnvironmentKeyInToken` (seen 2026-09-25 on the owner's device, the only
+  sandbox alert token on file). Test a push on a TestFlight/App Store build;
+  a debug build missing one is not a delivery bug.
 - **A positional cursor must walk a SORTED list.** A query with no `order by`
   can return rows in a different order on any run, so the cursor skips some
   permanently — those routes never got probed and were sold as VoIP-only
