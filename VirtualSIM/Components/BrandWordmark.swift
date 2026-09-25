@@ -18,7 +18,7 @@ import SwiftUI
 ///
 /// `breathes` makes the mark the splash's loading indicator: it is fully drawn
 /// on the first frame and then pulses its opacity slowly for as long as the
-/// flag holds. (Until 2026-09-24 the letters typed on and the `v` then spun.
+/// flag holds (`BreathingMark`). (Until 2026-09-24 the letters typed on and the `v` then spun.
 /// The splash was two instances then, so the type-on replayed mid-launch when
 /// the second took over; the owner chose a calm, always-drawn mark instead.)
 /// Every other caller — onboarding, the sign-in fields — uses the static mark.
@@ -27,11 +27,9 @@ struct BrandWordmark: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var size: CGFloat = 30
-    /// Pulse the opacity 1 ↔ 0.72 (`RMotion.breathe`). Ignored under Reduce
+    /// Pulse the opacity 1 ↔ 0.72 over 1.6 s each way. Ignored under Reduce
     /// Motion, where the mark stays still.
     var breathes: Bool = false
-
-    @State private var exhaled = false
 
     private var shouldBreathe: Bool { breathes && !reduceMotion }
 
@@ -43,6 +41,22 @@ struct BrandWordmark: View {
     ]
 
     var body: some View {
+        // 🔴 The breath is a FUNCTION OF TIME inside its own child view, not
+        // a `repeatForever` animation. A running `repeatForever` can only be
+        // stopped by a second animation on the same property overriding it,
+        // and timing-curve animations do not reliably replace one another
+        // (the first version relied on exactly that). Here, stopping means
+        // the `BreathingMark` branch is removed: its timeline goes with it
+        // and the static branch draws opacity 1, exactly — in the failure
+        // state, in a pinned fixture, and the moment Reduce Motion turns on.
+        if shouldBreathe {
+            BreathingMark { mark }
+        } else {
+            mark
+        }
+    }
+
+    private var mark: some View {
         HStack(spacing: 0) {
             ForEach(Array(letters.enumerated()), id: \.offset) { _, letter in
                 // `verbatim` throughout: this is a brand name. As a
@@ -54,16 +68,30 @@ struct BrandWordmark: View {
                     .foregroundStyle(letter.1 ? theme.ink : theme.text)
             }
         }
-        .opacity(exhaled ? 0.72 : 1)
-        // Starts at full opacity, so the first frame is the whole mark. A new
-        // non-repeating animation back to 1 replaces the loop when breathing
-        // stops (failure state, Reduce Motion switched on mid-launch).
-        .onChange(of: shouldBreathe, initial: true) { _, breathe in
-            if breathe {
-                withAnimation(RMotion.breathe) { exhaled = true }
-            } else if exhaled {
-                withAnimation(RMotion.content) { exhaled = false }
-            }
+    }
+}
+
+/// The splash's breathing wordmark: opacity as a pure function of the time
+/// since THIS view appeared, so its first frame is always 1 (fully drawn)
+/// whenever breathing (re)starts, and it has no animation state to stop.
+private struct BreathingMark<Content: View>: View {
+    @ViewBuilder var content: Content
+
+    /// Captured when the view is created, i.e. when breathing starts.
+    @State private var start = Date()
+
+    /// 1.6 s down, 1.6 s up.
+    private static var period: Double { 3.2 }
+    private static var depth: Double { 0.28 }   // 1 → 0.72
+
+    var body: some View {
+        TimelineView(.animation) { context in
+            content.opacity(Self.opacity(at: context.date.timeIntervalSince(start)))
         }
+    }
+
+    /// Cosine ease-in-out: 1 at t = 0, 0.72 at half a period, back to 1.
+    static func opacity(at t: TimeInterval) -> Double {
+        1 - depth * (1 - cos(2 * .pi * max(0, t) / period)) / 2
     }
 }

@@ -111,7 +111,7 @@ struct SplashScreen: View {
                 slow = false
                 verySlow = false
                 return
-            case .slow:
+            case .slow, .failed:
                 slow = true
                 verySlow = true
                 return
@@ -144,9 +144,11 @@ struct SplashScreen: View {
     ///
     /// Still in the failure state: a logo cheerfully pulsing under the words
     /// "Couldn't reach the server" would read as "still trying". Still in a
-    /// pinned fixture too, so a frame never catches it mid-breath.
+    /// pinned fixture too, so a frame never catches it mid-breath — except
+    /// `splashFailed`, whose pin deliberately leaves breathing to the STATE,
+    /// so its frames prove the failure state is what stops it.
     private var lockup: some View {
-        BrandWordmark(size: 46, breathes: state != .failed && pinned == nil)
+        BrandWordmark(size: 46, breathes: state != .failed && (pinned == nil || pinned == .failed))
     }
 
     // MARK: - Footer
@@ -249,6 +251,9 @@ struct SplashScreen: View {
 enum SplashPin: Equatable {
     case calm
     case slow
+    /// The failure footer (`splashFailed`), held so a burst of stills can
+    /// show the mark has stopped breathing.
+    case failed
 }
 
 // MARK: - One splash per launch
@@ -258,6 +263,10 @@ enum SplashPin: Equatable {
 struct LaunchCoverPhase: Equatable {
     var state: SplashState
     var revealed: Bool
+    /// `bootPhase == .ready`, which never goes back (only the failure
+    /// footer's Try again re-runs `coldStart`). A handoff onto MAINTENANCE is
+    /// revealed but not settled: the cover may still have to come back.
+    var settled: Bool = false
     var pinned: SplashPin? = nil
 
     static let bootstrapping = LaunchCoverPhase(state: .indeterminate, revealed: false)
@@ -266,7 +275,10 @@ struct LaunchCoverPhase: Equatable {
 /// The signed-in app's half of the cover, published by `ContentView` (which
 /// owns `AppState` and therefore `bootPhase`) up to `AuthGate`, which hosts
 /// the one splash. The closures ride along because only `ContentView` holds
-/// what Try again / Continue anyway act on.
+/// what Try again / Continue anyway act on — and ONLY in the failure state:
+/// a fresh closure per `ContentView` body would make every report differ from
+/// the last, so `AuthGate`'s overlay would re-run on every update. Without
+/// them the report is a plain value that stops changing once the app is ready.
 struct LaunchCoverReport {
     var phase: LaunchCoverPhase
     var onRetry: (() -> Void)? = nil
@@ -300,6 +312,9 @@ struct LaunchCover: View {
     let phase: LaunchCoverPhase
     var onRetry: (() -> Void)? = nil
     var onContinue: (() -> Void)? = nil
+    /// Called once the cover has unmounted after a SETTLED handoff, so
+    /// `AuthGate` can latch it off for the rest of the session.
+    var onFinished: () -> Void = {}
 
     @State private var mounted = true
     /// The last state drawn while covering. The handoff keeps drawing it, so
@@ -317,16 +332,22 @@ struct LaunchCover: View {
                     onRetry: onRetry,
                     onContinue: onContinue
                 )
+                // Only ever seen on a REMOUNT (below): the first mount is
+                // already on screen, and the unmount happens after the cover
+                // has faded to nothing.
+                .transition(.opacity)
             }
         }
         .onChange(of: phase, initial: true) { _, phase in
             if !phase.revealed { lastCovering = phase.state }
         }
         .task(id: phase.revealed) {
-            // Covering again (maintenance ended mid-load): back on screen,
-            // exactly as the pre-2026-09-24 overlay reappeared.
+            // Covering again (maintenance ended mid-load): fade back in, as
+            // the pre-2026-09-24 overlay did.
             guard phase.revealed else {
-                mounted = true
+                if !mounted {
+                    withAnimation(RMotion.handoff) { mounted = true }
+                }
                 return
             }
             do {
@@ -335,6 +356,7 @@ struct LaunchCover: View {
                 return  // covering again before the handoff finished
             }
             mounted = false
+            if phase.settled { onFinished() }
         }
     }
 }

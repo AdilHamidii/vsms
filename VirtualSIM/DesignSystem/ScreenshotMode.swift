@@ -129,6 +129,10 @@ enum ScreenshotMode {
         // the progress line (at 60%) and the "Still loading…" caption.
         case splash
         case splashSlow
+        // The failure footer ("Couldn't reach the server", Try again /
+        // Continue anyway, inert here). The mark must NOT breathe: burst
+        // stills a few hundred ms apart should sample identical glyphs.
+        case splashFailed
         // For a screen RECORDING, not a still: the real, unpinned cover held
         // 2.5s and then lifted by the real `bootPhase` flip — the handoff and
         // the Verify root's rise-in. (Every other fixture is ready before the

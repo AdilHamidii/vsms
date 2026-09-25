@@ -38,6 +38,8 @@ struct AuthGate: View {
     /// the first VoIP push, which can arrive before any view has been created.
     @State private var calls = CallController.shared
     @AppStorage("onboardingComplete") private var onboardingComplete = false
+    /// The launch cover has handed off to a ready app. See `LaunchCover`.
+    @State private var launchCoverDone = false
     // Pre-sign-in screens (onboarding, sign-in, splash) run before AppState
     // exists, so they read the same UserDefaults it will. Via @AppStorage so a
     // change applies live, falling back to the migration path when the key has
@@ -100,14 +102,18 @@ struct AuthGate: View {
         // still bootstrapping there is no `ContentView` and so no report.
         // Signed out (onboarding, sign-in) there is no cover at all, and the
         // host's state resets, so the next sign-in gets a fresh one.
+        //
+        // `launchCoverDone` latches the cover off once it has handed off to a
+        // READY app, so nothing here renders for the rest of the session.
         .overlayPreferenceValue(LaunchCoverKey.self) { report in
-            if session.status != .signedOut {
+            if session.status != .signedOut, !launchCoverDone {
                 LaunchCover(
                     phase: session.status == .bootstrapping
                         ? .bootstrapping
                         : report?.phase ?? .bootstrapping,
                     onRetry: report?.onRetry,
-                    onContinue: report?.onContinue
+                    onContinue: report?.onContinue,
+                    onFinished: { launchCoverDone = true }
                 )
             }
         }
@@ -129,6 +135,9 @@ struct AuthGate: View {
         .onChange(of: session.status) { _, status in
             switch status {
             case .signedOut:
+                // The next sign-in mounts a fresh `ContentView` with a cold
+                // chain of its own, so it gets a fresh cover.
+                launchCoverDone = false
                 mailStore.clearEntitlement()
                 // The Telnyx session and its stored credential belong to the
                 // account that minted them. Left alive, this device stays a

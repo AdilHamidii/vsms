@@ -119,9 +119,10 @@ struct ContentView: View {
     /// honest answer and should not wait behind five more fetches.
     private var launchCoverReport: LaunchCoverReport {
         #if DEBUG
-        // The `splash` / `splashSlow` fixtures: the real splash, pinned. The
-        // chain is skipped in screenshot mode and `continueWithoutCatalog`
-        // has already set `bootPhase = .ready`, so the pin overrides it.
+        // The `splash` / `splashSlow` / `splashFailed` fixtures: the real
+        // splash, pinned. The chain is skipped in screenshot mode and
+        // `continueWithoutCatalog` has already set `bootPhase = .ready`, so
+        // the pin overrides it. The failure fixture's buttons do nothing.
         switch ScreenshotMode.screen {
         case .splash:
             return LaunchCoverReport(phase: LaunchCoverPhase(
@@ -129,14 +130,22 @@ struct ContentView: View {
         case .splashSlow:
             return LaunchCoverReport(phase: LaunchCoverPhase(
                 state: .progress(0.6), revealed: false, pinned: .slow))
+        case .splashFailed:
+            return LaunchCoverReport(
+                phase: LaunchCoverPhase(state: .failed, revealed: false, pinned: .failed),
+                onRetry: {}, onContinue: {})
         default:
             break
         }
         #endif
+        let phase = LaunchCoverPhase(
+            state: state.bootPhase == .failed ? .failed : .progress(state.bootProgress),
+            revealed: state.bootPhase == .ready || state.maintenance.isActiveNow,
+            settled: state.bootPhase == .ready)
+        // Closures ONLY where they are used — see `LaunchCoverReport`.
+        guard phase.state == .failed else { return LaunchCoverReport(phase: phase) }
         return LaunchCoverReport(
-            phase: LaunchCoverPhase(
-                state: state.bootPhase == .failed ? .failed : .progress(state.bootProgress),
-                revealed: state.bootPhase == .ready || state.maintenance.isActiveNow),
+            phase: phase,
             onRetry:    { Task { await state.coldStart(api: api) } },
             onContinue: { state.continueWithoutCatalog() }
         )
@@ -1178,7 +1187,11 @@ extension ContentView {
                 // flip 2.5s in: clear of the system's own launch animation,
                 // so a screen recording shows the handoff and the rise-in.
                 Task {
-                    try? await Task.sleep(nanoseconds: 2_500_000_000)
+                    do {
+                        try await Task.sleep(nanoseconds: 2_500_000_000)
+                    } catch {
+                        return
+                    }
                     state.continueWithoutCatalog()
                 }
             }
@@ -1308,7 +1321,7 @@ extension ContentView {
             UserDefaults.standard.removeVolatileDomain(forName: argDomain)
             UserDefaults.standard.setVolatileDomain(args, forName: argDomain)
 
-        case .splash, .splashSlow:
+        case .splash, .splashSlow, .splashFailed:
             // Rendered by `AuthGate`'s one `LaunchCover`, pinned through
             // `launchCoverReport`: `bootPhase` is private(set) and
             // `continueWithoutCatalog` above has already made it `.ready`.

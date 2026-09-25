@@ -94,12 +94,14 @@ breathes, the progress line fades in at 1.5 s and the caption at 3.5 s, and on
 taps pass through at once) while the store's `riseIn` plays on the reveal. The
 launch screen now really is `theme.bg` (see the `INFOPLIST_KEY_` gotcha).
 Detail in `.claude/rules/ios-client.md`, "Cold launch". ⚠️ Verified from
-fixture stills and a `splashHandoff` recording; a real signed-in cold launch
-was not recorded and Reduce Motion is code-verified only.
+fixture stills and a `splashHandoff` recording, and the breath stopping in
+the failure state from pixel-identical `splashFailed` burst stills; a real
+signed-in cold launch was not recorded, and the Reduce Motion paths and the
+maintenance remount fade are code-verified only.
 Fixtures on this branch: `verify`, `verifyLine`, `activity`, `waitingClosed`,
-`account`, `splash` / `splashSlow` / `splashHandoff` (the launch cover
-pinned calm / with the line and caption / lifted by a real `bootPhase` flip
-2.5 s in, for a screen recording), `announcement` (the root with a synthetic
+`account`, `splash` / `splashSlow` / `splashFailed` / `splashHandoff` (the
+launch cover pinned calm / with the line and caption / on the failure footer /
+lifted by a real `bootPhase` flip 2.5 s in, for a screen recording), `announcement` (the root with a synthetic
 warning banner), `emailLoading` / `emailReady` / `emailFailed` (the E-mail segment
 with its domain quote pending / answered — same geometry — / failed with
 nothing to show; see "The temp-e-mail product",
@@ -3347,11 +3349,11 @@ re-add it**: with no way to close a thread, one stale pre-2.9 question paged
   fails with *"Multiple commands produce …/Info.plist"*. **Assert against the
   BUILT plist, never the build setting:** `plutil -p "$APP/Info.plist"`.
   ⚠️ **The launch-screen colour was the same shape** (found 2026-09-24):
-  `INFOPLIST_KEY_UILaunchScreen_BackgroundColor = LaunchBackground` is set,
+  `INFOPLIST_KEY_UILaunchScreen_BackgroundColor = LaunchBackground` was set,
   yet the built `UILaunchScreen` was an empty dict, so the system launch
   screen drew white / black and `LaunchBackground.colorset` was never used.
   `UILaunchScreen.UIColorName` now lives in `VirtualSIM-Info.plist` beside
-  `UIBackgroundModes`.
+  `UIBackgroundModes`, and the dead build setting is deleted (2026-09-25).
 - **`UUID.uuidString` is UPPERCASE and Telnyx's detail records are lowercase.**
   Exact-string matching would settle nothing and look exactly like a provider
   that never reported the call.

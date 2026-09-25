@@ -281,7 +281,19 @@ expensive here specifically, because activation is a single-session event
   `LaunchCover` unmounts exactly `handoffSeconds` later and keeps drawing the
   last COVERING state meanwhile, so "Continue anyway" fades the failure footer
   out instead of swapping it mid-fade. Under Reduce Motion: no glide, no
-  breath, a plain crossfade (the store's `riseIn` is already off there).
+  breath, a plain crossfade (the store's `riseIn` is already off there) —
+  ⚠️ code-verified only; simctl has no Reduce Motion switch.
+- **Remount and churn.** If the cover has handed off onto MAINTENANCE and
+  maintenance ends mid-load, it fades back in (`.transition(.opacity)` +
+  `withAnimation(RMotion.handoff)`; code-verified only). A handoff onto a
+  READY app is `settled` (`bootPhase == .ready` never goes back), and
+  `LaunchCover.onFinished` latches `AuthGate.launchCoverDone`, so the cover
+  never renders again that session; it resets on sign-out. `ContentView`
+  sends the retry / continue closures ONLY in the failure state: a fresh
+  closure per body made every report differ, so the overlay re-ran on every
+  `ContentView` update. Measured 2026-09-25 with a temporary log in the
+  overlay closure over a 15 s `splashHandoff` launch: 5 runs in total, the
+  last being the latch.
 - **`TempScreen`'s `riseIn` stagger starts on the reveal**, not on mount: its
   `appeared` flips on `bootPhase == .ready` (or at once in `.task` if the app
   is already up). It mounts under the cover, so an entrance started in `.task`
@@ -290,13 +302,20 @@ expensive here specifically, because activation is a single-session event
   `try?`**: a cancelled `Task.sleep` throws at once and `try?` falls through,
   which showed the line and the caption the instant the task was replaced.
 - Fixtures: `splash` (the mark alone, not breathing, so a still never catches
-  it mid-breath), `splashSlow` (line at 60% + caption), and `splashHandoff`
+  it mid-breath), `splashSlow` (line at 60% + caption), `splashFailed` (the
+  failure footer, inert buttons; its pin leaves breathing to the STATE, so it
+  proves the failure state is what stops the breath), and `splashHandoff`
   (for a screen RECORDING: the real unpinned cover lifted by a real
   `bootPhase` flip 2.5 s in — every other fixture is ready before the system's
   launch animation ends, so its handoff is never on screen). Verified
   2026-09-24 from `splashHandoff` recordings (dark + light) and fixture stills;
   a real signed-in cold launch was NOT recorded (the simulator has no
-  session), and Reduce Motion is code-verified only.
+  session), and Reduce Motion is code-verified only. The failure-state stop
+  is FRAME-verified (2026-09-25): 8 `splashFailed` stills ~0.8 s apart (5.6 s, longer than one 3.2 s breath), dark
+  and light, are pixel-identical outside the status bar, and the glyphs sample
+  at full opacity (light `v` `#279400`, `S` `#17181A`; dark `S` `#F8F7F4`).
+  The same `S` pixel on a breathing splash read 83 / 78 / 27 / 37 across
+  stills (full ink 23, the 0.72 exhale ≈ 85).
 - Measured 2026-07-30: catalog = 18,492 routes, **3.48 MB raw / 179 KB gzipped**,
   ~0.8–1.5s, and it is one of **six sequential round-trips** (~3s total).
   Overlapping them would genuinely help, but `AppState` is a plain `@Observable`
@@ -310,9 +329,15 @@ product. The `v` takes `theme.ink` (the user-selectable accent) and **not**
 `theme.live`, which is the semantic success green; spending that colour on
 branding is the conflation `AccentColor` documents as forbidden. On the splash
 the mark is fully drawn on the first frame and BREATHES (`BrandWordmark(breathes:)`,
-opacity 1 ↔ 0.72, `RMotion.breathe`, 1.6 s ease-in-out) as the loading
+opacity 1 ↔ 0.72, 1.6 s each way, cosine ease-in-out) as the loading
 indicator, which is why there is no spinner; it is still in the failure state
-and under Reduce Motion. (It typed on and then spun the `v` until 2026-09-24;
+and under Reduce Motion. 🔴 **The breath is a function of time in its own
+child view (`BreathingMark`, a `TimelineView`), NOT a `repeatForever`
+animation.** A running `repeatForever` can only be stopped by a second
+animation overriding it on the same property, and timing-curve animations do
+not reliably replace one another — the first version relied on exactly that.
+Now stopping removes the child: the static branch draws opacity 1, exactly,
+and a restart begins at 1 because the child's clock starts when it is created. (It typed on and then spun the `v` until 2026-09-24;
 nothing else ever used that, and onboarding / sign-in draw the static mark,
 one `Text` per letter, unchanged.) The progress line fades in only after
 1.5 s and the slow-connection caption after 3.5 s, both counted from the
@@ -388,11 +413,13 @@ Three things that must move together, each a real trap:
   a visible colour step on every cold launch before SwiftUI has drawn
   anything. 🔴 **And it must actually be WIRED.** Until 2026-09-24 it was
   neither: the colorset read `#F8F7F4` / `#000000`, and it was never used at
-  all: `INFOPLIST_KEY_UILaunchScreen_BackgroundColor` is in the build
-  settings, but the built plist's `UILaunchScreen` was an EMPTY dict (read
-  with `plutil`; the likeliest cause is the same generator/merge trap as
-  `UIBackgroundModes`, not proven), so the launch screen drew the system's
-  white / black. `UILaunchScreen.UIColorName = LaunchBackground` now
+  all: `INFOPLIST_KEY_UILaunchScreen_BackgroundColor = LaunchBackground` sat
+  in the build settings, but the built plist's `UILaunchScreen` was an EMPTY
+  dict (read with `plutil`; the likeliest cause is the same generator/merge
+  trap as `UIBackgroundModes`, not proven), so the launch screen drew the
+  system's white / black. That dead setting was DELETED from
+  `project.pbxproj` on 2026-09-25 because it made the colour look wired;
+  do not re-add it. `UILaunchScreen.UIColorName = LaunchBackground` now
   lives in `VirtualSIM-Info.plist`; assert with
   `plutil -p "$APP/Info.plist" | grep -A2 UILaunchScreen`. Recorded after the
   fix with the simulator AND the app in light: launch screen → splash → store

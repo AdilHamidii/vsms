@@ -38,13 +38,13 @@
 		<string>voip</string>
 	</array>
 	<!--
-	  🔴 THE SECOND KEY, SAME TRAP (found 2026-09-24).
-	  `INFOPLIST_KEY_UILaunchScreen_BackgroundColor = LaunchBackground` is in
-	  the build settings too, and the built Info.plist carried an EMPTY
-	  `UILaunchScreen` dict, so the system launch screen drew the SYSTEM
-	  background (white / black) and `LaunchBackground.colorset` was never
-	  used. Declaring the dict here is what makes the launch screen
-	  `theme.bg`. Verify with:
+	  🔴 THE SECOND KEY, SAME TRAP (found 2026-09-24). The launch-screen
+	  colour lives HERE and ONLY here. The build setting
+	  `INFOPLIST_KEY_UILaunchScreen_BackgroundColor = LaunchBackground` (now
+	  deleted from project.pbxproj) left the built plist with an EMPTY
+	  `UILaunchScreen` dict, so the launch screen drew the system white /
+	  black and `LaunchBackground.colorset` was never used, while the setting
+	  made the colour look wired. Do not re-add it. Verify with:
 	      plutil -p "$APP/Info.plist" | grep -A2 UILaunchScreen
 	-->
 	<key>UILaunchScreen</key>

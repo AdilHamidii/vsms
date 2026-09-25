@@ -44,11 +44,6 @@ enum RMotion {
         .delay(Double(min(index, cap)) * step)
     }
 
-    /// The launch splash's wordmark while the cold chain loads: a slow
-    /// opacity breath. Loops until the splash stops asking for it; never used
-    /// under Reduce Motion (see `BrandWordmark.breathes`).
-    static let breathe = Animation.easeInOut(duration: 1.6).repeatForever(autoreverses: true)
-
     /// How long the splash takes to hand off to the first screen. The splash
     /// host unmounts after exactly this, so the two cannot disagree.
     static let handoffSeconds: Double = 0.5
