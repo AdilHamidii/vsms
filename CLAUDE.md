@@ -1795,6 +1795,12 @@ nothing:**
    row) and costs us nothing (`five.cancel` reclaims the wholesale on both the
    cancel and the expiry path). That fact removes the actual reason people
    stop; a recommended number does not.
+   ⚠️ **On branch `design-overhaul` the refund card is GONE (owner decision
+   2026-09-25, from a device screenshot: "remove completely").** The sheet
+   now opens on the headline, then the band legend and the try count; the
+   refund is no longer stated on this screen (it still shows on the recovery
+   card after a failure). This rule describes `main`; do not re-add the card
+   on the branch without the owner.
 2. **The advice BRANCHES BY BAND.** High 47% per try, Medium 40%, Low 17%
    (n = 295, see "The pool rate is the tie-break"). "Try again" is correct on
    High and WRONG on Low, where the copy says *pick another country* — about

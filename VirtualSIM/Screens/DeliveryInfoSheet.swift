@@ -15,7 +15,9 @@ import SwiftUI
 /// way the product works do fine; the majority quit at the first failure.
 ///
 /// So this screen is not reassurance, it is instruction: what the band means,
-/// that the retry is free, and when to stop retrying and move country instead.
+/// and when to stop retrying and move country instead. (It opened with a
+/// "You're never charged for a number that doesn't deliver" refund card until
+/// 2026-09-25; the owner removed it.)
 ///
 /// ── 🔴 What the copy may and may not claim ────────────────────────────────
 /// The advice is BRANCHED BY BAND, and that is the whole design. Measured on
@@ -47,8 +49,8 @@ import SwiftUI
 ///
 /// ⚠️ **The band section hides under `delivery_metrics_hidden`.** When the
 /// meter is off there is no band on screen to explain, and a legend for an
-/// invisible control is worse than no legend. The refund, the retry advice and
-/// support survive, because none of them depend on the meter.
+/// invisible control is worse than no legend. The retry advice and support
+/// survive, because neither depends on the meter.
 struct DeliveryInfoSheet: View {
     @Environment(\.theme) private var theme
     @Environment(AppState.self) private var state
@@ -101,7 +103,6 @@ struct DeliveryInfoSheet: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 22) {
                 headline
-                refundCard
                 if state.showsDeliveryMetrics { bands }
                 tries
 
@@ -163,30 +164,6 @@ struct DeliveryInfoSheet: View {
                 .font(RFont.text(15))
                 .foregroundStyle(theme.text2)
                 .fixedSize(horizontal: false, vertical: true)
-        }
-    }
-
-    /// First, and deliberately: it removes the actual reason people stop. It
-    /// is also simply true — every expired and every cancelled order in the 30
-    /// days to 2026-09-13 carries a refund ledger row, all 311 of them.
-    private var refundCard: some View {
-        Card(fill: theme.liveSoft, border: theme.live.opacity(0.35)) {
-            HStack(alignment: .top, spacing: 12) {
-                Image(systemName: RIcon.shield)
-                    .font(.system(size: 17, weight: .semibold))
-                    .foregroundStyle(theme.live)
-                VStack(alignment: .leading, spacing: 5) {
-                    Text("You're never charged for a number that doesn't deliver")
-                        .font(RFont.text(15, weight: .semibold))
-                        .foregroundStyle(theme.text)
-                        .fixedSize(horizontal: false, vertical: true)
-                    Text("If no code arrives, your credits come straight back automatically. Trying again costs you nothing.")
-                        .font(RFont.text(14))
-                        .foregroundStyle(theme.text2)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-            }
-            .padding(16)
         }
     }
 
@@ -252,8 +229,7 @@ struct DeliveryInfoSheet: View {
                     // Green at the owner's request (2026-09-13), to pull the
                     // eye to the one sentence that changes behaviour. It is
                     // the semantic success colour, which is consistent here:
-                    // this line and the refund card are the two pieces of good
-                    // news on the screen, and they now read as a pair.
+                    // it is the one piece of good news on the screen.
                     Text("Nine in ten people who get a code have it within three tries.")
                         .font(RFont.text(15, weight: .semibold))
                         .foregroundStyle(theme.live)
