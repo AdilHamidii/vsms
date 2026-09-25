@@ -2617,7 +2617,9 @@ final class AppState {
                             usage: res.usage, for: request.serviceId,
                             usageTick: request.usageTick)
         } catch {
-            let userJoined = emailQuoteUserJoined == request.generation
+            // Only while the user is still looking at e-mail mode: a failure
+            // that lands after they went back to Number mode is not theirs.
+            let userJoined = emailQuoteUserJoined == request.generation && emailMode
             guard acceptsEmailQuote(request) else { return }
             // A background refresh that fails under a quote still inside the
             // window changes nothing on screen: the held quote stays live
