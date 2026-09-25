@@ -3478,9 +3478,17 @@ Each has been wrong within a day of being written at least once.
 
 **Verified 2026-09-09:**
 
-- **iOS**: **2.19 (build 71) is `WAITING_FOR_REVIEW`** (submitted
-  2026-09-25 07:16Z; version `979f8838-…`, submission `a530c264-…`, one
-  item, the app version). It is branch **`design-overhaul`** at `d802048`:
+- **iOS**: **2.19 (build 71) is `WAITING_FOR_REVIEW`** (resubmitted
+  2026-09-25 07:23Z; version `979f8838-…`, submission `b617da1a-…`, one
+  item, the app version). The first submission (`a530c264-…`, 07:16Z) was
+  cancelled and resubmitted the same day (owner approval) to fix the description and the
+  review notes. The description, all 13 locales, lost four false claims:
+  "code arrives within seconds"; texting back to US numbers (now
+  Canadian only); "every country shows its delivery rate" (only ~a third
+  of active routes publish one); and "up to 25 addresses a day" (now a
+  non-numeric "generous daily allowance", because the cap is server-owned). The App Review
+  notes were rewritten for the Verify · My number · Activity · Account
+  tabs; demo/contact fields were left unchanged. It is branch **`design-overhaul`** at `d802048`:
   the Verify-first IA (Verify · My number · Activity · Account, the store as
   the Verify root), the rebuilt My number tab, e-mail address prefetch, the
   new launch screen, and the delivery explainer moved to the first Get-number
@@ -3491,8 +3499,7 @@ Each has been wrong within a day of being written at least once.
   `BuildMachineOSBuild` patched to `25F84` and read back in the exported IPA
   with `UIBackgroundModes` [audio, voip] and `UILaunchScreen.UIColorName =
   LaunchBackground`. Screenshots carried over from 2.18 unchanged (en-US
-  only, 11 frames, which PREDATE the redesign); the App Review notes carried
-  over too and still describe the old tabs ("Number", "Home"). Release notes
+  only, 11 frames, which PREDATE the redesign). Release notes
   in 13 locales, read back; `asc-listing-check.py` 0 findings.
 - **2.18 (build 70) is `READY_FOR_SALE`** (submitted
   2026-09-23 12:08Z; version `5e0ecfd7-…`, submission `d9485c31-…`). It
