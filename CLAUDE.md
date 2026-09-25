@@ -3495,9 +3495,13 @@ Each has been wrong within a day of being written at least once.
 
 **Verified 2026-09-09:**
 
-- **iOS**: **2.19 (build 71) is `WAITING_FOR_REVIEW`** (resubmitted
-  2026-09-25 07:23Z; version `979f8838-…`, submission `b617da1a-…`, one
-  item, the app version). The first submission (`a530c264-…`, 07:16Z) was
+- **iOS**: **2.19 is `DEVELOPER_REJECTED` with build 71 attached and NO open
+  submission** — the owner cancelled review on 2026-09-25 to ship it
+  together with the Arabic localization and new light-mode screenshots, which
+  need a new build. Submission `b617da1a-…` reads `COMPLETE`; version
+  `979f8838-…`. Recover with `asc-release.py build 2.19 <n> --apply` then
+  `submit 2.19 --apply`. History: resubmitted 2026-09-25 07:23Z as one item,
+  the app version. The first submission (`a530c264-…`, 07:16Z) was
   cancelled and resubmitted the same day (owner approval) to fix the description and the
   review notes. The description, all 13 locales, lost four false claims:
   "code arrives within seconds"; texting back to US numbers (now
@@ -3841,6 +3845,11 @@ Genuinely open items only. Resolved history is in `docs/decisions-archive.md`.
   THEMSELVES — deliver raw captures, never captioned slides.** The composed
   pipeline (`scripts/screenshots/make-set.py`, `compose-slide.py`) still runs
   and writes a `set/` tree, but nothing the owner uploads comes from it.
+- ⚠️ **The app has an Arabic (`ar`) localization from the release after 2.19
+  (added 2026-09-25), but the App Store `ar-SA` listing is still ENGLISH**
+  (name, subtitle, description, keywords). Machine-translated, never reviewed
+  by a native speaker; the two RTL traps it exposed are in
+  `.claude/rules/ios-client.md`, "Arabic is the one right-to-left language".
 - ⚠️ **The App Privacy label for 2.6's analytics is owner-reported, not
   verified** — the API cannot read or write it. Check for an unpublished draft.
 - ⚠️ **The Telegram bot cannot close a support thread**, so answered threads

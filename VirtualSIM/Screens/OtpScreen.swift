@@ -180,6 +180,9 @@ struct OtpScreen: View {
                         OtpDigit(digit: d, idx: idx, style: state.otpAnimation)
                     }
                 }
+                // A code reads left to right in every language. Without this,
+                // Arabic mirrors the row and shows 123456 as 6 5 4 3 2 1.
+                .environment(\.layoutDirection, .leftToRight)
                 .padding(.top, 16)
 
                 PrimaryButton(

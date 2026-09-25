@@ -356,6 +356,9 @@ struct Dialpad: View {
                 }
             }
         }
+        // A phone keypad is 1 2 3 left to right in every language, as in the
+        // system Phone app; Arabic would otherwise mirror it to 3 2 1.
+        .environment(\.layoutDirection, .leftToRight)
     }
 }
 

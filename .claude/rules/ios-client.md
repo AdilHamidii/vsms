@@ -138,7 +138,7 @@ VirtualSIM/
                                  Liquid Glass on iOS 26, frosted material below.
                                  See the note below: the availability guard
                                  lives HERE and nowhere else)
-  Localizable.xcstrings          String Catalog: en source + de/es/fr/it/ja/pt-BR
+  Localizable.xcstrings          String Catalog: en source + ar/de/es/fr/it/ja/pt-BR
   Products.storekit              Local IAP test config (enable via scheme)
   VirtualSIM.entitlements        Sign in with Apple + aps-environment
 ```
@@ -510,6 +510,24 @@ byte-for-byte). The reason this is a rule and not a preference: the same edit is
 either 802 reviewable lines or a 29,539-line diff, and a junk diff that size makes
 the next real catalog change unreviewable — nobody will find a changed translation
 inside it.
+
+### Arabic is the one right-to-left language (added 2026-09-25)
+
+SwiftUI mirrors every `HStack` under `ar`, which is right for layout and WRONG
+for any row of characters that must read left to right. Two were caught from
+Arabic screenshots, neither by reading the code: `OtpScreen`'s code boxes
+rendered 123456 as **6 5 4 3 2 1** (a user would paste the code backwards), and
+`Dialpad` rendered 3 2 1 on top. Both now pin
+`.environment(\.layoutDirection, .leftToRight)`. **Any new view that lays out
+digits or characters ONE PER VIEW needs the same pin**; a single `Text` of a
+number or phone number renders correctly without it. Under `ar_SA` numbers
+format with Arabic-Indic digits (٤٢), which is the locale's convention, while
+phone numbers and codes stay Western because they are plain strings.
+⚠️ Only the screens in the App Store screenshot set were looked at in Arabic
+(verify, code, e-mail, number store, inbox, thread, calls, dialer); the rest are
+build-verified only. The translations are machine-made and unreviewed by a
+native speaker. Fixture data (sample messages, service and country names from
+the catalog) stays English in Arabic screenshots, as in every other language.
 
 ## The map's camera callback fires EVERY FRAME
 
