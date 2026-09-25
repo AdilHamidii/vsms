@@ -50,8 +50,8 @@ struct LineCheckoutScreen: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
                     numberCard.riseIn(appeared, index: 0)
-                    // As prominent as the price: the term most likely to be
-                    // discovered after paying rather than before.
+                    // Only for a calls-only number now; the US/PR sending limit
+                    // is the ✗ row in `whatYouGet`.
                     capabilityNote.padding(.top, RSpace.md).riseIn(appeared, index: 1)
                     whatYouGet.padding(.top, RSpace.xl).riseIn(appeared, index: 2)
                     // Choice first, then the sentence that restates it with its
@@ -346,9 +346,11 @@ struct LineCheckoutScreen: View {
     /// already says what it receives — and an UNKNOWN capability says nothing,
     /// because a "calls only" warning over a number that texts perfectly well
     /// is a lie that costs the sale.
-    /// Whether the uncollapsed US/PR sending warning is on screen. One
-    /// definition, read by the view and by `line_checkout_exit`, so the event
-    /// can never describe a different screen from the one rendered.
+    /// Whether this is a US/PR number that texts: the buyer the sending limit
+    /// bites hardest. Read by `line_checkout_exit.capability_note`. ⚠️ Until
+    /// 2026-09-25 it also meant "the amber box is on screen"; the box is gone
+    /// (the ✗ row in "What you get" now covers every texting number), so from
+    /// then on `capability_note = true` means "a US/PR number, ✗ row shown".
     private var sendingWarningShown: Bool {
         guard numberSendsTexts != false, let iso = state.lineCountry else { return false }
         // Uppercased like the swap sheet's check, so a lowercase ISO from any
@@ -358,40 +360,11 @@ struct LineCheckoutScreen: View {
 
     @ViewBuilder
     private var capabilityNote: some View {
-        if sendingWarningShown {
-            // 🔴 UNCOLLAPSED, and that is the point (2026-09-17). "Some
-            // networks block texts sent from virtual numbers" already lived in
-            // `goodToKnow`, which opens CLOSED — so the one limit this product
-            // actually hits was a tap away from a buyer who never taps. It is
-            // measured, not a caveat: 16 of 24 US sends failed with Telnyx
-            // `40010` (sender not 10DLC-registered) over the 30 days to
-            // 2026-09-17, against every Canadian send to a Canadian number
-            // delivering, and two
-            // subscribers turned auto-renew off minutes after their first
-            // failed text. A limit discovered AFTER paying is a refund and an
-            // Apple CONSUMPTION_REQUEST; this is the 3.1.2(a) surface, so it
-            // belongs on it in full view.
-            //
-            // It no longer names Canada: CA→US fails the same way (0 of 8,
-            // CLAUDE.md 2026-09-24), so a Canadian number is not a remedy.
-            Card(radius: RRadius.group, elevation: .flat,
-                 fill: theme.warnSoft, border: theme.warn.opacity(0.28)) {
-                HStack(alignment: .top, spacing: 10) {
-                    Image(systemName: "exclamationmark.triangle.fill")
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(theme.warn)
-                        .padding(.top, 1)
-                    Text("Texts you send from an American number often don't arrive — most US networks block them. Receiving codes and calling work normally.")
-                        .font(RFont.text(13, weight: .semibold))
-                        .foregroundStyle(theme.text)
-                        .lineSpacing(2)
-                        .fixedSize(horizontal: false, vertical: true)
-                    Spacer(minLength: 0)
-                }
-                .padding(.horizontal, 14)
-                .padding(.vertical, 12)
-            }
-        }
+        // The amber US/PR box that sat here (2026-09-17) is GONE on branch
+        // `design-overhaul` (owner, 2026-09-25): the same limit is now the
+        // "What you get" ✗ row, shown for EVERY number that texts, US/PR
+        // included. The disclosure is still on this screen, in full view,
+        // before the purchase; only its weight changed.
         if numberSendsTexts == false {
             // Through `Card` with a semantic fill + hairline, identical to the
             // emergency block below: one caution surface on this screen rather
@@ -484,8 +457,10 @@ struct LineCheckoutScreen: View {
     /// Five rows, down from nine (spec §4.2). The minutes row and the 50+
     /// countries row MUST stay: the store's "✓ Calls" carries no figures, and
     /// is honest only because these two state them before the purchase.
-    /// The ✗ row is the store's, for a number that texts and is NOT US/PR
-    /// (US/PR get the uncollapsed note above instead).
+    /// The ✗ row is the store's, for EVERY number that texts, US/PR included
+    /// (owner, 2026-09-25: it replaced the amber US/PR box). 🔴 It is the
+    /// checkout's sending-limit disclosure now: removing it is removing the
+    /// warning, and CLAUDE.md's force_block rule applies.
     ///
     /// ⚠️ **Only sell what ships**, and **emergency calling is NOT included**
     /// — it is disclosed separately below. Nothing in this list may imply the
@@ -516,7 +491,7 @@ struct LineCheckoutScreen: View {
                     LineLedgerRow(kind: .yes,
                                   text: Text("Switch to a new number any time, as many times as you want"))
                 }
-                if numberSendsTexts != false, !sendingWarningShown {
+                if numberSendsTexts != false {
                     LineLedgerRow(kind: .no,
                                   text: Text("Texts you send to US numbers usually don't arrive."))
                 }

@@ -451,7 +451,8 @@ likeliest is the cover's content being built twice (INFERRED, not verified).
 WITHOUT tapping Subscribe: `how` ∈ `back` · `background` · `restore` (Restore
 found a live line — not an abandonment), `seconds`, `plan`, `intro`,
 `country`, `capability_note` (the uncollapsed US/PR sending warning was on
-screen) and `good_to_know_expanded`. The visit lives in a file-private static
+screen; on branch `design-overhaul` from 2026-09-25 the amber box is gone and
+it means "a US/PR number that texts, ✗ row shown") and `good_to_know_expanded`. The visit lives in a file-private static
 (`CheckoutVisit`), not `@State`, so a second instance cannot double-fire or
 restart the clock; an `onDisappear` while `flow` is still `.lineCheckout` is
 ignored for the same reason.
@@ -624,13 +625,17 @@ so the two screens cannot disagree about who is warned.
 and its green Canada line are GONE. The store shows a ✓/✗ ledger
 (`Components/LineLedger.swift`) whose ✗ row, 'Texts you send to US numbers
 usually don't arrive.', renders for EVERY country, because the recipient's
-network enforces 10DLC (CA→US 0 of 8). Checkout's `capabilityNote` stays
-UNCOLLAPSED on US/PR with its Canada sentence removed; the thread's
-failed-send copy likewise; the swap sheet's confirm page gains the ✗ row when
-the target country is US/PR. `LineStoreScreen.unreliableSendingCountries` is
-still the one list (checkout, thread, swap). The force_block rule below covers
-the ledger ✗ row and the checkout note on this branch. The rest of this
-paragraph describes `main`.
+network enforces 10DLC (CA→US 0 of 8). **Checkout's amber US/PR box is GONE
+too (owner, 2026-09-25):** the owner chose to replace it with the same ✗ row
+in checkout's "What you get", shown for EVERY number that texts, US/PR
+included, rather than remove the disclosure or force_block US/PR. The thread's
+failed-send copy has its Canada sentence removed; the swap sheet's confirm
+page gains the ✗ row when the target country is US/PR.
+`LineStoreScreen.unreliableSendingCountries` is still the one list
+(checkout's `sendingWarningShown` / `capability_note`, thread, swap). 🔴 On this
+branch the force_block rule below covers the ✗ rows on the store and at
+checkout: they ARE the warning now. The rest of this paragraph describes
+`main`.
 🔴 **That warning is the only thing standing between a US buyer and a refund
 request. If it is ever removed, `force_block` US and PR in the same commit** —
 the migration carries the exact SQL. Conversely, if the US ever gets a 10DLC
