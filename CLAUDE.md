@@ -3505,7 +3505,7 @@ Each has been wrong within a day of being written at least once.
 
 **Verified 2026-09-09:**
 
-- **iOS**: **2.19 (build 72) is `WAITING_FOR_REVIEW`** — submitted by the
+- **iOS**: **2.19 (build 72) is `READY_FOR_SALE`** (read from ASC 2026-09-26) — submitted by the
   owner from the ASC web UI on 2026-09-25 11:13Z, submission `0e57c161-…`,
   version `979f8838-…`. The owner cancelled review of build 71 that morning to
   ship the Arabic localization with new light-mode screenshots (8 frames × 8
