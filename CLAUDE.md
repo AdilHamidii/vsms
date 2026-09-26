@@ -4125,15 +4125,33 @@ wrong is the lesson.** An earlier pass reported impressions falling 6,200/day �
   the "before" window. Comparing against it made a normal week look like a
   wipeout.
 
-✅ **That spike is the most interesting unexplained thing in the data, and it
-is a LEAD, not a loss.** It was genuine App Store search (not browse) and it
-converted: **54 page views and 25 first-time installs on 09-11, 13 more on
-09-12**, against ~1 install/day from Europe normally. Two days produced ~38 EU
-installs. Nothing in this repo explains it — the localized keyword fields were
-applied to the 2.13 record on 09-11, but 2.11's own fields were never
-overwritten (read them back per version; they still hold the old tokens).
-**If it can be reproduced it is a bigger prize than recovering the US step**,
-because the European fields have otherwise bought essentially nothing.
+🔴 **That spike was OUR OWN APPLE SEARCH ADS, not organic search (explained
+2026-09-26).** This file called it an unexplained organic lead worth
+reproducing; that was wrong. The three EU campaigns (`docs/asa-eu-campaigns.md`)
+went live 2026-09-10, were raised to €50/day that evening, served 09-11 and
+09-12, and went dark ~09-13 on `CREDIT_CARD_DECLINED`. Three independent
+matches:
+- **Dates:** `install_attributions` holds EU ad-attributed installs on 09-11
+  (15) and 09-12 (7) and on no other day, all from campaigns 2144644286 /
+  2144642484 / 2144642935.
+- **Territories:** the spike is exactly the campaigns' targeting. SE, NL, DK,
+  FI, NO, IE and PL, which have no listing locale, went from 0 to hundreds of
+  impressions a day and back to 0.
+- **Size:** ~2,490 and ~1,650 impressions against ~28/day either side.
+
+⚠️ **Apple's App Store analytics reports count Search Ads impressions and taps
+under Source Type `App Store search`**, with no field separating paid from
+organic. That is how an ad burst read as "genuine App Store search". Split paid
+from organic with `install_attributions` (installs only). The ASA API is the
+only source for paid impressions, and on 2026-09-26 it refused our credentials
+with `invalid_client` (`scripts/asa.py doctor`).
+
+What the two days bought: 23 attributed users, of whom **4 bought credit packs
+(17%, against a ~3% all-user baseline) and 1 subscribed to a line**, about €40
+gross. The US ad cohort (19 users, 2026-08-19 → 09-07) bought no packs. EU spend
+for those days is unknown while the API is locked out; all vSMS ads ever cost
+€58.73 as of 2026-09-15, so it was under that. ASA stays off by owner decision
+(2026-09-15).
 
 🔴 **The next move is to STOP EDITING and let it settle.** 2.16 carries 2.15's
 field unchanged, which is correct. Three rewrites in five days (2.13, the 2.14

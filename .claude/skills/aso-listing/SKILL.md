@@ -69,7 +69,9 @@ in CLAUDE.md's ASO section in full, and both will catch the next reader:
 an analytics instance holds a **rolling 3-day window**, so summing the files
 triple-counts settled days and invents a cliff; and **Europe runs at ~28
 impressions/day normally**, so a two-day EU spike inside the baseline made a
-flat week look like a wipeout. Use the script (it de-duplicates and marks
+flat week look like a wipeout. That spike (09-11/12) was our own Apple Search
+Ads: Apple's analytics report ad impressions as `App Store search`, so they
+look organic there. Split paid from organic with `install_attributions`. Use the script (it de-duplicates and marks
 provisional days) rather than adding up the raw reports.
 
 **Change one field, then wait for several SETTLED days.** Overlapping edits
